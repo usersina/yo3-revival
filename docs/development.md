@@ -10,6 +10,7 @@ Rust/OpenAPI/Orval generation and contract checks.
 - [Development guide](#development-guide)
   - [Build from source](#build-from-source)
   - [Checks](#checks)
+    - [Tools](#tools)
   - [Which tool sees what](#which-tool-sees-what)
   - [Duel diagnostics](#duel-diagnostics)
     - [The rules engine](#the-rules-engine)
@@ -71,22 +72,30 @@ its own registry and stack. `test_dashboard_workflow.py` checks the shared FIFO,
 verification-before-deploy wiring. Full releases and independent UI delivery run on `[self-hosted, home]`; see
 the [runner prerequisites](deployment.md#home-runner). The first automatic run still needs verification on GitHub.
 
+`tools/check.py` holds every check by group, and CI's release job runs the same groups, so a local pass is a CI
+pass. `task --list` shows the rest of the tooling.
+
 ```bash
-cargo nextest run --workspace
-cargo clippy --workspace --all-targets -- -D warnings
-python3 tools/mod/test_fixture_layout.py
-python3 tools/mod/test_winmm_exports.py
-python3 tools/client/test_vclient.py
-python3 tools/monkey/test_duel_report.py
-python3 tools/monkey/test_duel_replay.py
-python3 tools/release/test_package_editions.py
-python3 tools/release/test_release_notes.py
-python3 tools/release/test_release_lifecycle.py
-python3 tools/containers/test_dashboard_workflow.py
-python3 tools/host/test_host_scripts.py
-python3 tools/docs/test_docs_check.py
-tools/docs/docs-check.py
+task check -- py docs   # the hermetic Python tests and the docs links: seconds
+task check:lint         # actionlint (skipped locally if not installed) and Clippy with -D warnings
+task check              # all of it, in CI's order: lint, py, docs, rust (engine sources, nextest), dashboard, e2e
+task check:list         # each group's steps
 ```
+
+A new Python test goes in `tools/<area>/test_*.py` (unittest, standard library) and is registered in
+`tools/check.py`: in `PY` if it needs nothing outside the repository, else in `OTHER` with what it needs.
+`tools/test_check.py` fails on an unregistered test, and on `release.yml` copying the list instead of running it.
+
+### Tools
+
+| Tool | What it does |
+| --- | --- |
+| `task dev:server` (`tools/dev/scratch-server.py`) | A scratch server beside a live one: free ports (never 7443/8080), its own data and logs, key accounts and their profiles; `--from-db FILE --profile-for WHO` starts from a copy of another server's database. `env`, `status`, `stop` |
+| `task client -- …` (`tools/client/vclient.sh`) | The headless game client on a private display |
+| `task vm -- …` (`tools/vm/vm.py`) | The Windows VMs in `tools/vm/vms.toml` (`~/.config/yo3-revival/vms.toml` overrides): `list`, power and snapshots, `shot`, `click`, `type`, `key`, `run VM -- CMD` (output and exit code back), `put`, `wait` |
+| `task build:dev` | Release builds of the server, launchers, Desktop and engine, and the connection DLL, as dev builds: it clears a stale `YO3_VERSION`, which would make the launcher refuse them |
+| `task build:mod:ci` (`tools/mod/build-ci.sh`) | The connection DLL as releases build it (Ubuntu's mingw-w64, `msvcrt.dll`), for tests on real Windows; set `YO3_BUILD_VERSION`/`YO3_BUILD_COMMIT` to a release's to swap a file into that release |
+| `task release` (`tools/release/release.sh`) | The Desktop, Scripts and Server bundles into `dist/` |
 
 Fetch engine dependencies before engine tests; game-data tests can skip without an original installation.
 DLL/loader changes also need `tools/mod/test-dll.sh` and `tools/mod/test-loader.sh`. See the working guide for the

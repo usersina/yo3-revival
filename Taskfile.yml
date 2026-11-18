@@ -1,5 +1,8 @@
 version: '3'
+
+# `task --list` is the menu. Arguments after `--` pass through: `task vm -- shot win7 screen.png`.
 tasks:
+  # The Compose stack (docs/docker.md)
   build:
     desc: Build the server and dashboard images
     cmds: [docker compose build]
@@ -15,3 +18,71 @@ tasks:
   logs:
     desc: Follow recent container logs
     cmds: [docker compose logs --tail=100 --follow]
+
+  # Checks: tools/check.py is the one list, and CI's release job runs it too
+  check:
+    desc: "Every check CI's release job runs, in its order (or groups: task check -- py docs)"
+    cmds: ['python3 tools/check.py {{.CLI_ARGS}}']
+  check:list:
+    desc: The check groups and their steps
+    cmds: [python3 tools/check.py --list]
+  check:py:
+    desc: The hermetic Python tests (seconds)
+    cmds: [python3 tools/check.py py]
+  check:docs:
+    desc: Every relative link and anchor in the Markdown
+    cmds: [python3 tools/check.py docs]
+  check:lint:
+    desc: actionlint and Clippy
+    cmds: [python3 tools/check.py lint]
+  check:rust:
+    desc: The engine sources, then every Rust test (about a minute after building)
+    cmds: [python3 tools/check.py rust]
+  check:dashboard:
+    desc: The dashboard's API drift, format, lint, types, unit tests and build
+    cmds: [python3 tools/check.py dashboard]
+
+  # Builds
+  build:dev:
+    desc: Release builds of the server, launchers, Desktop and engine, and the connection DLL, as dev builds
+    cmds:
+      # A YO3_VERSION left in the shell bakes release metadata into these, and the launcher then refuses them
+      # ("Bundle manifest is missing", a DLL version mismatch).
+      - env -u YO3_VERSION cargo build --release -p yo3-server -p yo3-launcher -p yo3-desktop -p yo3-engine
+      - env -u YO3_VERSION tools/mod/build.sh
+  build:mod:
+    desc: The connection DLL, injector and test harnesses (local mingw-w64)
+    cmds: [tools/mod/build.sh]
+  build:mod:ci:
+    desc: The connection DLL as the release builds it (Ubuntu mingw-w64 in Docker, msvcrt), for real Windows VMs
+    cmds: [tools/mod/build-ci.sh]
+  release:
+    desc: Desktop, Scripts and Server bundles into dist/ (set YO3_VERSION for a release build)
+    cmds: [tools/release/release.sh]
+
+  # Docs
+  docs:toc:
+    desc: "A table of contents for a Markdown file: task docs:toc -- docs/launcher.md"
+    cmds: ['python3 tools/docs/docs-check.py --toc {{.CLI_ARGS}}']
+
+  # Scratch servers beside a live one (never 7443/8080)
+  dev:server:
+    desc: "Start a scratch server with key accounts (task dev:server -- --accounts 2 | --from-db FILE --profile-for WHO)"
+    cmds: ['python3 tools/dev/scratch-server.py start {{.CLI_ARGS}}']
+  dev:server:env:
+    desc: The export lines for a client terminal (the newest scratch server)
+    cmds: ['python3 tools/dev/scratch-server.py env {{.CLI_ARGS}}']
+  dev:server:status:
+    desc: Whether the newest scratch server runs
+    cmds: ['python3 tools/dev/scratch-server.py status {{.CLI_ARGS}}']
+  dev:server:stop:
+    desc: Stop the newest scratch server (its files stay)
+    cmds: ['python3 tools/dev/scratch-server.py stop {{.CLI_ARGS}}']
+
+  # The headless game client and the Windows VMs
+  client:
+    desc: "The headless client on a private display: task client -- start | login 0 | ui | shot NAME | stop"
+    cmds: ['tools/client/vclient.sh {{.CLI_ARGS}}']
+  vm:
+    desc: "The Windows VMs: task vm -- list | shot win7 FILE | click win7 X Y | run win7 -- ver (tools/vm/vm.py --help)"
+    cmds: ['python3 tools/vm/vm.py {{.CLI_ARGS}}']

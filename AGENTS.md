@@ -77,11 +77,13 @@ checks and releases). Keep the root README short; link to those guides for detai
 | `tools/ghidra/`                                 | Headless export script                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `crates/yo3-monkey`, `tools/monkey/`            | The monkeys: `yo3-monkey` (protocol: replayed, mutated, random and garbage traffic, floods, a canary, Auto Duel and NPC duel clients) and `ui-monkey.py` (random input on the two headless clients)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `dashboard/` | React/Vite/SWC/Tailwind staff dashboard; generated OpenAPI/Orval client and browser contracts. Current architecture: `docs/dashboard.md`. |
-| `compose.yaml`, `deploy/`, `Taskfile.yml` | Separate server/engine and nginx/dashboard images, Unix staff transport, HTTPS lifecycle and Ansible provisioning. One-time local setup: `docs/deployment.md`; release image publishing: `.github/workflows/containers.yml`. Taskfile stays at five Compose wrappers. |
+| `compose.yaml`, `deploy/`, `Taskfile.yml` | Separate server/engine and nginx/dashboard images, Unix staff transport, HTTPS lifecycle and Ansible provisioning. One-time local setup: `docs/deployment.md`; release image publishing: `.github/workflows/containers.yml`. |
+| `Taskfile.yml`, `tools/check.py`                | Every common command (`task --list`). `tools/check.py`: the checks by group, the one list CI's release job runs |
+| `tools/vm/`, `tools/dev/`                       | `vm.py` drives the Windows VMs (`vms.toml`); `scratch-server.py` makes a scratch server beside a live one |
 | `docs/`                                         | Guides for Desktop, Scripts, playing, CLI and development; authentication/protocol/internals/features/roadmap/history/research references. Index: `docs/README.md`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `screenshots/`                                  | Real current Desktop screenshots and game frames/crops shared by the README, guides and release bundles                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `tools/docs/docs-check.py`                           | Checks every relative link and anchor in the Markdown, prints a table of contents (`--toc FILE`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `tools/release/release.sh`                              | Builds Desktop and Scripts release bundles, and the Linux Server bundle (#37: server, engine, `tools/host/` units and scripts), into `dist/` (ignored)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `tools/docs/`                                   | `docs-check.py`: every relative link and anchor in the Markdown; a table of contents (`--toc FILE`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `tools/release/`                                | `release.sh` builds Desktop and Scripts release bundles, and the Linux Server bundle (#37: server, engine, `tools/host/` units and scripts), into `dist/` (ignored)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `CHANGELOG.md`, `.github/workflows/release.yml` | Releases: each `## vX.Y.Z (date)` section is one; the workflow publishes a new top version on push to `main` (`.github/scripts/release_notes.py` reads the version and writes the notes)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `LICENSE`                                       | MIT                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `.github/ISSUE_TEMPLATE/`                       | Issue forms for players (bug, setup help, idea) and the new-issue page's links. Labels: `bug`, `setup help`, `idea` (set by the forms); areas `duels`, `cards & decks`, `accounts & joining`, `hosting`; status `needs info`, `confirmed`, `client limitation`, `duplicate`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
@@ -90,72 +92,50 @@ checks and releases). Keep the root README short; link to those guides for detai
 
 ## Commands
 
-Build and test:
+`task --list` is the menu (Task, `go-task` on some systems); arguments pass after `--`. The usual loop:
+
+```bash
+task build:dev                  # release builds of server, launchers, Desktop, engine + the connection DLL, as dev builds
+task check -- py docs           # seconds: the hermetic Python tests and the docs links
+task check                      # everything CI's release job runs (tools/check.py: lint py docs rust dashboard e2e)
+task dev:server                 # a scratch server on free ports with two key accounts; prints the client exports
+task client -- start            # the headless client (tools/client/vclient.sh) with those exports
+task vm -- list                 # the Windows VMs (tools/vm/vm.py): shot, click, type, key, run, put, wait
+```
+
+Not wrapped by a task (each needs its own setup):
 
 ```bash
 engine/fetch.sh                                   # the rules engine's sources and data at the pinned versions (engine tests skip without them)
-cargo build --release -p yo3-server -p yo3-launcher -p yo3-desktop -p yo3-engine
-tools/mod/build.sh                               # 32-bit connection DLL, injector and native/Wine contract harnesses
-python3 tools/mod/test_fixture_layout.py           # larger MinGW code, contiguous PE sections, fixed hook RVAs and relocation
-python3 tools/mod/test_winmm_exports.py            # the game-folder winmm.dll exports all of WINMM (#41)
-tools/mod/test-dll.sh                                # named/ordinal imports, local cookies and fail-closed injection (private :78)
-tools/mod/test-loader.sh                         # WINMM forwarding, Unicode config, missing/changed DLL and missing state
+tools/mod/test-dll.sh                             # named/ordinal imports, local cookies and fail-closed injection (private :78)
+tools/mod/test-loader.sh                          # WINMM forwarding, Unicode config, missing/changed DLL and missing state
 # Direct start's rows (#33) under Wine: first build the Windows yo3-launcher and the Linux yo3-server; a fresh private
 # prefix without LoaderConfig; it runs its own scratch servers on YO3_TEST_PORT (default 17443, must be free). ~4 min
 YO3_WINEPREFIX=/path/to/private/prefix YO3_DISPLAY=:78 tools/mod/test-direct.sh
-python3 tools/client/test_vclient.py              # cold display startup, captured pipes and diagnostics (no X server/game needed)
-python3 tools/monkey/test_duel_report.py          # missing/duplicate/failed native snapshots and known coverage gaps
-python3 tools/monkey/test_duel_replay.py          # exact engine replay and incomplete/corrupt recording rejection
-cargo nextest run --workspace                     # all tests (or: cargo test --workspace); about a minute, most of it the duel
-#   check's 240 self-played duels (tests/duel_check.rs, YO3_CHECK_DUELS=n per test for more): run it after any change to
-#   translate/ or the engine. A failure names the seed, the step and the engine messages before the difference
+#   cargo nextest's duel check self-plays 240 duels (tests/duel_check.rs, YO3_CHECK_DUELS=n per test for more): run it
+#   after any change to translate/ or the engine. A failure names the seed, the step and the engine messages before it
 YO3_BOT_DUELS=40 cargo nextest run --release -p yo3-server --test npc_bot --no-capture   # the duel bot vs the old CPU
 #   YO3_BOT_MIRROR=1 same deck both sides, YO3_BOT_ONLY=i one duel, YO3_BOT_TRACE=FILE its look-ahead decisions
 YO3_ENGINE=$PWD/tools/engine/parity.py cargo nextest run --release -p yo3-server --test duel_check
 #   the native engine against the old Node sidecar, request by request (after `engine/fetch.sh --sidecar`, needs Node.js)
-cargo clippy --workspace --all-targets            # lints
-target/release/yo3-revival                        # graphical launcher/server manager after building
-tools/docs/docs-check.py                               # every relative link and anchor in root Markdown files and docs/**/*.md
-python3 tools/docs/test_docs_check.py                   # repository/extracted-bundle roots, screenshots and anchors
-python3 tools/release/test_package_editions.py             # editions, archives, literal arguments and offline docs links
-python3 tools/release/test_release_notes.py                # matching Cargo/changelog versions, release notes and SHA256SUMS
-python3 tools/release/test_release_lifecycle.py            # published-tag gate and two-release/image retention, alpha releases kept (fixtures only)
-python3 tools/containers/test_deployment.py          # image validation, pre-upgrade snapshots, rollback and SSH transport
-python3 tools/containers/test_dashboard_delivery.py  # cumulative UI inputs, deployed baselines and exact API/client gate (#62)
-python3 tools/containers/test_dashboard_workflow.py  # main-only triggers, shared FIFO, home runner and ordered deploy/retention gates
-python3 tools/containers/test_dashboard_browser.py --server RELEASED_SERVER_IMAGE --dashboard CANDIDATE_IMAGE
-#   Existing images, disposable localhost HTTPS/SQLite, production pages, BP retry, roles and expired cookies;
-#   no Rust compilation or game files required (synthetic fixture). Optional --game-dir checks real game data too.
-python3 tools/containers/test_dashboard_runtime.py   # derived image equality, stale/hidden assets, root/process/config refusal
-python3 tools/containers/test_dashboard_deploy.py --server SERVER_IMAGE --dashboard RELEASED_DASHBOARD_IMAGE
-#   build dashboard/dist first: real local registry/Compose replacement, browser gate, rollback/retry; no production writes.
-python3 tools/containers/test_images.py              # built local images: runtime user, minimal rootfs, native engine/cards
-tools/docs/docs-check.py --root /path/to/bundle         # the same checks against an extracted release
-tools/release/release.sh                                  # bundles in dist/ (Linux .tar.gz, Windows .zip), with docs/ and screenshots/
+# Image tests (tools/check.py's OTHER lists what each needs): test_images.py, test_dashboard_browser.py,
+#   test_dashboard_runtime.py, test_dashboard_deploy.py, test_stack.py, test_certificates.py (docs/development.md)
+tools/docs/docs-check.py --root /path/to/bundle   # the link checks against an extracted release
 tools/release/test-packaged-update.sh v0.0.5 dist/yo3-revival-desktop-v0.0.5-linux-x86_64.tar.gz
 #   after building that stable-version test archive; private Xvfb/xauth and fresh app data, no game/server start.
-#   Release CI requires this integration test after bundling and before publishing; no matching test is a failure.
-#   Full release checks/builds run before publishing a new version. Other main pushes reconcile eligible dashboard
-#   changes against the deployed release; no unreleased Rust is built by that path. Linux jobs use [self-hosted, home].
-#   Desktop and Scripts editions for each platform, Server for Linux; stable inner roots yo3-revival-desktop/,
-#   yo3-revival-scripts/ and yo3-revival-server/ (its README is docs/hosting.md; python3 tools/host/test_host_scripts.py).
-#   Desktop README is the short project README; Scripts README is the terminal guide with relocated links.
-#   Both carry all Markdown docs and root screenshots; packaging checks their copied links before archiving.
-#   Both include the whole rules engine (yo3-engine beside yo3-server, built for each platform; the scripts and card
-#   database from engine/vendor/ in engine/): hosts install nothing. Small notes stand at the old Node sidecar's paths
-#   (engine/duelcore.ts, engine/node/node...) because Desktop 0.0.9 and older check them before installing an update
-#   releasing: add a section at the top of CHANGELOG.md (`## v0.0.2 (date)`, players' words, what changed for them)
-#   and set the same workspace Cargo.toml version, then push to main (ask first, rule 5). Release CI checks/builds the
-#   bundles, publishes both GHCR images and automatically deploys their digests using the restricted VPS SSH key.
-#   The Release workflow publishes the
-#   version as a GitHub release (title "vX.Y.Z (beta)", not ticked pre-release so /releases/latest finds it).
-#   Never move or reuse a released tag: fix forward with the next version.
 #   once: rustup target add x86_64-pc-windows-gnu (mingw-w64 links it). A Windows build under Wine needs its own prefix
 #   (WINEPREFIX=.wine-c): vclient.sh stop kills every process of the default prefix
 ```
 
+Releasing (`task release` builds the bundles into `dist/`): add a section at the top of CHANGELOG.md (`## vX.Y.Z (date)`,
+players' words, what changed for them), set the same workspace Cargo.toml version, then push to main (ask first, rule
+5). Release CI runs `tools/check.py`'s groups, builds and checks the Desktop, Scripts and Server bundles (every edition
+carries the docs, screenshots and the whole rules engine), publishes the release (title "vX.Y.Z (beta)", not a
+pre-release) and both GHCR images, then deploys their digests to the VPS. Never move or reuse a released tag: fix
+forward with the next version. Details: [development](docs/development.md#build-release-bundles).
+
 The server (`yo3-server --help` lists everything). The first commands are initial host setup reference;
-for agent checks beside an existing setup, use the complete scratch example below.
+for agent checks beside an existing setup, use `task dev:server` below.
 
 ```bash
 target/release/yo3-server init-auth localhost 127.0.0.1  # once, before starting; add names/IPs friends reach
@@ -177,17 +157,10 @@ ss -ltnp | rg ':7443 '                          # the server's pid, to stop it
 #   state: server.db (SQLite, WAL, schema 2: one row per account, record, mail…) in data/ (ignored; --data-dir), backed up
 #   into data/backups/ at start, hourly and at stop (`backups` lists, `restore latest|NAME` puts one back, server stopped)
 
-# A dev server beside a live one: first check that 17443 and 18080 are free.
-SCRATCH=$(mktemp -d /tmp/yo3-dev.XXXXXXXX)
-target/release/yo3-server --data-dir "$SCRATCH/data" init-auth localhost 127.0.0.1
-target/release/yo3-server --data-dir "$SCRATCH/data" add-account TestPlayer
-target/release/yo3-server --data-dir "$SCRATCH/data" --auth-port 17443 \
-  profile TestPlayer "$SCRATCH/client.json" --advertise localhost
-cp "$SCRATCH/data/server.crt" "$SCRATCH/server.crt"
-export YO3_AUTH_PROFILE="$SCRATCH/client.json"
-target/release/yo3-server --auth-port 17443 --http-port 18080 \
-  --data-dir "$SCRATCH/data" --log-dir "$SCRATCH/logs"
-# Keep that server running in its own terminal. Export the same absolute YO3_AUTH_PROFILE in the client terminal.
+# A dev server beside a live one (never 7443/8080): its own data, logs, ports and key-account profiles.
+task dev:server                                   # or: -- --accounts 3 --port 17443 --http 18080 [-- --duel-lp 1000]
+task dev:server -- --from-db copy/server.db --profile-for SomePlayer   # another server's accounts, a key profile each
+eval "$(python3 tools/dev/scratch-server.py env --account 2)"   # in the client terminal; `task dev:server:stop` after
 # Do not edit yo3.ini: the connection DLL supplies the local endpoints.
 
 # admin subcommands (each takes --data-dir): each is one admin API operation (api.rs, POST /api/admin/v1/<op>, the
@@ -344,12 +317,17 @@ python3 tools/monkey/duel-replay.py --server SERVER.log --duel 1         # repla
   pefile and pycryptodome are installed). The tracer DLL is C, built with mingw-w64 (`i686-w64-mingw32-gcc`).
 - Message ids and UI text ids overlap: a number passed to `FUN_0051E6C0(table, id)` is a text string, not a reply.
 
+- Tools live in `tools/<area>/`, each with a `--help`; Python tests are `test_*.py` (unittest, standard library),
+  shell tests `test-*.sh`. Register a new Python test in `tools/check.py` (PY if hermetic, else OTHER with what it
+  needs; `test_check.py` fails otherwise), and give a new common command a task. A helper an agent writes twice
+  belongs in `tools/`, not in a scratchpad.
+
 ## Environment gotchas
 
 - Platform scope: 64-bit Windows 10/11 and Linux with Wine. Windows 7 is unsupported and compatibility work is
   out of scope for now; do not pursue it unless the user explicitly reopens it. This applies to Desktop and Scripts.
-  Desktop runs there with VxKex (docs/launcher.md, Windows 7); a libvirt `win7` VM (Z: is `/data/shared`) has it.
-  Test C helpers for it with Ubuntu's mingw-w64 (msvcrt): this machine's links the Universal CRT, missing on 7.
+  Desktop runs there with VxKex (docs/launcher.md, Windows 7); the `win7` VM has it. Test C helpers for it with
+  `task build:mod:ci`: this machine's mingw-w64 links the Universal CRT, missing on 7.
 - The user's shell aliases `ls` → eza and `cat` → bat. Use `command ls` / `command cat` in scripts.
 - Don't run `cargo fmt`: there is no `rustfmt.toml` and the code was never formatted with the defaults (lines run to
   about 120 columns), so it rewraps every file. Match the surrounding style by hand.
@@ -379,8 +357,13 @@ python3 tools/monkey/duel-replay.py --server SERVER.log --duel 1         # repla
   Keep the VM/host clocks correct for TLS; the scratch identity is renewed without replacing its key when needed.
   A guest connecting to the host needs a profile/certificate for that host. Networking reaches the host once
   firewalld's `libvirt` zone allows TLS port 7443 (its catch-all reject blocks
-  them; the user runs `sudo firewall-cmd --zone=libvirt --add-port=7443/tcp`). `virsh -c
-qemu:///system screenshot win11 FILE` shows its display without touching it; the user drives it.
+  them; the user runs `sudo firewall-cmd --zone=libvirt --add-port=7443/tcp`).
+- Drive the Windows VMs (`win7`, `win10`, `win11` in `tools/vm/vms.toml`) with `task vm -- …`, never with scratch
+  scripts: `shot VM FILE` (looking never needs permission), `click`/`type`/`key` (QEMU's virtual tablet and keyboard),
+  `run VM -- CMD` (a cmd.exe command in the signed-in session through the shared folder: its output and exit code come
+  back; OpenSSH instead when the VM has `ssh`), `put` (files into `Z:`) and `wait --changed | --pixel`. The guest's
+  screen size is read from each screenshot, so coordinates are always the screenshot's. An elevated prompt can't see
+  `Z:`: `run` a copy to `C:` first. Test C helpers built with `task build:mod:ci` (msvcrt, as released).
 - Card drags (Edit Deck, Card Swap) need a hover before the press: `xdotool` on the client's display, moving onto the
   card's left edge, pausing, then `mousedown`, moving in steps and `mouseup`. `vclient.sh click` alone can't drag.
 - Chat request fields arrive nested in one item (tag 10), not at the top level. Check a real packet before assuming
