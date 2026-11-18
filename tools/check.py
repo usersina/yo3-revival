@@ -58,14 +58,14 @@ def steps(group):
     """The (name, argv, cwd) steps of a group."""
     py = [sys.executable]
     if group == 'lint':
-        return [('actionlint', ['actionlint', '-ignore', ACTIONLINT_IGNORE, *sorted(map(str, ROOT.glob('.github/workflows/*.yml')))], ROOT),
+        return [('actionlint', ['actionlint', '-ignore', ACTIONLINT_IGNORE, *sorted(p.relative_to(ROOT).as_posix() for p in ROOT.glob('.github/workflows/*.yml'))], ROOT),
                 ('clippy', ['cargo', 'clippy', '--workspace', '--all-targets', '--', '-D', 'warnings'], ROOT)]
     if group == 'py':
         return [(Path(t).name, [*py, t], ROOT) for t in PY]
     if group == 'docs':
         return [('docs links', [*py, 'tools/docs/docs-check.py'], ROOT)]
     if group == 'rust':
-        return [('engine sources', ['engine/fetch.sh'], ROOT), ('nextest', ['cargo', 'nextest', 'run', '--workspace'], ROOT)]
+        return [('nextest', ['cargo', 'nextest', 'run', '--workspace'], ROOT)]
     if group == 'dashboard':
         d = ROOT / 'dashboard'
         install = [] if (d / 'node_modules').is_dir() else [('npm ci', ['npm', 'ci'], d)]
@@ -80,28 +80,41 @@ def steps(group):
 
 
 GROUPS = ['lint', 'py', 'docs', 'rust', 'dashboard', 'e2e']
+# Groups that compile the engine crate, which needs EDOPro's sources first (as CI fetches them before Clippy).
+NEEDS_ENGINE = {'lint', 'rust'}
+ENGINE = ('engine sources', ['engine/fetch.sh'], ROOT)
+
+
+def plan(groups):
+    """(group, step) in order, with the engine sources fetched once before the first group that compiles them."""
+    out, fetched = [], False
+    for group in groups:
+        if group in NEEDS_ENGINE and not fetched:
+            out.append((group, ENGINE))
+            fetched = True
+        out += [(group, step) for step in steps(group)]
+    return out
 
 
 def run(groups, fail_fast):
     results = []
-    for group in groups:
-        for name, argv, cwd in steps(group):
-            label = f'{group}: {name}'
-            if shutil.which(argv[0]) is None and not Path(cwd, argv[0]).exists():
-                # actionlint is provisioned by CI; elsewhere a missing tool is reported, not hidden.
-                if argv[0] == 'actionlint' and not os.environ.get('CI'):
-                    results.append((label, 'skipped', 0.0, 'actionlint is not installed'))
-                    continue
-                results.append((label, 'FAILED', 0.0, f'{argv[0]} is not installed'))
-                if fail_fast:
-                    return results
+    for group, (name, argv, cwd) in plan(groups):
+        label = f'{group}: {name}'
+        if shutil.which(argv[0]) is None and not Path(cwd, argv[0]).exists():
+            # actionlint is provisioned by CI; elsewhere a missing tool is reported, not hidden.
+            if argv[0] == 'actionlint' and not os.environ.get('CI'):
+                results.append((label, 'skipped', 0.0, 'actionlint is not installed'))
                 continue
-            print(f'\n==> {label}', flush=True)
-            start = time.monotonic()
-            code = subprocess.run(argv, cwd=cwd).returncode
-            results.append((label, 'ok' if code == 0 else 'FAILED', time.monotonic() - start, '' if code == 0 else f'exit {code}'))
-            if code and fail_fast:
+            results.append((label, 'FAILED', 0.0, f'{argv[0]} is not installed'))
+            if fail_fast:
                 return results
+            continue
+        print(f'\n==> {label}', flush=True)
+        start = time.monotonic()
+        code = subprocess.run(argv, cwd=cwd).returncode
+        results.append((label, 'ok' if code == 0 else 'FAILED', time.monotonic() - start, '' if code == 0 else f'exit {code}'))
+        if code and fail_fast:
+            return results
     return results
 
 
@@ -111,11 +124,13 @@ def main(argv):
         print(__doc__)
         return 0
     if '--list' in argv:
-        for group in GROUPS:
-            print(group)
-            for name, command, cwd in steps(group):
-                where = '' if cwd == ROOT else f'  (in {cwd.relative_to(ROOT)})'
-                print(f'  {name}: {" ".join(command[:6])}{" …" if len(command) > 6 else ""}{where}')
+        last = None
+        for group, (name, command, cwd) in plan(GROUPS):
+            if group != last:
+                print(group)
+                last = group
+            where = '' if cwd == ROOT else f'  (in {cwd.relative_to(ROOT)})'
+            print(f'  {name}: {" ".join(command[:6])}{" …" if len(command) > 6 else ""}{where}')
         return 0
     unknown = [a for a in args if a not in GROUPS]
     if unknown:

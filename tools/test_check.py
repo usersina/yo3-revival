@@ -31,6 +31,12 @@ class Registry(unittest.TestCase):
         copied = [t for t in check.PY if re.search(rf'python3? {re.escape(t)}\b', workflow)]
         self.assertEqual(copied, [], 'release.yml runs these itself as well as through tools/check.py py')
 
+    def test_the_engine_sources_come_once_before_the_first_group_that_compiles_them(self):
+        fetches = lambda groups: [g for g, step in check.plan(groups) if step == check.ENGINE]
+        self.assertEqual(fetches(check.GROUPS), ['lint'])
+        self.assertEqual(fetches(['rust']), ['rust'])
+        self.assertEqual(fetches(['py', 'docs']), [])
+
     def test_unknown_groups_are_refused(self):
         self.assertEqual(check.main(['nonsense']), 2)
 
