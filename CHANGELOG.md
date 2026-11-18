@@ -15,6 +15,9 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Play warns when an unrecognized `winmm.dll` is in the game folder, without changing or removing it.
+  Connection errors now identify whether the game side or server side failed.
+
 - Developer tools are grouped by purpose, with a shared local/CI check command, scratch-server setup and Windows VM helpers.
 
 - Release CI uses measured browser/build concurrency on the home runner, reducing component times without

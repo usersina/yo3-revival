@@ -216,12 +216,12 @@ impl Proxy {
                             lost.mark_unchanged();
                             let _open = Open::count(&relays);
                             tokio::select! {
-                                relayed = tokio::io::copy_bidirectional(&mut local, &mut remote) => { relayed?; }
+                                relayed = relay(&mut local, &mut remote) => { relayed?; }
                                 _ = lost.changed() => anyhow::bail!("the server stopped answering; the game's connection is closed"),
                             }
                             Ok::<_, anyhow::Error>(())
                         }.await;
-                        if let Err(e) = result { let message = format!("{role:?} connection: {e}"); yo3_tunnel::diagnostics::event(&message); eprintln!("{message}"); }
+                        if let Err(e) = result { let message = format!("{role:?} connection: {e:#}"); yo3_tunnel::diagnostics::event(&message); eprintln!("{message}"); }
                     });
                 }
             }));
@@ -259,6 +259,36 @@ impl Open {
     }
 }
 impl Drop for Open { fn drop(&mut self) { self.0.fetch_sub(1, std::sync::atomic::Ordering::SeqCst); } }
+
+/// Carries a game connection both ways until both sides finish, as `copy_bidirectional` does, but an error says which
+/// side failed: the game's local connection or the one to the server (#65: a bare Windows 10053 left that open).
+async fn relay<G, S>(game: &mut G, server: &mut S) -> anyhow::Result<()>
+where G: AsyncRead + tokio::io::AsyncWrite + Unpin, S: AsyncRead + tokio::io::AsyncWrite + Unpin {
+    const GAME: &str = "the game's connection";
+    const SERVER: &str = "the connection to the server";
+    async fn pump(from: &mut (impl AsyncRead + Unpin), to: &mut (impl tokio::io::AsyncWrite + Unpin), source: &'static str,
+                  target: &'static str) -> anyhow::Result<()> {
+        use anyhow::Context;
+        let mut buffer = vec![0; 16 * 1024];
+        loop {
+            let n = match from.read(&mut buffer).await {
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                result => result.context(source)?,
+            };
+            if n == 0 {
+                // One side finished: tell the other, as copy_bidirectional does, and keep the other direction going.
+                to.shutdown().await.context(target)?;
+                return Ok(());
+            }
+            to.write_all(&buffer[..n]).await.context(target)?;
+            to.flush().await.context(target)?;
+        }
+    }
+    let (mut game_read, mut game_write) = tokio::io::split(game);
+    let (mut server_read, mut server_write) = tokio::io::split(server);
+    tokio::try_join!(pump(&mut game_read, &mut server_write, GAME, SERVER), pump(&mut server_read, &mut game_write, SERVER, GAME))?;
+    Ok(())
+}
 
 /// [`Liveness`]: while the game has a connection open, asks the server's discovery; `misses` unanswered in a row
 /// move `lost` on, which closes the game's connections.
@@ -458,6 +488,111 @@ async fn relay_http(mut local: TcpStream, endpoint: &Endpoint, mut active: tokio
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A connection that fails reading or writing with `kind` (as Windows' 10053, "aborted by the software in your host
+    /// machine"), and otherwise takes everything written to it.
+    struct Broken { read: Option<std::io::ErrorKind>, write: Option<std::io::ErrorKind> }
+    impl tokio::io::AsyncRead for Broken {
+        fn poll_read(self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>, _: &mut tokio::io::ReadBuf<'_>)
+            -> std::task::Poll<std::io::Result<()>> {
+            match self.read { Some(kind) => std::task::Poll::Ready(Err(kind.into())), None => std::task::Poll::Pending }
+        }
+    }
+    impl tokio::io::AsyncWrite for Broken {
+        fn poll_write(self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>, buf: &[u8]) -> std::task::Poll<std::io::Result<usize>> {
+            std::task::Poll::Ready(match self.write { Some(kind) => Err(kind.into()), None => Ok(buf.len()) })
+        }
+        fn poll_flush(self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> { std::task::Poll::Ready(Ok(())) }
+        fn poll_shutdown(self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> { std::task::Poll::Ready(Ok(())) }
+    }
+
+    /// EOF after an optional interrupted read, and an optional failure while finishing the write half.
+    struct Ending { interrupted: bool, shutdown_error: bool }
+    impl tokio::io::AsyncRead for Ending {
+        fn poll_read(mut self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>, _: &mut tokio::io::ReadBuf<'_>)
+            -> std::task::Poll<std::io::Result<()>> {
+            std::task::Poll::Ready(if std::mem::take(&mut self.interrupted) { Err(std::io::ErrorKind::Interrupted.into()) } else { Ok(()) })
+        }
+    }
+    impl tokio::io::AsyncWrite for Ending {
+        fn poll_write(self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>, bytes: &[u8]) -> std::task::Poll<std::io::Result<usize>> {
+            std::task::Poll::Ready(Ok(bytes.len()))
+        }
+        fn poll_flush(self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> { std::task::Poll::Ready(Ok(())) }
+        fn poll_shutdown(self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> {
+            std::task::Poll::Ready(if self.shutdown_error { Err(std::io::ErrorKind::ConnectionAborted.into()) } else { Ok(()) })
+        }
+    }
+
+    #[tokio::test]
+    async fn a_relay_reports_shutdown_failures_on_either_side() {
+        for (game_error, expected) in [(true, "the game's connection: "), (false, "the connection to the server: ")] {
+            let mut game = Ending { interrupted: false, shutdown_error: game_error };
+            let mut server = Ending { interrupted: false, shutdown_error: !game_error };
+            let error = relay(&mut game, &mut server).await.unwrap_err();
+            assert!(format!("{error:#}").starts_with(expected), "{error:#}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_relay_retries_interrupted_reads() {
+        let mut game = Ending { interrupted: true, shutdown_error: false };
+        let mut server = Ending { interrupted: true, shutdown_error: false };
+        relay(&mut game, &mut server).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_half_closed_relay_still_carries_the_reply() {
+        let (mut game, mut game_far) = tokio::io::duplex(8);
+        let (mut server, mut server_far) = tokio::io::duplex(8);
+        let relayed = tokio::spawn(async move { relay(&mut game, &mut server).await });
+        let exchange = async {
+            game_far.write_all(b"request").await.unwrap();
+            game_far.shutdown().await.unwrap();
+            let mut got = Vec::new();
+            server_far.read_to_end(&mut got).await.unwrap();
+            assert_eq!(got, b"request");
+            server_far.write_all(b"reply").await.unwrap();
+            server_far.shutdown().await.unwrap();
+            got.clear();
+            game_far.read_to_end(&mut got).await.unwrap();
+            assert_eq!(got, b"reply");
+            relayed.await.unwrap().unwrap();
+        };
+        tokio::time::timeout(Duration::from_secs(2), exchange).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_broken_relay_names_the_side_that_broke() {
+        // #65: the helper logged "Front connection: An established connection was aborted…" (10053) and nothing said
+        // whether the game's local connection or the one to the server had failed.
+        let aborted = Some(std::io::ErrorKind::ConnectionAborted);
+        let (mut server, _keep) = tokio::io::duplex(64);
+        let error = relay(&mut Broken { read: aborted, write: None }, &mut server).await.unwrap_err();
+        assert!(format!("{error:#}").starts_with("the game's connection: "), "{error:#}");
+        let (mut game, mut game_far) = tokio::io::duplex(64);
+        game_far.write_all(b"request").await.unwrap();
+        let error = relay(&mut game, &mut Broken { read: None, write: aborted }).await.unwrap_err();
+        assert!(format!("{error:#}").starts_with("the connection to the server: "), "{error:#}");
+    }
+
+    #[tokio::test]
+    async fn a_relay_carries_both_ways_until_both_sides_finish() {
+        let (mut game, mut game_far) = tokio::io::duplex(64);
+        let (mut server, mut server_far) = tokio::io::duplex(64);
+        let relayed = tokio::spawn(async move { relay(&mut game, &mut server).await });
+        game_far.write_all(b"request").await.unwrap();
+        let mut got = [0; 7];
+        server_far.read_exact(&mut got).await.unwrap();
+        assert_eq!(&got, b"request");
+        server_far.write_all(b"reply").await.unwrap();
+        let mut got = [0; 5];
+        game_far.read_exact(&mut got).await.unwrap();
+        assert_eq!(&got, b"reply");
+        drop(game_far);
+        drop(server_far);
+        tokio::time::timeout(Duration::from_secs(1), relayed).await.unwrap().unwrap().unwrap();
+    }
     #[tokio::test]
     async fn desktop_control_tells_a_stop_from_the_desktop_going_away() {
         let task = tokio::spawn(wait_for_desktop_stop(std::io::Cursor::new(Vec::<u8>::new())));

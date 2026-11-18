@@ -37,6 +37,16 @@ fn owned(game: &Path) -> anyhow::Result<Receipt> {
         && receipt.loader == hash(&regular(&game.join("winmm.dll"))?), "Game or loader changed since installation. Refusing to overwrite/remove another mod.");
     Ok(receipt)
 }
+/// A `winmm.dll` in the game folder that YO3 Revival didn't put there, or that changed since (#65): Windows loads it
+/// into the game on every start, beside YO3 Revival's connection DLL, so whatever it does runs there too. An old
+/// Revival's loader without its receipt counts as foreign: it isn't the one this release checks.
+pub fn foreign_winmm(game: &Path) -> Option<PathBuf> {
+    let file = game.join("winmm.dll");
+    std::fs::symlink_metadata(&file).ok()?;
+    let receipt = regular(&game.join(RECEIPT)).ok().and_then(|bytes| serde_json::from_slice::<Receipt>(&bytes).ok());
+    let ours = receipt.zip(regular(&file).ok()).is_some_and(|(receipt, bytes)| receipt.format == 1 && receipt.loader == hash(&bytes));
+    (!ours).then_some(file)
+}
 /// Source is selected by the caller from the application's validated bundle, never from elevated command arguments.
 pub fn install_files(game: &Path, source: &Path) -> anyhow::Result<()> {
     let executable = hash(&regular(&game.join("yo3.exe"))?); let bytes = regular(source)?; let loader = hash(&bytes);

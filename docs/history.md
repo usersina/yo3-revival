@@ -11,6 +11,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 - [History](#history)
   - [2026-11-18 — Measured release-runner concurrency](#2026-11-18--measured-release-runner-concurrency)
   - [2026-11-18 — Production image dependency-cache inputs](#2026-11-18--production-image-dependency-cache-inputs)
+  - [2026-11-18 — The shop disconnect and another program's winmm.dll (#65)](#2026-11-18--the-shop-disconnect-and-another-programs-winmmdll-65)
   - [2026-11-18 — Original card previews in the staff dashboard](#2026-11-18--original-card-previews-in-the-staff-dashboard)
   - [2026-11-18 — Local Cargo cache on the home runner](#2026-11-18--local-cargo-cache-on-the-home-runner)
   - [2026-11-18 — Full release and independent dashboard delivery](#2026-11-18--full-release-and-independent-dashboard-delivery)
@@ -83,6 +84,21 @@ The host checkout and its full test gates remain unchanged. The test exports the
 source edits, new contract files and release-version bumps retain it, while a changed dependency feature invalidates
 it. It passed on the home runner in about four seconds with the existing builder cache. Release CI runs this check
 before building the server image. The image still compiles production source after the dependency layer.
+
+## 2026-11-18 — The shop disconnect and another program's winmm.dll (#65)
+
+A player's report ZIP (v0.1.2, Windows 11): the client signed in and opened the shop, which received the trunk, shop
+texts, shop items (7202) and Blister's exchange items (7206, "shop exchange item success"); then the helper logged
+`Front connection: An established connection was aborted by the software in your host machine. (os error 10053)` and
+the game ended three seconds later. The server logged the Front connection's start and nothing after: no close, no
+error. 10053 is raised on the player's PC. The same app log said `An unowned WINMM mod is installed`: a `winmm.dll`
+without Revival's receipt, which Windows loads into the game beside our connection DLL on every start, and which
+only direct start's log line mentioned. The player was asked to move it out. Two changes: Play's bell names another
+program's `winmm.dll` in the game folder, and the helper's relay replaces `copy_bidirectional` with one pump per
+direction, so its error says whether the game's connection or the one to the server failed. The player's clock was
+about 20 s behind the server's (the trace's timestamps against the server log). The foreign DLL is a suspect,
+not a confirmed cause of the disconnect. Review regressions cover errors while shutting down either connection,
+retrying interrupted reads and receiving a reply after the request side closes; the warning is checked on both tabs.
 
 ## 2026-11-18 — Original card previews in the staff dashboard
 
