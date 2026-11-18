@@ -8,10 +8,10 @@ VPS testing; MFA and recovery are still pending.
 ## Independent dashboard updates (#62)
 
 There are two delivery paths: releases replace the tested server/dashboard pair; compatible dashboard changes
-replace only the dashboard. The workflow is implemented and checked locally against the published v0.1.0 images.
-The first automatic GitHub run on 2026-11-18 passed its state query and safely deferred deployment because current
-runtime/build changes need a full release. Image publication, an eligible UI replacement and the workflow-token
-deletion probe still need an actual eligible run. [Recorded checks](history.md#2026-11-18--first-home-runner-actions-check).
+replace only the dashboard. Both paths passed on the home runner and actual VPS on 2026-11-18: v0.1.1 was
+published and deployed automatically, followed by an eligible asset-only update in 3m35s with the server's container,
+image and start time unchanged. Runtime/browser checks, workflow-token deletion probes and protected-image retention
+passed. [Recorded checks and timings](history.md#2026-11-18--full-release-and-independent-dashboard-delivery).
 
 Every successful `Release` workflow on `main` triggers **Deploy dashboard**, including pushes without a new
 version. It reads the VPS receipt and checks the latest `main`, so a queued job reconciles the current tree after
@@ -171,13 +171,15 @@ An isolated rehearsal on 2026-11-18 passed 1,249 Rust tests, Clippy, all five re
 v0.1.0 Desktop update/shortcut gate and production-container browser checks. Identical image builds took
 8m36s / 2m41s cold (server / dashboard), then 2.5s / 2.1s with the retained cache and fresh job configuration
 directories. Changed inputs still rebuild their affected layers. Peak total guest disk usage was 64.6 GiB and
-memory usage 4.7 GiB. No artifacts were published or deployed in that rehearsal. The first real Actions run then
-verified the runner, triggers, restricted SSH state query, deferred-build gates and private temporary-file cleanup;
-release uploads, image publication/deployment and workflow-token deletion remain unverified on the new runner.
-After that run the VM used 28 GiB of its 146 GiB filesystem, with 112 GiB free and no swap in use.
+memory usage 4.7 GiB. No artifacts were published or deployed in that rehearsal. The subsequent real v0.1.1
+workflow passed publication, deployment and retention in 51m52s, followed by a successful independent UI delivery
+in 3m35s. The full run was slower than the previous release: its roughly 1.5 GB Rust cache upload took 7m38s and
+container builds had cold layers. Packaging sampled 56 GiB disk use (84 GiB free); small swap allocation occurred.
+[Measured timings and proof](history.md#2026-11-18--full-release-and-independent-dashboard-delivery).
 
 Workflow linting knows the custom `home` label through `.github/actionlint.yaml`. actionlint 1.7.12 does not yet
 recognize GitHub's [FIFO queue property](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
+CI installs its pinned upstream archive with a SHA-256 check, separately from the Rust-tool installer.
 CI exempts only that diagnostic; `test_dashboard_workflow.py` explicitly checks both workflows' queue settings.
 
 ## Before running

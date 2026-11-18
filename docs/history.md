@@ -9,6 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-18 — Full release and independent dashboard delivery](#2026-11-18--full-release-and-independent-dashboard-delivery)
   - [2026-11-18 — First home-runner Actions check](#2026-11-18--first-home-runner-actions-check)
   - [2026-11-18 — Dashboard automation and home runner (#62)](#2026-11-18--dashboard-automation-and-home-runner-62)
   - [2026-11-18 — Windows 7 with VxKex (#5)](#2026-11-18--windows-7-with-vxkex-5)
@@ -44,6 +45,41 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
+
+## 2026-11-18 — Full release and independent dashboard delivery
+
+Published v0.1.1 from `02a8beb`, with the workspace crates and changelog in step. The first attempt found that
+`taiki-e/install-action` cannot install the Go tool actionlint as a Rust crate; a failing workflow regression now
+covers that mistake. CI installs actionlint 1.7.12 from its pinned upstream archive and checks its SHA-256 before use.
+The corrected [release run](https://github.com/usersina/yo3-revival/actions/runs/44287301171) passed: 1,249 Rust
+tests (5 skipped), Clippy, helper/docs checks, generated-client drift, 25 frontend unit tests, 75 browser tests,
+all five bundles, the packaged v0.1.0→v0.1.1 updater gate, signed checksums, container runtime checks, automatic VPS
+upgrade, the workflow-token deletion probe and protected-image retention. The published image manifest matches
+the deployed receipt. Both containers are healthy; pinned-identity public game discovery reports v0.1.1, ready,
+with minimum launcher 0.1.1.
+
+| Stage | Previous release | v0.1.1 |
+| --- | --- | --- |
+| Full workflow | 38m46s | 51m52s |
+| Rust tests, including build | 6m40s | 5m40s |
+| Browser contracts | 5m40s | 6m13s |
+| Bundles | 7m40s | 7m26s |
+| Rust cache post action | 30s | 7m38s |
+| Server image build/publish | 6m29s | 9m05s |
+| Dashboard image build/publish | 2m03s | 2m55s |
+
+This first full run is slower overall. The approximately 1.5 GB Rust cache upload over the home connection is a
+measured bottleneck; the container builds also had cold layers. The preceding local identical-input cache
+rehearsal is not evidence of a faster real release. Packaging sampled 56 GiB of guest disk use, leaving 84 GiB free;
+small swap allocation occurred. No out-of-memory or disk-capacity failure occurred.
+
+Then pushed `bd434ee`, a dashboard-only appearance-hint fix with a failing-then-passing browser regression.
+The [automatic delivery run](https://github.com/usersina/yo3-revival/actions/runs/44295287323) reconciled latest main,
+passed eligibility, frontend checks, exact-runtime comparison and released-server browser tests, then published and
+deployed the asset-only image in 3m35s including cleanup. Its own token probe and retention passed. The server's
+container ID, image, start timestamp and healthy state stayed identical; only nginx/dashboard was replaced.
+The receipt and public dashboard-version metadata identify `bd434ee`, and the previous release dashboard remains
+recorded for rollback. No server rebuild, server restart or additional player update was needed for this UI change.
 
 ## 2026-11-18 — First home-runner Actions check
 
