@@ -97,6 +97,11 @@ Debris Dragon + Max Warrior cannot summon Stardust Dragon. Debris Dragon + Fortr
 is a legal Level 8 combination. See the official [Fortress Warrior](https://www.db.yugioh-card.com/yugiohdb/card_search.action?cid=7985&ope=2)
 and [Debris Dragon](https://www.db.yugioh-card.com/yugiohdb/card_search.action?cid=8005&ope=2) card text.
 
+Junk Warrior gains the ATK of the Level 2 or lower monsters you control when its effect resolves, after the Synchro
+Summon. Its Synchro Materials are in the Graveyard by then, so they don't count: Junk Synchron + Quillbolt Hedgehog
+alone gives 2300 ATK. With another Quillbolt Hedgehog still on the field it becomes 3100. See the official
+[Junk Warrior](https://www.db.yugioh-card.com/yugiohdb/card_search.action?cid=7696&ope=2) card text.
+
 If a protected monster disappears, a slot appears empty but remains occupied, or a legal action fails, follow
 [duel bug reporting](launcher.md#logs-and-support). Include the card names and the exact steps.
 
