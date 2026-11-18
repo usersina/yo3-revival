@@ -392,7 +392,7 @@ Setup, a Singleplayer duel against Kaiba, and joining a server by address.
 4. If the game says "Initialization of direct3d device failed" (no Direct3D acceleration, as in most virtual machines),
    put SwiftShader's software `d3d9.dll` in the game folder. Rendering is slow.
 5. Releases through v0.1.2 can fail GitHub update checks with `UnknownIssuer`, and leave the server list empty when
-   Windows lacks current root certificates. The next release bundles its own Mozilla certificates for GitHub;
+   Windows lacks current root certificates. v0.1.3 bundles its own Mozilla certificates for GitHub;
    download it manually once to receive this fix. Until then, **Add a server** by its address
    (ours: `ygo-3-revival.work.gd:7443`).
 

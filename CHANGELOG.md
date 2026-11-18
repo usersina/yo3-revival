@@ -13,13 +13,19 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.1.3 (2026-11-18)
+
+Multiplayer: update to v0.1.3 to join the hosted server after deployment.
 
 - GitHub update checks, downloads, the official server list and bug reporting use bundled Mozilla certificates,
-  so an outdated Windows certificate store no longer prevents secure connections.
+  so an outdated Windows certificate store no longer prevents secure connections. If update checks already fail,
+  download this version manually once. Windows 7 remains unsupported.
 
 - Play warns when an unrecognized `winmm.dll` is in the game folder, without changing or removing it.
-  Connection errors now identify whether the game side or server side failed.
+  Connection errors now identify whether the game side or server side failed. The reported shop disconnect
+  remains under investigation.
+
+- The playing guide explains which monsters contribute to Junk Warrior's ATK gain, backed by new regression tests.
 
 - Developer tools are grouped by purpose, with a shared local/CI check command, scratch-server setup and Windows VM helpers.
 
