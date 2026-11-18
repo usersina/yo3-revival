@@ -10,6 +10,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 
 - [History](#history)
   - [2026-11-18 — Dashboard automation and home runner (#62)](#2026-11-18--dashboard-automation-and-home-runner-62)
+  - [2026-11-18 — Windows 7 with VxKex (#5)](#2026-11-18--windows-7-with-vxkex-5)
   - [2026-11-17 — Restricted dashboard replacement (#62, slice 2)](#2026-11-17--restricted-dashboard-replacement-62-slice-2)
   - [2026-11-17 — Dashboard delivery compatibility gate (#62)](#2026-11-17--dashboard-delivery-compatibility-gate-62)
   - [2026-11-17 — Automatic release deployment and launcher version floor](#2026-11-17--automatic-release-deployment-and-launcher-version-floor)
@@ -64,6 +65,25 @@ Linux jobs use `[self-hosted, home]`; credentials use per-job temporary paths. N
 The first real Actions run and workflow-token deletion proof remain pending; no image was published locally.
 Installed the tested restricted updater on the VPS without restarting services. Its state query, actual running
 image IDs and HTTPS health matched the v0.1.0 release receipt. The previous updater was retained privately for recovery.
+
+## 2026-11-18 — Windows 7 with VxKex (#5)
+
+On a 64-bit Windows 7 SP1 VM (6.1.7601, no other updates) Desktop v0.1.0 stopped before any of its code ran:
+`yo3-revival.exe`, `yo3-launcher.exe`, `yo3-server.exe` and `yo3-engine.exe` import Windows 8+ functions (Rust since
+1.78: `WaitOnAddress`, `ProcessPrng`, `GetSystemTimePreciseAsFileTime`). The 32-bit C connection DLLs and injector
+import none. A nightly `x86_64-win7-windows-gnu` build of `yo3-launcher` failed to link (`ring` leaves out its C and
+assembly for that target), so building for Windows 7 was set aside.
+
+With VxKex 1.2.2.2316 enabled on `yo3-revival.exe` (child programs inherit it) the launcher opened. Setup then said
+`d3dx9_40.dll` was missing although DirectX June 2010 was installed: the runtime check (`tools/mod/launch.c`) probed
+with `LOAD_LIBRARY_SEARCH_*` flags, which Windows 7 rejects with error 87 without KB2533623 (no longer offered alone
+in Microsoft's catalog for Windows 7, only in rollup KB3125574). On that error the check now loads the DLL as the
+game's loader does. With that checker in v0.1.0 (its hash updated in `bundle.json`): Setup passed, PLAY started the
+game (SwiftShader's `d3d9.dll`, the VM has no Direct3D acceleration), and an NPC duel against Kaiba ran with a summon
+from each side. Multiplayer reached the VPS by address. The official list stayed empty: the VM's root store lacks
+USERTrust ECC (github.com) and Let's Encrypt Root YR (the download host), and `official_list` drops the error silently.
+The C checker for this test was built with Ubuntu's mingw-w64 (msvcrt); Arch's links the Universal CRT, which
+Windows 7 lacks.
 
 ## 2026-11-17 — Restricted dashboard replacement (#62, slice 2)
 

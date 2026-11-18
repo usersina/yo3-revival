@@ -270,7 +270,7 @@ release, and "—" a row that is not implemented or unsupported.
 | --- | --- | --- | --- | --- |
 | Linux with Wine | Implemented | v0.0.1 (2026-11-09) | Live on the private headless client; all tests | The development platform. |
 | Windows 10 and 11, 64-bit | Partial | v0.0.1 (2026-11-09) | Windows 11 VM (build 22000) | Windows 11 passed for Desktop and Scripts. Windows 10 and protected folders are not verified. |
-| Windows 7 | Unsupported | — | Out of scope | Do not pursue unless reopened. |
+| Windows 7 | Unsupported | — | Windows 7 SP1 VM with VxKex (2026-11-18) | Desktop runs with a third-party layer ([steps](launcher.md#windows-7)): Setup, an NPC duel, a server by address. Setup's runtime check needs the fix after v0.1.0 (Unreleased). Official server list fails (old root certificates). Scripts untried. |
 | macOS | Unsupported | — | No supported build | See [launcher](launcher.md). |
 
 ## Client limits and what the DLL changed

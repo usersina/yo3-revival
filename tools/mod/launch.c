@@ -54,6 +54,21 @@ static const char *import_help(const char *dll) {
     return "This Windows lacks a function the game needs, or a different copy of the DLL is in the game folder. Remove such copies; the supported systems are 64-bit Windows 10 and 11.";
 }
 
+/* Loads `name` for a check with the safe search flags. Windows 7 without KB2533623 (today only in its 2016 rollup)
+ * rejects those flags with ERROR_INVALID_PARAMETER although the DLL is there and the game loads it; there, look where
+ * the game's own loader does: Windows' folder for a system DLL, else the normal order (the game folder first, set by
+ * SetDllDirectoryW). */
+static HMODULE probe(const wchar_t *name, int system) {
+    HMODULE module = LoadLibraryExW(name, NULL, system ? LOAD_LIBRARY_SEARCH_SYSTEM32 : LOAD_LIBRARY_SEARCH_USER_DIRS | LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if (module || GetLastError() != ERROR_INVALID_PARAMETER) return module;
+    if (!system) return LoadLibraryExW(name, NULL, 0);
+    wchar_t path[MAX_PATH];
+    UINT length = GetSystemDirectoryW(path, MAX_PATH);
+    if (!length || length + 1 + wcslen(name) >= MAX_PATH) { SetLastError(ERROR_INVALID_PARAMETER); return NULL; }
+    wcscat(path, L"\\"); wcscat(path, name);
+    return LoadLibraryExW(path, NULL, 0);
+}
+
 /* Every function yo3.exe imports, looked up where the game's loader would find it: a missing one stops the game with
  * 0xc0000139 before any of our code runs, so name it here instead. WINMM is checked in Windows' copy: the game
  * folder's is our loader, which forwards to it. Runs inside the game's runtime activation context. */
@@ -84,7 +99,7 @@ static int check_imports(const wchar_t *game, const wchar_t *directory) {
         wchar_t name[MAX_PATH];
         if (!MultiByteToWideChar(CP_ACP, 0, dll, -1, name, MAX_PATH)) { ok = -1; break; }
         int system = !_stricmp(dll, "winmm.dll");
-        HMODULE module = LoadLibraryExW(name, NULL, system ? LOAD_LIBRARY_SEARCH_SYSTEM32 : LOAD_LIBRARY_SEARCH_USER_DIRS | LOAD_LIBRARY_SEARCH_SYSTEM32);
+        HMODULE module = probe(name, system);
         if (!module) {
             fprintf(stderr, "stage=runtime-import windows_error=%lu: yo3.exe needs %s, which Windows cannot load. %s\n", GetLastError(), dll, import_help(dll));
             ok = 0; if (++reported == 3) break; continue;
@@ -157,7 +172,7 @@ static int check_runtime(const wchar_t *game) {
     };
     int ok = 1;
     for (unsigned i = 0; i < sizeof names / sizeof *names; ++i) {
-        HMODULE module = LoadLibraryExW(names[i], NULL, LOAD_LIBRARY_SEARCH_USER_DIRS | LOAD_LIBRARY_SEARCH_SYSTEM32);
+        HMODULE module = probe(names[i], 0);
         if (!module) { failure("runtime-dependency", GetLastError(), help[i]); ok = 0; break; }
         FreeLibrary(module);
     }
