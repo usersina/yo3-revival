@@ -312,6 +312,20 @@ Names and paths are bounded and checked before filesystem operations. This chang
 wire format or exported mod ABI. Any existing local deck or nonempty saved selection prevents setup, regardless of validity. A per-player
 `revival-starter.initialized` file records setup or discovered existing decks/selection; automatic setup never undoes subsequent manual edits or deletions. Existing selections take precedence; no legal candidate leaves the profile untouched. See the [deck protocol](protocol.md#decks-deck-editor-deckedittest-handler-0x43fc60).
 
+### Card search (issue #54)
+
+Edit Deck's Search Text (`deck_sort_text.swf`: `TextSearchExecute(text, Card Name, Card Text)`, both boxes ticked by
+default) and the card lists at Blister's both register `TextSearchExecute` (`0x4955C0`, `0x466FA0`), which converts the
+text from UTF-8 and filters **the list shown** with `0x416C10`: a card stays when the text is in its reading
+(`0x537570`, only when `0x406680()+4` is 0) or name (`0x5374B0`), or, with Card Text ticked, its text (`0x537510`).
+Neither box ticked keeps the list. Live (2026-11-19, 498-card trunk): "Red" found 2, "red" 0; "Dragon" found 12, then
+"Red" 1 of those 12; after a search with no result every search finds 0 until Reset (`KabanSearchReturn(5, false)`).
+The comparisons are msvcrt's `wcsstr`, loaded into `edi` at `0x416D40` and `0x416DDD` (`8B 3D 80 85 75 00`, `mov edi,
+[0x758580]`; the operand is relocated under ASLR). `tools/mod/card-search.h` replaces both with `mov edi, imm32; nop`
+pointing at `yo3_wcsistr` (case-blind, `card-search-logic.h`); `0x416C10` has no other caller. An unexpected byte refuses
+DLL readiness (`stage=mod-card-search`); a contract fixture's small image is left alone, as `deck-upload.h` does. The
+narrowing is kept: it is how the original searched.
+
 ### Server texts and NPC duel logs (issues #10 and #12)
 
 `tools/mod/dialog-text.h` lets duel dialogs show the server's own text. Two byte-guarded hooks: the duel pump's call

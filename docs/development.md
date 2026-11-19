@@ -91,6 +91,17 @@ task check -- py docs   # the hermetic Python tests and the docs links: seconds
 task check:lint         # actionlint (skipped locally if not installed) and Clippy with -D warnings
 task check              # all of it, in CI's order: lint, py, docs, rust (engine sources, nextest), dashboard, e2e
 task check:list         # each group's steps
+task check:mod          # local only: build the connection DLL, then its Wine tests (private :78; see below)
+task check:cards        # the duel check's 240 duels, then which card effects they exercised
+```
+
+`mod` is a local group: CI's release job never runs it, because it needs Wine and a private display.
+`tools/mod/test-direct.sh` needs `YO3_WINEPREFIX` set to a fresh private prefix, `YO3_GAME_DIR` when that prefix has
+no game, and the release builds it names (the Linux server, and the Windows `yo3-launcher` with `cargo build --release
+--target x86_64-pc-windows-gnu -p yo3-launcher`); without them that step fails and the group says so:
+
+```bash
+YO3_WINEPREFIX=/tmp/wine-direct YO3_GAME_DIR="$HOME/.wine/drive_c/Program Files (x86)/Konami/Yu-Gi-Oh! ONLINE 3" task check:mod
 ```
 
 A new Python test goes in `tools/<area>/test_*.py` (unittest, standard library) and is registered in
@@ -103,6 +114,8 @@ A new Python test goes in `tools/<area>/test_*.py` (unittest, standard library) 
 | --- | --- |
 | `task dev:server` (`tools/dev/scratch-server.py`) | A scratch server beside a live one: free ports (never 7443/8080), its own data and logs, key accounts and their profiles; `--from-db FILE --profile-for WHO` starts from a copy of another server's database. `env`, `status`, `stop` |
 | `task client -- …` (`tools/client/vclient.sh`) | The headless game client on a private display |
+| `task client:scenario -- FILE` (`tools/client/ui-scenario.py`) | A scripted UI scenario on the running headless client: clicks, keys and text, then `expect text`, `expect flash` or `expect component` against the UI probe since the last action. On failure, the UI view and a screenshot. Scenarios live in `tools/client/scenarios/` |
+| `task check:cards` (`tools/engine/coverage.py`) | Which card effects the duel check's self-play exercised: per pool card, its chain links activated, resolved, resolved with a visible result, negated; `--sweep target/tmp/card-sweep.tsv` for a card sweep. A list to choose scenario tests from, not a gate |
 | `task vm -- …` (`tools/vm/vm.py`) | The Windows VMs in `tools/vm/vms.toml` (`~/.config/yo3-revival/vms.toml` overrides): `list`, power and snapshots, `shot`, `click`, `type`, `key`, `run VM -- CMD` (output and exit code back), `put`, `wait` |
 | `task build:dev` | Release builds of the server, launchers, Desktop and engine, and the connection DLL, as dev builds: it clears a stale `YO3_VERSION`, which would make the launcher refuse them |
 | `task build:mod:ci` (`tools/mod/build-ci.sh`) | The connection DLL as releases build it (Ubuntu's mingw-w64, `msvcrt.dll`), for tests on real Windows; set `YO3_BUILD_VERSION`/`YO3_BUILD_COMMIT` to a release's to swap a file into that release |
@@ -249,7 +262,9 @@ the [working guide](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md#
 | `vclient.sh shot`, `pixel` | The rendered frame, or one pixel's colour | Final visual checks, Flash-only prompts, animations | Needs reading an image; a pixel is only a colour |
 | Duel check (`--duel-check`), native checkpoints, `duel-report.py` | The server's model of each client, the engine, and the client's own card manager, compared after every step; the summon commands' order (`duelcheck/summon.rs`) | State drift between engine, server and client; summon commands in an order the client's animations crash on | Rendering, menus, animations themselves |
 | Duel replay (`duel-replay.py`) | The engine run again on the recorded inputs | Reproducing an engine-side problem exactly | Mouse input and the client |
-| Self-play tests (`duel_check.rs`, card sweep, real-deck sweep, `npc_bot.rs`) | Thousands of duel steps through translator and engine, offline | Regressions after translator, engine or bot changes | The real client |
+| Self-play tests (`duel_check.rs`, card sweep, real-deck sweep, `npc_bot.rs`) | Thousands of duel steps through translator and engine, offline | Regressions after translator, engine or bot changes | The real client; situations random play rarely reaches (`tools/engine/coverage.py` lists the cards it never exercised) |
+| Scenario tests (`duelcheck::scenario`: `card_scenarios.rs`, `junk_warrior.rs`) | One card's situation played by plan through the real core, both seats' client models checked every step | That an effect does what its text says, and the client sees it | The real client's screen |
+| UI scenarios (`ui-scenario.py`) | What the UI probe reports after scripted clicks and typing on the headless client | Screens that don't involve the server (the deck editor's search) | Anything the probe doesn't report; needs a running, logged-in client |
 | Protocol monkey (`protocol-monkey.sh`) | The server under replayed, mutated, random and garbage traffic and floods | Server crashes, hangs and leaks | The client's reaction |
 | UI monkey (`ui-monkey.py`) | Random input on two clients; crashes, "no response" dialogs (OCR), server errors | Finding crashes nobody thought to click | Why it happened; reproducing it needs the saved packets and shots |
 | Reverse-engineering helpers (`tools/re/`, GhidraMCP) | The client binary: handlers, fields read, disassembly with log strings | Locating what a screen sends and reads | Runtime state |
@@ -419,7 +434,49 @@ YO3_CARD_SWEEP=all cargo nextest run --release -p yo3-server --test card_sweep -
 YO3_CARD_SWEEP=7986,7687 cargo nextest run --release -p yo3-server --test card_sweep --no-capture   # some cards
 ```
 
-Its report, one line per card (activations, summons, choices made for the player), is `target/tmp/card-sweep.tsv`.
+Its report, one line per card (activations, links resolved, resolved with a visible result, summons, choices made for
+the player), is `target/tmp/card-sweep.tsv`; `tools/engine/coverage.py --sweep target/tmp/card-sweep.tsv` groups its
+cards by what happened to their effects.
+
+### Effect coverage and scenario tests (#67)
+
+Random self-play rarely reaches a card's situation: Junk Warrior with a Level 2 monster left on the field, Goyo
+Guardian destroying a monster by battle. The duel check therefore records, per card, its chain links activated,
+resolved, resolved with a visible result (a card moved, LP, ATK, DEF or Level changed: a rough attribution) and
+negated, and `tools/engine/coverage.py` reports them after a run:
+
+```bash
+task check:cards                     # 240 duels, then the report; YO3_CHECK_DUELS=n plays n per test instead of 30
+python3 tools/engine/coverage.py     # the report again from target/tmp/duel-coverage/
+```
+
+A card it lists as never activated, or resolved with nothing visible, gets a scenario test: `duelcheck::scenario`
+plays a planned duel through the real core with both seats' client models checked after every step. Decks are drawn
+from their end (the last five cards are the opening hand); each team's plan runs on its own prompts, and an action not
+possible yet waits for the next own turn:
+
+```rust
+let mut s = Scenario::start(&dir, 7, 8000, [(&deck, &[GOYO_GUARDIAN]), (&[WARWOLF; 40], &[])]).unwrap();
+s.run_both([&[Summon(ZUBABA_KNIGHT), Summon(JUNK_SYNCHRON), SpSummon(GOYO_GUARDIAN), Attack(GOYO_GUARDIAN)],
+            &[Summon(WARWOLF)]]).unwrap();
+assert_eq!(s.position_of(0, WARWOLF), Some(FACE_UP_DEFENSE));
+assert!(s.problems.is_empty(), "{:#?}", s.problems);
+```
+
+The actions are `Summon`, `SetMonster`, `SpSummon`, `SetSpell`, `Activate`, `Attack`, `Chain` (respond at the first
+chance) and `EndTurn`; every other prompt gets the CPU's answer. `tests/card_scenarios.rs` holds one test per card,
+citing the card's text.
+
+To see a card on the game's own screen, give a scratch server the scenario's deck as CARD_Prop rows and play an NPC
+duel on the headless client; the duel check compares the engine with the client after every step and the connection
+DLL adds the native checkpoints (any drift is an `ERROR duel check` line in the server log). Junk Warrior, checked
+this way on 2026-11-19 against Joey Wheeler: 3300/1500 on screen, its 2300 + 800 from a Quillbolt Hedgehog left on the
+field + 200 from Joey's Sogen, no duel check error:
+
+```bash
+task dev:server -- --accounts 1 -- --duel-deck 3367,3367,3339 --duel-extra 3357 --duel-check --duel-time 0,0
+#   rows: Quillbolt Hedgehog 3367, Junk Synchron 3339, Junk Warrior 3357 (data/bin CARD_Prop.bin: row = index, id & 0x3FFF)
+```
 
 The real-deck sweep (`tests/original_decks.rs`) self-plays, the same way, the decks players used on Konami's own
 server, rebuilt from 2010–2012 duel logs: each side's cards as its log showed them, filled to 40. The logs are private

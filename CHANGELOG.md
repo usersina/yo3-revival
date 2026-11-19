@@ -16,6 +16,7 @@ Older entries describe their release at the time. For current setup, use the [RE
 ## Unreleased
 
 - Clicking the launcher's footer version opens Settings → About. The update notice still opens What's new.
+- Searching cards in Edit Deck and at Blister's ignores upper and lower case: "red" finds Red-Eyes (#54). A search still looks inside the cards listed; Reset (the circular arrow) lists them all again.
 
 ## v0.1.3 (2026-11-18)
 

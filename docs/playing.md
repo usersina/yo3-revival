@@ -89,6 +89,11 @@ Each server keeps its own local game data, so a player named "Duelist" on one se
 already there; every other server gets `Documents/YO3 Revival/servers/<server id>/Yu-Gi-Oh! ONLINE 3`, starting with
 your display settings and a fresh starter deck. The folder's `revival-server.txt` names the server that owns it.
 
+**Searching cards.** The pencil button above your trunk opens Search Text. Upper or lower case doesn't matter
+("red" finds Red-Eyes). Each search looks only inside the cards listed now, so a second search narrows the first
+one's results; press Reset (the circular arrow) to list every card again before a new search. The box keeps your
+last search: delete it before typing a new one. The card lists at Blister's search the same way.
+
 ## Card effects and summon rules
 
 Battle protection can apply without a confirmation dialog. Fortress Warrior survives its first battle destruction

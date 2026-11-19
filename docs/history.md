@@ -52,6 +52,31 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
 
+## 2026-11-19 — Card search ignores case; effect coverage and scenario tests (#54, #67)
+
+**#54.** The card search runs in the client, not the server: Edit Deck's Search Text and Blister's trade and rental
+lists filter the list shown with a case-sensitive `wcsstr` (`0x416C10`). "red" found nothing; a second search
+looked only inside the first one's results, so after a search with no result every search found 0 until Reset, which
+read as "unreliable". The connection DLL now gives that matcher a case-blind comparison (`tools/mod/card-search.h`);
+the narrowing stays, as the original's, and the playing guide explains Reset. Checked with the new UI scenario
+(`tools/client/scenarios/card-search.scn`: failed on the old DLL, passed on the new one) and natively on Windows 11:
+"dragon" in Edit Deck, "aqua" in Blister's Trade Card list.
+
+**#67.** The duel check now records each card's chain links (activated, resolved, resolved with a visible result,
+negated); `tools/engine/coverage.py` reports them. Of the 85 effect cards in its pool over 240 duels, 5 never
+activated (Jinzo, Spirit Reaper, Goyo Guardian, Gorz, Zubaba Knight). `duelcheck::scenario` plays a planned duel
+through the real core with both seats' client models checked every step; Junk Warrior's tests moved onto it, and
+`tests/card_scenarios.rs` covers Spirit Reaper, Goyo Guardian, Gagaga Magician and Mirror Force. On the game's own
+screen (headless client, NPC duel against Joey Wheeler, `--duel-check`) Junk Warrior showed 3300/1500: its 2300, a
+Quillbolt Hedgehog's 800 and Sogen's 200, with no duel check error.
+
+**Checks.** `tools/check.py mod` (`task check:mod`) runs the connection DLL's Wine tests, which CI can't. Its first run
+found `test-direct.sh` stale since launchers became versioned (`cdfa4a5`): its raw account requests named no launcher
+version and were refused; they now send the helper's.
+
+Validation: every group CI's release job runs (lint, py, docs, rust, dashboard, e2e; actionlint not installed
+locally) and the local `mod` group passed.
+
 ## 2026-11-18 — Bundled GitHub TLS trust
 
 Desktop's update discovery/downloads, signed official server list and GitHub reporting now share bundled Mozilla
