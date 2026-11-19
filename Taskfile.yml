@@ -42,7 +42,7 @@ tasks:
     desc: The dashboard's API drift, format, lint, types, unit tests and build
     cmds: [python3 tools/check.py dashboard]
   check:mod:
-    desc: "Local only: the connection DLL's Wine tests (private :78; YO3_WINEPREFIX=fresh private prefix for direct start)"
+    desc: "Local only: the connection DLL's Wine tests (private :78; YO3_WINEPREFIX=fresh private prefix, YO3_GAME_DIR for direct start)"
     cmds: [python3 tools/check.py mod]
   check:cards:
     desc: The duel check's 240 self-played duels, then which card effects they exercised (tools/engine/coverage.py)

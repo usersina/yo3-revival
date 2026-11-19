@@ -105,7 +105,10 @@ def main(argv=None, exercise=None):
                   'environment': {'YO3_DOMAIN': 'localhost', 'YO3_HTTPS_PORT': str(https)}}
         config = {'services': {
             'server': common | {'image': args.server,
-                'environment': common['environment'] | {'YO3_DASHBOARD_ORIGIN': origin},
+                'environment': common['environment'] | {'YO3_DASHBOARD_ORIGIN': origin,
+                    # These checks cover the proxy and static files with password-only staff; tools/containers/test_stack.py
+                    # and dashboard/e2e-mfa cover the authenticator under the default (required) policy.
+                    'YO3_STAFF_MFA': 'optional'},
                 'ports': [f'127.0.0.1:{auth}:7443'],
                 'volumes': ['data:/var/lib/yo3', 'socket:/run/yo3-dashboard', f'{game}:/game:ro']},
             'dashboard': common | {'image': args.dashboard,

@@ -4,7 +4,9 @@ Build first: docker compose build. Then: python3 tools/containers/test_stack.py 
 Requires Python 3, Docker Compose, OpenSSL; uses only stdlib. Test-only self-signed TLS is verified by its certificate.
 """
 import argparse
+import base64
 import hashlib
+import hmac
 import http.client
 import json
 import os
@@ -20,6 +22,14 @@ import uuid
 ROOT = Path(__file__).resolve().parents[2]
 PASSWORD = 'DeployTest12345'
 USER = 'DeployAdmin'
+
+def totp(secret, ahead=0):
+    """RFC 6238 (SHA-1, 6 digits, 30 s), as an authenticator app computes it."""
+    import time
+    key=base64.b32decode(secret.upper()+'='*(-len(secret)%8))
+    mac=hmac.new(key,struct.pack('>Q',int(time.time())//30+ahead),'sha1').digest()
+    offset=mac[19]&15
+    return '%06d'%((struct.unpack('>I',mac[offset:offset+4])[0]&0x7fffffff)%1000000)
 
 def port():
     with socket.socket() as s:
@@ -112,12 +122,29 @@ def main():
         assert web('/panel/openapi.json',extra={'Host':'forged.example'})[0]==421
         # Must pass through the REAL nginx overwrites, not only a synthetic Rust guard.
         assert web('/panel/openapi.json',extra={'X-Forwarded-For':'127.0.0.1, forged','X-Forwarded-Proto':'http','Forwarded':'for=127.0.0.1'})[0]==200
+        recovery=[]
         def login():
             nonlocal cookie,csrf
+            cookie,csrf='',''
             status,headers,body=web('/panel/api/v1/sign-in',{'user':USER,'password':PASSWORD})
             assert status==200,body
-            cookie=headers['set-cookie'].split(';')[0];csrf=json.loads(body)['csrf_token']
+            outcome=json.loads(body)
+            if outcome['code_required']:
+                # The default policy: password, then a code. Recovery codes work once each.
+                status,headers,body=web('/panel/api/v1/sign-in/code',{'challenge':outcome['challenge'],'code':recovery.pop(0)})
+                assert status==200,body
+                session=json.loads(body)
+            else:
+                session=outcome['session']
+            cookie=headers['set-cookie'].split(';')[0];csrf=session['csrf_token']
             assert all(flag in headers['set-cookie'] for flag in ['Secure','HttpOnly','SameSite=Strict'])
+            if session['limited']:
+                # A staff account with no authenticator reaches enrollment and nothing else, even through nginx.
+                assert web('/panel/api/v1/accounts')[0]==403
+                status,_,body=web('/panel/api/v1/mfa/enrollment',{});assert status==200,body
+                secret=json.loads(body)['secret']
+                status,_,body=web('/panel/api/v1/mfa/enrollment/confirm',{'code':totp(secret)});assert status==200,body
+                recovery.extend(json.loads(body)['recovery_codes'])
         login()
         assert web('/panel/api/v1/sign-out',{},extra={'Origin':'https://evil.example'})[0]==403
         assert web('/panel/api/v1/sign-out',{},extra={'X-CSRF-Token':'wrong'})[0]==403

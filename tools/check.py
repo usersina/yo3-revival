@@ -60,6 +60,13 @@ OTHER = {
 ACTIONLINT_IGNORE = r'^unexpected key "queue" for "concurrency" section\.'
 
 
+def installed(dashboard):
+    """Whether dashboard/node_modules matches package-lock.json: npm writes node_modules/.package-lock.json on install,
+    so a lock changed since (a new dependency from a merge) means installing again."""
+    lock, done = dashboard / 'package-lock.json', dashboard / 'node_modules' / '.package-lock.json'
+    return done.is_file() and (not lock.is_file() or done.stat().st_mtime >= lock.stat().st_mtime)
+
+
 def steps(group):
     """The (name, argv, cwd) steps of a group."""
     py = [sys.executable]
@@ -74,18 +81,24 @@ def steps(group):
         return [('nextest', ['cargo', 'nextest', 'run', '--workspace'], ROOT)]
     if group == 'dashboard':
         d = ROOT / 'dashboard'
-        install = [] if (d / 'node_modules').is_dir() else [('npm ci', ['npm', 'ci'], d)]
+        install = [] if installed(d) else [('npm ci', ['npm', 'ci'], d)]
         return install + [(n, ['npm', 'run', *a], d) for n, a in [
             ('api drift', ['api:check']), ('format', ['format:check']), ('lint', ['lint']),
             ('typecheck', ['typecheck']), ('unit tests', ['test']), ('build', ['build'])]]
     if group == 'e2e':
         d = ROOT / 'dashboard'
         return [('browser', ['npx', 'playwright', 'install', 'chromium', '--only-shell'], d),
-                ('e2e', ['npm', 'run', 'test:e2e', '--', '--workers', '3'], d)]
+                ('e2e', ['npm', 'run', 'test:e2e', '--', '--workers', '3'], d),
+                ('e2e-mfa', ['npm', 'run', 'test:e2e:mfa', '--', '--workers', '3'], d)]
     if group == 'mod':
         # Wine on a private display (:78 unless YO3_DISPLAY) and prefix; test-direct.sh needs YO3_WINEPREFIX set to a
         # fresh private prefix, YO3_GAME_DIR when that prefix has no game, and the release builds it names.
+        # test-direct.sh runs the release server and the Windows helper: build them here too, so it never tests stale
+        # binaries. Unset YO3_VERSION first (as task build:dev does): a release version makes the helper refuse dev DLLs.
+        release = ['cargo', 'build', '--release']
         return [('build', ['tools/mod/build.sh'], ROOT),
+                ('server', [*release, '-p', 'yo3-server', '-p', 'yo3-engine'], ROOT),
+                ('windows helper', [*release, '--target', 'x86_64-pc-windows-gnu', '-p', 'yo3-launcher'], ROOT),
                 ('dll', ['tools/mod/test-dll.sh'], ROOT),
                 ('loader', ['tools/mod/test-loader.sh'], ROOT),
                 ('direct start', ['tools/mod/test-direct.sh'], ROOT)]

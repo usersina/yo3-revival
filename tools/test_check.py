@@ -44,6 +44,21 @@ class Registry(unittest.TestCase):
         self.assertEqual(fetches(['rust']), ['rust'])
         self.assertEqual(fetches(['py', 'docs']), [])
 
+    def test_dashboard_packages_are_installed_again_after_the_lock_changes(self):
+        import os, tempfile
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            (d / 'package-lock.json').write_text('{}')
+            self.assertFalse(check.installed(d))
+            (d / 'node_modules').mkdir()
+            self.assertFalse(check.installed(d), 'node_modules without an install record')
+            (d / 'node_modules' / '.package-lock.json').write_text('{}')
+            os.utime(d / 'package-lock.json', (1, 1))
+            self.assertTrue(check.installed(d))
+            os.utime(d / 'package-lock.json', None)
+            os.utime(d / 'node_modules' / '.package-lock.json', (1, 1))
+            self.assertFalse(check.installed(d), 'the lock changed after the install')
+
     def test_unknown_groups_are_refused(self):
         self.assertEqual(check.main(['nonsense']), 2)
 
