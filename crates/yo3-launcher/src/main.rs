@@ -36,6 +36,12 @@ struct Args {
     /// Desktop lifecycle pipe. Closing stdin or sending `stop` closes the game and revokes its session.
     #[arg(long)] control_stdin: bool,
     #[arg(long)] diagnostics_dir: Option<PathBuf>,
+    /// Where the connection DLL writes its report of what else runs inside the game (#68), and where this writes what it
+    /// decided: without it, a file beside the session log, removed at the end.
+    #[arg(long)] survey_file: Option<PathBuf>,
+    /// Start the game although another program's file or provider was found (the player's Continue anyway). A redirected
+    /// network function still stops it.
+    #[arg(long)] accept_foreign: bool,
     #[arg(long)] diagnostic_parent: Option<String>,
     /// A game-local bootstrap attaches to this existing game after proving mod readiness through private files.
     #[arg(long, requires = "proxy_only")] attach_game: Option<u32>,
@@ -156,6 +162,18 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
         cmd
     };
     if let Some(resolution) = args.resolution { cmd.env(yo3_launcher::resolution::ENV, resolution.to_string()); }
+    // What else runs inside the game (#68): the DLL writes its report here before the game is released.
+    let survey_given = args.survey_file.is_some();
+    let survey_file = args.survey_file.clone().unwrap_or_else(|| args.diagnostics_dir.clone()
+        .unwrap_or_else(|| profile.parent().unwrap_or(std::path::Path::new(".")).join("logs/sessions")).join(format!("{}.survey.json", log.id())));
+    let _ = std::fs::remove_file(&survey_file);
+    let _cleanup = (!survey_given).then(|| SurveyCleanup(survey_file.clone()));
+    {
+        let parent = survey_file.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(std::path::Path::new("."));
+        let named = yo3_launcher::runtime::native_path(parent)?.join(survey_file.file_name().context("--survey-file names a file")?);
+        #[cfg(windows)] cmd.env("YO3_SURVEY_FILE", &named);
+        #[cfg(not(windows))] cmd.env("YO3_SURVEY_FILE", initializing!(windows_path(&named, args.wine_prefix.as_deref()))?);
+    }
     if let Some(trace) = &args.trace_dll {
         #[cfg(windows)] cmd.arg(yo3_launcher::runtime::native_path(trace)?);
         #[cfg(not(windows))] {let path=trace.canonicalize()?;cmd.arg(initializing!(windows_path(&path, args.wine_prefix.as_deref()))?);}
@@ -185,6 +203,26 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
         anyhow::bail!("{summary}\n{error:#}\n{}", if clean.trim().is_empty() { "The injector exited without a native diagnostic. Restore the matching application bundle, check security-software detection history and export logs for help." } else { clean.trim() });
     }
     log.line("Connection DLL loaded and interface ready; authenticating");
+    // What else runs inside the game (#68): the player hears about another program's file or provider before the game is
+    // released, and a redirected network function stops it. The DLL's own lines are in this log.
+    match yo3_launcher::survey::Survey::read(&survey_file) {
+        Some(report) => {
+            let verdict = report.assessment();
+            let decision = verdict.decision(args.accept_foreign);
+            for finding in verdict.all() { log.line(&format!("Survey: {}", yo3_launcher::survey::describe(finding))); }
+            log.line(&format!("Survey: decision {decision:?}"));
+            let _ = yo3_launcher::survey::record_decision(&survey_file, decision);
+            if decision != yo3_launcher::survey::Decision::Went {
+                let _ = child.kill().await;
+                let what = verdict.all().map(yo3_launcher::survey::describe).collect::<Vec<_>>().join("; ");
+                if decision == yo3_launcher::survey::Decision::Blocked {
+                    anyhow::bail!("The game was not started: {what}. It would break the game's connection. Close that program or remove its file, then try again.");
+                }
+                anyhow::bail!("The game was not started: {what}. Start it again with --accept-foreign to go on anyway.");
+            }
+        }
+        None => log.line("Survey: the connection DLL wrote no report"),
+    }
     let mut session = match &key {
         // A sign-in profile (--sign-in): without a saved sign-in, or with one the server refuses, the game still starts
         // and its own login dialog says why; with none kept, its login form asks (#34).
@@ -373,6 +411,10 @@ async fn capture(mut source: impl tokio::io::AsyncRead + Unpin, log: yo3_tunnel:
     if truncated { let end = tail.iter().position(|b| *b == b'\n').map_or(tail.len(), |n| n+1); tail.drain(..end); }
     String::from_utf8_lossy(&tail).into_owned()
 }
+
+/// A survey report the launcher chose the place of itself is removed with the run.
+struct SurveyCleanup(PathBuf);
+impl Drop for SurveyCleanup { fn drop(&mut self) { let _ = std::fs::remove_file(&self.0); } }
 
 fn write_ready(args: &Args, proxy: &Proxy) -> anyhow::Result<()> {
     if let Some(file) = &args.ready_file {

@@ -31,6 +31,11 @@ fn the_next_play_takes_the_screen_size_and_wine_program_saved_since_the_launcher
     let a = args(&cmd);
     assert_eq!(a[a.iter().position(|x| x == "--resolution").unwrap() + 1], "1600x1200");
     assert_eq!(env(&cmd, "YO3_WINE"), Some(wine.as_os_str()));
+    // What else runs inside the game (#68): the report goes beside the ready file; Continue anyway is for one start.
+    assert_eq!(a[a.iter().position(|x| x == "--survey-file").unwrap() + 1], "ready.survey.json");
+    assert!(!a.contains(&"--accept-foreign".to_string()));
+    backend.accept_foreign_once();
+    assert!(args(&backend.launch_command(&after, Path::new("p.json"), Path::new("ready")).unwrap()).contains(&"--accept-foreign".to_string()));
     drop(backend);
     std::fs::remove_dir_all(root).unwrap();
 }

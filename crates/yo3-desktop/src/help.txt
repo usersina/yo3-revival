@@ -56,7 +56,16 @@ The gear at the top right opens Settings. Every change applies at the next PLAY,
 - Settings, Game, Verify and repair checks the game and YO3 Revival's own files.
 - Close any other copy of the game, then press PLAY again.
 - On Windows, install the DirectX End-User Runtimes (June 2010) and the Visual C++ 2008 runtime if Setup names them.
+- If YO3 Revival says another program is running in your game, see: Another program is running in your game.
 If it keeps failing, use Report a problem: your logs are attached for you.
+
+# foreign | Another program is running in your game
+Each time the game starts, YO3 Revival checks what else runs inside it. Another program's file in the game folder, or software on this PC that watches the game's network connection, can break it (for example by disconnecting you in the shop). The message says what was found; Details has the technical text, and Report a problem sends it with your logs.
+- A file in the game folder: Move it aside renames it so Windows doesn't load it. Nothing is deleted. Settings, Advanced, Files moved aside puts it back.
+- Software in Windows' network path (often an old VPN, ad blocker or security program): open the Command Prompt as administrator, run netsh winsock reset, then restart your PC. YO3 Revival never changes this itself.
+- Security software: add an exception for the game folder in its settings, or switch off its web protection while you play.
+- Continue anyway starts the game as it is.
+YO3 Revival refuses to start the game in one case only: another program has taken over the game's network connection, which YO3 Revival can't keep safe then. Close that program or move its file away.
 
 # repair | YO3 Revival needs repair
 Some of YO3 Revival's own files are missing or changed, often after an antivirus scan.

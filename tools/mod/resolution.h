@@ -447,9 +447,11 @@ static int res_code(uintptr_t at, const BYTE *expected, size_t n, const unsigned
     return !memcmp(game_address(at), want, n);
 }
 
-static const char *resolution_install(void) {
-    char text[32]; DWORD n = GetEnvironmentVariableA("YO3_RESOLUTION", text, sizeof text);
-    int on = n >= sizeof text ? -1 : yo3_resolution_parse(n ? text : NULL, &res_req_w, &res_req_h);
+/* Installs the higher resolution for `text` (WIDTHxHEIGHT, auto, off; NULL or empty is off): the connection DLL's
+ * (YO3_RESOLUTION) and the direct-start loader's early install (#16), which reads it from the saved profile. NULL on
+ * success or when off, else the refusal's message. */
+static const char *resolution_install_from(const char *text) {
+    int on = yo3_resolution_parse(text && *text ? text : NULL, &res_req_w, &res_req_h);
     if (!on) return NULL;
     if (on < 0) return "stage=mod-resolution: YO3_RESOLUTION must be WIDTHxHEIGHT (320 to 8192 each), auto or off.\r\n";
     static const char unsupported[] = "stage=mod-resolution: This game's drawing code is unsupported, so the higher "
@@ -507,5 +509,11 @@ static const char *resolution_install(void) {
         return unsupported;
     res_log("[YO3 MOD] resolution: %s requested; window, Direct3D and mouse hooks installed", text);
     return NULL;
+}
+static const char *resolution_install(void) __attribute__((unused));
+static const char *resolution_install(void) {
+    char text[32]; DWORD n = GetEnvironmentVariableA("YO3_RESOLUTION", text, sizeof text);
+    if (n >= sizeof text) return "stage=mod-resolution: YO3_RESOLUTION must be WIDTHxHEIGHT (320 to 8192 each), auto or off.\r\n";
+    return resolution_install_from(n ? text : NULL);
 }
 #endif

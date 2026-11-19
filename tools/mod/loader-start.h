@@ -2,6 +2,7 @@
 #define YO3_LOADER_START_H
 #include "hooks.h"
 #include "game-image.h"
+#include "resolution.h"
 /* Offline, the login skip never shows the game's form: it has no helper to sign in with. */
 static int login_decision __attribute__((used));
 static int __attribute__((used,noinline)) login_decide(void *window) { (void)window; return login_decision = 0; }
@@ -136,6 +137,9 @@ static BOOL CALLBACK bootstrap(PINIT_ONCE once, PVOID parameter, PVOID *context)
                 /* The server's id names its game-data folder (netlog.h's neighbour, documents.h); 16 hex digits. */
                 char server[24] = {0};
                 if (json_string(json, "server", server, sizeof server) && strlen(server) == 16) SetEnvironmentVariableA("YO3_SERVER_ID", server);
+                /* What else runs in the game (#68): the DLL's report beside the helper's ready file, which the helper logs. */
+                wchar_t survey[LOADER_PATH]; swprintf(survey, LOADER_PATH, L"%ls\\direct-%lu-%ls.survey.json", config.state, GetCurrentProcessId(), nonce);
+                SetEnvironmentVariableW(L"YO3_SURVEY_FILE", survey);
                 HMODULE mod = LoadLibraryW(config.dll);
                 DWORD (WINAPI *mod_ready)(void *) = mod ? (void *)GetProcAddress(mod, "Yo3ModReady") : NULL;
                 mod_api = mod ? (void *)GetProcAddress(mod, "Yo3ModApi") : NULL;
@@ -202,6 +206,18 @@ static int WSAAPI boot_connect(SOCKET s,const struct sockaddr *a,int n) {
     }
     int (WSAAPI *fn)(SOCKET,const struct sockaddr *,int) = mod_api(YO3_API_CONNECT); return fn(s,a,n);
 }
+/* The higher resolution for a game opened directly (#16). The connection DLL, loaded at the game's first [Yo3] INI read,
+ * comes after the game made its window and Direct3D device, which the resolution has to scale; this loader is there
+ * before the game runs, so it installs the same hooks itself (resolution.h), for the size the last Play saved in the
+ * direct-start profile ("resolution"). Nothing is changed for a profile without one, a game this can't scale, or a
+ * configuration the loader can't read: the game then runs at its own size. */
+static void direct_resolution(void) {
+    LoaderConfig config = {0}; char json[8192], value[32];
+    if (loader_config(&config) || !read_json(config.profile, json, sizeof json) || !json_string(json, "resolution", value, sizeof value)) return;
+    yo3_game_image_base = (uintptr_t)GetModuleHandleW(NULL);
+    const char *refused = resolution_install_from(value);
+    if (refused) res_log("[YO3 LOADER] resolution %s not used: %s", value, refused);
+}
 static void install_bootstrap(void) {
     wchar_t exe[LOADER_PATH]; char managed[2]; DWORD n = GetModuleFileNameW(NULL, exe, LOADER_PATH);
     if (!n || n >= LOADER_PATH || GetEnvironmentVariableA("YO3_LOCAL_COOKIE", managed, sizeof managed)) return;
@@ -210,5 +226,6 @@ static void install_bootstrap(void) {
         && hook("GetPrivateProfileIntA", (void *)boot_int, (void **)&real_int)
         && hook("InternetOpenUrlA", (void *)boot_url, (void **)&real_url)
         && hook("connect", (void *)boot_connect, (void **)&real_connect);
+    if (hooks_ok) direct_resolution();
 }
 #endif

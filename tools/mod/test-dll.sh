@@ -33,6 +33,7 @@ wine "$MOD/yo3-rental-return-test.exe"
 wine "$MOD/yo3-web-links-test.exe"
 wine "$MOD/yo3-card-search-test.exe"
 wine "$MOD/yo3-signout-test.exe"
+wine "$MOD/yo3-survey-test.exe"
 # The higher resolution (resolution.h) is opt in: an invalid value, or a game whose drawing code isn't v1.153's (this
 # fixture has none), refuses to start; off loads as usual.
 for pair in 'banana:YO3_RESOLUTION must be' '1440x1080:drawing code is unsupported' 'auto:drawing code is unsupported'; do
@@ -41,6 +42,40 @@ for pair in 'banana:YO3_RESOLUTION must be' '1440x1080:drawing code is unsupport
 done
 YO3_RESOLUTION=off wine "$MOD/yo3-auth-test.exe" "$DLL" >"$LOG" 2>&1 || { command cat "$LOG" >&2; exit 1; }
 echo 'PASS: the higher resolution is off unless asked for, and refuses a bad value or an unsupported game'
+# What else runs in the game (#68): the survey lists another program's DLL (with its SHA-256, in the log's grouped form),
+# an .asi plugin beside the game, a redirected import and a detour, and finds nothing wrong with a game left alone.
+SURVEY="$(mktemp -d)/game folder"
+mkdir -p "$SURVEY"
+trap 'rm -f "$LOG"; rm -rf "${UNICODE%/*}" "${SURVEY%/*}"' EXIT
+cp "$MOD/yo3-auth-test.exe" "$MOD/yo3-auth.dll" "$MOD/yo3-survey-fixture.dll" "$SURVEY/"
+printf 'plugin' > "$SURVEY/plugin.asi"
+for mode in survey survey-hooked survey-detour; do
+  rm -f "$SURVEY/survey.json"
+  YO3_SURVEY_FILE="$(winepath -w "$SURVEY/survey.json" 2>/dev/null)" wine "$SURVEY/yo3-auth-test.exe" "$(winepath -w "$SURVEY/yo3-auth.dll" 2>/dev/null)" "$mode" >"$LOG" 2>&1 \
+    || { command cat "$LOG" >&2; exit 1; }
+  python3 - "$mode" "$SURVEY" "$LOG" <<'PY' || { command cat "$LOG" >&2; exit 1; }
+import hashlib,json,sys
+mode,folder,log=sys.argv[1:4]
+report=json.load(open(folder+'/survey.json')); text=open(log).read()
+digest=hashlib.sha256(open(folder+'/yo3-survey-fixture.dll','rb').read()).hexdigest()
+grouped=':'.join(digest[i:i+16] for i in range(0,64,16))
+fixture=[m for m in report['modules'] if m['name']=='yo3-survey-fixture.dll']
+assert len(fixture)==1 and fixture[0]['sha256']==digest and fixture[0]['loaded'] and fixture[0]['game_folder'], report['modules']
+assert fixture[0]['size']==len(open(folder+'/yo3-survey-fixture.dll','rb').read())
+assert 'name=yo3-survey-fixture.dll' in text and 'sha256='+grouped in text, text
+plugin=[m for m in report['modules'] if m['name']=='plugin.asi']
+assert len(plugin)==1 and not plugin[0]['loaded'] and plugin[0]['game_folder'], report['modules']
+names={m['name'].lower() for m in report['modules']}
+assert 'yo3-auth.dll' not in names and 'yo3-auth-test.exe' not in names and not any(n in names for n in ('kernel32.dll','ws2_32.dll')), names
+assert report['providers_known'] in (True,False) and 'providers' in report
+hooked={(h['function'],h['how'],h['module']) for h in report['hooked']}
+want={'survey':set(),'survey-hooked':{('send','import','yo3-survey-fixture.dll')},'survey-detour':{('closesocket','detour','yo3-survey-fixture.dll')}}[mode]
+assert hooked==want, (mode,hooked)
+assert all(p['microsoft'] for p in report['providers']), report['providers']  # Wine's own providers are no finding
+assert '[YO3 MOD] Survey: done modules=2 hooked=%d'%len(want) in text, text
+PY
+done
+echo 'PASS: the survey lists foreign modules with their SHA-256, a redirected import and a detour, and finds nothing in a clean game'
 wine "$MOD/yo3-auth-launch.exe" --check-runtime "$(winepath -w "$MOD/yo3-auth-test.exe" 2>/dev/null)" >"$LOG" 2>&1 || { command cat "$LOG" >&2; exit 1; }
 grep -q 'Game runtime prerequisites available' "$LOG"
 wine "$MOD/yo3-auth-launch.exe" --check-runtime "$(winepath -w "$MOD/yo3-auth-runtime-test.exe" 2>/dev/null)" >"$LOG" 2>&1 || { command cat "$LOG" >&2; exit 1; }

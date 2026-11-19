@@ -150,7 +150,7 @@ pub struct Banlist { pub value: String, pub name: String }
 impl std::fmt::Display for Banlist { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str(&self.name) } }
 
 #[derive(Clone, Debug)]
-pub struct Live { running: bool, ready: bool, outside: bool, failure: Option<String>, direct: Option<DirectProblem> }
+pub struct Live { running: bool, ready: bool, outside: bool, failure: Option<String>, direct: Option<DirectProblem>, held: Option<yo3_desktop::foreign::Held> }
 
 #[derive(Clone, Debug)]
 pub enum Message {
@@ -202,6 +202,9 @@ pub enum Message {
     RestartToInstall,
     /// Handled by the window: Settings at a section.
     Settings(crate::settings::Section),
+    /// Handled by the window: another program's file or provider stopped the start before the game ran (#68), with what
+    /// was found; the dialog offers Move it aside and Continue anyway.
+    Foreign(yo3_desktop::foreign::Held),
     /// Handled by the window: Report a problem with this error's text.
     Report(String),
     /// Handled by the window: Help at a topic.
@@ -265,7 +268,6 @@ impl State {
     fn play_multiplayer(&mut self, ctx: &mut Ctx, session: yo3_tunnel::Token) -> Task<Message> {
         let (Some(backend), Some((server, _))) = (ctx.backend.clone(), self.multi.session()) else { self.game.starting = None; return Task::none() };
         let settings = ctx.settings.clone();
-        if let Some(notice) = Notice::foreign_winmm_in(&settings) { self.tell(notice) }
         let played = self.multi.played(ctx).map(Message::Multi);
         self.allow_for = Some(server.clone());
         let start = job(move || backend.play_signed_in(&settings, &server, &session), Message::Started);
@@ -320,7 +322,6 @@ impl State {
                 self.game.starting = Some((Step::Server, Instant::now()));
                 self.notice = None;
                 self.allow_for = None;
-                if let Some(notice) = Notice::foreign_winmm_in(&settings) { self.tell(notice) }
                 // Your own server first (reused when it is still running from the last game).
                 return job(move || backend.start_server(&settings).map(|_| ()), Message::ServerStarted);
             }
@@ -371,7 +372,12 @@ impl State {
                                 Some(("Allow", Message::AllowDirect))) });
                         }
                     }
-                    Err(error) => { self.fail(ctx, error); self.start_grace(); return Task::batch([self.check(ctx), self.grace_timer()]) }
+                    Err(error) => {
+                        self.fail(ctx, error);
+                        // The game never got to say what else runs in it (#68): the old file in its folder is the first suspect.
+                        if let Some(notice) = Notice::foreign_winmm_in(&ctx.settings) { self.tell(notice) }
+                        self.start_grace(); return Task::batch([self.check(ctx), self.grace_timer()])
+                    }
                 }
             }
             Message::Cancel => {
@@ -422,7 +428,7 @@ impl State {
                 let settings = ctx.settings.clone();
                 self.polling = true;
                 return job(move || Ok(Live { running: backend.game_running(), ready: backend.game_ready(),
-                    outside: backend.game_open_elsewhere(&settings), failure: backend.game_failure(), direct: backend.direct_problem() }), Message::Polled);
+                    outside: backend.game_open_elsewhere(&settings), failure: backend.game_failure(), direct: backend.direct_problem(), held: backend.take_held() }), Message::Polled);
             }
             Message::Polled(result) => {
                 self.polling = false;
@@ -441,11 +447,16 @@ impl State {
                 if ended {
                     self.game.closing = None;
                     self.waiting_since = None;
-                    if let Some(failure) = live.failure { self.fail(ctx, failure) }
+                    // Another program's file or provider stopped the start (#68): the window says so in its dialog.
+                    let held = live.held.map(|held| Task::done(Message::Foreign(held)));
+                    if let Some(failure) = live.failure {
+                        self.fail(ctx, failure);
+                        if !self.game.ready && let Some(notice) = Notice::foreign_winmm_in(&ctx.settings) { self.tell(notice) }
+                    }
                     // Your server waits a little, so a quick relaunch reuses it; the game folder may have changed
                     // while it ran (an update, an antivirus), so check again for the next Play.
                     self.start_grace();
-                    return Task::batch([self.check(ctx), self.grace_timer()]);
+                    return Task::batch([self.check(ctx), self.grace_timer()].into_iter().chain(held));
                 }
             }
             Message::Recheck => return self.check(ctx),
@@ -475,7 +486,7 @@ impl State {
             Message::Bell(open) => { self.bell_open = open; if open { self.unread = 0 } }
             Message::InboxDetails(i) => if let Some(n) = self.inbox.get_mut(i) { n.open = !n.open },
             Message::InboxDismiss(i) => if i < self.inbox.len() { self.inbox.remove(i); },
-            Message::SetUp | Message::Repair | Message::Restore | Message::Settings(_) | Message::Report(_) | Message::Help(_) | Message::Copy(_) => {}
+            Message::SetUp | Message::Repair | Message::Restore | Message::Foreign(_) | Message::Settings(_) | Message::Report(_) | Message::Help(_) | Message::Copy(_) => {}
         }
         Task::none()
     }
@@ -493,6 +504,14 @@ impl State {
     }
 
     fn start_grace(&mut self) { self.grace += 1 }
+
+    /// A good sentence on the main screen (Move it aside worked, #68).
+    pub fn good(&mut self, sentence: String) { self.notice = Some(Notice::good(sentence)) }
+
+    /// Plays again, on the same tab: the player's Continue anyway, or Move it aside (#68), once the dialog is closed.
+    pub fn play_again(&mut self, ctx: &mut Ctx) -> Task<Message> {
+        if self.allow_for.is_some() { self.update(Message::Multi(multi::Message::Play), ctx) } else { self.update(Message::Play, ctx) }
+    }
 
     fn grace_timer(&self) -> Task<Message> {
         let generation = self.grace;
@@ -809,6 +828,23 @@ mod tests {
             state.tell(Notice::foreign_winmm(file));
             assert_eq!(state.inbox.len(), 1, "repeated Play keeps one warning");
         }
+    }
+
+    /// Another program's file stopped the start (#68): the start simply ends here, with no error sentence of its own; the
+    /// window opens its dialog from the message. A start that failed for another reason keeps saying so.
+    #[test]
+    fn a_start_held_for_what_runs_in_the_game_ends_without_an_error_notice() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap(); // the grace timer
+        let _inside = runtime.enter();
+        let mut ctx = crate::app::Ctx { root: std::env::temp_dir(), backend: None, store: None, settings: Default::default() };
+        let live = |failure: Option<String>, held| Message::Polled(Ok(Live { running: false, ready: false, outside: false, failure, direct: None, held }));
+        let held = yo3_desktop::foreign::Held { findings: vec![], blocked: false };
+        let mut state = State { game: Game { running: true, ..game(Some(Readiness::Ready)) }, polling: true, ..State::default() };
+        let _ = state.update(live(None, Some(held)), &mut ctx);
+        assert!(!state.game.running && state.notice.is_none() && state.inbox.is_empty(), "the dialog speaks, not a notice");
+        let mut state = State { game: Game { running: true, ..game(Some(Readiness::Ready)) }, polling: true, ..State::default() };
+        let _ = state.update(live(Some("The game could not start.".into()), None), &mut ctx);
+        assert!(state.notice.is_some(), "any other failure is still said");
     }
 
     #[test]

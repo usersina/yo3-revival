@@ -9,6 +9,7 @@
 #include <string.h>
 #include "metadata.h"
 #include "game-image.h"
+#include "survey.h"
 
 __declspec(dllexport) const Yo3ModMetadata Yo3ModInfo __attribute__((section(".yo3"), used)) = {
     {'Y','O','3','M','O','D','0','2'}, YO3_MOD_ABI, YO3_BUILD_VERSION, YO3_BUILD_COMMIT
@@ -20,6 +21,7 @@ __declspec(dllexport) DWORD WINAPI Yo3ModReady(void *unused) {
     if (mod_ready && InterlockedCompareExchange(&reported_ready, 1, 0) == 0) {
         const char message[] = "[YO3 MOD] " YO3_BUILD_VERSION " interface ready; network hooks installed\r\n";
         DWORD written; WriteFile(GetStdHandle(STD_ERROR_HANDLE), message, sizeof message - 1, &written, NULL);
+        survey_run(); /* what else runs in the game (#68): outside DllMain, before the game does */
     }
     return mod_ready ? YO3_MOD_ABI : 0;
 }
@@ -191,6 +193,7 @@ BOOL WINAPI DllMain(HINSTANCE dll, DWORD reason, LPVOID reserved) {
     }
     InitializeCriticalSection(&guard);
     for (unsigned i = 0; i < 64; ++i) connections[i].socket = INVALID_SOCKET;
+    survey_self = dll; survey_scan_imports(); /* before our hooks: what is already redirected is not ours (#68) */
     /* Fail closed: the injector must terminate the suspended game if any import cannot be guarded. */
     if (!(hook("GetPrivateProfileStringA", (void *)hooked_string, (void **)&profile_string)
         && hook("GetPrivateProfileIntA", (void *)hooked_int, (void **)&profile_int)

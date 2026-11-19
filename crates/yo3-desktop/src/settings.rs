@@ -81,6 +81,9 @@ pub enum Message {
     CheckUpdates,
     UpdatesChecked(Result<updates::Decision, String>),
     Licences,
+    /// Put a file moved aside from the game folder back (#68).
+    PutBack(String),
+    PutBackDone(Result<Vec<String>, String>),
     /// Handled by the window: open a web page or a folder.
     Open(String),
     ToggleDetails,
@@ -110,6 +113,8 @@ pub struct State {
     update: Option<String>,
     /// The desktop shortcut is already there: its row offers to make it again (after an update moved the launcher).
     shortcut: bool,
+    /// The other programs' files YO3 Revival moved aside in the game folder (#68), by their original names.
+    moved: Vec<String>,
 }
 
 pub const LICENCES: &str = "YO3 Revival is free software under the MIT licence. Its rules engine is built on EDOPro's core and ProjectIgnis' \
@@ -120,7 +125,8 @@ The full licences come with YO3 Revival, in its notices folder.";
 impl State {
     pub fn new(ctx: &Ctx, section: Section) -> Self {
         Self { section, note: None, busy: None, direct: Direct::Unknown, prefix: ctx.settings.wine_prefix.clone(), wine: ctx.settings.wine_binary.clone(),
-            confirm_reset: false, confirm_game_reset: false, licences: false, update: None, shortcut: yo3_desktop::shortcut::exists() }
+            confirm_reset: false, confirm_game_reset: false, licences: false, update: None, shortcut: yo3_desktop::shortcut::exists(),
+            moved: yo3_desktop::foreign::moved_aside(std::path::Path::new(&ctx.settings.game_dir)) }
     }
 
     /// The first tasks: what direct start is like now.
@@ -297,6 +303,13 @@ impl State {
                 }
             }
             Message::Licences => self.licences = !self.licences,
+            Message::PutBack(name) => {
+                if playing { return Task::none() }
+                let game = std::path::PathBuf::from(&ctx.settings.game_dir);
+                return job(move || { yo3_desktop::foreign::put_back_allowed(&game, &name)?; Ok(yo3_desktop::foreign::moved_aside(&game)) }, Message::PutBackDone);
+            }
+            Message::PutBackDone(Ok(left)) => { self.moved = left; self.good("Put back: the file is in your game folder again, as before.") }
+            Message::PutBackDone(Err(error)) => if error.contains("declined") { self.note = Some(Note { good: false, sentence: yo3_desktop::foreign::DECLINED_PUT_BACK.into(), details: None, open: false }) } else { self.fail(ctx, &error) },
             Message::ToggleDetails => if let Some(note) = &mut self.note { note.open = !note.open },
             Message::Dismiss => self.note = None,
             Message::ChangeGame | Message::Account(_) | Message::Restore | Message::Open(_) | Message::Copy(_) | Message::Report(_) | Message::Close => {}
@@ -428,6 +441,14 @@ impl State {
             text("Your servers write more about what they do, for a problem report. From their next start.").size(14).color(color::INK_SOFT),
             row![pill("Export logs…", Some(Message::ExportLogs), Kind::Secondary, 150, 32), pill("Open logs folder", Some(Message::OpenLogs), Kind::Secondary, 170, 32)].spacing(10),
         ].spacing(8).into()))
+        .extend((!self.moved.is_empty()).then(|| {
+            let mut list = column![text("YO3 Revival renamed these files in your game folder, so Windows doesn't load them with the game. Put one back to undo it.").size(14).color(color::INK_SOFT)].spacing(8);
+            for name in &self.moved {
+                list = list.push(row![text(name.as_str()).size(15).color(color::INK).width(Fill),
+                    pill("Put back", Some(Message::PutBack(name.clone())), Kind::Secondary, 120, 32)].spacing(10).align_y(Center));
+            }
+            item("Files moved aside", list.into())
+        }))
         .push(item("Reset local game data", if self.confirm_game_reset {
             column![
                 text("Which data? The old data is kept in a backup folder either way.").size(14).font(BODY_BOLD).color(color::INK),

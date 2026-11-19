@@ -20,11 +20,19 @@ pub struct Ctx {
 pub enum Claim { Now(instance::Owner), AfterUpdate }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Dialog { Help, Report, Repair, ConfirmClose, Backups, Host, Support, WhatsNew, ConfirmRestart }
+pub enum Dialog { Help, Report, Repair, ConfirmClose, Backups, Host, Support, WhatsNew, ConfirmRestart, Foreign }
 
 /// Report a problem: what the player says happened, the error it is about, and how far it got.
 #[derive(Debug, Default)]
 pub struct Report { pub what: iced::widget::text_editor::Content, pub error: String, pub busy: bool, pub result: Option<Result<(), String>> }
+
+/// Another program's file or provider stopped a start (#68): what was found, and where the player is in answering it.
+#[derive(Debug)]
+pub struct Foreign { held: yo3_desktop::foreign::Held, /** Move it aside was pressed: the player is asked to confirm. */ confirm: bool, details: bool,
+    busy: bool, /** The sentence when moving a file failed, and its technical text (behind Details). */ problem: Option<String>, failure: Option<String> }
+
+#[derive(Clone, Debug)]
+pub enum ForeignMessage { Move, ConfirmMove, Back, Continue, Details, Moved(Result<Vec<String>, String>) }
 
 #[derive(Clone, Debug)]
 pub enum ReportMessage { Edit(iced::widget::text_editor::Action), Send, Sent(Result<(), String>) }
@@ -41,6 +49,7 @@ pub enum Message {
     /// The footer's heart: how to support the project.
     OpenSupport,
     Report(ReportMessage),
+    Foreign(ForeignMessage),
     Copy(String),
     Host(host::Message),
     CloseDialog,
@@ -72,6 +81,7 @@ pub struct App {
     settings: Option<settings::State>,
     help: help::State,
     report: Report,
+    foreign: Option<Foreign>,
     host: host::State,
     dialog: Option<Dialog>,
     updater: updates::flow::Updater,
@@ -116,7 +126,7 @@ impl App {
             listen_for_second_starts(&ctx.root, claim),
         ];
         if let Some(setup) = &mut setup { tasks.push(setup.start(&ctx).map(Message::Setup)) }
-        (Self { ctx, home, setup, settings: None, help: help::State::at(None), report: Report::default(), host: host::State::default(), dialog: None, updater, startup, quitting: false },
+        (Self { ctx, home, setup, settings: None, help: help::State::at(None), report: Report::default(), foreign: None, host: host::State::default(), dialog: None, updater, startup, quitting: false },
             Task::batch(tasks))
     }
 
@@ -136,6 +146,12 @@ impl App {
                 if self.host.hosted.is_some() { self.dialog = Some(Dialog::ConfirmRestart) } else { return self.update(Message::Restart) }
             }
             Message::Home(home::Message::Restore) => self.dialog = Some(Dialog::Backups),
+            Message::Home(home::Message::Foreign(held)) => {
+                if let Some(backend) = &self.ctx.backend { backend.diagnostics.line(&format!("Telling the player about {} finding(s) inside the game", held.findings.len())) }
+                self.foreign = Some(Foreign { held, confirm: false, details: false, busy: false, problem: None, failure: None });
+                self.dialog = Some(Dialog::Foreign);
+            }
+            Message::Foreign(message) => return self.foreign_update(message),
             Message::Home(home::Message::Settings(section)) => return self.update(Message::OpenSettings(section)),
             Message::Home(home::Message::Report(error)) => return self.update(Message::OpenReport(error)),
             Message::Home(home::Message::Help(topic)) => return self.update(Message::OpenHelp(Some(topic))),
@@ -327,6 +343,53 @@ impl App {
         Task::none()
     }
 
+    fn foreign_update(&mut self, message: ForeignMessage) -> Task<Message> {
+        let Some(foreign) = &mut self.foreign else { return Task::none() };
+        match message {
+            ForeignMessage::Move => { foreign.confirm = true; foreign.problem = None }
+            ForeignMessage::Back => { foreign.confirm = false; foreign.problem = None }
+            ForeignMessage::Details => foreign.details = !foreign.details,
+            ForeignMessage::ConfirmMove => {
+                if foreign.busy { return Task::none() }
+                foreign.busy = true; foreign.problem = None;
+                let (files, game) = (foreign.held.files(), PathBuf::from(&self.ctx.settings.game_dir));
+                return job(move || {
+                    let mut moved = Vec::new();
+                    for name in files {
+                        // A name a finding gave that isn't a plain plugin file in the game folder is skipped, not an error.
+                        if yo3_desktop::foreign::movable(&game, &name).is_err() { continue }
+                        yo3_desktop::foreign::move_aside_allowed(&game, &name)?;
+                        moved.push(name);
+                    }
+                    anyhow::ensure!(!moved.is_empty(), "No file in the game folder could be moved aside");
+                    Ok(moved)
+                }, |result| Message::Foreign(ForeignMessage::Moved(result)));
+            }
+            ForeignMessage::Moved(Ok(names)) => {
+                self.dialog = None; self.foreign = None;
+                if let Some(backend) = &self.ctx.backend { backend.diagnostics.line(&format!("Moved aside: {}", names.join(", "))) }
+                self.home.good(format!("Moved aside: {}. Press PLAY to start the game again. Settings, Advanced can put it back.", names.join(", ")));
+            }
+            ForeignMessage::Moved(Err(error)) => {
+                foreign.busy = false;
+                if let Some(backend) = &self.ctx.backend { backend.diagnostics.line(&error) }
+                // A declined permission question says what is still true and what to do; any other failure is one plain
+                // sentence, its technical text behind Details with the rest.
+                foreign.problem = Some(if error.contains("declined") { yo3_desktop::foreign::DECLINED.to_string() } else {
+                    let shown = crate::error_presentation::present(&error, crate::error_presentation::Hint::General, &masks(&self.ctx));
+                    foreign.failure = shown.diagnosis;
+                    shown.summary });
+            }
+            ForeignMessage::Continue => {
+                self.dialog = None; self.foreign = None;
+                let Some(backend) = self.ctx.backend.clone() else { return Task::none() };
+                backend.accept_foreign_once();
+                return self.home.play_again(&mut self.ctx).map(Message::Home);
+            }
+        }
+        Task::none()
+    }
+
     fn settings_update(&mut self, message: settings::Message) -> Task<Message> {
         match message {
             settings::Message::Close => { self.settings = None; Task::none() }
@@ -458,6 +521,7 @@ impl App {
             Dialog::Help => self.help.view().map(Message::Help),
             Dialog::Report => self.report_dialog(),
             Dialog::Host => self.host.view().map(Message::Host),
+            Dialog::Foreign => self.foreign_dialog(),
             Dialog::WhatsNew => self.whats_new(),
             Dialog::ConfirmRestart => short("Restart to install?", None, "You are hosting for friends: restarting stops your server. Start hosting again after the update.".into(),
                 row![pill("Cancel", Some(close), Kind::Secondary, 110, 38), pill("Restart", Some(Message::Restart), Kind::Primary, 120, 38)], 200.0),
@@ -489,6 +553,76 @@ impl App {
 }
 
 impl App {
+    /// Another program's file or provider stopped the start (#68): what it is in plain words, what to do about it, and
+    /// Continue anyway unless the game can't be kept safe with it there. The technical text is behind Details.
+    fn foreign_dialog(&self) -> Element<'_, Message> {
+        let Some(foreign) = &self.foreign else { return text("").into() };
+        let held = &foreign.held;
+        let (files, providers, security) = (held.files(), held.providers(), held.security());
+        let (taken, bad) = (held.taken_over(), held.known_bad());
+        let say = |words: String| text(words).size(15).color(color::INK);
+        let mut body = column![].spacing(10);
+        if foreign.confirm {
+            body = body.push(say(format!("Move {} aside? It is renamed so that Windows doesn't load it, not deleted. Settings, Advanced can put it back.", files.join(", "))));
+        } else {
+            if !taken.is_empty() {
+                body = body.push(say(format!("{} has taken over the game's network connection, so YO3 Revival can't keep the connection safe and won't start the game. \
+                    Close that program, or move its file away, then press PLAY again.", taken.join(", "))));
+            }
+            if !bad.is_empty() { body = body.push(say(format!("{} is known to break the game's connection. Move it away, then press PLAY again.", bad.join(", ")))) }
+            let others: Vec<&String> = files.iter().filter(|f| !taken.contains(f) && !bad.contains(f)).collect();
+            let loaded = held.loaded_files();
+            let (running, present): (Vec<&String>, Vec<&String>) = others.into_iter().partition(|f| loaded.contains(f));
+            let join = |list: &[&String]| list.iter().map(|n| n.as_str()).collect::<Vec<_>>().join(", ");
+            if !running.is_empty() {
+                body = body.push(say(format!("Another program put {} in your game folder: {}. Windows loaded {} into the game, and it can break the game's connection, \\
+                    for example by disconnecting you in the shop.", if running.len() == 1 { "a file" } else { "files" }, join(&running), if running.len() == 1 { "it" } else { "them" })));
+            }
+            if !present.is_empty() {
+                body = body.push(say(format!("Your game folder holds {}, which {} not part of the game: {}. The game didn't load {} this time, but other programs may, and a file like this can break the game's connection.",
+                    if present.len() == 1 { "a file" } else { "files" }, if present.len() == 1 { "is" } else { "are" }, join(&present), if present.len() == 1 { "it" } else { "them" })));
+            }
+            if !security.is_empty() {
+                let who = security.iter().filter(|p| !p.is_empty()).cloned().collect::<Vec<_>>();
+                body = body.push(say(format!("{} is attached to the game's network connection. If the game disconnects you, add an exception for your game folder in its settings, \
+                    or switch off its web protection while you play.", if who.is_empty() { "Security software".to_string() } else { who.join(", ") })));
+            }
+            if !providers.is_empty() {
+                body = body.push(say("Software on this PC (often an old VPN, ad blocker or security program) sits in Windows' network path for older programs like this game, \
+                    and can cut its connection. If you get disconnected, open the Command Prompt as administrator, run the line below, and restart your PC.".into()))
+                    .push(row![text(yo3_desktop::foreign::WINSOCK_RESET).size(15).font(iced::Font::MONOSPACE).color(color::NAVY),
+                        yo3_skin::link("Copy", Message::Copy(yo3_desktop::foreign::WINSOCK_RESET.into()), false)].spacing(14).align_y(Center));
+            }
+            if held.blocked && !files.is_empty() { body = body.push(say("Move it aside renames the file so Windows doesn't load it. You can undo that in Settings, Advanced.".into())) }
+        }
+        if let Some(sentence) = &foreign.problem { body = body.push(text(sentence.clone()).size(14).color(color::BAD)) }
+        let mut more = column![yo3_skin::link(if foreign.details { "Hide details" } else { "Details" }, Message::Foreign(ForeignMessage::Details), false)].spacing(6);
+        if foreign.details {
+            let all = match &foreign.failure { Some(failure) => format!("{}\n\n{failure}", held.details()), None => held.details() };
+            more = more.push(text(all.clone()).size(13).color(color::INK_SOFT)).push(yo3_skin::link("Copy", Message::Copy(all), false));
+        }
+        let idle = !foreign.busy;
+        let mut actions = row![Space::new().width(Fill)].spacing(10);
+        if foreign.confirm {
+            actions = actions.push(pill("Back", idle.then_some(Message::Foreign(ForeignMessage::Back)), Kind::Secondary, 110, 38))
+                .push(pill("Yes, move it", idle.then_some(Message::Foreign(ForeignMessage::ConfirmMove)), Kind::Primary, 150, 38));
+        } else {
+            actions = actions.push(pill("Cancel", Some(Message::CloseDialog), Kind::Secondary, 110, 38));
+            let movable = !files.is_empty();
+            if !held.blocked { actions = actions.push(pill("Continue anyway", Some(Message::Foreign(ForeignMessage::Continue)), if movable { Kind::Secondary } else { Kind::Primary }, 170, 38)) }
+            if movable { actions = actions.push(pill("Move it aside", Some(Message::Foreign(ForeignMessage::Move)), Kind::Primary, 150, 38)) }
+        }
+        // Only files the game didn't load: nothing is running inside the game, so the title says what was found.
+        let loaded = held.loaded_files();
+        let only_present = taken.is_empty() && security.is_empty() && providers.is_empty() && files.iter().all(|f| !loaded.contains(f));
+        let title = if held.blocked { "YO3 Revival can't start the game safely" }
+            else if only_present { "A file in your game folder isn't part of the game" }
+            else { "Another program is running in your game" };
+        yo3_skin::dialog(title,
+            Some(Message::OpenHelp(Some("foreign"))), Message::CloseDialog, 540.0, 430.0,
+            column![iced::widget::scrollable(column![body, more].spacing(12)).height(Fill), actions].spacing(12))
+    }
+
     /// What's new in the offered version: its changelog section, where its download is, and Restart to install.
     fn whats_new(&self) -> Element<'_, Message> {
         let Some(release) = self.updater.release() else {

@@ -81,7 +81,7 @@ PY
 play() {
   local out="$DIRECT_ROOT/replies.txt" notice="$DIRECT_ROOT/notice.txt"; rm -f "$out" "$notice"
   YO3_LOADER_NOTICE_FILE="$(winepath -w "$notice" 2>/dev/null)" WINEDLLOVERRIDES=winmm=n,b \
-    timeout 120 wine "$GAME/yo3.exe" direct "$(winepath -w "$out" 2>/dev/null)" >/dev/null
+    timeout 120 wine "$GAME/yo3.exe" direct "$(winepath -w "$out" 2>/dev/null)" >/dev/null 2>"$DIRECT_ROOT/stderr.txt"
   local got; got="$(python3 "$ROOT/tools/mod/direct_frames.py" replies "$out")"
   if [[ -f "$notice" ]]; then got+=$'\n'"notice: $(iconv -f UTF-16LE -t UTF-8 "$notice")"; fi
   local want; want="$(printf '%s\n' "$@")"
@@ -132,6 +132,24 @@ echo "PASS: $ROW (stopped by itself)"
 ROW='Singleplayer: your server fails to start'
 profile '{"with_key":true,"start":{"program":"C:\\no\\such\\yo3-server.exe"}}'
 play "${REFUSED[@]}"
+
+# The screen size (#16): the loader reads the profile's "resolution" before the game makes its window and installs the
+# same hooks as the connection DLL does for a game started by YO3 Revival. This fixture has no drawing code to scale, so
+# the install is refused (quietly: the game runs at its own size); a bad value says why; none says nothing.
+ROW='#16: the loader installs the saved screen size before the game runs (here refused: the fixture has nothing to scale)'
+profile '{"with_key":true,"resolution":"1440x1080","start":{"program":"C:\\no\\such\\yo3-server.exe"}}'
+play "${REFUSED[@]}"
+grep -q '\[YO3 LOADER\] resolution 1440x1080 not used: stage=mod-resolution: This game' "$DIRECT_ROOT/stderr.txt" || { echo "FAIL: $ROW: the loader did not try" >&2; exit 1; }
+profile '{"with_key":true,"resolution":"auto","start":{"program":"C:\\no\\such\\yo3-server.exe"}}'
+play "${REFUSED[@]}"
+grep -q '\[YO3 LOADER\] resolution auto not used' "$DIRECT_ROOT/stderr.txt" || { echo "FAIL: $ROW: auto was not tried" >&2; exit 1; }
+profile '{"with_key":true,"resolution":"banana","start":{"program":"C:\\no\\such\\yo3-server.exe"}}'
+play "${REFUSED[@]}"
+grep -q 'resolution banana not used: stage=mod-resolution: YO3_RESOLUTION must be' "$DIRECT_ROOT/stderr.txt" || { echo "FAIL: $ROW: a bad value was not refused" >&2; exit 1; }
+profile '{"with_key":true,"start":{"program":"C:\\no\\such\\yo3-server.exe"}}'
+play "${REFUSED[@]}"
+if grep -q 'YO3 LOADER' "$DIRECT_ROOT/stderr.txt"; then echo "FAIL: $ROW: the loader tried without a saved size" >&2; exit 1; fi
+echo "PASS: $ROW"
 
 start_server
 ROW='Singleplayer: the key in the Wine prefix'"'"'s credential store (key_vault), not in the profile'

@@ -81,6 +81,13 @@ pub async fn serve(request: Attachment, loaded: crate::Loaded, profile: &Path, p
     let files = ReadyFiles::prepare(&request.ready, &request.ack, request.pid, proxy.ports, &proxy.cookie, &proxy.server_id)?;
     wait_for_ack(&request.ack, &proxy.cookie, Duration::from_secs(30), || owner.alive()).await?;
     yo3_tunnel::diagnostics::event("Connection DLL acknowledged readiness; signing in");
+    // What else runs inside the game (#68): the DLL's report is beside the ready file. It is logged here; a game opened
+    // directly isn't held for it (there is no window of ours to tell the player in).
+    let survey = request.ready.with_extension("survey.json");
+    if let Some(report) = crate::survey::Survey::read(&survey) {
+        for finding in report.assessment().all() { yo3_tunnel::diagnostics::event(&format!("Survey: {}", crate::survey::describe(finding))) }
+    }
+    let _ = std::fs::remove_file(&survey);
     let crate::Loaded { endpoint, credential, vault, start } = loaded;
     // Held until this helper ends: your own server's standard input, so it stops 30 s after the game.
     let mut server = None;

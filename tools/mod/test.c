@@ -5,6 +5,7 @@
 #include <mmsystem.h>
 #include <shlobj.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
 
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "FAIL line %d: %s\n", __LINE__, #x); return 1; } } while (0)
@@ -24,6 +25,22 @@ static void helper_http(const char *request, char *reply, int capacity) {
     if (!plain_connect(s, (struct sockaddr *)&address, sizeof address) && plain_send(s, request, (int)strlen(request), 0) > 0)
         for (;;) { int n = recv(s, reply + got, capacity - 1 - got, 0); if (n <= 0) break; got += n; }
     reply[got] = 0; closesocket(s);
+}
+/* Points the import `function` of `dll` in this executable at `replacement`, as another program's hook would (#68). */
+static int patch_import(const char *dll, const char *function, void *replacement) {
+    BYTE *base = (BYTE *)GetModuleHandleA(NULL);
+    IMAGE_NT_HEADERS32 *nt = (IMAGE_NT_HEADERS32 *)(base + ((IMAGE_DOS_HEADER *)base)->e_lfanew);
+    IMAGE_IMPORT_DESCRIPTOR *imports = (IMAGE_IMPORT_DESCRIPTOR *)(base + nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
+    for (; imports->Name; ++imports) {
+        if (_stricmp((const char *)(base + imports->Name), dll)) continue;
+        IMAGE_THUNK_DATA32 *names = (IMAGE_THUNK_DATA32 *)(base + imports->OriginalFirstThunk), *iat = (IMAGE_THUNK_DATA32 *)(base + imports->FirstThunk);
+        for (; names->u1.AddressOfData; ++names, ++iat) {
+            if (IMAGE_SNAP_BY_ORDINAL32(names->u1.Ordinal) || strcmp((const char *)((IMAGE_IMPORT_BY_NAME *)(base + names->u1.AddressOfData))->Name, function)) continue;
+            DWORD old; if (!VirtualProtect(&iat->u1.Function, 4, PAGE_READWRITE, &old)) return 0;
+            iat->u1.Function = (DWORD)(uintptr_t)replacement; VirtualProtect(&iat->u1.Function, 4, old, &old); return 1;
+        }
+    }
+    return 0;
 }
 int main(int argc, char **argv) {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
@@ -146,6 +163,22 @@ int main(int argc, char **argv) {
         CHECK(LoadLibraryA(argv[1])==NULL);
         printf("PASS: %s prevents DLL readiness before login\n",argv[2]);
         ExitProcess(0); /* partial import hooks must never be used after a refused DLL load */
+    }
+    if(argc==3 && !strncmp(argv[2],"survey",6)) {
+        /* What else runs in the game (#68): another program's DLL beside the game, and, by mode, its redirect of the game's
+         * send import ("survey-hooked") or a jump at the start of Windows' closesocket ("survey-detour"). The DLL's report
+         * goes to YO3_SURVEY_FILE and the log; test-dll.sh reads them. */
+        HMODULE fixture = LoadLibraryA("yo3-survey-fixture.dll"); CHECK(fixture != NULL);
+        BYTE *stub = (BYTE *)GetProcAddress(fixture, "Yo3FixtureHook"); CHECK(stub != NULL);
+        if (!strcmp(argv[2], "survey-hooked")) CHECK(patch_import("WS2_32.dll", "send", stub));
+        if (!strcmp(argv[2], "survey-detour")) {
+            BYTE *start = (BYTE *)GetProcAddress(GetModuleHandleA("ws2_32.dll"), "closesocket"); DWORD previous, ignored;
+            CHECK(start && VirtualProtect(start, 5, PAGE_EXECUTE_READWRITE, &previous));
+            int32_t rel = (int32_t)(stub - (start + 5)); start[0] = 0xe9; memcpy(start + 1, &rel, 4); VirtualProtect(start, 5, previous, &ignored);
+        }
+        HMODULE mod = LoadLibraryA(argv[1]); CHECK(mod != NULL);
+        DWORD (WINAPI *ready)(void *) = (void *)GetProcAddress(mod, "Yo3ModReady"); CHECK(ready && ready(NULL) != 0);
+        printf("PASS: %s\n", argv[2]); return 0;
     }
     char directory[MAX_PATH], ini[MAX_PATH + 64], text[512];
     GetTempPathA(sizeof directory, directory);

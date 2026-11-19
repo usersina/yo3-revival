@@ -17,6 +17,7 @@ source=open('../../crates/yo3-tunnel/src/lib.rs').read()
 print('#define YO3_MOD_ABI '+re.search(r'pub const MOD_ABI: u16 = (\d+);',source)[1])
 PY
 "$CC" -O2 -Wall -Wextra -Werror -shared -Wl,--kill-at -o build/yo3-auth.dll auth.c -lws2_32 -lwininet
+"$CC" -O2 -Wall -Wextra -Werror -shared -Wl,--kill-at -o build/yo3-survey-fixture.dll survey-fixture.c -lws2_32
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-login-test.exe login-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-duel-snapshot-test.exe duel-snapshot-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-ui-state-test.exe ui-state-test.c
@@ -26,6 +27,7 @@ PY
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-web-links-test.exe web-links-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-card-search-test.exe card-search-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-signout-test.exe signout-test.c
+"$CC" -O2 -Wall -Wextra -Werror -o build/yo3-survey-test.exe survey-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-auth-test.exe test.c -lws2_32 -lwininet -lwinmm -lshell32
 # Link synthetic sites so the PE headers and callback relocation are valid on native Windows too.
 python3 - <<'PY'
@@ -47,4 +49,4 @@ i686-w64-mingw32-dlltool -d wsock32-ordinals.def -l build/wsock32-ordinals.a
 "$CC" -O2 -Wall -Wextra -Werror -municode -o build/yo3-auth-launch.exe launch.c -lshell32
 i686-w64-mingw32-dlltool -d missing-import.def -l build/missing-import.a
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-missing-import-test.exe missing-import.c build/missing-import.a
-"$CC" -O2 -Wall -Wextra -Werror -shared -Wl,--kill-at -o build/winmm.dll loader.c winmm-forward.c -ladvapi32 -lws2_32 -lwininet
+"$CC" -O2 -Wall -Wextra -Werror -shared -Wl,--kill-at -o build/winmm.dll loader.c winmm-forward.c -ladvapi32 -lws2_32 -lwininet -luser32

@@ -12,6 +12,7 @@ use yo3_server::api::{self, Op};
 pub mod network;
 pub mod privileged;
 pub mod direct;
+pub mod foreign;
 pub mod reports;
 pub mod system_info;
 pub mod bug_report;
@@ -267,6 +268,10 @@ pub struct Backend { pub root: PathBuf, pub runtime: Runtime, pub diagnostics: y
     server_owner: Mutex<Option<std::process::ChildStdin>>,
     /// Host for friends' server (#37) and the write end of its standard input (`--owned`), like your own server's.
     hosted: Mutex<Option<Child>>, hosted_owner: Mutex<Option<std::process::ChildStdin>>,
+    /// Another program's file or provider stopped the last start (#68), until the window has said so.
+    held: Mutex<Option<foreign::Held>>,
+    /// The player chose Continue anyway: the next start goes past what it found (#68).
+    accept_foreign: std::sync::atomic::AtomicBool,
     /// Where Singleplayer's account key is kept (#23): the system's credential store.
     vault: Arc<dyn multiplayer::Vault> }
 impl Backend {
@@ -276,7 +281,7 @@ impl Backend {
         yo3_tunnel::diagnostics::private_dir(&root.join("profiles"))?;
         std::fs::create_dir_all(root.join("logs"))?;
         let diagnostics = yo3_tunnel::diagnostics::Session::start(&root.join("logs/sessions"), "app", None)?;
-        Ok(Arc::new(Self { root, runtime: Runtime::discover()?, diagnostics, server_session: Mutex::new(None), game: Mutex::new(None), game_errors: Mutex::new(None), game_ready: Mutex::new(None), server: Mutex::new(None), server_owner: Mutex::new(None), hosted: Mutex::new(None), hosted_owner: Mutex::new(None), vault }))
+        Ok(Arc::new(Self { root, runtime: Runtime::discover()?, diagnostics, server_session: Mutex::new(None), game: Mutex::new(None), game_errors: Mutex::new(None), game_ready: Mutex::new(None), server: Mutex::new(None), server_owner: Mutex::new(None), hosted: Mutex::new(None), hosted_owner: Mutex::new(None), held: Mutex::new(None), accept_foreign: Default::default(), vault }))
     }
     /// The store Singleplayer's key is kept in.
     pub fn vault(&self) -> &dyn multiplayer::Vault { self.vault.as_ref() }
@@ -453,11 +458,27 @@ impl Backend {
         self.game.lock().unwrap().as_mut().is_some_and(|child| child.try_wait().ok().flatten().is_none())
     }
     pub fn game_ready(&self) -> bool { self.game_ready.lock().unwrap().as_ref().is_some_and(|p| std::fs::symlink_metadata(p).is_ok_and(|m| m.is_file() && !m.file_type().is_symlink() && m.len() <= 65536)) }
-    fn clear_game_ready(&self) { if let Some(path) = self.game_ready.lock().unwrap().take() { let _ = std::fs::remove_file(path); } }
+    fn clear_game_ready(&self) {
+        if let Some(path) = self.game_ready.lock().unwrap().take() { let _ = std::fs::remove_file(foreign::survey_file(&path)); let _ = std::fs::remove_file(path); }
+    }
+    /// The next start goes past another program's file or provider (the player's Continue anyway, #68).
+    pub fn accept_foreign_once(&self) { self.accept_foreign.store(true, std::sync::atomic::Ordering::SeqCst) }
+    /// Why the last start stopped before the game ran, if another program's file or provider (or a redirected network
+    /// function) was the reason (#68); said once.
+    pub fn take_held(&self) -> Option<foreign::Held> { self.held.lock().unwrap().take() }
     pub fn game_failure(&self) -> Option<String> {
         let mut game = self.game.lock().unwrap();
         let status = game.as_mut()?.try_wait().ok().flatten()?;
-        let ready=self.game_ready(); *game = None; self.clear_game_ready();
+        let ready=self.game_ready();
+        // What the helper found inside the game (#68): when that stopped the start, it is the whole story.
+        let held = self.game_ready.lock().unwrap().as_deref().and_then(|path| foreign::Held::read(&foreign::survey_file(path)));
+        *game = None; self.clear_game_ready();
+        if let Some(held) = held {
+            self.diagnostics.line(&format!("The game was not started: {} finding(s) inside the game{}", held.findings.len(), if held.blocked { " (blocked)" } else { "" }));
+            let _ = self.game_errors.lock().unwrap().take().map(|e| e.finish());
+            *self.held.lock().unwrap() = Some(held);
+            return None
+        }
         let detail=self.game_errors.lock().unwrap().take().map(|e|e.finish()).unwrap_or_default();
         (!status.success()).then(|| format!("{} ({status}).\n{detail}\nTry Play again; it rechecks the required files. If it still fails, export logs for help.",if ready{"The game stopped unexpectedly"}else{"The game could not start"}))
     }
@@ -627,7 +648,9 @@ impl Backend {
         ensure!(self.runtime.launcher.is_file() && self.runtime.dll.is_file() && self.runtime.injector.is_file(), "Connection files are missing. Extract the complete application bundle.");
         let ready = self.root.join("profiles").join(format!("game-ready-{}-{}.json", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos()));
         let mut cmd = self.launch_command(settings, &profile, &ready)?;
+        let _ = std::fs::remove_file(foreign::survey_file(&ready));
         let (child,errors)=process::spawn(&mut cmd,&self.diagnostics,"Game helper")?;
+        self.accept_foreign.store(false, std::sync::atomic::Ordering::SeqCst);
         *self.game_errors.lock().unwrap()=Some(errors);
         self.clear_game_ready(); *self.game_ready.lock().unwrap() = Some(ready);
         *game = Some(child);
@@ -644,6 +667,9 @@ impl Backend {
         cmd.arg("--diagnostics-dir").arg(self.root.join("logs/sessions")).arg("--diagnostic-parent").arg(self.diagnostics.id());
         cmd.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null());
         cmd.arg("--ready-file").arg(ready);
+        // What else runs inside the game (#68): the helper's report of it is read when a start stops.
+        cmd.arg("--survey-file").arg(foreign::survey_file(ready));
+        if self.accept_foreign.load(std::sync::atomic::Ordering::SeqCst) { cmd.arg("--accept-foreign"); }
         hide_console(&mut cmd);
         Ok(cmd)
     }
@@ -957,6 +983,39 @@ mod tests {
         *backend.game.lock().unwrap() = Some(failed);
         assert!(backend.game_failure().unwrap().contains("export logs"));
         assert!(backend.game_failure().is_none(), "report an unsuccessful launch only once");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    /// Another program's file stopped the start (#68): the helper exits with a failure and has written its decision into the
+    /// report; that is said as the dialog's findings, not as the game having failed, and once.
+    #[test]
+    #[cfg(unix)]
+    fn a_start_the_helper_held_for_another_programs_file_is_reported_as_findings_not_a_failure() {
+        let root = std::env::temp_dir().join(format!("yo3-held-start-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let backend = Backend::new(root.clone()).unwrap();
+        let ready = root.join("profiles/game-ready-1.json");
+        let survey = foreign::survey_file(&ready);
+        let report = yo3_launcher::survey::Survey { modules: vec![yo3_launcher::survey::Module { name: "dinput8.dll".into(), path: "C:\\g\\dinput8.dll".into(), game_folder: true, loaded: true, ..Default::default() }], ..Default::default() };
+        std::fs::write(&survey, serde_json::to_vec(&report).unwrap()).unwrap();
+        yo3_launcher::survey::record_decision(&survey, yo3_launcher::survey::Decision::Held).unwrap();
+        let mut helper = Command::new("sh").args(["-c", "exit 1"]).spawn().unwrap();
+        while helper.try_wait().unwrap().is_none() { std::thread::sleep(std::time::Duration::from_millis(5)); }
+        *backend.game.lock().unwrap() = Some(helper);
+        *backend.game_ready.lock().unwrap() = Some(ready);
+        assert_eq!(backend.game_failure(), None, "not a failed game: the dialog says what was found");
+        let held = backend.take_held().expect("what was found");
+        assert_eq!((held.blocked, held.files()), (false, vec!["dinput8.dll".to_string()]));
+        assert!(backend.take_held().is_none(), "said once");
+        assert!(!survey.exists(), "the helper's report goes with the start");
+        // A start that was not held reports its failure as before, and a game that went on leaves nothing to say.
+        let ready = root.join("profiles/game-ready-2.json");
+        std::fs::write(foreign::survey_file(&ready), serde_json::to_vec(&report).unwrap()).unwrap();
+        yo3_launcher::survey::record_decision(&foreign::survey_file(&ready), yo3_launcher::survey::Decision::Went).unwrap();
+        let mut played = Command::new("sh").args(["-c", "exit 3"]).spawn().unwrap();
+        while played.try_wait().unwrap().is_none() { std::thread::sleep(std::time::Duration::from_millis(5)); }
+        *backend.game.lock().unwrap() = Some(played);
+        *backend.game_ready.lock().unwrap() = Some(ready);
+        assert!(backend.game_failure().unwrap().contains("export logs") && backend.take_held().is_none());
         std::fs::remove_dir_all(root).unwrap();
     }
     mod component_fixture { include!(concat!(env!("CARGO_MANIFEST_DIR"), "/../yo3-launcher/tests/common/mod.rs")); }

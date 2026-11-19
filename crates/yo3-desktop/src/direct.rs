@@ -47,6 +47,11 @@ pub fn foreign_winmm(game: &Path) -> Option<PathBuf> {
     let ours = receipt.zip(regular(&file).ok()).is_some_and(|(receipt, bytes)| receipt.format == 1 && receipt.loader == hash(&bytes));
     (!ours).then_some(file)
 }
+/// The saved screen size for a game opened directly, when it isn't the game's own (`WIDTHxHEIGHT` or `auto`).
+fn direct_resolution(settings: &Settings) -> Option<String> {
+    let size = settings.resolution.parse::<yo3_launcher::resolution::Resolution>().ok()?;
+    (size != yo3_launcher::resolution::Resolution::Off).then(|| size.to_string())
+}
 /// Source is selected by the caller from the application's validated bundle, never from elevated command arguments.
 pub fn install_files(game: &Path, source: &Path) -> anyhow::Result<()> {
     let executable = hash(&regular(&game.join("yo3.exe"))?); let bytes = regular(source)?; let loader = hash(&bytes);
@@ -313,7 +318,7 @@ impl Backend {
         let file = self.root.join("profiles/direct.json");
         // Clear stale credentials first; a failed selection change must never reconnect to the previous account.
         if file.exists() { std::fs::remove_file(&file)?; }
-        let body = match target {
+        let mut body = match target {
             Target::SignedIn(server) => {
                 // No password and no token here: the token stays in the vault, under this entry.
                 ensure!(!server.key().is_empty(), "The server's identity is missing");
@@ -337,6 +342,8 @@ impl Backend {
                 body
             }
         };
+        // The screen size the game opened directly is drawn at (#16): the loader reads it before the game makes its window.
+        if let (Some(body), Some(size)) = (body.as_object_mut(), direct_resolution(settings)) { body.insert("resolution".into(), size.into()); }
         private_write(&file, body.to_string().as_bytes(), true)?;
         Ok(())
     }
@@ -454,6 +461,24 @@ mod tests {
         assert_eq!(backend.direct_helper().unwrap(), helper);
         std::fs::write(&helper, b"changed helper").unwrap();
         assert!(backend.direct_helper().is_err(), "direct start must reject mismatched helper code");
+        drop(backend); std::fs::remove_dir_all(root).unwrap();
+    }
+    /// The screen size reaches a game opened directly (#16): the profile names the size the last Play used, and only when it
+    /// isn't the game's own. The loader reads it before the game makes its window.
+    #[test]
+    fn the_direct_profile_carries_the_saved_screen_size_when_it_is_not_the_games_own() {
+        use super::*;
+        let root = std::env::temp_dir().join(format!("yo3-direct-resolution-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let backend = Backend::new(root.clone()).unwrap();
+        std::fs::create_dir_all(root.join("profiles")).unwrap();
+        let server = multiplayer::Server { name: "Beta".into(), address: "beta.example:7443".into(), server_name: "beta.example".into(),
+            identities: vec!["a".repeat(64)], official: true, description: String::new(), saved_user: Some("me".into()), last_used: 0 };
+        let read = |backend: &Backend| serde_json::from_slice::<serde_json::Value>(&std::fs::read(backend.root.join("profiles/direct.json")).unwrap()).unwrap();
+        for (saved, expected) in [("1440x1080", Some("1440x1080")), ("auto", Some("auto")), ("off", None), ("", None), ("banana", None)] {
+            backend.direct_profile(&Settings { resolution: saved.into(), ..Settings::default() }, Target::SignedIn(server.clone())).unwrap();
+            assert_eq!(read(&backend)["resolution"].as_str(), expected, "{saved:?}");
+        }
         drop(backend); std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
