@@ -41,6 +41,14 @@ tasks:
   check:dashboard:
     desc: The dashboard's API drift, format, lint, types, unit tests and build
     cmds: [python3 tools/check.py dashboard]
+  check:mod:
+    desc: "Local only: the connection DLL's Wine tests (private :78; YO3_WINEPREFIX=fresh private prefix for direct start)"
+    cmds: [python3 tools/check.py mod]
+  check:cards:
+    desc: The duel check's 240 self-played duels, then which card effects they exercised (tools/engine/coverage.py)
+    cmds:
+      - cargo nextest run -p yo3-server --test duel_check
+      - python3 tools/engine/coverage.py {{.CLI_ARGS}}
 
   # Builds
   build:dev:
@@ -83,6 +91,9 @@ tasks:
   client:
     desc: "The headless client on a private display: task client -- start | login 0 | ui | shot NAME | stop"
     cmds: ['tools/client/vclient.sh {{.CLI_ARGS}}']
+  client:scenario:
+    desc: "A scripted UI scenario on the running headless client: task client:scenario -- tools/client/scenarios/FILE.scn"
+    cmds: ['python3 tools/client/ui-scenario.py {{.CLI_ARGS}}']
   vm:
     desc: "The Windows VMs: task vm -- list | shot win7 FILE | click win7 X Y | run win7 -- ver (tools/vm/vm.py --help)"
     cmds: ['python3 tools/vm/vm.py {{.CLI_ARGS}}']

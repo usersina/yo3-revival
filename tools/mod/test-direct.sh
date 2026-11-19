@@ -91,12 +91,14 @@ play() {
   if compgen -G "$GAME/direct-*.json" >/dev/null; then echo "FAIL: $ROW: readiness was not cleaned up" >&2; exit 1; fi
   echo "PASS: $ROW"
 }
-account() { # account JSON: an account request (TLS operation 6) to the scratch server; prints the reply
-  python3 - "$PORT" "$DATA/server.crt" "$1" <<'PY'
+account() { # account JSON: an account request (TLS operation 6) to the scratch server; prints the reply. It names
+  # the helper's version as a launcher does: servers refuse launchers older than themselves (update_required).
+  python3 - "$PORT" "$DATA/server.crt" "$1" "$VERSION" <<'PY'
 import json,socket,ssl,struct,sys
 ctx=ssl.create_default_context(cafile=sys.argv[2])
+request=json.loads(sys.argv[3]); request.setdefault('launcher',sys.argv[4])
 with socket.create_connection(('127.0.0.1',int(sys.argv[1]))) as raw, ctx.wrap_socket(raw,server_hostname='localhost') as s:
-    body=sys.argv[3].encode(); s.sendall(b'YO3TLS02'+bytes([6])+struct.pack('>H',len(body))+body)
+    body=json.dumps(request).encode(); s.sendall(b'YO3TLS02'+bytes([6])+struct.pack('>H',len(body))+body)
     def take(n):
         out=b''
         while len(out)<n: out+=s.recv(n-len(out))

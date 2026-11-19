@@ -21,8 +21,15 @@ class Registry(unittest.TestCase):
         self.assertFalse(set(check.PY) & set(check.OTHER))
 
     def test_every_group_lists_its_steps(self):
-        for group in check.GROUPS:
+        for group in check.GROUPS + check.LOCAL_GROUPS:
             self.assertTrue(check.steps(group), group)
+
+    def test_local_groups_run_only_by_name(self):
+        self.assertFalse(set(check.GROUPS) & set(check.LOCAL_GROUPS))
+        self.assertNotIn('mod', [g for g, _ in check.plan(check.GROUPS)])
+        self.assertEqual({g for g, _ in check.plan(['mod'])}, {'mod'})
+        workflow = (ROOT / '.github/workflows/release.yml').read_text()
+        self.assertNotIn('check.py mod', workflow)
 
     def test_ci_runs_the_list_instead_of_copying_it(self):
         workflow = (ROOT / '.github/workflows/release.yml').read_text()

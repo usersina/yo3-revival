@@ -1,0 +1,44 @@
+# Issue #54: Edit Deck's Search Text ignores case (the connection DLL's card-search.h) and, as Konami's did, filters
+# the list shown, so Reset brings every card back. From the map, on a new key account's 498-card trunk (it holds
+# B. Skull Dragon, Dark Red Enchanter and Gaia the Dragon Champion).
+click 60 752                     # Main Menu
+sleep 1.5
+click 120 338                    # Edit Deck
+expect component DeckEditTest 20
+sleep 3
+click 1000 88                    # Reset: every card in the trunk (nothing to undo on a fresh editor)
+sleep 2
+
+# Lowercase finds the capitalised names.
+click 960 57                     # Search Text
+sleep 1.5
+click 700 98                     # the text box (it keeps the last search: clear it)
+key End BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace
+type dragon
+click 578 205                    # Card Search
+expect flash "B. Skull Dragon"
+expect flash "Gaia the Dragon Champion"
+shot card-search-dragon
+
+# A second search looks only inside the first one's results: "red" keeps B. Skull Dragon (its text names Red-Eyes),
+# not Dark Red Enchanter, which isn't a Dragon card.
+click 960 57
+sleep 1.5
+click 700 98
+key End BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace
+type red
+click 578 205
+expect flash "B. Skull Dragon"
+expect no-flash "Dark Red Enchanter"
+
+# Reset, then the same search finds both.
+click 1000 88                    # Reset: the whole trunk again, Tainted Wisdom first
+expect flash "Tainted Wisdom"
+click 960 57
+sleep 1.5
+click 700 98
+key End BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace BackSpace
+type red
+click 578 205
+expect flash "Dark Red Enchanter"
+shot card-search-red

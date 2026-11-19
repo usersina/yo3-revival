@@ -5,6 +5,7 @@
     tools/check.py py docs          some groups
     tools/check.py --list           the groups and their steps
     tools/check.py --fail-fast ...  stop at the first failure (default: run all, then report)
+    tools/check.py mod              local only: the connection DLL's Wine tests (not in CI; see LOCAL_GROUPS)
 
 A Python test under tools/ is either in PY (hermetic: CI runs it) or in OTHER with what it needs; test_check.py fails
 on one that is in neither, so a new test can't be forgotten.
@@ -24,6 +25,7 @@ PY = [
     'tools/mod/test_fixture_layout.py',
     'tools/mod/test_winmm_exports.py',
     'tools/client/test_vclient.py',
+    'tools/client/test_ui_scenario.py',
     'tools/monkey/test_duel_report.py',
     'tools/monkey/test_duel_replay.py',
     'tools/release/test_package_editions.py',
@@ -36,6 +38,7 @@ PY = [
     'tools/containers/test_dashboard_workflow.py',
     'tools/containers/test_local_cargo_cache.py',
     'tools/docs/test_docs_check.py',
+    'tools/engine/test_coverage.py',
     'tools/vm/test_vm.py',
     'tools/dev/test_scratch_server.py',
     'tools/test_check.py',
@@ -79,10 +82,19 @@ def steps(group):
         d = ROOT / 'dashboard'
         return [('browser', ['npx', 'playwright', 'install', 'chromium', '--only-shell'], d),
                 ('e2e', ['npm', 'run', 'test:e2e', '--', '--workers', '3'], d)]
+    if group == 'mod':
+        # Wine on a private display (:78 unless YO3_DISPLAY) and prefix; test-direct.sh needs YO3_WINEPREFIX set to a
+        # fresh private prefix, YO3_GAME_DIR when that prefix has no game, and the release builds it names.
+        return [('build', ['tools/mod/build.sh'], ROOT),
+                ('dll', ['tools/mod/test-dll.sh'], ROOT),
+                ('loader', ['tools/mod/test-loader.sh'], ROOT),
+                ('direct start', ['tools/mod/test-direct.sh'], ROOT)]
     raise KeyError(group)
 
 
 GROUPS = ['lint', 'py', 'docs', 'rust', 'dashboard', 'e2e']
+# Groups run only when named: they need Wine, a private display or the game, which CI's release job doesn't have.
+LOCAL_GROUPS = ['mod']
 # Groups that compile the engine crate, which needs EDOPro's sources first (as CI fetches them before Clippy).
 NEEDS_ENGINE = {'lint', 'rust'}
 ENGINE = ('engine sources', ['engine/fetch.sh'], ROOT)
@@ -128,16 +140,16 @@ def main(argv):
         return 0
     if '--list' in argv:
         last = None
-        for group, (name, command, cwd) in plan(GROUPS):
+        for group, (name, command, cwd) in plan(GROUPS + LOCAL_GROUPS):
             if group != last:
-                print(group)
+                print(group + ('  (local only: run by name)' if group in LOCAL_GROUPS else ''))
                 last = group
             where = '' if cwd == ROOT else f'  (in {cwd.relative_to(ROOT)})'
             print(f'  {name}: {" ".join(command[:6])}{" …" if len(command) > 6 else ""}{where}')
         return 0
-    unknown = [a for a in args if a not in GROUPS]
+    unknown = [a for a in args if a not in GROUPS + LOCAL_GROUPS]
     if unknown:
-        print(f'unknown group {", ".join(unknown)}; the groups are {", ".join(GROUPS)}', file=sys.stderr)
+        print(f'unknown group {", ".join(unknown)}; the groups are {", ".join(GROUPS + LOCAL_GROUPS)}', file=sys.stderr)
         return 2
     results = run(args or GROUPS, '--fail-fast' in argv)
     print('\nSummary')
