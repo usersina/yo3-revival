@@ -15,7 +15,26 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Duels can be given up (#57): click your own Deck pile, choose Surrender and answer Yes (from the fifth turn on, as the original game's text says). The other player wins, in NPC duels, Auto Duel and challenge duels; a host who turns Surrender off in Create Duel leaves it out.
+- The Extra Deck lights up only when you can summon from it (#16). To look through it at other times, click it and choose See Details.
+- Cards that target (a Spell aimed at a monster) now show the lock-on cursor on each target with the aiming marker until the effect resolves, and a shuffled Deck plays the shuffle animation, as the original game did (#52).
+- Hosts: the staff dashboard now asks every admin and moderator for an authenticator code (TOTP) after the password.
+  A staff account that has not set one up reaches only a setup screen with a QR code and ten one-time recovery codes.
+  Sensitive actions (roles, deletions, setup codes and keys, settings, backups, stopping the server) ask for a fresh code,
+  and "Sign out everywhere" and new recovery codes are under Settings. A lost phone is fixed on the server with
+  `yo3-server staff-mfa-reset USER`. Back up `data/staff-mfa.key` with your other secrets. While staff enroll, `--staff-mfa optional`
+  (`YO3_STAFF_MFA=optional` for Compose) keeps password-only sessions for accounts without an authenticator; remove it afterwards.
+  Public backup downloads stay off unless you start the server with `--dashboard-public-backups`. See [hosting](docs/hosting.md#staff-sign-in-with-an-authenticator) (#43).
+- PLAY checks for other programs running inside the game (#68). Another program's file in the game folder now opens a dialog with **Move it aside** (Settings → Advanced puts it back) or **Continue anyway**, with advice for a broken network setup or security software. A program that changes the game's own connection stops PLAY, since the game can't work with it.
+- Opening `yo3.exe` directly now uses the higher resolution your last PLAY used (#16).
 - Clicking the launcher's footer version opens Settings → About. The update notice still opens What's new.
+- Chat commands: the server now answers a few commands in your own chat window, nobody else's. Send them as a private message to **Server** (`/p Server banlist`; the game keeps `/p Server ` in the box) or start a chat line with `!`. [Playing guide](docs/playing.md#chat-commands).
+  - `banlist` shows the banlist your Auto Duel and computer duels use, and `banlist unlimited` (or `season 16`, any name or number from the list) chooses your own, so the Yugi, Jaden and Yusei decks no longer need editing for the host's list (#63). It applies the next time you log in, and Auto Duel only matches players on the same banlist. `banlist default` goes back to the host's.
+  - `draw5` (or `draw 7`, or `draw 5 part of a deck name`) draws random cards from your newest deck, to see what an opening hand could look like (#58).
+  - `where red-eyes` tells you where a card comes from: which booster packs, structure deck, Blister's Trade Card pool, the shop's Rental or starting deck holds it, or "no normal route" (#55).
+  - `report PLAYER reason` tells the host's staff about a player, without leaving the game; a few reports an hour (#44).
+- Hosts can set what the shop asks: a booster pack's and a structure deck's BP, the number of cards a Trade Card swap takes, and the Rental's cards, BP and days, as live settings (#16). The staff dashboard has a Reports page for the `report` command, and shows each account's banlist, which staff can change.
+- No player can be named "Server", the name the chat commands go to.
 - Searching cards in Edit Deck and at Blister's ignores upper and lower case: "red" finds Red-Eyes (#54). A search still looks inside the cards listed; Reset (the circular arrow) lists them all again.
 
 ## v0.1.3 (2026-11-18)

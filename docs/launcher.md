@@ -21,6 +21,7 @@ terminal. Both editions include the server, rules engine and required connection
   - [Application updates](#application-updates)
   - [Your data and upgrades](#your-data-and-upgrades)
   - [Reset local game data](#reset-local-game-data)
+  - [Other programs inside the game](#other-programs-inside-the-game)
   - [Troubleshooting](#troubleshooting)
   - [Windows 7](#windows-7)
   - [Getting the original game](#getting-the-original-game)
@@ -181,8 +182,12 @@ The game's own **Full** screen setting (title screen → **Options** → **Scree
 of your screen, the game centred with black bars beside it: on a 1920 × 1080 screen it is drawn at 1440 × 1080.
 Changing **Screen** there closes the game, as it always has; the mode applies the next time you play.
 
-The size applies at the next PLAY. Opening `yo3.exe` [directly](#open-the-game-directly) always uses the original
-size. If the higher resolution can't be used with your game files, the game doesn't start: choose **Original** to play.
+The size applies at the next PLAY. If the higher resolution can't be used with your game files, the game doesn't start:
+choose **Original** to play.
+
+**Unreleased:** opening `yo3.exe` [directly](#open-the-game-directly) draws the game at the size the last PLAY used (the
+loader sets it up before the game makes its window). Change the size in Settings, PLAY once, and the next direct start follows.
+A game this can't scale just opens at its own size.
 
 ### Banlist
 
@@ -191,7 +196,8 @@ and duels against the computer use it, and Edit Deck shows it as the **Latest Re
 default, the newest list the game has, as on the original server; choose **unlimited** for no banned or limited cards,
 or any of the game's other lists. **Create Duel** can still pick another list for one duel. The Yugi, Jaden and Yusei
 character decks hold cards Season 16 forbids or limits, so players edit them first. It changes while the game is
-closed and applies at your server's next start.
+closed and applies at your server's next start. On a server, each player can choose their own with `banlist` in the
+game's chat ([chat commands](playing.md#chat-commands)); the host's list is the one before they choose.
 
 ## Open the game directly
 
@@ -345,6 +351,33 @@ To restore, close the game and move newly created files aside first. For a full 
 folder back to the original location; for the settings reset, move `options.y3o` and `users/` back from the backup.
 Keep backups private: they can contain personal files and cached stock login details.
 
+## Other programs inside the game
+
+**Unreleased.** Each PLAY, before the game is released, the connection DLL looks at what else runs inside it: other programs'
+`.dll` and `.asi` files in the game folder, the programs Windows loaded into the game from outside its own folders, whether
+anything has redirected the game's network functions, and the 32-bit Winsock providers the game's connection goes through
+(the game is a 32-bit program; YO3 Revival's own helper never uses that list). Nothing on your PC is changed by looking, and
+overlays and drivers that only sit in the game are not reported to you (they are in the logs for a problem report).
+
+If something is found, a dialog says so in plain words, with the technical text behind **Details**:
+
+- **A file in the game folder** (a mod loader, a plugin, a `winmm.dll` that isn't YO3 Revival's): **Move it aside** renames it
+  to end in `.yo3-disabled`, after you confirm, so Windows no longer loads it. Nothing is deleted; Settings → Advanced →
+  **Files moved aside** lists each one with **Put back**. In a protected folder Windows may refuse the rename; move the
+  file out yourself then.
+- **A Winsock provider that isn't Microsoft's** (often from an old VPN, an ad blocker or security software): the dialog
+  gives the command `netsh winsock reset`, which you run in a Command Prompt opened as administrator, then restart the PC.
+  YO3 Revival never runs it or changes Windows' settings.
+- **Security software** attached to the game's network functions: add an exception for the game folder in its settings, or
+  switch off its web protection while you play. The product is named when YO3 Revival knows its files.
+- **Continue anyway** starts the game as it is.
+
+PLAY refuses to start the game in two cases only, with no Continue anyway: another program has *redirected* one of the game's
+network functions (it sits between the game and the connection YO3 Revival guards), or a file is known to break the game's
+connection (a list that ships empty). **Move it aside** is offered when the culprit is a file in the game folder.
+Everything else stays a warning. The same check runs for Scripts' `play` (it prints what it found and stops; `--accept-foreign`
+goes on past a warning). A game opened [directly](#open-the-game-directly) is not held: what was found goes in the logs.
+
 ## Troubleshooting
 
 Help in the footer has these topics too; an error's **Help** opens its own.
@@ -357,7 +390,9 @@ Help in the footer has these topics too; an error's **Help** opens its own.
 | Missing DirectX or VC90 runtime | Setup's checklist names it. Follow [original game runtime repair](guide.md#original-game-runtimes), then **Retry**. |
 | YO3 Revival needs repair / antivirus removed a file | Extract the complete matching Desktop archive again. For a verified false positive, allow the affected file or exclude only the extracted Desktop folder. [Exact files and recovery steps](antivirus.md). |
 | The game doesn't start, or stops | Read the notice; **Details** has the technical text. Close any other copy of the game, then PLAY again. If it repeats, **Report** beside the error. |
-| The game disconnects you in the shop or another screen, and the bell says another program's file runs inside the game | A `winmm.dll` from another mod, or from an older YO3 Revival, is in the game folder (the path is behind **Details**). Close the game, move that file out of the game folder, then **PLAY** again. |
+| The game disconnects you in the shop or another screen | Another program is running inside the game: a mod loader or plugin file in the game folder (a `winmm.dll` that isn't YO3 Revival's, a `dinput8.dll`, an `.asi` file), software in Windows' network path, or security software. **Unreleased:** PLAY now checks this each time and stops, with a dialog saying what it found ([below](#other-programs-inside-the-game)). Before that version the bell showed a notice for a foreign `winmm.dll`: close the game, move that file out of the game folder, then **PLAY** again. |
+| PLAY says "Another program is running in your game" | See [Other programs inside the game](#other-programs-inside-the-game): **Move it aside** for a file, `netsh winsock reset` for a network provider, an exception for security software, or **Continue anyway**. |
+| PLAY says "YO3 Revival can't start the game safely" | Another program has taken over the game's network connection (or a file known to break it is present). Close that program or move its file out of the game folder. There is no Continue anyway for this one. |
 | The game closes at once with `0xc0000139` or "waveInGetDevCapsW could not be located" | Update YO3 Revival, then PLAY. Versions up to v0.0.24 put a `winmm.dll` beside `yo3.exe` that Windows 10 version 1809 (LTSC 2019) couldn't use; PLAY replaces it with the current one. |
 | Another program is using the port | Close the other server (a Scripts server, another YO3 Revival), or for hosting use **Change port**. |
 | Friends can't connect to your hosted server | Friends elsewhere need your public address as the address to share and your router forwarding the port to this PC (look for Port forwarding in its settings). When Windows asks whether `yo3-server.exe` may use the network, allow it; if you clicked Cancel once, allow it in Windows Defender Firewall (**Allow an app through firewall**), again after each update. Some providers share one public address between homes (CGNAT): forwarding can't work then; ask for a public address, or use a VPN you both join. |

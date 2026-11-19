@@ -20,6 +20,22 @@ are also new and not signed with a code-signing certificate yet, so Windows does
 
 A warning is not proof that something is wrong, and not proof that it's fine either. Check the download first.
 
+### What you'll see on Windows 11
+
+Checked with v0.1.3 on Windows 11 with Microsoft Defender (signatures 1.463.368.0), downloaded through Edge from the
+release page (2026-11-19):
+
+1. **Downloading** the zip: no warning in Edge, and Defender didn't flag it.
+2. **Extract All**: about 15,000 small files (mostly the rules engine's card scripts), which Defender checks one by one,
+   so this took about 18 minutes on our test PC. Let it finish: a half-extracted folder won't start.
+3. **The first start** of `yo3-revival.exe`: SmartScreen says "Windows protected your PC" with only **Don't run**.
+   Choose **More info**; it shows "App: yo3-revival.exe, Publisher: Unknown publisher" and adds **Run anyway**. This
+   is because the files aren't signed yet ([why](#why-yo3-revival-gets-flagged)); check the download first.
+4. **PLAY**: no further warning. The helper, your own server and the rules engine start without SmartScreen,
+   Defender or firewall prompts, and the game opens.
+
+Other antivirus software may behave differently, and SmartScreen can change as it learns about a release.
+
 ## Which files and folders
 
 | Where                                                       | YO3 Revival's files                                                                                     |

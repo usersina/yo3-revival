@@ -33,6 +33,9 @@ In a duel, left-click a hand card for its default action; right-click it for the
 Use the phase buttons to enter the Battle Phase, Main Phase 2 or End Phase.
 To attack a monster, click your attacker, then click the monster to attack: an arc aims at the monster under the pointer.
 Right-click instead to take the attack back.
+To give a duel up, click your own Deck pile (it doesn't light up) and choose **Surrender**, then Yes. From the fifth turn
+on only; before it the game says so. A host can turn Surrender off in Create Duel. The Extra Deck lights up only when a
+summon from it is possible; click it anyway to look through it (**See Details**).
 
 **Main Menu → DUEL OPTIONS** sets how duels behave for you. With **Auto Card Placing** OFF you choose the zone for each
 monster, Spell and Trap you put on the field (a prompt, then a click on a free zone); ON, the game picks for you.
@@ -61,9 +64,12 @@ code from the host.
 
 ![Auto Duel in the duel menu](../screenshots/auto-duel.png)
 
-The chosen banlist applies to Create Duel. The host controls the banlist used for Auto Duel and computer duels:
-**Season 16** unless they chose another. The Yugi, Jaden and Yusei character decks hold cards Season 16 forbids or
-limits (Heavy Storm, Premature Burial...), so edit them before using them there; your starter deck is fine.
+The chosen banlist applies to Create Duel. The banlist used for Auto Duel and computer duels is the one you log in
+with: the host's (**Season 16** unless they chose another) until you pick your own with
+[`banlist` in the chat](#chat-commands). The Yugi, Jaden and Yusei character decks hold cards Season 16 forbids or
+limits (Heavy Storm, Premature Burial...), so either edit them or choose `unlimited` (or another list that allows
+them) and log in again; your starter deck is fine. Auto Duel only matches players on the same banlist, so nobody
+brings a deck the other's list forbids.
 
 ## Choose or edit a deck
 
@@ -110,6 +116,26 @@ alone gives 2300 ATK. With another Quillbolt Hedgehog still on the field it beco
 If a protected monster disappears, a slot appears empty but remains occupied, or a legal action fails, follow
 [duel bug reporting](launcher.md#logs-and-support). Include the card names and the exact steps.
 
+## Chat commands
+
+The server answers a few commands **only to you**, in your chat window, so they never reach the room. The game's own
+`/h` list has no place for them, and it refuses an unknown `/` command by itself, so send them as a **private message
+to the player "Server"**: type `/p Server COMMAND`. The game keeps `/p Server ` in the text box afterwards, so the next
+one is just the command. A line in a chat room that starts with `!` and a command's name works too (`!draw5`).
+Anything else, such as `!lol`, is ordinary chat.
+
+| Command | What it does |
+| --- | --- |
+| `help` | Lists these commands. Any word the server doesn't know does the same. |
+| `banlist` | Shows the banlist your Auto Duel and computer duels use, and the choices. |
+| `banlist NAME` | Chooses one, by name (`unlimited`, `season 16`, any case) or number. It is kept for your account and applies **at your next login**: log out of the game and in again. Select Deck's check and Auto Duel follow it. |
+| `banlist default` | Goes back to the host's banlist. |
+| `draw` or `draw5` | Draws 5 random cards from your newest deck (the one you last saved in Edit Deck or picked for a duel; the starter deck before that), to see what an opening hand could look like. `draw 7` draws 7 (up to 10); add part of a deck's name to use another: `draw 5 starter`. |
+| `where CARD` | Where a card comes from: which booster packs hold it, a structure deck, Blister's Trade Card, the shop's Rental, or a deck every player starts with. A part of the name is enough (`where red-eyes`); a few cards at most are listed, so be specific. The game's chat filter hides some words as stars (`red-eyes black` arrives as `red-eyes *****`): stars match anything, so `where red-eyes` and `where red-eyes *****` both work. "No normal route" means the shop and decks don't hold it. |
+| `report PLAYER reason` | Tells the host's staff about a player (cheating, abuse in chat). Use quotes for a name with spaces: `report "Joey Wheeler" spamming the chat`. The reported player is not told. You can send a few an hour. |
+
+![The chat commands in the game's chat window](../screenshots/chat-commands.png)
+
 ## Features and limitations
 
 The main playable features are:
@@ -117,10 +143,10 @@ The main playable features are:
 - **Duels:** NPC opponents, Auto Duel, Create Duel, Single and Match Mode, spectating, and the client's choice dialogs
   and animations.
 - **Cards and decks:** Edit Deck, official character decks, booster packs, structure decks, trading and rentals.
-- **Community:** chat rooms, whispers, player search, friends, D-Mail, teams and player-run knockout tournaments.
+- **Community:** chat rooms, whispers, [chat commands](#chat-commands), player search, friends, D-Mail, teams and player-run knockout tournaments.
 - **Customization:** avatar settings, card protectors and avatar items bought in the shop.
 
-Each account starts with **5000 BOOSTERPASS Points**. Packs cost 100 BP; duels earn 100 for a win, 50 for a draw and
+Each account starts with **5000 BOOSTERPASS Points**. Packs cost 100 BP (the host can set the shop's prices); duels earn 100 for a win, 50 for a draw and
 30 for a loss. An open game shows updated points on its next screen. The host can also issue codes,
 redeemed through **Main Menu → BOOSTERPASS**. Purchased cards stay on the server; a bought structure deck appears
 in Edit Deck's deck list.

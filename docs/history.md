@@ -52,6 +52,41 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
 
+## 2026-11-19 — Issue sweep: surrender, chat commands, foreign programs, staff MFA (#57, #52, #51, #63, #58, #55, #44, #68, #43, #38, #16)
+
+Built in four parallel tracks, merged, then checked together.
+
+- **Duels.** Surrender (#57) from the Deck pile's menu, from the fifth turn, with the original's texts. Natively on
+  Windows 11: "You may surrender starting from the 5th turn." on turn 2, then turn 6, Yes, LP 0, the loss counted.
+  The 19 undecided engine messages (#52) are shown or ignored with evidence; the Deck shuffle animation plays on
+  Windows 11. The per-Type attack effect (#51) is the client's damage/destroy effect, already driven by the data we
+  send; documented. The Extra Deck lights only when a summon from it is possible (#16).
+- **Chat commands.** The game refuses unknown `/` words itself, but `/p NAME` whispers reach the server, so the server
+  answers whispers to "Server": `banlist` (#63: per account, sent at the next login, Select Deck and Auto Duel
+  follow it; staff override on the dashboard), `draw5` (#58), `where` (#55), `report` (#44: stored, rate-limited,
+  handled on the dashboard's Reports page). Hosts set the shop's prices as live settings (#16). Live on the headless
+  client (merged build): `draw5`, `where Kuriboh`, `banlist`; after `banlist unlimited` and a re-login the login
+  carried `regulation_id` 3 and the official "Attack of the Ancients" deck reached the janken against Kaiba.
+- **Foreign programs (#68, slices 1–3).** The connection DLL lists foreign modules, already-hooked network functions
+  and Winsock providers; PLAY shows a dialog with Move it aside, Continue anyway, and stops only for a hijacked
+  connection. Windows 11 with a harmless test file in the protected game folder found two bugs, both fixed: the
+  summary claimed Windows starts a file the game never loaded, and Move it aside failed with a raw "os error 5". It
+  now asks for permission as direct start's Allow does; declining, permitting, and Put back were checked natively.
+  Slice 4 (a host's "clean game" setting) is a follow-up issue. `yo3.exe` opened directly uses the last PLAY's
+  resolution (#16).
+- **Staff MFA (#43).** TOTP with sealed seeds, recovery codes, step-up for sensitive actions, revocation, a local
+  reset command. The merged browser suite exhausted the test server's sign-in throttle (every spec signs in from one
+  address): the disposable dev server now allows larger bursts; production limits are unchanged.
+- **Windows download (#38).** v0.1.3 downloaded through Edge, extracted and started on Windows 11: no Edge or
+  Defender warning, SmartScreen's "Unknown publisher" with Run anyway, nothing more at PLAY (`docs/antivirus.md`).
+- **Checks.** `tools/check.py` reinstalls dashboard packages when `package-lock.json` changed since the last install
+  (a merge brought a new dependency the old `node_modules` lacked).
+
+Validation: every CI group (lint, py, docs, rust: 1,336 tests, dashboard, e2e and the MFA browser suite), the local
+`mod` group, the Docker image, runtime and stack tests on images built from the merge, the Wine checks above and the
+Windows 11 round. Not covered: MFA behind the real VPS nginx, and the final wording of the foreign-file dialog's title and Put back
+messages on Windows (unit-tested).
+
 ## 2026-11-19 — Card search ignores case; effect coverage and scenario tests (#54, #67)
 
 **#54.** The card search runs in the client, not the server: Edit Deck's Search Text and Blister's trade and rental

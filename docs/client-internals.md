@@ -14,6 +14,7 @@ export, see [AGENTS.md](https://github.com/usersina/yo3-revival/blob/main/AGENTS
     - [Skipping the stock login form](#skipping-the-stock-login-form)
     - [Automatic local deck initialization](#automatic-local-deck-initialization)
     - [Editor saves reach the server](#editor-saves-reach-the-server)
+    - [What else runs in the game (#68)](#what-else-runs-in-the-game-68)
     - [Native duel observer](#native-duel-observer)
     - [The patcher](#the-patcher)
   - [The field tracer](#the-field-tracer)
@@ -387,6 +388,46 @@ RentalRecord vtable entries in `.rdata`, after checking each still holds the gam
 
 Like the other wave hooks, the launcher's preflight (`inspect_game`) doesn't check these slots; the DLL does.
 
+### What else runs in the game (#68)
+
+Evidence for a player whose shop disconnected them (#65): the game's own connection was aborted on their PC (Windows
+error 10053) while the server and the helper's connection to it were fine, and a `winmm.dll` that wasn't ours sat in their
+game folder. Windows loads anything the game imports from its own folder before Windows' copy, and any module in the process
+can redirect the same network functions. The connection DLL therefore **looks, and changes nothing** (`tools/mod/survey.h`,
+decisions and outputs in `survey-logic.h`, tested without Windows by `survey-test.c`):
+
+- **Before it hooks anything** (`DllMain`, `survey_scan_imports`): for each import of `WSOCK32` (the game imports it by ordinal:
+  `connect` 4, `send` 19, `closesocket` 3, and the rest of 1 to 23, `yo3_wsock32_name`), `WS2_32`, and the three
+  functions the DLL redirects besides (`GetPrivateProfileStringA`/`IntA`, `InternetOpenUrlA`), where the game's import table
+  points. In a module of Windows' folder it is as Windows made it; in another module, or in no module at all, another
+  program has redirected it (`how: "import"`); in a Windows function whose first bytes jump (`E9`, `EB`, `FF 25`, the hot
+  patch's `8B FF`, push+ret, mov+jmp eax: `yo3_jump_target`) into such a module, it is a detour (`"detour"`). Our own
+  loader's redirects (a module exporting `Yo3LoaderInfo`) and this DLL's are not findings.
+- **From `Yo3ModReady`** (outside the loader lock, before the game runs; `survey_run`): the modules loaded from outside
+  Windows' folders with file size and SHA-256 (the DLL's own implementation: no CryptoAPI under the lock), the game folder's other
+  `.dll` and `.asi` files whether loaded or not, and the 32-bit Winsock providers (`WSAEnumProtocolsW` and
+  `WSCGetProviderPath` from this 32-bit process: the game goes through that catalog, the 64-bit helper never does).
+  A provider is Microsoft's when its DLL is one of Windows' own (`mswsock.dll`, `rsvpsp.dll`, …) or, with no path, by name.
+  Under Wine nothing is flagged (its own providers, and its `WSCGetProviderPath` answers with another text).
+- **Outputs.** One log line each, on the game's standard error, which the helper keeps in the game's session log and so in a
+  report (`[YO3 MOD] Survey: …`; the SHA-256 in groups of 16 with colons, because the log's credential filter hides 20 or more
+  letters and digits in a row; paths are masked at export like the rest), and, when the helper names `YO3_SURVEY_FILE`, a JSON
+  summary (`hooked`, `modules`, `providers`, `providers_known`).
+- **The launcher judges** (`yo3-launcher` `survey.rs`), after the DLL says it is ready and before the game is released:
+  an `import` redirect, or a SHA-256 on `KNOWN_BAD` (empty for now), **stops the start** with no way past; another
+  program's `.dll`/`.asi` in the game folder, a detour (a security product named when its DLL's name is known,
+  `yo3_security_product`) or a non-Microsoft provider **holds** it until the player chooses (`--accept-foreign`: Continue
+  anyway); an overlay's DLL and the like are in the report only. The helper writes its `decision` back into the survey file;
+  Desktop reads that when the helper ends, and shows its dialog (`foreign.rs`) instead of an error.
+- **Tests.** `test-dll.sh` runs the test executable in a folder of its own with a fixture DLL (`survey-fixture.c`) and an
+  `.asi` file beside it, then with the fixture's function patched into the executable's `send` import, then with a jump to it
+  written at the start of ws2_32's `closesocket`: the report must name each (module, size, SHA-256) and nothing for the clean run.
+  Not tested: a real non-Microsoft Winsock provider (Wine has none), security software.
+- **Direct start**: the loader sets `YO3_SURVEY_FILE` beside the helper's ready file (`direct-PID-NONCE.survey.json`); the
+  helper logs what it finds (`Survey: …`) after the DLL's acknowledgement and removes the file. Nothing stops or holds a game
+  opened directly: there is no window of ours to tell the player in. The DLL's own log lines go nowhere there (no console).
+- Not done: a host's "clean game" setting (the server's status naming what it refuses), the issue's slice 4.
+
 ### Native duel observer
 
 `tools/mod/duel-observer.h` installs two byte-guarded hooks for ver.1.153: the CALL at `0x514212`
@@ -584,7 +625,7 @@ back buffer are larger, the frame scaled to fit and centred, with black bars whe
   `ImmSetCompositionWindow`/`ImmSetCandidateWindow` place the IME in the real client area.
 - Every site above is checked byte for byte first; a different executable, or a value the DLL doesn't accept, stops
   startup with `stage=mod-resolution`. Direct start loads the DLL at the first `[Yo3]` INI read, after `0x40B370`
-  made the window, so there it logs that it isn't used and installs nothing.
+  made the window, so the DLL logs there that it isn't used (see below for what installs it instead).
 
 Live (2026-11-14, Wine with DXVK on a private 1920×1080 Xvfb display): `1440x1080` (Wine kept the window inside the
 screen at 1440×1060: frame 1413×1060, 13-pixel bars), `1600x900` (1200×900, 200-pixel bars), `auto` (1397×1048),
@@ -594,6 +635,15 @@ deck choice, janken and duel field (hand-card menus, Summon by click, the BP but
 drew and answered where they should. Flash shapes and text are drawn at the new size; bitmaps (card art,
 backgrounds) are scaled up from their files, and render-to-texture effects keep their texture's size. Not checked:
 native Windows, an IME, more than one monitor.
+
+**Opening `yo3.exe` directly (#16).** The loader (`winmm.dll`, which Windows loads before the game runs) installs the same
+hooks itself: `loader-start.h` `direct_resolution` reads `resolution` from the direct-start profile (`profiles/direct.json`,
+which each Play writes from Settings' screen size, `direct.rs` `direct_resolution`) and calls `resolution_install_from`,
+the function the DLL's `resolution_install` uses with `YO3_RESOLUTION`. A profile without one, a game whose bytes differ,
+or a configuration the loader can't read changes nothing: the game runs at its own size, and one line (`[YO3 LOADER]
+resolution … not used: …`, on a console only) says why. Later the DLL loads, finds `YO3_RESOLUTION` unset (direct start
+doesn't pass it) and leaves the hooks the loader installed. The size is the last Play's, not Settings' now: changing it
+needs a Play before opening `yo3.exe` alone.
 
 ## Data formats
 

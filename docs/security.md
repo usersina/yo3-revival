@@ -5,9 +5,30 @@ It looks at the server and the launcher as an attacker on the internet sees them
 them. The player-facing summary of what is kept is the [rules and privacy page](rules-privacy.md).
 
 Deployment update (2026-11-17, v0.1.0): public Compose/nginx testing now uses staff passwords, exact origin/host,
-CSRF and socket-only proxy authority; MFA is explicitly deferred. Host-token management stays local and public backup
+CSRF and socket-only proxy authority. Host-token management stays local and public backup
 downloads are disabled. [Deployment boundaries](dashboard.md#separate-authority-and-listeners). The historical review
 below is not a completed review of the new local Ansible setup/release image workflow or a real VPS deployment.
+
+Staff MFA (#43, unreleased): the dashboard requires password plus an authenticator code (TOTP) for every staff
+account. Seeds are sealed at rest with `data/staff-mfa.key`, codes work once per 30-second step, recovery codes are hashed
+and single-use, every attempt is throttled, sensitive operations need a check in the last five minutes, sessions end on
+password recovery, MFA reset and sign-out everywhere, and recovery is a local command the staff router cannot reach.
+Public backup downloads need `--dashboard-public-backups` and then an admin, a recent check and an audit row. Details,
+the policy setting and the residual risks: [Staff MFA and recovery](dashboard.md#staff-mfa-and-recovery). Not yet
+reviewed against the real VPS behind nginx.
+
+**Residual risks of the staff second factor**
+
+- An attacker who knows a staff password before the account enrolls can enroll their own authenticator (enrollment is
+  reached with the password). Mitigation: enroll new staff immediately; every enrollment is audited
+  (`staff-mfa-enrolled`); the real owner is then locked out visibly and the host runs `staff-mfa-reset` and changes
+  the password.
+- The `optional` transition policy re-allows password-only staff sessions; do not leave it on a public host.
+- TOTP is phishable by a live relay of password and code. The five-minute step-up, the origin/CSRF checks and the audit
+  log limit what a stolen session does; hardware keys are not supported.
+- A lost `data/staff-mfa.key` locks every enrolled staff account out until the host resets them locally.
+- The loopback HTML panel (SSH tunnel only) asks for the code when an account has one, but accepts a password-only
+  sign-in from an account that has not enrolled, as it did before.
 
 **Contents**
 

@@ -47,9 +47,10 @@ Implementation plan agreed on 2026-11-16. For deployment and HTTPS, see [Docker 
 - Overview includes actual engine/memory metrics, backup health, online-player links and recent problems. Memory
   bytes are decimal strings; missing and unreadable backup storage are distinct states. Account lists project the
   same effective standing/mute badges as details, with filters and numeric account-detail links.
-- The user approved public HTTPS/password sign-in for VPS testing before MFA. Compose/nginx and HTTPS setup are
-  implemented; staff MFA/recovery and the real VPS deployment/soak remain. The old private HTML panel remains
-  available during the security transition.
+- Staff sign in with password and an authenticator code (TOTP); see [Staff MFA and recovery](#staff-mfa-and-recovery).
+  The public HTTPS/password-only testing that the user approved before MFA ends with this change: an account with no
+  authenticator gets a session that can only enroll. Compose/nginx and HTTPS setup are implemented; the real VPS
+  deployment/soak remain. The old private HTML panel remains available on loopback, and asks for the code too.
 
 ## Staff interface
 
@@ -87,6 +88,11 @@ deletion stays at the bottom. Short action dialogs keep the account underneath; 
 to that page. Successful balance and profile changes refresh the visible data. Uncertain requests retain their
 original retry ID, including after reload, and permissions still govern every action.
 
+**Reports** (`/reports`) lists the players' reports from the game's chat command, Open first, with a status filter. Each
+row links both players to their account pages; **Handle** and **Dismiss** open a dialog with an optional note. On an
+account page, **Banlist** shows the list the account logs in with (its own choice with `/banlist`, or the server's) and
+lets staff choose another or go back to the server's; it applies at the player's next login. `dashboard/e2e/reports.spec.ts` checks both.
+
 **Give a gift → Cards** searches the host's catalogue and lists each artwork separately, with keyboard-selectable
 rows and original 50×72 thumbnails. A separate **Preview** button opens the original 200×290 card and readable
 2010–2012 game text without selecting or giving anything. Escape returns to the selected gift and copy count.
@@ -108,7 +114,7 @@ cards only when opened; the catalogue query remains fresh in memory for one minu
 server is stopped, then restart: the new file timestamp/size yields new URLs, so no browser-cache clearing is needed.
 This API, generated client and nginx allowlist change ship together in a full server release.
 
-All 29 documented staff operations are available to the dashboard (image elements use the generated catalogue URLs).
+All 33 documented staff operations are available to the dashboard (image elements use the generated catalogue URLs).
 Account pages use the released API without
 changing its schema or generated client. Their new nginx route requires a full release; the independent UI gate
 must not deliver it against an older nginx configuration. Responsive and accessibility checks are in
@@ -326,8 +332,14 @@ Connected routes in this slice:
 | Method | Path | Result |
 | --- | --- | --- |
 | GET | `/panel/api/v1/session` | Staff identity, CSRF token and RFC 3339 idle expiry |
-| POST | `/panel/api/v1/sign-in` | Staff session and HttpOnly cookie; shared sign-in throttle |
+| POST | `/panel/api/v1/sign-in` | Password step. An account with an authenticator gets `code_required` and a challenge (no cookie); one without gets a session limited to enrollment (or a normal one under the `optional` transition policy). Shared sign-in throttle |
+| POST | `/panel/api/v1/sign-in/code` | Challenge + authenticator or recovery code: the staff session and HttpOnly cookie |
 | POST | `/panel/api/v1/sign-out` | End the current staff cookie |
+| POST | `/panel/api/v1/sign-out-everywhere` | End every staff session of this account, this one too |
+| POST | `/panel/api/v1/mfa/enrollment` | A fresh authenticator seed (shown once, pending): secret, `otpauth://` link for the QR code |
+| POST | `/panel/api/v1/mfa/enrollment/confirm` | A valid code from the pending seed activates it; 10 recovery codes, shown once; other sessions end |
+| POST | `/panel/api/v1/mfa/step-up` | A code (or recovery code) starts a five-minute window for sensitive operations |
+| POST | `/panel/api/v1/mfa/recovery-codes` | Replace all recovery codes (needs the recent check) |
 | GET | `/panel/api/v1/audit` | Staff history, bounded keyset pagination, string IDs and server-side search |
 | GET | `/panel/api/v1/logs` | Staff captured logs, bounded count, problem filter and checked time |
 | GET | `/panel/api/v1/server` | Live checked version, run identity, counts and health |
@@ -341,14 +353,18 @@ Connected routes in this slice:
 | GET | `/panel/api/v1/bp-codes` | Staff-visible codes, rewards, limits and claims, with RFC 3339 times where known |
 | POST | `/panel/api/v1/bp-codes` | Admin-only creation; omit `code` to generate one, `uses` for unlimited accounts |
 | POST | `/panel/api/v1/bp-codes/remove` | Admin-only removal by code; previously credited BP stays with players |
+| GET | `/panel/api/v1/reports` | Staff-visible player reports (`status` open, handled or dismissed; `limit`), newest first, with both players' account numbers and the open count |
+| POST | `/panel/api/v1/reports/handle` | Admin/moderator: `handled` or `dismissed` with an optional note; audited; the same change again answers as done, another on a closed report is a conflict |
+| GET | `/panel/api/v1/banlists` | The game's banlists and the server's default (`login-regulation`) |
+| POST | `/panel/api/v1/accounts/banlist` | Admin/moderator: the banlist an account logs in with from its next login, or `null` for the server's; audited |
 | GET | `/panel/api/v1/invites` | Staff-visible invites, remaining uses, expiry, issuer, claims and checked status |
 | POST | `/panel/api/v1/invites` | Admin/moderator creation; omit `uses` for unlimited sign-ups, `days` for no expiry |
 
 TCP requests check the loopback peer and local Host; Unix proxy requests check the configured Host and one forwarded hop. Posts also require same-origin evidence, and authenticated posts
 require the CSRF header. Host-token, restore and credential-export operations are absent from the staff router. The
 existing HTML panel remains on the local management listener, sharing sessions and the sign-in throttle.
-Password/recovery changes invalidate its cookies as well as JSON API cookies. Full sign-out-everywhere/MFA revocation
-remains part of the public gate. The management listener does not mount the staff API or its schema; the dashboard
+Password/recovery changes, MFA enrollment and reset, bans, restrictions, role changes and sign-out everywhere invalidate
+its cookies as well as JSON API cookies. The management listener does not mount the staff API or its schema; the dashboard
 listener never falls through to host-token operations, the HTML panel, raw host backup routes, health details or game assets.
 
 For a disposable local server and the connected page, see [local development](#local-development).
@@ -389,13 +405,16 @@ From `dashboard/`, `npm run api:generate` regenerates Rust's spec and the fronte
 drift without writing. From the root, `cargo nextest run -p yo3-server --test dashboard_contract` checks the schema
 and the actual API without Node. Frontend gates are `npm run format:check`, `npm run lint`, `npm run typecheck`,
 `npm test`, `npm run build` and `npm run test:e2e` (install Chromium once with
-`npx playwright install chromium --only-shell`). Browser tests use private ports 5174 and 18181 and disposable state.
+`npx playwright install chromium --only-shell`). Browser tests use private ports 5174 and 18181 and disposable state. The second-factor browser checks (`dashboard/e2e-mfa`,
+`npm run test:e2e:mfa`) run the real default policy on ports 17843 and 18381 with the cheap test password hash; the main
+browser checks run the dev server's `optional` policy so their password-only sign-ins stay valid.
 
 ## Separate authority and listeners
 
 The public Compose option supersedes D7's tunnel-only product decision for the React dashboard. On 2026-11-17 the
-user explicitly approved public VPS testing before MFA. Password authentication, exact origin, CSRF, live staff
-permissions and throttling apply now; MFA/recovery remain unfinished (#43). The old HTML panel stays private.
+user explicitly approved public VPS testing before MFA; since #43 every staff account needs an authenticator.
+Password authentication, the authenticator, exact origin, CSRF, live staff permissions and throttling all apply. The old
+HTML panel stays private.
 
 | Listener | Access and authority |
 | --- | --- |
@@ -408,12 +427,88 @@ Restore remains an offline CLI command with the server stopped and the data fold
 routes are absent from the dashboard router and nginx's allowlist. Test this on the dashboard listener with a real
 host token and a loopback peer. Source address alone never grants local authority.
 
+## Staff MFA and recovery
+
+Implemented for #43. The code is `staff_mfa.rs` (TOTP, sealing, throttling), `panel.rs` (sessions, challenges) and
+`dashboard.rs` (routes); the React screens are `dashboard/src/ConnectedMfa.tsx`.
+
+**Sign-in.** Password first (the existing throttle), then, for an account with an authenticator, a six-digit code or a
+recovery code. The password step issues no cookie: it returns a five-minute challenge held in server memory, bound to
+the account's credential state (a password, role, standing or MFA change since cancels it). Five wrong codes (the doubling
+wait usually stops them earlier) end the challenge. The session cookie is the same `HttpOnly; Secure; SameSite=Strict;
+Path=/panel` cookie as before, and the CSRF, origin and `Idempotency-Key` checks apply to the code step too.
+
+**Policy (`--staff-mfa`, `staff_mfa` in `server.toml`, `YO3_STAFF_MFA` in Compose).**
+
+| Policy | Account with an authenticator | Account without one |
+| --- | --- | --- |
+| `required` (default) | password + code | a 20-minute session that can enroll, sign out and nothing else: every other route answers `mfa_enrollment_required` |
+| `optional` (transition only) | password + code, always | a normal password-only session; sensitive operations are not step-up gated for it |
+
+Use `optional` only while staff enroll, then remove it: a password-only session is what MFA exists to prevent. The
+default is the safe one, so a server that never sets it requires MFA.
+
+**Enrollment.** The dashboard shows a QR code (drawn in the browser from the `otpauth://` link, as inline SVG: no image
+service, no external request) and the key for typing it in. The seed is 160 random bits, created by the server and kept
+**sealed** (AES-256-GCM, authenticated with the account) in the account's login. It stays *pending*: no code works until
+a valid code from it confirms it. Confirming activates it, makes 10 recovery codes and ends the account's other
+sessions (the one that enrolled carries on). The enrollment-only session is the only unauthenticated-by-MFA path to
+becoming enrolled, so an attacker holding a staff password could enroll first; the host should enroll new staff promptly
+after `set-role`, and an unexpected `staff-mfa-enrolled` row in the audit log means `staff-mfa-reset` and a new password.
+Re-enrolling an active authenticator needs the recent check.
+
+**The key.** `data/staff-mfa.key`: 32 random bytes in hex, created on first use, readable by the host's user only (0600).
+It is not in `server.db` or its backups, so a stolen backup does not reveal a seed. Back it up with the other secrets
+(`server.key`). A key that is missing or changed makes every seed unreadable: the dashboard says the authenticator could
+not be checked, and the host runs `staff-mfa-reset` for each account, who then enroll again. *Why not derive it from
+`server.key`?* The TLS key may be rotated or supplied from elsewhere (`--auth-key`); an independent key keeps seeds
+readable through that.
+
+**Codes.** RFC 6238: HMAC-SHA1, 6 digits, 30-second steps (what every authenticator app does), computed with `ring`'s
+HMAC (no extra crate) and checked against the RFC's test vectors. The step before and after the current one are accepted
+for clock skew. **Replay:** a code is accepted for a step newer than the last accepted step of that account, so each step
+works once. **Recovery codes** are 16 characters (80 bits, `ABCD-EFGH-JKLM-NPQR`, typed in any case), shown once at
+enrollment and when regenerated, and kept only as SHA-256 digests; each works once, and regenerating replaces them all.
+Using one is audited (`staff-recovery-code-used`).
+
+**Throttling.** Every code attempt (sign-in, enrollment, step-up, recovery) takes from the address's bucket and then waits
+the account's doubling backoff after a wrong code (1 s, up to the `max-backoff` setting; a success resets it): the same
+`Throttle` as password sign-in, in its own state. nginx adds an outer `limit_req` on the password, code, enrollment and
+step-up routes. A wrong code answers `invalid_code` (403) and a wait `rate_limited` (429, `Retry-After`).
+
+**Recent MFA (step-up).** Signing in with a code, or `/mfa/step-up`, starts a five-minute window in that session. These
+operations need it, and answer `reauthentication_required` (the dashboard opens a "Confirm it is you" dialog) without it:
+
+- changing an account's role
+- deleting an account
+- issuing a password-account setup/reset code, and creating or revealing a key account
+- changing any live setting, news or maintenance
+- creating or downloading a backup (the download keeps its older rule too: a sign-in within five minutes for password-only
+  `optional` accounts)
+- stopping the server
+- replacing the authenticator and regenerating recovery codes
+
+Moderation, gifts, BP, invites and reads are not gated.
+
+**Revocation.** Staff cookies are bound to the account's `staff_epoch` and credential, which move on a password change or
+recovery, an MFA enrollment or reset, a role change, a ban or restriction, and **Settings → Two-step sign-in → Sign out
+everywhere** (`/sign-out-everywhere`). Every request rechecks that the account is still staff and in good standing.
+Sessions opened by the loopback HTML panel's form are not honoured by the staff API, and an enrollment-only session is
+not honoured by the HTML panel; the HTML panel's form asks for the code too when the account has an authenticator.
+
+**Local recovery.** `yo3-server staff-mfa-reset USER` (or `Op::StaffMfaReset` on the local management API with the host
+token) removes the account's authenticator and recovery codes and ends its staff sessions; it is audited as
+`staff-mfa-reset` by the host. It is not a route of the staff router or of nginx, and no staff role may run it, so
+recovery never depends on the public side. Use it for a lost phone with no recovery codes; the person signs in with their
+password and enrolls again. A forgotten *password* is the usual `reset-code`.
+
 ## Public security requirements
 
-- Pending: staff MFA before usable dashboard sessions in the final hardened deployment. Include enrollment, protected TOTP seeds, replay checks, throttling,
-  hashed single-use recovery codes and local administrative recovery. Require recent MFA for sensitive actions.
-- Explicit staff-session revocation after password recovery, MFA reset and sign-out everywhere; live role/standing
-  checks. Test existing panel cookies, not only game sessions. Keep passwords, factors and recovery codes out of logs.
+- Implemented (#43): staff MFA before a usable dashboard session; see [Staff MFA and recovery](#staff-mfa-and-recovery).
+  Keep passwords, seeds, codes and recovery codes out of logs (none is logged).
+- Implemented: explicit staff-session revocation after password recovery, MFA enrollment and reset, bans and
+  restrictions, role changes and sign-out everywhere; live role/standing checks on every request. Existing panel cookies
+  are covered, not only game sessions.
 - Implemented: configured public host/origin and a mounted Unix socket held by the nginx container. nginx overwrites `X-Forwarded-For` with `$remote_addr`,
   sets Host and `X-Forwarded-Proto` explicitly, and clears incoming `Forwarded`. No client-supplied forwarding chain
   is accepted. Rust trusts only that single proxy hop. Rust throttles remain authoritative for sign-in, MFA and
@@ -424,9 +519,10 @@ host token and a loopback peer. Source address alone never grants local authorit
   nginx location with `always`; do not rely on inherited `add_header` directives surviving a location override.
 - Explicit allowed API prefixes and a default 404, plus normal static dashboard routes. No proxy catch-all. Verify
   forged Host and forwarding headers through the real nginx configuration, not only a Rust request fixture.
-- Keep public backup downloads disabled by default. If enabled: admin permission, recent MFA and auditing. Never
-  expose offline restore or the host token. Review session, CSRF, proxy, brute-force and MFA recovery boundaries before
-  publishing a port.
+- Implemented: public backup downloads are disabled by default (nginx answers 404, and the socket router refuses them
+  too). The host can enable them with `--dashboard-public-backups`; they then need an admin, an authenticator check in the
+  last five minutes (even under the `optional` policy) and an audit row. Never expose offline restore or the host token.
+  Review session, CSRF, proxy, brute-force and MFA recovery boundaries before publishing a port (still open: the real VPS).
 
 ## Packaging and later work
 

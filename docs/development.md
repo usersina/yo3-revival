@@ -277,7 +277,7 @@ logs. The viewer hides verbose payloads until searched; exports include them by 
 omits payload traces and player activity and masks common personal paths/addresses without changing local evidence.
 
 **Engine messages the client doesn't see.** `ENGINE_MESSAGES` in `crates/yo3-server/src/translate/mod.rs` lists every
-message type the rules engine sends, as shown, asked (a prompt), ignored with a reason, or undecided (#52). The test
+message type the rules engine sends, as shown, asked (a prompt), ignored with a reason, or undecided (none are today, #52). The test
 `every_engine_message_type_is_accounted_for` fails when the engine decodes a type the list doesn't have, and a duel logs
 `engine message N (NAME) is not shown to the player` the first time it drops an undecided or unknown one. The duel check
 can't catch these: a message that shows something without changing the cards (a coin toss, a die) leaves both views

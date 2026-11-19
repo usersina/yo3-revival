@@ -1,8 +1,18 @@
 # Linux VPS with Docker Compose
 
-Run the Rust server/native duel engine and the React/nginx dashboard as separate services. This arrived in **v0.1.0**. The dashboard is public HTTPS with staff password sign-in, as requested for
-VPS testing; **MFA is not implemented yet**. The old HTML panel and host-token API remain container-local. A web
-session never grants host authority. Public database downloads are disabled; use SSH for backups.
+Run the Rust server/native duel engine and the React/nginx dashboard as separate services. This arrived in **v0.1.0**. The dashboard is public HTTPS; staff sign in with
+a password **and an authenticator code** (unreleased: [staff MFA](dashboard.md#staff-mfa-and-recovery)). The old HTML panel
+and host-token API remain container-local. A web session never grants host authority. Public database downloads are
+disabled; use SSH for backups.
+
+**Staff MFA after deployment.** `YO3_STAFF_MFA` (`.env`) defaults to `required`. The first sign-in of an administrator
+you created with `bootstrap-admin` reaches only a setup screen: scan the QR code with an authenticator app, confirm a
+code, and save the ten recovery codes it shows once. The authenticator seeds are sealed with `data/staff-mfa.key` in the
+`data` volume: keep a copy with your other secrets, because a backup of `server.db` does not hold it. Lost phone and
+recovery codes: `docker compose exec server yo3-server staff-mfa-reset USER`, run on the host (it is not reachable from
+the web), then enroll again. `YO3_STAFF_MFA=optional` is a transition setting for staff who have not enrolled yet; remove
+it afterwards. Backups are never downloadable through the public side unless the server is also started with
+`--dashboard-public-backups` (admin, a code checked in the last five minutes, audited).
 
 Want one setup command instead? [Local Ansible setup](deployment.md) uses these same runtime files.
 
@@ -172,7 +182,7 @@ nginx overwrites forwarded client/protocol headers, clears `Forwarded` and `Auth
 host and proxies only listed staff routes. Rust checks that origin again, validates CSRF and uses the single forwarded
 client IP for its sign-in throttle. TCP management never trusts those headers. nginx adds static-file CSP/HSTS; Rust
 owns API security headers. CSP permits inline **styles** for the existing React UI library, never inline scripts.
-No automatic upstream mutation retries are enabled. The remaining security work is [MFA and recovery](roadmap.md#open-now).
+No automatic upstream mutation retries are enabled. The remaining security work is the final public-access review on the real VPS ([roadmap](roadmap.md#open-now)).
 
 ## Backups, restore and updates
 

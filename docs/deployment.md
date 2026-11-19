@@ -2,8 +2,9 @@
 
 Run Ansible **from your local checkout**, supplying the VPS IP and a DNS name pointing to it. It sets up Docker,
 HTTPS, the server and dashboard. After the one-time deployment-key setup below, a new changelog/Cargo version
-pushed or merged to `main` runs checks, publishes the release and its images, then updates this VPS automatically. This arrived in v0.1.0. Public password sign-in is enabled for
-VPS testing; MFA and recovery are still pending.
+pushed or merged to `main` runs checks, publishes the release and its images, then updates this VPS automatically. This arrived in v0.1.0. Staff sign in with a password and an authenticator
+code (unreleased; [enrollment and recovery](hosting.md#staff-sign-in-with-an-authenticator)); `YO3_STAFF_MFA=optional` is a documented
+transition setting only.
 
 ## Independent dashboard updates (#62)
 
@@ -400,7 +401,7 @@ and rehearsals do not require a published release.
 An Ubuntu 24.04 VPS rehearsal passed public bootstrap, a zero-change rerun, reboot with preserved state, real CA
 issuance, staging renewal with nginx reload, isolated off-machine restore and a 100-player protocol soak. This does
 not yet establish native-engine duel capacity. The published v0.1.0 digests now match the VPS's live containers and
-HTTPS health. MFA, an off-machine backup destination and verification of the new home-runner workflow/token probe
+HTTPS health. The real-VPS check of staff MFA behind nginx, an off-machine backup destination and verification of the new home-runner workflow/token probe
 remain. DNS-based monitoring can report a previous address during propagation. See the
 [Ansible Compose module](https://docs.ansible.com/projects/ansible/latest/collections/community/docker/docker_compose_v2_module.html)
 and [GitHub container publishing documentation](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images)

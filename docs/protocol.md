@@ -309,7 +309,7 @@ Forbidden/Limited", 2 "Pre-Season", 3 "unlimited" (no lists: every card 3 times)
 "Season 12" to "Season 16". The client's deck check (`0x51AB00`) before Auto Duel and NPC duels
 uses the login's `regulation_id` (`0x219A`, `0x2201`), and a hosted duel uses the host's choice; the server repeats it
 at Select Deck (`0x1F4F`, below: sizes, cards owned, the duel's regulation), so a modified client gets no further. The server sends the
-one its `--regulation` setting names (since #24 the `login-regulation` live setting, read at each login; an id, or a name such as "Season 16"; default 20, "Season 16", since 2026-11-14:
+one the account chose with `/banlist` (#63, chat commands below), else its `--regulation` setting names (since #24 the `login-regulation` live setting, read at each login; an id, or a name such as "Season 16"; default 20, "Season 16", since 2026-11-14:
 issue #15. "unlimited", 3, was the default from 2026-11-08). Konami's server sent its current list: the 19 players'
 saved settings of 2010–12 (`.y3p` `duelMaking.regulation`) mostly leave Create Duel on 0, "Latest Regulation", and Auto
 Duel's settings have no banlist at all. Desktop's Hosting → Overview → **Banlist** passes `--regulation` (since #24: writes `login-regulation`). Under Season
@@ -398,6 +398,18 @@ until when and why. **Status: confirmed**, `moderation_contract.rs`, live ("[Mod
 | `0x2137` leave             | `0x245C`                                   | none                                                                                                                                                              | "chat room exit"                                                                                       | shape                                                                                                                                                                                                                                                    |
 | `0x2134` send              | `0x2456` (`0x2457`)                        | fields sit in **one item (tag 10)**: `chat_str`, `chat_type`, and `to_id` or `to_name`. Room chat = `chat_type` 1 with `to_id` = the room id; whisper = `to_name` | captured packets; builders `0x4F3E00` (to_id) and `0x4F4030` (to_name)                                 | confirmed (room); whisper shape                                                                                                                                                                                                                          |
 | (server push)              | `0x2455`                                   | items `{from_id, pname, chat_type, chat_str}`; the handler also checks `friend_id`/`member_id`                                                                    | two clients see each other's lines; the client shows nothing on `0x2456`, so the sender needs the echo | confirmed                                                                                                                                                                                                                                                |
+
+**Chat commands (#63, #58, #55, #44; status: confirmed live).** The client's own commands (`/s`, `/tr`, `/d`, `/t`, `/p`,
+`/pp`, `/ignore`, `/notice`, `/h`, texts 14940-14959) are handled before anything is sent, and any other `/word` is
+refused locally ("That command is not available.", text 14951): no packet leaves (live, scratch server's packet log).
+`/p NAME MESSAGE` goes out as a whisper (`0x2134` item tag 10 `{chat_str: MESSAGE, chat_type: 0, to_name: NAME}`), and
+the game keeps `/p NAME ` in its text box. So the server answers as a player named `Server`: a whisper to `Server`, or a
+chat line starting with `!` and a command's word (`help`, `banlist`, `draw`, `draw5`, `where`, `report`), is a command:
+**not delivered to anyone**, answered with `0x2456` then one `0x2455` push per line from `pname` "Server" (`chat_type` 0, as the server's other notes), to the sender only and even when muted. An unknown word whispered to `Server` gets the help.
+Any other `!` line is ordinary chat. The client masks some words with `*` before sending (a chat filter: "black", "drag", "flood" arrive starred), so `where` reads `*` as a wildcard. The text box refuses to send a line over its own length. `banlist` keeps the choice per account (`accounts.json` `banlist`): the login replies
+`0x219A`/`0x2201` come before Select Player, so the player isn't known yet. The client's deck check and Auto Duel then
+use it as the login `regulation_id` (a client with no change), Select Deck's server check follows, and Auto Duel pairs
+only the same one.
 
 `0x2455`'s `chat_type` picks the tab (`0x435FD0`: 0 → tab 7, 1 → 0, 2 → 1, 4 → 2, 3 → 3, 5 → 4, else 5) and the
 name's colour (`0x435DAF`, table at `0x7F67C0`: chat type 0 red `#F00000`; the player's own line `#00E8FF`; a team
@@ -1547,7 +1559,9 @@ command 4):
   A pressed button sends `duelRequestName 3 {phase: the button}` (`0x521180`); live: EP → `{phase 5}`.
 - The menu (`0x4F9320`, `duel_cardcmd.swf`) lists a card's bits in the order 0, 2, 3, 4, 5, 6, 7, 9, 8, 12, 1, 10, 11,
   13: bit 0 Attack, 1 See Details, 2 Special Summon, 3 Activate Effect, 4 Summon, 5 Flip Summon, 6 and 7 Set, 8 Change
-  to Attack Position, 9 Change to Defence Position, 10 Surrender, 11 Confirm, 12 Draw, 13 Shuffle.
+  to Attack Position, 9 Change to Defence Position, 10 Surrender, 11 Confirm, 12 Draw, 13 Shuffle. The menu is built
+  from the command map's bits alone (`0x4F9320` reads no other flag), so which entries show is the server's choice: see
+  **Surrender** below for bit 10.
 - Choosing an entry sends `duelRequestName 2 {CommandID: the bit, player, position: the zone, index}`; live: Summon on
   hand card 1 → `{CommandID 4, player 0, position 11, index 1}`.
 
@@ -1728,6 +1742,45 @@ recover sound, 2 a cost: payment sound, else damage), with 0 it applies the chan
 line `0x4D` goes between. Kinds from the original logs: 0 effect damage, 1 battle damage (after BattleRun), 2 a cost, 4
 a gain. Before the logs we sent the second only, so changes applied silently. `0xF` for LPUPDATE. Live: a direct attack took the CPU from 8000 to 5700 LP. Attack animations use
 DuelBattle commands `0xA`–`0xE`, mapped in the battle-command table above.
+
+**Surrender** (#57). The client's card menu has the entry (bit 10, text "Surrender") and the dialog texts exist in the duel
+prompt table (DLG_Text 6 "Do you surrender?", 82 "You may surrender starting from the 5th turn."), but nothing else:
+`0x35` RunSurrender has no handler in any duel component (client_commands.rs). Konami's logs show what the server did, in
+all 106 surrenders of 227 duels: `0x35 {player, 12}`, LifeSet `0xF {player, 0}` (the surrendering player), DuelEnd `2
+{result, 12}` (result 2 for the viewer when player 0 surrendered, else 1), then 1505 as for any end. So the server puts
+bit 10 on the player's own Deck (zone `0xD`, index 0) in every idle and battle command map ("hover over the deck", the
+issue), as Konami's menu has Draw (12) and Shuffle (13) beside it (**shape**: which place Konami used is a guess; live:
+see features.md). A pick sends `2 {CommandID 10, player 0, position 0xD, index 0}`; the server answers a Yes/No dialog
+(message entry text 6, kind 2) and, before the fifth turn (either player's; **guess**: the original's text only says "5th
+turn"), the OK dialog with text 82. Yes ends the duel: both clients get the LifeSet and DuelEnd above (`0x35` is not sent:
+no handler), the duel and the match end as after any lost duel (NPC duels, Auto Duel and challenge duels; Match Mode goes
+on to its next janken), and the records count it. The host's `surrender` setting (Create Duel's rule, 0 = off) leaves the
+entry out. The duel check skips the surrendering side's LP (the engine never knew). The profile's `isurrender` and
+`usurrender` fields are not sent (records keep no surrender count yet).
+
+**Engine messages the client has no display for (#52).** Each type ENGINE_MESSAGES marks Ignored has its reason in the
+table (`translate/mod.rs`); the evidence behind the ones that took research: `MSG_SHUFFLE_DECK` becomes DeckShuffle `0x15
+{player}` (Konami: 943 uses, each after a card was searched or returned; DuelScene case `0x15` builds the shuffle
+effect, `data/gfx/duel_shuffle.swf`). `MSG_BECOME_TARGET` (it follows the link's MSG_CHAINING: processor.cpp chooses targets after it) becomes CardLockon `0x19
+{player, zone | index << 8, 0}` per target (param3 0: the lock-on cursor, `0x4FF000` case `0x19`; 2 is the pop-up) and the
+target marker (1017 type 8 from the activating card, which Konami sent as type 256) until `MSG_CHAIN_SOLVED` (Konami's logs: 1,373
+lock-ons, each followed by the marker pair and its removal after ChainRun; Konami sent them before ChainSet, ours follow it). **Live** (Trap Hole on the player's summoned monster: the lock-on went out between the activation and the next command; that run held the lock-ons until a link's MSG_CHAINING, so a Call of the Haunted's target, chosen after it, showed none, which is why they are sent when MSG_BECOME_TARGET comes; the fixed order was not re-run live). Negations: Konami's logs resolve a negated
+link (Seven Tools of the Bandit on a Trap) through the same ChainSet/ChainRun and then `0x23`/CardVanish/move of the
+negated card, so there is no negation display to send. `MSG_SET`: the Set is shown by its move (CardSet `0x1E`). Never
+sent by this core (a grep of `ygopro-core` for `new_message`): `MSG_REFRESH_DECK`, `MSG_BE_CHAIN_TARGET`,
+`MSG_CREATE_RELATION`, `MSG_RELEASE_RELATION`. No card of the client's 4,702 uses (a census of the scripts):
+`Duel.ConfirmExtratop`, `Duel.RockPaperScissors` (`MSG_HAND_RES`); one card shuffles the Extra Deck, and the client has
+no animation for it (Konami's `0x15` always had param2 0). `MSG_SHOW_HINT` is for puzzles. `MSG_CARD_HINT`,
+`MSG_PLAYER_HINT`, `MSG_MISSED_EFFECT`, `MSG_CARD_SELECTED`, `MSG_RANDOM_SELECTED`, `MSG_DAMAGE_STEP_START`: no client
+command or text exists for them (the table of commands above), and Konami's logs show nothing for the non-target ones.
+
+**Attack effects by Type** (#51). The client does play a per-Type effect, but it is the damage/destroy effect, not the
+strike: BattleRun's states 5-6 (`0x4F8430` → `0x4F8920`) look up each side's monster record (`0x5222D0`: the 9 values
+`0x3E9`-`0x3EB` build) and play effect `race + 1` (record value 2, the Type number we already send from CARD_Prop) with
+a size of damage / 500, at each side's card whose figure is above 0 or whose destroy bit is set. The strike itself,
+effect `0xCB` toward the target (state 1), is one effect for every attacker; the images the Type effects use are
+`duel_ef_atk_*` (laser, bomb/blow, sword/fang, claw, circle) and `duel_ef_*_break`. So nothing selects an effect by the
+attacker's Type except the record the server already sends.
 
 **Presentation from Konami's logs.** Commands the original server sent that only show something, now sent the same
 way (all from the 227 original duel logs, their handlers read in the client):

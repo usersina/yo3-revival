@@ -13,6 +13,7 @@ PowerShell. Run from the extracted bundle, or substitute `./target/release/yo3-s
   - [Existing data and backups](#existing-data-and-backups)
   - [Windows SmartScreen and antivirus warnings](#windows-smartscreen-and-antivirus-warnings)
   - [Original game runtimes](#original-game-runtimes)
+  - [Other programs inside the game](#other-programs-inside-the-game)
   - [Higher resolution](#higher-resolution)
 
 ## Server options
@@ -102,9 +103,13 @@ while the server runs or stopped, and each applies at its own moment:
 | `headline` | (none) | At once | A line of news under the name in the server list |
 | `registration` | `invite` | At once | How accounts are made: `invite`, `open` or `closed` ([accounts](authentication.md#accounts)) |
 | `min-launcher` | Server release | At once | Raise the minimum launcher version; it cannot be lower than the server release. Older launchers are told to update |
-| `login-regulation` | Season 16 | At each player's next login | The banlist for Auto Duel and NPC duels, by id or name. Players already online keep theirs |
+| `login-regulation` | Season 16 | At each player's next login | The banlist for Auto Duel and NPC duels, by id or name, for players who haven't chosen their own with `/banlist` in the chat ([playing](playing.md#chat-commands); `set-banlist` overrides one account). Players already online keep theirs; Auto Duel pairs only the same banlist |
 | `start-lp` | 8000 | At the next duel | LP at the start of an Auto Duel or NPC duel; a hosted duel has its own |
 | `turn-seconds`, `total-seconds` | 180, 600 | At the next duel | The clocks of duels between players that set none (0: off) |
+| `pack-cost`, `deck-cost` | 100, 500 | At the game's next request | BP a booster pack and a structure deck cost in Blister's shop |
+| `trade-cards` | 10 | At the game's next request | Cards of their own a player gives for one card in Blister's Trade Card |
+| `rental-cards`, `rental-bp`, `rental-days` | 5, 100, 7 | At the game's next request | The shop Rental's offer: how many cards, for how many BP, for how many days |
+| `report-limit` | 5 | At the game's next request | Reports (`/report` in the chat) one player may send in an hour; 0 turns them off |
 | `news` | A welcome | At the game's next request | The Information list: `TITLE \| BODY` for one entry, or a JSON list of `{title, body}` (1 to 10) |
 | `address-burst`, `address-refill-seconds`, `backoff-max-seconds` | 10, 3, 900 | At once | The [throttle](authentication.md#passwords-and-throttling) on account requests |
 | `max-players` | 500 | At once | Players signed in; one more is told "The server is full" (admins and moderators still come in) |
@@ -160,6 +165,25 @@ log (default: host). They work on a running server; the ones that change an acco
   cannot be deleted until another admin exists. In the React preview, type the numeric account number instead of
   the User ID. An unknown disconnect outcome is reported separately from the committed deletion.
 
+## Player reports and banlists
+
+Players send reports from the game's chat (`/p Server report PLAYER reason`, [playing](playing.md#chat-commands)), and
+choose their own banlist with `/p Server banlist NAME`. The commands below work while the server runs, and the ones
+that change something also with it stopped. They are admin API operations like the rest: audited, and open to a moderator
+(`--by NAME`). The [dashboard](dashboard.md) has a Reports page and shows each account's banlist.
+
+```bash
+./yo3-server reports                                   # every report, newest first (--status open|handled|dismissed, --limit N)
+./yo3-server --by Anna handle-report 3 --note "warned"  # marks report 3 handled
+./yo3-server --by Anna handle-report 4 --dismiss         # or dismissed
+./yo3-server banlists                                  # the game's banlists and the server's default
+./yo3-server --by Anna set-banlist Yugi unlimited       # WHO's next login uses it (an id or a name); `default` is the server's
+```
+
+A report keeps who sent it, who it is about, the reason (300 characters), the time and, once closed, who handled it and
+the note. It stays in `server.db` (so in backups) until its account is deleted. A player can send `report-limit` an hour.
+The reported player is never told.
+
 ## The admin panel
 
 On the `beta` branch (#36). The server serves a web panel on its loopback HTTP port, at
@@ -175,11 +199,12 @@ role is admin or moderator:
 | Page | What it shows and does | Moderator |
 | --- | --- | --- |
 | Dashboard | Players online, duels, rules engines, memory, uptime, version, last backup's age, whether saving works, recent warnings and errors | Sees it |
-| Accounts | Search by User ID or player name; an account's role, standing, mute, devices, BP, and each player's cards, decks, items and record; disconnect, mute, restrict, ban, lift, sign out everywhere, reset code, rename; give BP, set country, set role; give a player cards, another artwork or a deck recipe (as `give-cards` and `give-recipe` below); delete the account (type its User ID) | Moderation and reset codes, on players only; not BP, country, roles, gifts or deleting |
+| Accounts | Search by User ID or player name; an account's role, standing, mute, devices, BP, banlist (and set it), and each player's cards, decks, items and record; disconnect, mute, restrict, ban, lift, sign out everywhere, reset code, rename; give BP, set country, set role; give a player cards, another artwork or a deck recipe (as `give-cards` and `give-recipe` below); delete the account (type its User ID) | Moderation and reset codes, on players only; not BP, country, roles, gifts or deleting |
 | Invites and codes | Invite codes (make, list) and BOOSTERPASS codes (add, remove, who claimed them) | Makes invites; doesn't add or remove codes |
 | News and maintenance | The game's Information list, planning or calling off maintenance | Sees it |
 | Settings | Every live setting with its value, when it applies and what it does | Sees it |
 | Moderation | Who is banned, restricted or muted now, and the latest moderation | Yes |
+| Reports | The players' reports from the game's `/report`, newest first, filtered by Open, Handled or Dismissed; links to both players' accounts; Handle or Dismiss with a note | Yes |
 | Audit log | The newest 200 changes, from the panel, the commands and the API | Yes |
 | Backups | The database backups; back up now; download one (the download is audited) | Sees the list |
 | Logs | The server's newest lines since it started (warnings and errors only, or all) | Yes |
@@ -419,6 +444,24 @@ Desktop and Scripts launch the original game with the current user's permissions
 request. Run Revival normally. Keep the selected game folder and your game Documents writable by your account;
 hosting itself does not require elevation.
 
+## Other programs inside the game
+
+**Unreleased.** `play` (and `yo3-launcher`) check what else runs inside the game before releasing it (#68): other programs'
+`.dll` and `.asi` files in the game folder, modules loaded from outside Windows' folders, redirected network functions and
+non-Microsoft 32-bit Winsock providers. The connection DLL writes what it finds to the game's session log (`[YO3 MOD] Survey: …`,
+with each module's size and SHA-256) and, for the launcher, a JSON summary at `--survey-file FILE` (default: beside the
+session log, removed at the end).
+
+| Found | `play` |
+| ----- | ------ |
+| another program redirected a game network function, or a file on the known-bad list | stops: `The game was not started: … It would break the game's connection.` |
+| a `.dll`/`.asi` in the game folder, a detour at the start of a Windows network function (usually security software), a Winsock provider that isn't Microsoft's | stops, saying so; `--accept-foreign` starts the game anyway |
+| anything else (an overlay's DLL, a driver's) | only in the log |
+
+For a foreign file, rename it yourself (Desktop's **Move it aside** appends `.yo3-disabled`). For a provider, run
+`netsh winsock reset` in an administrator Command Prompt and restart; YO3 Revival never runs it. Desktop shows the same findings
+in a dialog: [Other programs inside the game](launcher.md#other-programs-inside-the-game).
+
 ## Higher resolution
 
 `play.sh` / `play.cmd` (and `yo3-launcher`) take `--resolution`:
@@ -437,5 +480,5 @@ The game keeps laying out its 1024×768 frame; the connection DLL draws it at th
 when the shapes differ, and maps the mouse back. In the game's own **Full** screen mode the window is borderless and the
 size of the screen, whatever the value. The launcher hands the value to the game as `YO3_RESOLUTION`; setting that
 variable yourself works the same. A value the DLL refuses, or a game whose drawing code differs from v1.153's, stops
-startup with `stage=mod-resolution`. Opening `yo3.exe` directly always uses the original size. How it works:
+startup with `stage=mod-resolution`. **Unreleased:** opening `yo3.exe` directly uses the size the last Desktop PLAY saved (Desktop only; Scripts has no direct start). How it works:
 [client internals](client-internals.md#higher-resolution).

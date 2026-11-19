@@ -1,7 +1,8 @@
 # Hosting a server
 
 For the separate React dashboard and container deployment, use [Docker Compose and HTTPS](docker.md).
-That option (v0.1.0) supports public HTTPS/password sign-in for VPS testing; MFA is still pending. This page
+That option (v0.1.0) supports public HTTPS staff sign-in with a password and an authenticator code (staff MFA, unreleased; see
+[Staff sign-in with an authenticator](#staff-sign-in-with-an-authenticator)). This page
 covers the server bundle and its existing private HTML panel.
 
 How to run `yo3-server` as an always-on service on a Linux server (a VPS, or a spare PC) from the **server bundle**,
@@ -22,6 +23,7 @@ The guide doesn't name a provider. Replace the placeholders with your own values
   - [The server bundle](#the-server-bundle)
   - [Set up a fresh server](#set-up-a-fresh-server)
   - [The admin panel through an SSH tunnel](#the-admin-panel-through-an-ssh-tunnel)
+  - [Staff sign-in with an authenticator](#staff-sign-in-with-an-authenticator)
   - [Admin commands on the server](#admin-commands-on-the-server)
   - [Backups](#backups)
   - [Monitoring and alerts](#monitoring-and-alerts)
@@ -154,8 +156,8 @@ The paths below are the ones the unit and the example file use: the bundle in `/
 ## The admin panel through an SSH tunnel
 
 The existing HTML panel is served on the loopback HTTP port (D7). The separate
-[React dashboard](dashboard.md) now supports public HTTPS through [nginx/Compose](docker.md) for VPS testing, with
-MFA still pending. It does not expose this panel or the host-token CLI API. To use the existing private panel from your
+[React dashboard](dashboard.md) now supports public HTTPS through [nginx/Compose](docker.md), with an authenticator
+required of staff. It does not expose this panel or the host-token CLI API. To use the existing private panel from your
 own PC, open a tunnel to the server and leave it open while you use the panel:
 
 ```bash
@@ -180,6 +182,41 @@ from "Host" saying what they got, and the game shows the cards with their pictur
 they come back to the map. A recipe with its cards comes the same way; a recipe alone shows at their next login or
 after their next duel.
 
+## Staff sign-in with an authenticator
+
+The React dashboard (public HTTPS, see [Docker Compose](docker.md)) needs **two steps** from every admin and moderator:
+the account's password, then a six-digit code from an authenticator app (Aegis, 2FAS, Google Authenticator, 1Password…).
+
+1. **Enroll.** Sign in with the password. An account with no authenticator reaches only a setup screen: scan the QR code
+   (or type the key), enter the code the app shows, and save the ten **recovery codes** it displays once, somewhere
+   other than the phone. The setup session lasts 20 minutes and can do nothing else. Enroll a new staff account
+   straight after `set-role`: until it does, anyone who knows its password could enroll first, and the audit log
+   (`staff-mfa-enrolled`) would show it.
+2. **Sign in.** Password, then the code (or a recovery code; each works once). Sensitive actions (roles, deleting
+   accounts, issuing setup/reset codes and keys, settings, backups, stopping the server) ask for a fresh code if the last one
+   is older than five minutes.
+3. **Look after it.** *Settings → Two-step sign-in* shows the state, makes new recovery codes, replaces the
+   authenticator and signs the account out everywhere. A password change or reset also ends its dashboard sessions.
+4. **A lost phone and lost recovery codes** are fixed on the server, never on the web:
+
+   ```bash
+   yo3-server staff-mfa-reset USER    # works while the server runs; audited as staff-mfa-reset
+   ```
+
+   It removes USER's authenticator and recovery codes and ends their sessions; they sign in with their password and
+   enroll again. A forgotten password is `reset-code USER`, as before.
+5. **Back up `data/staff-mfa.key`** with your other secrets (it is in the data folder, mode 0600, and not in `server.db`
+   backups). It seals the authenticator seeds; without it every enrolled account needs `staff-mfa-reset`.
+
+**The local boundary stays.** `staff-mfa-reset`, the admin API with its host token (`data/admin.json`) and this HTML panel
+are reachable only on the server's loopback port: the dashboard and nginx never proxy them, and no staff session, even
+an admin's, can run them. This HTML panel asks for the authenticator code too when the account has one. A server that
+is not yet ready for this can start with `--staff-mfa optional` (`staff_mfa = "optional"` in `server.toml`, or
+`YO3_STAFF_MFA=optional` for Compose) while staff enroll: accounts that have enrolled always need their code, the rest
+keep a password-only session. Remove it afterwards. Backups are not downloadable through the public dashboard unless the
+server runs with `--dashboard-public-backups`; then an admin needs a code checked in the last five minutes and every
+download is audited. More: [Staff MFA and recovery](dashboard.md#staff-mfa-and-recovery).
+
 ## Admin commands on the server
 
 Every admin command works on the running server through its admin API, as the panel does. Run them as the `yo3`
@@ -197,6 +234,20 @@ yo3 delete-account Someone --yes      # a player asked for their account to go: 
 
 Give BP prints a retry ID before sending. Reuse it with the same target and amount after an uncertain answer;
 changing the audit name (`--by`) does not permit a second grant. Details: [account commands](guide.md#account-commands).
+
+### Player reports, banlists and the shop's prices
+
+- **Reports.** Players report each other in the game's chat (`/p Server report PLAYER reason`;
+  [playing guide](playing.md#chat-commands)). The dashboard's **Reports** page lists them, newest first, with links to
+  the players' accounts. A moderator or admin marks one handled or dismissed, with a note. `yo3 reports`,
+  `yo3 --by <your-user-id> handle-report 3 --note "warned"` and `--dismiss` do the same, and each change is audited.
+  A player can send `report-limit` (5) an hour; `yo3 set report-limit 0` turns reports off. The reported player is
+  never told. Reports live in the server's database, so they are in its backups, and go when their account is deleted.
+- **Banlists.** `login-regulation` is the banlist everyone logs in with until they choose their own with `/p Server
+  banlist NAME`. Auto Duel only pairs players on the same list. An account's page shows its list, and any staff may set
+  it (`yo3 set-banlist Someone unlimited`, or `default`); it applies at the player's next login.
+- **Prices.** `pack-cost`, `deck-cost`, `trade-cards` and the Rental's `rental-cards`, `rental-bp` and `rental-days`
+  are [live settings](guide.md#live-settings), like `yo3 set pack-cost 150`.
 
 A deleted account still sits in the backups until they are replaced: the newest 24 on the server (a day), and the
 off-machine copies for as long as they keep them (below). [Moderation](guide.md#moderation-and-maintenance) and [account commands](guide.md#account-commands) list them all.
