@@ -157,12 +157,22 @@ impl Translator {
                 }
                 Event::DeckTop(d) => out.extend(self.face_up_deck_top(&d)),
                 Event::ShuffleHand(h) => out.extend(self.shuffle_hand(&h)),
+                Event::ShuffleDeck(d) => out.push(command(cmd::DECK_SHUFFLE, [self.side(d.player), 0, 0, 0])),
+                Event::BecomeTarget(t) => {
+                    out.extend(self.target_lockons(&t.cards));
+                    out.extend(self.sync_relations());
+                }
+                Event::ChainSolved(c) => {
+                    self.target_marks.retain(|&(link, ..)| link != c.chain_size as u32);
+                    out.extend(self.sync_relations());
+                }
                 Event::Swap(w) => out.extend(self.swap(&w)),
                 Event::ShuffleSetCard(sh) => out.extend(self.shuffle_set(&sh)),
                 Event::SwapGraveDeck(g) => out.extend(self.swap_grave_deck(&g)),
                 Event::ChainEnd => {
                     self.chaining = None;
                     self.chain.clear();
+                    self.target_marks.clear();
                 }
                 Event::Win(w) => {
                     let result = match w.player {
@@ -217,7 +227,8 @@ impl Translator {
                         out.push(command(cmd::RUN_DICE, [p, 0, face as u32, 0]));
                     }
                 }
-                Event::Set(_) => self.unshown(m),
+                // Shown by its move (`move_card` plays the Set effect, 0x1E): nothing of its own.
+                Event::Set(_) => {}
             }
         }
         out.extend(self.sync_relations());
@@ -271,19 +282,27 @@ impl Translator {
                 (0..=zone::FIELD_SPELL).find(|z| t.sides[p as usize].zones.get(z).and_then(|c| c.first()).is_some_and(|c| c.uid == uid)).map(|z| p | z << 8)
             })
         };
-        let placed: Vec<_> = self.links.iter().map(|&(a, b, mark)| (place_of(self, a), place_of(self, b), mark)).collect();
         let mut wanted = vec![];
-        let mut kept = vec![];
-        for (&link, (a, b, mark)) in self.links.iter().zip(placed) {
-            let (Some(a), Some(b)) = (a, b) else { continue };
-            kept.push(link);
+        let want = |wanted: &mut Vec<_>, (a, b, mark): (u32, u32, u32)| {
             for pair in [(a, b, mark), (b, a, mark)] {
                 if !wanted.contains(&pair) {
                     wanted.push(pair);
                 }
             }
+        };
+        let mut kept = vec![];
+        for &link in &self.links {
+            let (Some(a), Some(b)) = (place_of(self, link.0), place_of(self, link.1)) else { continue };
+            kept.push(link);
+            want(&mut wanted, (a, b, link.2));
         }
         self.links = kept;
+        // The targets of the chain links on the way: a marker from the activating card until the link is solved.
+        let marks: Vec<_> = self.target_marks.iter().copied().filter(|&(_, a, b)| place_of(self, a).is_some() && place_of(self, b).is_some()).collect();
+        for &(_, a, b) in &marks {
+            want(&mut wanted, (place_of(self, a).unwrap_or(0), place_of(self, b).unwrap_or(0), MARK_TARGET));
+        }
+        self.target_marks = marks;
         let mut out: Vec<Message> = self
             .relations
             .iter()
@@ -295,6 +314,30 @@ impl Translator {
             out.push(command(cmd::RELATIONS_REDRAW, [0; 4]));
         }
         self.relations = wanted;
+        out
+    }
+
+    /// The cards an effect targets (MSG_BECOME_TARGET, which follows the link's MSG_CHAINING: the cost and target are
+    /// chosen after it) as Konami's server showed them (its logs: 1,373 CardLockon with param3 0, one per target of an
+    /// effect, then the target marker from the activating card to it, taken away once the link is solved):
+    /// CardLockon {player, zone | index << 8, 0} puts the lock-on cursor on the card (0x4FF000 case 0x19; param3 2 is the
+    /// card's pop-up instead). Konami sent them before ChainSet; here they follow it. The marker (a relation) follows in
+    /// `sync_relations`, from the chain's last link's card, until MSG_CHAIN_SOLVED.
+    pub(super) fn target_lockons(&mut self, targets: &[Loc]) -> Vec<Message> {
+        let uid_at = |t: &Self, loc: &Loc| {
+            let place = t.engine_place(loc).filter(|p| p.zone <= zone::FIELD_SPELL)?;
+            t.sides[place.player as usize].zones.get(&place.zone)?.first().map(|c| c.uid)
+        };
+        let link = self.chaining.clone();
+        let source = link.as_ref().and_then(|c| uid_at(self, &Loc { location: c.loc.location & !loc::OVERLAY, ..c.loc.clone() }));
+        let mut out = vec![];
+        for loc in targets {
+            let Some(place) = self.engine_place(loc).filter(|p| !matches!(p.zone, zone::DECK | zone::EXTRA)) else { continue };
+            out.push(command(cmd::CARD_LOCKON, [place.player, place.zone | (place.index as u32) << 8, 0, 0]));
+            if let (Some(c), Some(a), Some(b)) = (&link, source, uid_at(self, loc)) {
+                self.target_marks.push((c.chain_size as u32, a, b));
+            }
+        }
         out
     }
 

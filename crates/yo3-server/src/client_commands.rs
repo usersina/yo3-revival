@@ -85,7 +85,7 @@ pub const CLIENT_COMMANDS: &[ClientCommand] = &[
     c(0x12, "HandShuffle", &[CARDS], 883, Sent(State)),
     c(0x13, "HandShow", &[CARDS], 525, Sent(Presentation)),
     c(0x14, "HandOpen", &[CARDS], 225, Undecided(UNREAD)),
-    c(0x15, "DeckShuffle", &[SCENE], 943, Undecided(UNREAD)),
+    c(0x15, "DeckShuffle", &[SCENE], 943, Sent(Presentation)),
     c(0x16, "DeckReset", &[CARDS], 2484, Sent(State)),
     c(0x17, "DeckFlipTop", &[CARDS], 659, Sent(Presentation)),
     c(0x18, "GraveTop", &[CARDS], 737, NotSent("its separate face-up object went stale when a card left from under the top (live); \

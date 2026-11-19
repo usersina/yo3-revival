@@ -473,6 +473,12 @@ pub struct Confirm {
     pub cards: Vec<Loc>,
 }
 
+/// MSG_BECOME_TARGET: the cards an effect targets as it is activated.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct Targets {
+    pub cards: Vec<Loc>,
+}
+
 /// MSG_DECK_TOP: the deck's top card turned (`count` from the top).
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct DeckTop {
@@ -634,6 +640,9 @@ pub enum Event {
     ReverseDeck,
     DeckTop(DeckTop),
     ShuffleHand(Shuffle),
+    ShuffleDeck(OfPlayer),
+    BecomeTarget(Targets),
+    ChainSolved(ChainSize),
     Swap(Swap),
     ShuffleSetCard(ShuffleSet),
     SwapGraveDeck(SwapGraveDeck),
@@ -696,6 +705,9 @@ impl Event {
             msg::REVERSE_DECK => Event::ReverseDeck,
             msg::DECK_TOP => Event::DeckTop(get(m, strictly)?),
             msg::SHUFFLE_HAND => Event::ShuffleHand(get(m, strictly)?),
+            msg::SHUFFLE_DECK => Event::ShuffleDeck(get(m, strictly)?),
+            msg::BECOME_TARGET => Event::BecomeTarget(get(m, strictly)?),
+            msg::CHAIN_SOLVED => Event::ChainSolved(get(m, strictly)?),
             msg::SWAP => Event::Swap(get(m, strictly)?),
             msg::SHUFFLE_SET_CARD => Event::ShuffleSetCard(get(m, strictly)?),
             msg::SWAP_GRAVE_DECK => Event::SwapGraveDeck(get(m, strictly)?),

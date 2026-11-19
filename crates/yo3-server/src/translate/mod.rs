@@ -15,7 +15,7 @@ use crate::card_options::CARD_OPTION_LABELS;
 use crate::duel::{CLIENT, CPU, CardCommand, ClientRequest, TEXT_IDS, TEXT_SLOTS, command, command_data, text_message};
 use crate::ocg::message::{AnnounceCard, Ask, Attack, Battle, Chaining, Coded, Confirm, Counter, DeckTop, Event, Field, FieldDisabled, Link, Loc, Move, Shuffle, ShuffleSet, Swap, SwapGraveDeck, SelectCard, SelectChain, SelectOption, SelectPlace, SelectPosition, SelectSum};
 use crate::ocg::{Response, battle, hint, hintmsg, idle, loc, msg, pos, reason, resp};
-use crate::wire::{Cmd, OPEN, Place, Target, cmd, dialog, entry, flag, list, menu, mode, move_place, result, table_place, text, zone};
+use crate::wire::{Cmd, OPEN, Place, SURRENDERED, SURRENDER_TURN, Target, cmd, dialog, entry, flag, list, menu, mode, move_place, result, table_place, text, zone};
 
 mod answers;
 mod cpu;
@@ -28,6 +28,7 @@ mod texts;
 use cpu::*;
 use moves::*;
 use texts::*;
+pub use answers::surrender_commands;
 pub use cpu::{Repeats, bot_answer, bot_response};
 pub use moves::settle_positions;
 
@@ -312,20 +313,20 @@ pub const ENGINE_MESSAGES: &[(u64, &str, Handling)] = &{
         (26, "MSG_SELECT_UNSELECT_CARD", Asked),
         (30, "MSG_CONFIRM_DECKTOP", Shown),
         (31, "MSG_CONFIRM_CARDS", Shown),
-        (32, "MSG_SHUFFLE_DECK", Undecided),
+        (32, "MSG_SHUFFLE_DECK", Shown),
         (33, "MSG_SHUFFLE_HAND", Shown),
-        (34, "MSG_REFRESH_DECK", Undecided),
+        (34, "MSG_REFRESH_DECK", Ignored("the core never sends it (no new_message(MSG_REFRESH_DECK) in ygopro-core); the Deck pile counts and shows its top by itself")),
         (35, "MSG_SWAP_GRAVE_DECK", Shown),
         (36, "MSG_SHUFFLE_SET_CARD", Shown),
         (37, "MSG_REVERSE_DECK", Shown),
         (38, "MSG_DECK_TOP", Shown),
-        (39, "MSG_SHUFFLE_EXTRA", Undecided),
+        (39, "MSG_SHUFFLE_EXTRA", Ignored("the client has no Extra Deck shuffle: DeckShuffle 0x15 is the Deck's (Konami never sent param2 other than 0), the Extra Deck is looked up by card, not by place, and one card of the 4,700 the client has even shuffles it")),
         (40, "MSG_NEW_TURN", Shown),
         (41, "MSG_NEW_PHASE", Shown),
-        (42, "MSG_CONFIRM_EXTRATOP", Undecided),
+        (42, "MSG_CONFIRM_EXTRATOP", Ignored("Pendulum-era: no card the client has uses Duel.ConfirmExtratop (a census of the card scripts)")),
         (50, "MSG_MOVE", Shown),
         (53, "MSG_POS_CHANGE", Shown),
-        (54, "MSG_SET", Undecided),
+        (54, "MSG_SET", Ignored("a Set is shown by its MSG_MOVE: move_card plays the Set effect (CardSet 0x1E, kind 5), as Konami's logs do")),
         (55, "MSG_SWAP", Shown),
         (56, "MSG_FIELD_DISABLED", Shown),
         (60, "MSG_SUMMONING", Shown),
@@ -337,13 +338,13 @@ pub const ENGINE_MESSAGES: &[(u64, &str, Handling)] = &{
         (70, "MSG_CHAINING", Shown),
         (71, "MSG_CHAINED", Ignored("the activation was shown at MSG_CHAINING")),
         (72, "MSG_CHAIN_SOLVING", Shown),
-        (73, "MSG_CHAIN_SOLVED", Ignored("each link's end: MSG_CHAIN_END closes the chain on the client")),
+        (73, "MSG_CHAIN_SOLVED", Shown),
         (74, "MSG_CHAIN_END", Shown),
-        (75, "MSG_CHAIN_NEGATED", Undecided),
-        (76, "MSG_CHAIN_DISABLED", Undecided),
-        (80, "MSG_CARD_SELECTED", Undecided),
-        (81, "MSG_RANDOM_SELECTED", Undecided),
-        (83, "MSG_BECOME_TARGET", Undecided),
+        (75, "MSG_CHAIN_NEGATED", Ignored("the client has no negation display: Konami's logs resolve a negated link through the same ChainSet and ChainRun, then the card leaves as any destroyed one does (its move, which is shown)")),
+        (76, "MSG_CHAIN_DISABLED", Ignored("as MSG_CHAIN_NEGATED: the link is solved and its effect just does nothing")),
+        (80, "MSG_CARD_SELECTED", Ignored("a highlight EDOPro's client draws for choices that do not target; the client has no such command (its one per-card cursor, CardLockon, Konami sent for targets), and Konami's logs show none")),
+        (81, "MSG_RANDOM_SELECTED", Ignored("as MSG_CARD_SELECTED: the moves that follow show what was chosen")),
+        (83, "MSG_BECOME_TARGET", Shown),
         (90, "MSG_DRAW", Shown),
         (91, "MSG_DAMAGE", Shown),
         (92, "MSG_RECOVER", Shown),
@@ -357,26 +358,26 @@ pub const ENGINE_MESSAGES: &[(u64, &str, Handling)] = &{
         (110, "MSG_ATTACK", Shown),
         (111, "MSG_BATTLE", Shown),
         (112, "MSG_ATTACK_DISABLED", Shown),
-        (113, "MSG_DAMAGE_STEP_START", Undecided),
+        (113, "MSG_DAMAGE_STEP_START", Ignored("the client has no Damage Step start: DuelBattle's commands are 0xA-0xE (init, select, attack, run, end) and the battle is shown by MSG_ATTACK and MSG_BATTLE; its end is MSG_DAMAGE_STEP_END")),
         (114, "MSG_DAMAGE_STEP_END", Shown),
-        (120, "MSG_MISSED_EFFECT", Undecided),
-        (121, "MSG_BE_CHAIN_TARGET", Undecided),
-        (122, "MSG_CREATE_RELATION", Undecided),
-        (123, "MSG_RELEASE_RELATION", Undecided),
+        (120, "MSG_MISSED_EFFECT", Ignored("EDOPro's hint that an optional effect missed its timing: the client has no command or text for it, and the original did not say it")),
+        (121, "MSG_BE_CHAIN_TARGET", Ignored("the core never sends it (no new_message(MSG_BE_CHAIN_TARGET) in ygopro-core); targets are MSG_BECOME_TARGET")),
+        (122, "MSG_CREATE_RELATION", Ignored("the core never sends it (ygopro-core has no new_message(MSG_CREATE_RELATION)); the client's relation markers come from MSG_EQUIP, MSG_CARD_TARGET and MSG_BECOME_TARGET")),
+        (123, "MSG_RELEASE_RELATION", Ignored("the core never sends it, as MSG_CREATE_RELATION")),
         (130, "MSG_TOSS_COIN", Shown),
         (131, "MSG_TOSS_DICE", Shown),
         (132, "MSG_ROCK_PAPER_SCISSORS", Asked),
-        (133, "MSG_HAND_RES", Undecided),
+        (133, "MSG_HAND_RES", Ignored("no card the client has plays rock-paper-scissors in a duel (a census of the card scripts: no Duel.RockPaperScissors), and the janken scene (1501) is the pre-duel one")),
         (140, "MSG_ANNOUNCE_RACE", Asked),
         (141, "MSG_ANNOUNCE_ATTRIB", Asked),
         (142, "MSG_ANNOUNCE_CARD", Asked),
         (143, "MSG_ANNOUNCE_NUMBER", Asked),
-        (160, "MSG_CARD_HINT", Undecided),
+        (160, "MSG_CARD_HINT", Ignored("a text label EDOPro's client puts on a card (a declared name or number); the client has no per-card label command, and the declaring window names the choice")),
         (161, "MSG_TAG_SWAP", NOT_HERE),
         (162, "MSG_RELOAD_FIELD", NOT_HERE),
         (163, "MSG_AI_NAME", NOT_HERE),
-        (164, "MSG_SHOW_HINT", Undecided),
-        (165, "MSG_PLAYER_HINT", Undecided),
+        (164, "MSG_SHOW_HINT", NOT_HERE),
+        (165, "MSG_PLAYER_HINT", Ignored("EDOPro's icons for an effect that binds a player (cannot summon, cannot activate): the client has no command for them")),
         (170, "MSG_MATCH_KILL", NOT_HERE),
         (180, "MSG_CUSTOM_MSG", NOT_HERE),
         (190, "MSG_REMOVE_CARDS", NOT_HERE),
@@ -401,6 +402,9 @@ enum Asking {
     Zones(Vec<Json>),
     /// An attack's target, picked on the field (#51, see `target_on_field`).
     FieldTarget,
+    /// The Surrender question ("Do you surrender?", Yes/No) or, before the turn it opens, the OK dialog saying when.
+    Surrender,
+    SurrenderEarly,
 }
 
 #[derive(Clone)]
@@ -477,6 +481,10 @@ pub struct Translator {
     summoning: Option<Summoning>,
     /// The player's DUEL OPTIONS auto card placing (`Translator::auto_place`): off, the player picks the zones.
     auto_place: bool,
+    /// The duel allows Surrender (the host's `surrender` setting; the deck's menu offers it), and the client's player
+    /// surrendered (the table or NPC duel ends the duel: `Translator::conceded`).
+    surrender: bool,
+    conceded: bool,
     /// What the client's player did in the duel, for titles (`Translator::stats`), and each card's kind to tell Spells
     /// from Traps (`Translator::card_kinds`).
     stats: crate::titles::DuelStats,
@@ -501,6 +509,9 @@ pub struct Translator {
     links: Vec<(u32, u32, u32)>,
     /// The relations the client holds: (source place, target place, marker type), places as `player | zone << 8`.
     relations: Vec<(u32, u32, u32)>,
+    /// Each chain link's target markers (MSG_BECOME_TARGET): (the link's number, the activating card's uid, the
+    /// target's uid), until it is solved.
+    target_marks: Vec<(u32, u32, u32)>,
 }
 
 impl Translator {
@@ -545,6 +556,17 @@ impl Translator {
     /// Konami's did; off, MSG_SELECT_PLACE is the player's, with the zone prompt of MSG_SELECT_DISFIELD.
     pub fn auto_place(&mut self, on: bool) {
         self.auto_place = on;
+    }
+
+    /// Whether the duel offers Surrender on the player's Deck (the match's `surrender` setting, on unless a host turned
+    /// it off).
+    pub fn allow_surrender(&mut self, on: bool) {
+        self.surrender = on;
+    }
+
+    /// The client's player confirmed Surrender: the duel is over for them (`concede` says what is sent).
+    pub fn conceded(&self) -> bool {
+        self.conceded
     }
 
     /// Each Konami id's card kind (CARD_Prop: 13 a Spell, 14 a Trap): a duel's stats count the client's activations.
@@ -619,6 +641,8 @@ impl Translator {
             tuners: HashSet::new(),
             summoning: None,
             auto_place: true,
+            surrender: true,
+            conceded: false,
             stats: Default::default(),
             card_kinds: HashMap::new(),
             lp_change: 0,
@@ -633,6 +657,7 @@ impl Translator {
             staged: None,
             links: vec![],
             relations: vec![],
+            target_marks: vec![],
         };
         with_card_ids(&t.cards, &mut out);
         let mut t = t;

@@ -28,6 +28,9 @@ pub mod cmd {
         /// (player, hand, i) by 0x523DF0, its object by uid 0x500470; DuelCardManager 0x4FF000 case 0x12). Every index
         /// below the hand's count needs an entry, or the client stops with an error state (0x1200).
         HAND_SHUFFLE = 0x12,
+        /// DeckShuffle {player} (DuelScene 0x514290 case 0x15: the shuffle's effect at that player's Deck; Konami's logs, 943
+        /// uses, all with param2-4 0): after a search or a card returned to the Deck.
+        DECK_SHUFFLE = 0x15,
         /// Card relations, which the client draws as markers on the related slots while the pointer is on a face-up
         /// field card (0x50B700 → 0x50B1C0): 1017 {source place, target place, marker type 1-8, 1 add (0x5224E0) / 0
         /// remove the entry with all three (0x522530)} (pump 0x3F9), places as `player | zone << 8`; 0x26 redraws the
@@ -371,6 +374,9 @@ pub mod text {
         /// to @3Special Summon@0.".
         SPSUMMON_EXTRA = 26,
         SPSUMMON = 25,
+        /// "Do you @3surrender@0?" and "You may @3surrender@0 starting from the @25th turn@0." (DLG_Text 6 and 82).
+        SURRENDER = 6,
+        SURRENDER_EARLY = 82,
         /// 'Select position for "@3%s@0".'
         POSITION = 327,
         /// 'The effect of "@3%s@0" is @3activated@0. @3Chain@0 another card or effect?', '"@3%s@0" is @3activated@0.
@@ -385,6 +391,12 @@ pub mod text {
         LEVEL = 280,
     }
 }
+
+/// The duel-end reason "has surrendered" (text 1999 + 12, 0x508650): Konami's logs end every surrender with command 2
+/// {result, 12}, after the surrendering player's LP set to 0 (command 0xF {player, 0}).
+pub const SURRENDERED: u32 = 12;
+/// The turn Surrender opens from (DLG_Text 82: "starting from the 5th turn"; a turn is either player's).
+pub const SURRENDER_TURN: u32 = 5;
 
 /// Duel results for a client (DuelEnd's param1).
 pub mod result {

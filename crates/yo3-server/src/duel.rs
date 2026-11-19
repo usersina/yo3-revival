@@ -499,7 +499,11 @@ impl DuelSession {
                 Some(ClientRequest::Order(order)) if !self.ordered => self.turn_order(order),
                 Some(answer) => {
                     let prompt = self.engine.as_mut().and_then(|(_, t)| t.request(answer));
-                    self.prompted(prompt)
+                    let mut out = self.prompted(prompt);
+                    if !self.reported && self.engine.as_ref().is_some_and(|(_, t)| t.conceded()) {
+                        out.extend(self.surrender());
+                    }
+                    out
                 }
                 None => vec![],
             },
@@ -600,6 +604,7 @@ impl DuelSession {
         translator.tokens(self.world.token_rows.clone());
         translator.tuners(self.world.tuners.clone());
         translator.auto_place(!entry.manual_place);
+        translator.allow_surrender(!entry.no_surrender);
         translator.card_kinds(self.world.card_kinds.clone());
         table.extend(translator.extra_decks([&entry.deck.extra, &npc.extra]));
         self.engine = Some((engine, translator));
@@ -748,6 +753,15 @@ impl DuelSession {
                 }
             }
         });
+    }
+
+    /// The player surrendered (the deck menu's Surrender, confirmed): the duel ends for them as a loss, the NPC's win
+    /// counted as after any duel (see `Table::surrender`); the engine is left where it was.
+    fn surrender(&mut self) -> Vec<Message> {
+        let Some((_, t)) = self.engine.as_mut() else { return vec![] };
+        let out = t.surrender_end(true);
+        self.report(result::LOST);
+        out
     }
 
     /// Tells the hub the NPC duel ended with `result`, once.

@@ -61,7 +61,10 @@ impl Translator {
         if matches!(ask, Some(Ask::Disfield(_) | Ask::Place(_))) && matches!(self.asking, Asking::Zones(_)) {
             return Some(self.zone_click(&m, cmd));
         }
-        if cmd.command == menu::CONFIRM
+        if cmd.command == menu::SURRENDER && cmd.zone == zone::DECK && self.surrender {
+            return Some(self.surrender_dialog());
+        }
+        if (cmd.command == menu::CONFIRM || (cmd.command == menu::DETAILS && cmd.zone == zone::EXTRA))
             && let Some(out) = self.pile_view(cmd.player, cmd.zone)
         {
             self.asking = Asking::PileView;
@@ -200,6 +203,50 @@ impl Translator {
         }
     }
 
+    /// The Surrender entry (bit 10) on the player's Deck (zone 0xD, index 0), where Konami's menu has it (the issue's
+    /// "hover over our deck"), when the duel allows it. The pile is not highlighted for it (0x50A690 lights piles for
+    /// bits 0x808 only), the menu opens on a click all the same (live).
+    pub(super) fn add_surrender(&self, map: &mut Vec<(u32, u32)>) {
+        if !self.surrender {
+            return;
+        }
+        let place = table_place(CLIENT, zone::DECK, 0);
+        match map.iter_mut().find(|(p, _)| *p == place) {
+            Some((_, bits)) => *bits |= 1 << menu::SURRENDER,
+            None => map.push((place, 1 << menu::SURRENDER)),
+        }
+    }
+
+    /// The menu's Surrender: "Do you surrender?" (Yes/No), or from before the fifth turn (a turn is either player's) the
+    /// OK dialog that says Surrender opens from then (DLG_Text 6 and 82, the original's own).
+    fn surrender_dialog(&mut self) -> Prompt {
+        let early = self.turns < SURRENDER_TURN;
+        self.asking = if early { Asking::SurrenderEarly } else { Asking::Surrender };
+        let mut out = message(&[entry::TEXT | if early { text::SURRENDER_EARLY } else { text::SURRENDER }]);
+        out.push(Cmd::Dialog { kind: if early { dialog::OK } else { dialog::YES_NO }, message: dialog::FROM_ENTRIES, param: 0 }.message());
+        Prompt::Client(out)
+    }
+
+    /// The answer to the Surrender dialog: Yes ends the duel for the player ([`Translator::conceded`], the table or the
+    /// NPC duel sends the end), anything else gives the prompt back.
+    pub(super) fn surrender_answer(&mut self, yes: bool) -> Option<Prompt> {
+        if yes {
+            self.conceded = true;
+            self.pending = None;
+            return Some(Prompt::Client(vec![]));
+        }
+        let m = self.pending.clone()?;
+        Some(self.prompt(&m))
+    }
+
+    /// What the player's client and its opponent's get when the player surrendered, as Konami's server sent it (every
+    /// log of a surrender): the surrendering player's LP set to 0, then the duel's end with reason 12 (command 0x35,
+    /// RunSurrender, has no handler in the client). `loser` is whether this view's player is the one who surrendered.
+    pub fn surrender_end(&mut self, loser: bool) -> Vec<Message> {
+        self.result = Some(if loser { result::LOST } else { result::WON });
+        surrender_commands(loser)
+    }
+
     /// Confirm (bit 11) at index 0 of each pile that can be looked through: both players' Graveyards and banished
     /// piles and the player's own extra deck, when not empty. The field highlights a pile of either player whose
     /// bits there have Activate Effect or Confirm (0x808, 0x50A690).
@@ -209,9 +256,17 @@ impl Translator {
                 continue;
             }
             let place = table_place(player, zone, 0);
+            // The Extra Deck lights up only when a summon from it is possible (#16, "only when a Synchro Summon is
+            // possible"): the highlight needs Activate or Confirm (0x808), so Confirm goes there only with a Special Summon
+            // entry (bit 2); otherwise its view is the menu's "See Details" (bit 1, no highlight).
+            let bit = match map.iter().find(|(p, _)| *p == place) {
+                Some((_, bits)) if zone == zone::EXTRA && bits & 1 << menu::SPECIAL_SUMMON == 0 => menu::DETAILS,
+                None if zone == zone::EXTRA => menu::DETAILS,
+                _ => menu::CONFIRM,
+            };
             match map.iter_mut().find(|(p, _)| *p == place) {
-                Some((_, bits)) => *bits |= 1 << menu::CONFIRM,
-                None => map.push((place, 1 << menu::CONFIRM)),
+                Some((_, bits)) => *bits |= 1 << bit,
+                None => map.push((place, 1 << bit)),
             }
         }
     }
@@ -276,4 +331,10 @@ impl Translator {
         }
         None
     }
+}
+
+/// A surrender's two commands for a view whose player (player 0) is the one who surrendered (`loser`) or the other.
+pub fn surrender_commands(loser: bool) -> Vec<Message> {
+    let (result, player) = if loser { (result::LOST, CLIENT) } else { (result::WON, CPU) };
+    vec![command(cmd::SET_LP, [player, 0, 0, 0]), command(cmd::DUEL_END, [result, SURRENDERED, 0, 0])]
 }

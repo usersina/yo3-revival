@@ -535,3 +535,124 @@ fn a_second_enter_from_one_connection_does_not_take_the_other_seat() {
     assert_eq!(commands(&enter(&mut b, 1002)), [(1500, [0; 4])], "the opponent still gets the second seat");
     assert_eq!(commands(&a.pushed()), [(1500, [0; 4])]);
 }
+
+/// Both seats play `rounds` turns each: the seat the engine waits on Normal Summons its first card (the hand stays
+/// under the limit, which asks for a discard at the End Phase) and presses EP; the other's presses are nothing.
+fn end_turns(a: &mut Seat, b: &mut Seat, rounds: u32) {
+    for _ in 0..rounds {
+        for seat in [&mut *a, &mut *b] {
+            seat.send(2, &[("CommandID", 4), ("player", 0), ("position", 0xB), ("index", 0)]);
+            seat.send(3, &[("phase", 5)]);
+        }
+    }
+    a.pushed();
+    b.pushed();
+}
+
+/// The deck menu's Surrender click, from a seat: {CommandID 10, player 0, position 0xD (the Deck), index 0}.
+fn surrender_click(seat: &mut Seat) -> Vec<Message> {
+    seat.send(2, &[("CommandID", 10), ("player", 0), ("position", 0xD), ("index", 0)])
+}
+
+#[test]
+fn surrender_opens_from_the_fifth_turn_and_ends_the_duel_for_both() {
+    // The Deck's menu offers Surrender (bit 10); a click asks "Do you surrender?" (text 6) from the fifth turn on, and
+    // before it says when it opens (text 82). Yes ends the duel as Konami's server did (its logs: the player's LP set to
+    // 0, command 2 {result, 12}), the other client wins, and the hub counts it.
+    let Some((mut a, mut b, hub)) = after_janken(true) else { return };
+    let to_a = a.send(0xD, &[("choice", 1)]);
+    b.pushed();
+    let map = |out: &[Message]| -> Vec<u8> {
+        out.iter().find_map(|m| m.get("COMIDDATA").and_then(Value::as_bytes).map(<[u8]>::to_vec)).unwrap_or_default()
+    };
+    assert!(map(&to_a).windows(8).any(|w| w == [0, 0, 0x0D, 0, 0, 0, 0x04, 0]), "the Deck offers Surrender");
+    // Turn 1: only the message.
+    let early = commands(&surrender_click(&mut a));
+    assert_eq!(early.first(), Some(&(0x3EC, [1, 0, 0, 0])));
+    assert!(early.contains(&(0x36, [0, 1, 0, 0])) && early.iter().all(|(id, _)| *id != 2), "{early:?}");
+    assert!(commands(&a.send(4, &[("DLGResult", 1)])).iter().all(|(id, _)| *id != 2), "an OK closes the message");
+    // Turn 5 (1001's third turn): the question; No keeps the duel.
+    end_turns(&mut a, &mut b, 2);
+    let ask = commands(&surrender_click(&mut a));
+    assert!(ask.contains(&(0x36, [2, 1, 0, 0])), "{ask:?}");
+    assert!(commands(&a.send(4, &[("DLGResult", 0)])).iter().all(|(id, _)| *id != 2));
+    assert!(b.pushed().is_empty() || commands(&b.pushed()).iter().all(|(id, _)| *id != 2));
+    // Yes.
+    surrender_click(&mut a);
+    let to_a = commands(&a.send(4, &[("DLGResult", 1)]));
+    assert_eq!(to_a.iter().filter(|(id, _)| matches!(id, 0xF | 2)).copied().collect::<Vec<_>>(), [(0xF, [0, 0, 0, 0]), (2, [2, 12, 0, 0])]);
+    let to_b = commands(&b.pushed());
+    assert_eq!(to_b.iter().filter(|(id, _)| matches!(id, 0xF | 2)).copied().collect::<Vec<_>>(), [(0xF, [1, 0, 0, 0]), (2, [1, 12, 0, 0])]);
+    assert_eq!(hub.lock().unwrap().record_result(1002, 1001, 0), [1, 0, 0], "1002's win is counted");
+    assert!(a.send(3, &[("phase", 5)]).is_empty(), "nothing more once it ended");
+}
+
+#[test]
+fn a_duel_whose_host_turned_surrender_off_has_no_surrender_entry() {
+    let Some((mut a, mut b, hub)) = table(true) else { return };
+    for id in [1001, 1002] {
+        let mut hub = hub.lock().unwrap();
+        let entry = hub.duel_entry(id).unwrap();
+        hub.enter_duel(id, DuelEntry { no_surrender: true, ..entry });
+    }
+    enter(&mut a, 1001);
+    enter(&mut b, 1002);
+    a.pushed();
+    a.send(0xC, &[("selectHand", 0)]);
+    b.send(0xC, &[("selectHand", 1)]);
+    a.pushed();
+    let to_a = a.send(0xD, &[("choice", 1)]);
+    let map: Vec<u8> = to_a.iter().find_map(|m| m.get("COMIDDATA").and_then(Value::as_bytes).map(<[u8]>::to_vec)).expect("a command map");
+    assert!(!map.windows(4).any(|w| w == [0, 0, 0x0D, 0]), "no Deck entry: {map:?}");
+    assert!(commands(&surrender_click(&mut a)).is_empty(), "a click that names it anyway does nothing");
+}
+
+#[test]
+fn a_match_goes_on_after_a_surrender_like_after_any_lost_duel() {
+    // Match Mode: a surrendered duel counts for the other player, who needs two wins; the janken follows (1500).
+    let Some((mut a, mut b, _)) = table_of(true, 3, 8000) else { return };
+    enter(&mut a, 1001);
+    enter(&mut b, 1002);
+    a.pushed();
+    a.send(0xC, &[("selectHand", 0)]);
+    b.send(0xC, &[("selectHand", 1)]);
+    a.pushed();
+    a.send(0xD, &[("choice", 1)]);
+    b.pushed();
+    end_turns(&mut a, &mut b, 2);
+    surrender_click(&mut a);
+    let to_a = commands(&a.send(4, &[("DLGResult", 1)]));
+    assert!(to_a.contains(&(2, [2, 12, 0, 0])) && to_a.contains(&(1500, [0; 4])), "{to_a:?}");
+    assert!(commands(&b.pushed()).contains(&(1500, [0; 4])));
+}
+
+#[test]
+fn a_player_can_surrender_an_npc_duel_too() {
+    // The NPC duel (DuelSession alone): the same menu and dialogs; Yes ends it as a loss for the player (the NPC's win
+    // counted against the player) with the same two commands.
+    let mut world = world(true);
+    if world.engine_dir.is_none() {
+        eprintln!("engine not fetched; skipping");
+        return;
+    }
+    world.npc_decks.insert(124, Deck { main: vec![2; 40], ..Deck::default() });
+    let mut hub = Hub::default();
+    hub.enter_duel(1001, DuelEntry { deck: Deck { main: vec![1; 40], ..Deck::default() }, npc_id: Some(124), ..DuelEntry::default() });
+    let hub = Arc::new(Mutex::new(hub));
+    let mut s = DuelSession::new(Arc::new(world), hub.clone(), 9);
+    let send = |s: &mut DuelSession, name: u32, fields: &[(&str, u32)]| {
+        let m = Message::reply(0x200C).with("duelRequestName", Value::U32(name));
+        s.handle(&Packet::Message(fields.iter().fold(m, |m, (k, v)| m.with(k, Value::U32(*v)))))
+    };
+    s.handle(&Packet::Message(Message::reply(0x200A).with("player_id", Value::U32(1001)).with("autoSet", Value::U32(1))));
+    send(&mut s, 0xD, &[("choice", 1)]);
+    for _ in 0..2 {
+        send(&mut s, 2, &[("CommandID", 4), ("player", 0), ("position", 0xB), ("index", 0)]);
+        send(&mut s, 3, &[("phase", 5)]);
+    }
+    let click = |s: &mut DuelSession| send(s, 2, &[("CommandID", 10), ("player", 0), ("position", 0xD), ("index", 0)]);
+    assert!(commands(&click(&mut s)).contains(&(0x36, [2, 1, 0, 0])), "turn 5: the question");
+    let end = commands(&send(&mut s, 4, &[("DLGResult", 1)]));
+    assert_eq!(end.iter().filter(|(id, _)| matches!(id, 0xF | 2)).copied().collect::<Vec<_>>(), [(0xF, [0, 0, 0, 0]), (2, [2, 12, 0, 0])]);
+    assert_eq!(hub.lock().unwrap().record_result(1001, 124, 0), [0, 1, 0], "the loss is counted");
+}

@@ -48,6 +48,7 @@ impl Translator {
                 self.attacker = None;
                 let mut map = self.command_map(&ask);
                 self.add_pile_views(&mut map);
+                self.add_surrender(&mut map);
                 let flags: Vec<(u8, u8)> = buttons.into_iter().filter(|(on, _)| *on).map(|(_, b)| (b, 1)).collect();
                 self.pending = Some(m.clone());
                 Prompt::Client(vec![command_data(&map, &flags), command(cmd::INPUT, [mode, CLIENT, 0, 0])])
@@ -513,6 +514,8 @@ impl Translator {
                 let m = self.pending.clone()?;
                 return Some(self.prompt(&m));
             }
+            Asking::Surrender => return self.surrender_answer(count == 1),
+            Asking::SurrenderEarly => return self.surrender_answer(false),
             Asking::PileView => {
                 // A pile's view closed: the prompt it was opened from, again.
                 self.picks.clear();

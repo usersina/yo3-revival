@@ -80,7 +80,7 @@ fn the_clients_idle_prompt_becomes_a_command_map_and_an_input_wait() {
         "monster_sets": [hand(0)], "spell_sets": [hand(1)], "activates": [hand(1)], "to_bp": true, "to_ep": true });
     let Prompt::Client(out) = t.prompt(&idle) else { panic!("the client chooses") };
     // Then the other flags: phase buttons 3 (BP) and 5 (EP) enabled, as the engine allows (0x501C00 reads them).
-    let data = [0x00, 0x00, 0x0B, 0x00, 0, 0, 0, 0x50, 0x00, 0x01, 0x0B, 0x00, 0, 0, 0, 0x88, 3, 1, 5, 1];
+    let data = [0x00, 0x00, 0x0B, 0x00, 0, 0, 0, 0x50, 0x00, 0x01, 0x0B, 0x00, 0, 0, 0, 0x88, 0, 0, 0x0D, 0, 0, 0, 0x04, 0, 3, 1, 5, 1];
     assert_eq!(out[0].get("COMIDDATA"), Some(&Value::Bin(data.to_vec())));
     assert_eq!(out[0].get("otherFlagSize"), Some(&Value::U32(2)));
     // Command 4 {mode, player}: mode 2 or 3 turns the phase panel on (0x504890).
@@ -112,7 +112,7 @@ fn a_position_change_offers_only_the_other_position() {
         "to_bp": false, "to_ep": true });
     let Prompt::Client(out) = t.prompt(&idle) else { panic!("the client chooses") };
     // Places are big-endian player | zone << 8 | slot << 16, in list order: Flip Summon, to Attack, to Defence.
-    let data = [0, 2, 0, 0, 0, 0, 0, 0x20, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 5, 1];
+    let data = [0, 2, 0, 0, 0, 0, 0, 0x20, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0x0D, 0, 0, 0, 0x04, 0, 5, 1];
     assert_eq!(out[0].get("COMIDDATA"), Some(&Value::Bin(data.to_vec())));
     let to_defense = CardCommand { command: 9, player: 0, zone: 0, index: 0 };
     assert_eq!(t.answer(to_defense), Some(json!({ "type": 1, "action": 2, "index": 0 })));
@@ -144,6 +144,61 @@ fn a_direct_attack_asks_first() {
     let mut t = with_cards();
     t.prompt(&battle);
     assert_eq!(t.command(attack), Some(Prompt::Answer(json!({ "type": 0, "action": 1, "index": 0 }))));
+}
+
+#[test]
+fn the_deck_menu_offers_surrender_and_it_asks_before_it_ends_the_duel() {
+    // The card menu's bit 10 is "Surrender" (0x4F9320, duel_cardcmd.swf) and the menu comes from the command map's bits
+    // at the pointed place, so the player's Deck (zone 0xD, index 0) gets 1 << 10 in every idle and battle map. The
+    // pick sends {CommandID 10, player 0, position 0xD, index 0}; the dialog texts are the original's (DLG_Text 6 "Do
+    // you surrender?", 82 "You may surrender starting from the 5th turn."). Konami's logs end every surrender with
+    // 0x35 {player, 12} (no handler in the client), LifeSet {player, 0} and DuelEnd {result, 12}.
+    let (mut t, _) = translator();
+    let idle = json!({ "type": 11, "player": 0, "summons": [], "special_summons": [], "pos_changes": [],
+        "monster_sets": [], "spell_sets": [], "activates": [], "to_bp": false, "to_ep": true });
+    let Prompt::Client(out) = t.prompt(&idle) else { panic!("the client chooses") };
+    let deck = 0xD << 8;
+    assert!(command_bits(&out).contains(&(deck, 1 << 10)), "{:?}", command_bits(&out));
+    let surrender = CardCommand { command: 10, player: 0, zone: 0xD, index: 0 };
+    // Before the fifth turn: the OK dialog that says when, and the prompt again once it closes.
+    let Some(Prompt::Client(out)) = t.command(surrender) else { panic!("the client is told") };
+    assert_eq!(out.iter().map(cmd).collect::<Vec<_>>(), [(0x3EC, [1, 0, 0, 0]), (0x3ED, [1 << 28 | 82, 0, 0, 0]), (0x36, [0, 1, 0, 0])]);
+    let Some(Prompt::Client(again)) = t.dialog_result(0) else { panic!("the commands again") };
+    assert_eq!(again.last().map(cmd), Some((4, [2, 0, 0, 0])));
+    assert!(!t.conceded());
+    // From the fifth turn: Yes/No.
+    for player in [0, 1, 0, 1, 0] {
+        t.events(&[json!({ "type": 40, "player": player })]);
+    }
+    t.prompt(&idle);
+    let Some(Prompt::Client(out)) = t.command(surrender) else { panic!("the client is asked") };
+    assert_eq!(out.iter().map(cmd).collect::<Vec<_>>(), [(0x3EC, [1, 0, 0, 0]), (0x3ED, [1 << 28 | 6, 0, 0, 0]), (0x36, [2, 1, 0, 0])]);
+    // No: the commands again, and nothing ended.
+    assert!(matches!(t.dialog_result(0), Some(Prompt::Client(_))));
+    assert!(!t.conceded() && t.result().is_none());
+    // Yes: the player conceded; the end is the two commands of Konami's logs, and a win for the other side's view.
+    t.command(surrender);
+    assert_eq!(t.dialog_result(1), Some(Prompt::Client(vec![])));
+    assert!(t.conceded());
+    assert_eq!(t.surrender_end(true).iter().map(cmd).collect::<Vec<_>>(), [(0xF, [0, 0, 0, 0]), (2, [2, 12, 0, 0])]);
+    assert_eq!(t.result(), Some(2));
+    let (mut other, _) = translator();
+    assert_eq!(other.surrender_end(false).iter().map(cmd).collect::<Vec<_>>(), [(0xF, [1, 0, 0, 0]), (2, [1, 12, 0, 0])]);
+    assert_eq!(other.result(), Some(1));
+}
+
+#[test]
+fn a_duel_that_turned_surrender_off_does_not_offer_it() {
+    // The host's `surrender` setting (Duel Conditions): off, the Deck has no entry, and a click that names it anyway
+    // is no card command.
+    let (mut t, _) = translator();
+    t.allow_surrender(false);
+    let idle = json!({ "type": 11, "player": 0, "summons": [], "special_summons": [], "pos_changes": [],
+        "monster_sets": [], "spell_sets": [], "activates": [], "to_bp": false, "to_ep": true });
+    let Prompt::Client(out) = t.prompt(&idle) else { panic!("the client chooses") };
+    assert!(command_bits(&out).iter().all(|&(place, _)| place != 0xD << 8));
+    assert_eq!(t.command(CardCommand { command: 10, player: 0, zone: 0xD, index: 0 }), None);
+    assert!(!t.conceded());
 }
 
 /// The command map's (place, bits) pairs.
@@ -322,7 +377,8 @@ fn a_command_on_a_field_card_comes_with_its_slot() {
     let monster = |seq| json!({ "controller": 0, "location": 4, "sequence": seq });
     let battle = json!({ "type": 10, "player": 0, "attacks": [monster(1)], "chains": [], "to_m2": true, "to_ep": true });
     let Prompt::Client(out) = t.prompt(&battle) else { panic!("the client chooses") };
-    assert_eq!(out[0].get("COMIDDATA"), Some(&Value::Bin(vec![0x00, 0x01, 0x00, 0x00, 0, 0, 0, 0x01, 4, 1, 5, 1])));
+    // The attack's slot, then the Deck's Surrender (zone 0xD, bit 10: 0x400).
+    assert_eq!(out[0].get("COMIDDATA"), Some(&Value::Bin(vec![0x00, 0x01, 0x00, 0x00, 0, 0, 0, 0x01, 0, 0, 0x0D, 0, 0, 0, 0x04, 0, 4, 1, 5, 1])));
     let attack = CardCommand { command: 0, player: 0, zone: 1, index: 0 };
     assert_eq!(t.answer(attack), Some(json!({ "type": 0, "action": 1, "index": 0 })));
     // A set Spell/Trap in the third slot (zone 7), activated.
@@ -427,7 +483,7 @@ fn the_battle_prompt_offers_the_attackers_and_m2_or_ep() {
     let attacker = json!({ "controller": 0, "location": 4, "sequence": 1, "can_direct": true });
     let battle = json!({ "type": 10, "player": 0, "chains": [], "attacks": [attacker], "to_m2": true, "to_ep": true });
     let Prompt::Client(out) = t.prompt(&battle) else { panic!("the client chooses") };
-    let data = [0x00, 0x01, 0x00, 0x00, 0, 0, 0, 0x01, 4, 1, 5, 1];
+    let data = [0x00, 0x01, 0x00, 0x00, 0, 0, 0, 0x01, 0, 0, 0x0D, 0, 0, 0, 0x04, 0, 4, 1, 5, 1];
     assert_eq!(out[0].get("COMIDDATA"), Some(&Value::Bin(data.to_vec())));
     assert_eq!(cmd(&out[1]), (4, [3, 0, 0, 0]));
     // Attack: SELECT_BATTLE (action 1) with the attacker's index.
@@ -1755,7 +1811,7 @@ fn an_extra_deck_summon_is_offered_on_the_extra_deck_pile() {
     let Prompt::Client(out) = t.prompt(&idle) else { panic!("the client chooses") };
     // The client looks a pile's commands up at index 0 only (0x50B510 gives a pile index 0; 0x5204E0 is an exact
     // lookup), so the card at index 1 is offered there, with Confirm (the pile's view).
-    let data = [0x00, 0x00, 0x0C, 0x00, 0, 0, 0x08, 0x04, 5, 1];
+    let data = [0x00, 0x00, 0x0C, 0x00, 0, 0, 0x08, 0x04, 0, 0, 0x0D, 0, 0, 0, 0x04, 0, 5, 1];
     assert_eq!(out[0].get("COMIDDATA"), Some(&Value::Bin(data.to_vec())));
     let summon = CardCommand { command: 2, player: 0, zone: 0xC, index: 0 };
     assert_eq!(t.command(summon), Some(Prompt::Answer(json!({ "type": 1, "action": 1, "index": 0 }))));
@@ -1774,7 +1830,7 @@ fn with_several_cards_able_a_piles_command_asks_which() {
     let idle = json!({ "type": 11, "player": 0, "summons": [], "special_summons": [extra(0, 4151), extra(1, 4150)],
         "pos_changes": [], "monster_sets": [], "spell_sets": [], "activates": [], "to_bp": false, "to_ep": true });
     let Prompt::Client(out) = t.prompt(&idle) else { panic!("the client chooses") };
-    assert_eq!(command_bits(&out), [(0xC << 8, 1 << 2 | 1 << 11)]);
+    assert_eq!(command_bits(&out), [(0xC << 8, 1 << 2 | 1 << 11), (0xD << 8, 1 << 10)]);
     let summon = CardCommand { command: 2, player: 0, zone: 0xC, index: 0 };
     let Some(Prompt::Client(list)) = t.command(summon) else { panic!("which one") };
     assert_eq!(
@@ -2891,10 +2947,69 @@ fn every_engine_message_type_is_accounted_for() {
 }
 
 #[test]
-fn an_undecided_engine_message_is_noted_once_and_an_ignored_one_not_at_all() {
+fn an_unknown_engine_message_is_noted_once_and_an_ignored_one_not_at_all() {
+    // No type is undecided any more (#52); a type the table doesn't list still warns, once, and an ignored one never.
     let (mut t, _) = translator();
-    let shuffle = json!({ "type": 32, "player": 0 });
-    assert_eq!(t.events(&[shuffle.clone(), shuffle]), [], "MSG_SHUFFLE_DECK has no command yet");
-    t.events(&[json!({ "type": 61 }), json!({ "type": 250 })]);
-    assert_eq!(t.unshown_messages(), [32, 250], "undecided and unknown types, not MSG_SUMMONED");
+    assert!(ENGINE_MESSAGES.iter().all(|(_, _, h)| *h != Handling::Undecided), "every type is decided");
+    t.events(&[json!({ "type": 61 }), json!({ "type": 250 }), json!({ "type": 250 }), json!({ "type": 34 }), json!({ "type": 54 })]);
+    assert_eq!(t.unshown_messages(), [250], "not MSG_SUMMONED, REFRESH_DECK or SET");
+}
+
+#[test]
+fn a_shuffled_deck_plays_the_shuffle() {
+    // MSG_SHUFFLE_DECK {player}: DeckShuffle 0x15 {player} (DuelScene case 0x15; Konami's logs: 943 uses, all param2-4 0).
+    let (mut t, _) = translator();
+    let out = t.events(&[json!({ "type": 32, "player": 0 }), json!({ "type": 32, "player": 1 })]);
+    assert_eq!(cmds(&out), [(0x15, [0, 0, 0, 0]), (0x15, [1, 0, 0, 0])]);
+}
+
+#[test]
+fn a_targeting_effect_locks_on_to_its_targets_until_its_link_is_solved() {
+    // MSG_BECOME_TARGET follows the link's MSG_CHAINING (processor.cpp: the targets are chosen after it). Konami's logs: the activation's effect (0x22), CardLockon
+    // {player, zone, 0} on each target, the target marker (1017 type 8) from the activating card, ChainSet, and the
+    // marker taken away after ChainRun. The opponent's monster 0 here is targeted by the client's Spell in zone 5.
+    let (mut t, _) = translator();
+    t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4100 }, { "cid": 4101 }] })]);
+    let at = |c, l, s| json!({ "controller": c, "location": l, "sequence": s, "position": 1 });
+    t.events(&[json!({ "type": 50, "cid": 4100, "reason": 0x10, "from": { "controller": 0, "location": 2, "sequence": 0, "position": 10 }, "to": at(0, 8, 0) })]);
+    t.events(&[json!({ "type": 50, "cid": 4101, "reason": 0x10, "from": { "controller": 0, "location": 2, "sequence": 0, "position": 10 }, "to": at(0, 4, 0) })]);
+    let out = t.events(&[
+        json!({ "type": 70, "controller": 0, "location": 8, "sequence": 0, "position": 1, "cid": 4100, "chain_size": 1, "description": 0 }),
+        json!({ "type": 83, "cards": [at(0, 4, 0)] }),
+    ]);
+    let ids: Vec<u32> = cmds(&out).iter().map(|c| c.0).collect();
+    let lock = ids.iter().position(|&id| id == 0x19).expect("a lock-on");
+    assert_eq!(cmds(&out)[lock], (0x19, [0, 0, 0, 0]));
+    assert!(lock > ids.iter().position(|&id| id == 0x22).expect("the activation"), "after the activation's effect");
+    assert!(lock > ids.iter().position(|&id| id == 0x33).expect("the chain link"), "after the link: the core picks targets after MSG_CHAINING");
+    let marks: Vec<_> = cmds(&out).into_iter().filter(|c| c.0 == 1017).collect();
+    assert!(marks.iter().all(|(_, p)| p[2] == 8 && p[3] == 1) && marks.len() == 2, "{marks:?}");
+    let out = t.events(&[json!({ "type": 73, "chain_size": 1 })]);
+    let gone: Vec<_> = cmds(&out).into_iter().filter(|c| c.0 == 1017).collect();
+    assert!(gone.len() == 2 && gone.iter().all(|(_, p)| p[3] == 0), "{gone:?}");
+}
+
+#[test]
+fn the_extra_deck_lights_up_only_when_a_summon_from_it_is_possible() {
+    // The highlight needs Activate or Confirm (bits 3, 11: 0x50A690): Confirm goes on the Extra Deck with a Special Summon
+    // from it, else only "See Details" (bit 1), which opens the same view and lights nothing (#16).
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 10 * r as u32, def: 1000, level: 4, attribute: 2, race: 12 };
+    let cids = (100..110).chain(200..210).chain([150, 151]).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
+    let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
+    let make = || {
+        let (mut t, _) = Translator::against_player(0, [&client, &cpu], cids.clone());
+        t.extra_decks([&[150, 151][..], &[][..]]);
+        t
+    };
+    let mut t = make();
+    let idle = |summons: Vec<serde_json::Value>| json!({ "type": 11, "player": 0, "summons": [], "special_summons": summons,
+        "pos_changes": [], "monster_sets": [], "spell_sets": [], "activates": [], "to_bp": false, "to_ep": true });
+    let Prompt::Client(out) = t.prompt(&idle(vec![])) else { panic!("the client chooses") };
+    assert!(command_bits(&out).contains(&(0xC << 8, 1 << 1)), "{:?}", command_bits(&out));
+    let Some(Prompt::Client(view)) = t.command(CardCommand { command: 1, player: 0, zone: 0xC, index: 0 }) else { panic!("the view opens") };
+    assert!(cmds(&view).iter().any(|c| c.0 == 0x3EF), "the pile's card list");
+    let mut t = make();
+    let extra = json!({ "controller": 0, "location": 64, "sequence": 0, "cid": 4151 });
+    let Prompt::Client(out) = t.prompt(&idle(vec![extra])) else { panic!("the client chooses") };
+    assert!(command_bits(&out).contains(&(0xC << 8, 1 << 2 | 1 << 11)), "{:?}", command_bits(&out));
 }

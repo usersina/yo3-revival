@@ -82,6 +82,9 @@ pub struct ClientModel {
     off_field: HashSet<u32>,
     battle: [Option<(usize, usize)>; 2],
     lp: [Option<i64>; 2],
+    /// The player who surrendered (command 2 with reason 12): the client set their LP to 0, which the engine never
+    /// knew, so the LP check skips them.
+    surrendered: Option<usize>,
     record: [u32; 9],
     records: HashMap<(usize, u32), [u32; 9]>,
     counters: HashMap<(u32, u32), i64>,
@@ -115,6 +118,7 @@ impl ClientModel {
             off_field: HashSet::new(),
             battle: [None; 2],
             lp: [None; 2],
+            surrendered: None,
             record: [0; 9],
             records: HashMap::new(),
             counters: HashMap::new(),
@@ -281,6 +285,7 @@ impl ClientModel {
             cmd::PHASE => self.phase = Some(((p1 & 1) as usize, p2)),
             cmd::TURN => self.turn = ((p1 & 1) as usize, self.turn.1 + 1),
             cmd::SET_LP => self.lp[(p1 & 1) as usize] = Some(p2 as i64),
+            cmd::DUEL_END if p2 == crate::wire::SURRENDERED => self.surrendered = Some(if p1 == crate::wire::result::LOST { 0 } else { 1 }),
             // A change applies with param3's low byte 0; 1 only shows it (DuelCockpit 0x502EB0).
             cmd::CHANGE_LP if p3 & 0xFF == 0 => {
                 if let Some(lp) = &mut self.lp[(p1 & 1) as usize] { *lp = (*lp + p2 as i32 as i64).clamp(0, 99999); }
@@ -497,7 +502,7 @@ impl ClientModel {
 
     fn check_side(&self, p: usize, side: &Json) -> Vec<String> {
         let mut out = vec![];
-        if let Some(expected) = side["lp"].as_i64() && self.lp[p] != Some(expected) {
+        if let Some(expected) = side["lp"].as_i64() && self.lp[p] != Some(expected) && self.surrendered != Some(p) {
             out.push(format!("player {p}'s LP: engine {expected}, client {:?}", self.lp[p]));
         }
         let list = |k: &str| side[k].as_array().cloned().unwrap_or_default();

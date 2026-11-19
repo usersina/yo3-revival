@@ -231,6 +231,7 @@ impl Table {
             translator.tokens(self.world.token_rows.clone());
             translator.tuners(self.world.tuners.clone());
             translator.auto_place(!self.seats[s].entry.manual_place);
+            translator.allow_surrender(!self.seats[s].entry.no_surrender);
             translator.card_kinds(self.world.card_kinds.clone());
             table.extend(translator.extra_decks([&mine.extra, &theirs.extra]));
             self.translators.push(translator);
@@ -636,7 +637,35 @@ impl Table {
     /// A client's answer to its prompt (see [`Translator::request`]): the engine onwards, or more for that client.
     pub fn request(&mut self, seat: usize, request: ClientRequest) -> Out {
         let prompt = self.translators.get_mut(seat).and_then(|t| t.request(request));
-        self.prompted(seat, prompt)
+        let mut out = self.prompted(seat, prompt);
+        if !self.over && self.translators.get(seat).is_some_and(Translator::conceded) {
+            for (part, more) in out.iter_mut().zip(self.surrender(seat)) {
+                part.extend(more);
+            }
+        }
+        out
+    }
+
+    /// `seat`'s player surrendered (the deck menu's Surrender, confirmed): the duel ends with them losing, as Konami's
+    /// server sent it (the player's LP to 0, command 2 {result, 12}), and the match goes on or ends as after any duel.
+    /// The clients' views end the same way a time out's do; the rules engine is left where it was.
+    fn surrender(&mut self, seat: usize) -> Out {
+        self.clocks = None;
+        let mut results = [result::WON; 2];
+        results[seat] = result::LOST;
+        let mut out = Out::default();
+        for (s, part) in out.iter_mut().enumerate() {
+            if let Some(t) = self.translators.get_mut(s) {
+                part.extend(t.surrender_end(s == seat));
+            }
+        }
+        // A spectator watches from seat 0's side.
+        let watched = crate::translate::surrender_commands(seat == 0);
+        self.tell_spectators(vec![watched; self.spectators.len()]);
+        for (part, more) in out.iter_mut().zip(self.duel_over(results)) {
+            part.extend(more);
+        }
+        out
     }
 
     /// A translator's answer to a client: the engine onwards, or more for that client.
