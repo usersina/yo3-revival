@@ -87,6 +87,20 @@ pub const REGISTRY: &[Setting] = &[
         kind: Kind::Number { min: 0, max: 3600 }, applies: Applies::NextDuel, default: || json!(crate::clock::DEFAULT_TURN) },
     Setting { name: "total-seconds", help: "Each player's total clock in duels between players, when the duel sets none (0: off)",
         kind: Kind::Number { min: 0, max: 36_000 }, applies: Applies::NextDuel, default: || json!(crate::clock::DEFAULT_TOTAL) },
+    Setting { name: "pack-cost", help: "BP a booster pack costs in Blister's shop (the game shows it when you pick the pack)",
+        kind: Kind::Number { min: 1, max: 100_000 }, applies: Applies::NextRequest, default: || json!(crate::shop::PACK_COST) },
+    Setting { name: "deck-cost", help: "BP a structure deck costs in Blister's shop",
+        kind: Kind::Number { min: 1, max: 100_000 }, applies: Applies::NextRequest, default: || json!(crate::shop::DECK_COST) },
+    Setting { name: "trade-cards", help: "Cards of their own a player gives for one card in Blister's Trade Card",
+        kind: Kind::Number { min: 1, max: 40 }, applies: Applies::NextRequest, default: || json!(crate::shop::EXCHANGE_COST) },
+    Setting { name: "rental-cards", help: "Cards the shop's Rental offers at once (\"You can borrow N cards for BP for D days\")",
+        kind: Kind::Number { min: 1, max: 40 }, applies: Applies::NextRequest, default: || json!(crate::shop::RENTAL_CARDS) },
+    Setting { name: "rental-bp", help: "BP the shop's Rental costs",
+        kind: Kind::Number { min: 0, max: 100_000 }, applies: Applies::NextRequest, default: || json!(crate::shop::RENTAL_BP) },
+    Setting { name: "rental-days", help: "Days the shop's Rental lasts",
+        kind: Kind::Number { min: 1, max: 365 }, applies: Applies::NextRequest, default: || json!(crate::shop::RENTAL_DAYS) },
+    Setting { name: "report-limit", help: "Player reports (`/report` in the chat) one player may send in an hour (0: reports are off)",
+        kind: Kind::Number { min: 0, max: 1000 }, applies: Applies::NextRequest, default: || json!(5) },
     Setting { name: "news", help: "The game's Information list: \"TITLE | BODY\" for one entry, or a JSON list of {title, body}",
         kind: Kind::News, applies: Applies::NextRequest, default: default_news },
     Setting { name: "maintenance-at", help: "When maintenance starts, in Unix seconds (0: none); `maintenance --in MINUTES` sets it. \
@@ -128,6 +142,18 @@ pub fn find(name: &str) -> Option<&'static Setting> {
     REGISTRY.iter().find(|s| s.name.eq_ignore_ascii_case(name.trim()))
 }
 
+/// What the shop asks (#16): BP for a pack and a structure deck, the cards a Trade Card swap takes, and the Rental's
+/// offer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Shop {
+    pub pack_cost: u32,
+    pub deck_cost: u32,
+    pub trade_cards: u32,
+    pub rental_cards: u32,
+    pub rental_bp: u32,
+    pub rental_days: u32,
+}
+
 /// The settings at one moment, typed.
 #[derive(Clone, Debug)]
 pub struct Settings {
@@ -155,6 +181,9 @@ pub struct Settings {
     pub pace: crate::net::Pace,
     /// Days the audit log keeps a row (0: for ever).
     pub audit_keep_days: u32,
+    /// The shop's prices (#16) and the reports a player may send in an hour.
+    pub shop: Shop,
+    pub report_limit: u32,
     /// Every setting's value by name, defaults included.
     values: Map<String, Json>,
 }
@@ -193,6 +222,9 @@ impl Settings {
             handshake_burst: number("handshake-burst"),
             handshakes_per_second: number("handshakes-per-second"),
             audit_keep_days: number("audit-keep-days"),
+            shop: Shop { pack_cost: number("pack-cost"), deck_cost: number("deck-cost"), trade_cards: number("trade-cards"),
+                rental_cards: number("rental-cards"), rental_bp: number("rental-bp"), rental_days: number("rental-days") },
+            report_limit: number("report-limit"),
             pace: crate::net::Pace { burst: number("request-burst"), per_second: number("requests-per-second"), outbox_max: number("outbox-max") as usize },
             limits: Limits { burst: number("address-burst"), refill_seconds: number("address-refill-seconds"), max_backoff_seconds: number("backoff-max-seconds") },
             values,

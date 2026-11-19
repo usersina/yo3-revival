@@ -29,7 +29,7 @@ impl Fixture {
         let mut api=Api::new(Arc::new(Mutex::new(accounts)),Arc::new(yo3_server::settings::Live::open(None,vec![]).unwrap()),None,dir.clone(),"test")
             .with_gifts(Gifts { cards: vec![Card { row:817,cid:4007,art:2,name:"Example dragon".into(),description:"Original effect text.\nSecond line.".into() },Card { row:816,cid:4007,art:1,name:"Other artwork".into(),description:String::new() }],recipes:vec![] });
         api.titles=Some(Arc::new(Default::default()));
-        let router=dashboard::router(Dashboard { api:Arc::new(api), panel:Arc::new(yo3_server::panel::Panel::new()) });
+        let router=dashboard::router(Dashboard { api:Arc::new(api), panel:Arc::new(yo3_server::panel::Panel::with_policy(yo3_server::staff_mfa::StaffMfaPolicy::Optional)) });
         Self { dir,router }
     }
     async fn request(&self,path:&str,cookie:&str,etag:Option<&str>)->axum::response::Response {

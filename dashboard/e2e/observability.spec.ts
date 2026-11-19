@@ -2,14 +2,14 @@ import { chooseOption } from './select'
 import { test, expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
-import { AuditPage, LogPage, StaffSession } from '../src/api/generated/validation/schemas'
+import { AuditPage, LogPage, SignInOutcome } from '../src/api/generated/validation/schemas'
 async function signIn(page: Page, user = 'TestAdmin') {
   await page.goto('/connected')
   await page.getByLabel('User ID', { exact: true }).fill(user)
   await page.getByLabel('Password', { exact: true }).fill('DashboardDemo123!')
   const response = page.waitForResponse((r) => r.url().endsWith('/panel/api/v1/sign-in'))
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  StaffSession.parse(await (await response).json())
+  SignInOutcome.parse(await (await response).json())
   await expect(page.getByRole('heading', { name: 'Accounts', exact: true })).toBeVisible()
 }
 test('audit history reads real entries, pages by string cursor and distinguishes empty search from failure', async ({

@@ -3,6 +3,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { AccountDetails } from './AccountDetails'
+import { ConnectedBanlist } from './ConnectedBanlist'
 import { useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Gift, LoaderCircle, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { z } from 'zod'
@@ -290,6 +291,7 @@ export function ConnectedAccountDialog({
           onResetPassword={() => onResetPassword(data)}
           onModerate={() => onModerate(data)}
           onDelete={() => onDelete(data)}
+          extra={<ConnectedBanlist key={data.user_id} account={data} />}
         />
       )}
       <Modal

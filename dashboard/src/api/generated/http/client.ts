@@ -22,6 +22,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AccountBanlist,
   AccountCodeResponse,
   AccountDetail,
   AccountEditRequest,
@@ -30,9 +31,13 @@ import type {
   ApiError,
   AuditPage,
   BackupList,
+  BanlistChoices,
   BpCodeList,
   CardImageSize,
   ChangeSettingsHeaders,
+  CodeRequest,
+  ConfirmMfaEnrollmentHeaders,
+  ConfirmMfaStepUpHeaders,
   CountryList,
   CreateBackupHeaders,
   CreateBackupRequest,
@@ -49,6 +54,7 @@ import type {
   DownloadBackupHeaders,
   DownloadBackupRequest,
   EditAccountHeaders,
+  EmptyRequest,
   GetAuditHistoryParams,
   GetCardImageHeaders,
   GetCardImageParams,
@@ -60,32 +66,48 @@ import type {
   GiveBpHeaders,
   GiveBpResult,
   GivePlayerGiftHeaders,
+  HandleReportHeaders,
+  HandleReportRequest,
+  HandleReportResult,
   InviteList,
   IssueAccountCodeHeaders,
   IssueAccountCodeRequest,
   KeyAccountRequest,
   KeyAccountResult,
   ListGiftChoicesParams,
+  ListReportsParams,
   LogPage,
   ManageAccountKeyHeaders,
+  MfaEnrolled,
+  MfaEnrollmentStart,
   ModerateAccountHeaders,
   ModerationRequest,
   ModerationResponse,
+  RecoveryCodes,
+  RegenerateRecoveryCodesHeaders,
   RemoveBpCodeHeaders,
   RemoveBpCodeRequest,
   RemoveBpCodeResult,
+  ReportList,
   ServerOverview,
+  SetAccountBanlistHeaders,
+  SetBanlistRequest,
   SettingsList,
   SettingsRequest,
   SettingsResult,
+  SignInCodeRequest,
+  SignInOutcome,
   SignInRequest,
   SignInStaffHeaders,
+  SignOutEverywhereHeaders,
   SignOutStaffHeaders,
   SignedOut,
   StaffSession,
+  StartMfaEnrollmentHeaders,
   StopRequest,
   StopResponse,
-  StopServerHeaders
+  StopServerHeaders,
+  VerifyStaffCodeHeaders
 } from './models';
 
 import { apiFetch } from '../../transport';
@@ -222,6 +244,75 @@ export function useListAccounts<TData = Awaited<ReturnType<typeof listAccounts>>
 
 
 
+
+export const getSetAccountBanlistUrl = () => {
+
+
+
+
+  return `/panel/api/v1/accounts/banlist`
+}
+
+export const setAccountBanlist = async (setBanlistRequest: SetBanlistRequest,
+    headers: SetAccountBanlistHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<AccountBanlist> => {
+
+  return apiFetch<AccountBanlist>(getSetAccountBanlistUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(setBanlistRequest)
+  }
+);}
+
+
+
+
+
+export const getSetAccountBanlistMutationKey = () => ['setAccountBanlist'] as const;
+
+export const getSetAccountBanlistMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setAccountBanlist>>, TError,SetAccountBanlistMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setAccountBanlist>>, TError,SetAccountBanlistMutationVariables, TContext> => {
+
+const mutationKey = getSetAccountBanlistMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setAccountBanlist>>, SetAccountBanlistMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  setAccountBanlist(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetAccountBanlistMutationResult = NonNullable<Awaited<ReturnType<typeof setAccountBanlist>>>
+    export type SetAccountBanlistMutationBody = SetBanlistRequest
+    export type SetAccountBanlistMutationError = ErrorType<ApiError>
+    export type SetAccountBanlistMutationVariables = {data: SetBanlistRequest;headers: SetAccountBanlistHeaders}
+
+    export const useSetAccountBanlist = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setAccountBanlist>>, TError,SetAccountBanlistMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof setAccountBanlist>>,
+        TError,
+        SetAccountBanlistMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSetAccountBanlistMutationOptions(options), queryClient);
+    }
 
 export const getIssueAccountCodeUrl = () => {
 
@@ -925,6 +1016,100 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       > => {
       return useMutation(getDownloadBackupMutationOptions(options), queryClient);
     }
+
+export const getListBanlistsUrl = () => {
+
+
+
+
+  return `/panel/api/v1/banlists`
+}
+
+export const listBanlists = async ( options?: Parameters<typeof apiFetch>[1]): Promise<BanlistChoices> => {
+
+  return apiFetch<BanlistChoices>(getListBanlistsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListBanlistsQueryKey = () => {
+    return [
+    `/panel/api/v1/banlists`
+    ] as const;
+    }
+
+
+export const getListBanlistsQueryOptions = <TData = Awaited<ReturnType<typeof listBanlists>>, TError = ErrorType<ApiError>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBanlists>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListBanlistsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listBanlists>>> = ({ signal }) => listBanlists({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listBanlists>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListBanlistsQueryResult = NonNullable<Awaited<ReturnType<typeof listBanlists>>>
+export type ListBanlistsQueryError = ErrorType<ApiError>
+
+
+export function useListBanlists<TData = Awaited<ReturnType<typeof listBanlists>>, TError = ErrorType<ApiError>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBanlists>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listBanlists>>,
+          TError,
+          Awaited<ReturnType<typeof listBanlists>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListBanlists<TData = Awaited<ReturnType<typeof listBanlists>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBanlists>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listBanlists>>,
+          TError,
+          Awaited<ReturnType<typeof listBanlists>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListBanlists<TData = Awaited<ReturnType<typeof listBanlists>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBanlists>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListBanlists<TData = Awaited<ReturnType<typeof listBanlists>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBanlists>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListBanlistsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getListBpCodesUrl = () => {
 
@@ -1878,6 +2063,281 @@ export function useGetServerLogs<TData = Awaited<ReturnType<typeof getServerLogs
 
 
 
+export const getStartMfaEnrollmentUrl = () => {
+
+
+
+
+  return `/panel/api/v1/mfa/enrollment`
+}
+
+export const startMfaEnrollment = async (headers: StartMfaEnrollmentHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<MfaEnrollmentStart> => {
+
+  return apiFetch<MfaEnrollmentStart>(getStartMfaEnrollmentUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders(headers, options?.headers)
+
+  }
+);}
+
+
+
+
+
+export const getStartMfaEnrollmentMutationKey = () => ['startMfaEnrollment'] as const;
+
+export const getStartMfaEnrollmentMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startMfaEnrollment>>, TError,StartMfaEnrollmentMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startMfaEnrollment>>, TError,StartMfaEnrollmentMutationVariables, TContext> => {
+
+const mutationKey = getStartMfaEnrollmentMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startMfaEnrollment>>, StartMfaEnrollmentMutationVariables> = (props) => {
+          const {headers} = props ?? {};
+
+          return  startMfaEnrollment(headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartMfaEnrollmentMutationResult = NonNullable<Awaited<ReturnType<typeof startMfaEnrollment>>>
+
+    export type StartMfaEnrollmentMutationError = ErrorType<ApiError>
+    export type StartMfaEnrollmentMutationVariables = {headers: StartMfaEnrollmentHeaders}
+
+    export const useStartMfaEnrollment = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startMfaEnrollment>>, TError,StartMfaEnrollmentMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof startMfaEnrollment>>,
+        TError,
+        StartMfaEnrollmentMutationVariables,
+        TContext
+      > => {
+      return useMutation(getStartMfaEnrollmentMutationOptions(options), queryClient);
+    }
+
+export const getConfirmMfaEnrollmentUrl = () => {
+
+
+
+
+  return `/panel/api/v1/mfa/enrollment/confirm`
+}
+
+export const confirmMfaEnrollment = async (codeRequest: CodeRequest,
+    headers: ConfirmMfaEnrollmentHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<MfaEnrolled> => {
+
+  return apiFetch<MfaEnrolled>(getConfirmMfaEnrollmentUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(codeRequest)
+  }
+);}
+
+
+
+
+
+export const getConfirmMfaEnrollmentMutationKey = () => ['confirmMfaEnrollment'] as const;
+
+export const getConfirmMfaEnrollmentMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmMfaEnrollment>>, TError,ConfirmMfaEnrollmentMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof confirmMfaEnrollment>>, TError,ConfirmMfaEnrollmentMutationVariables, TContext> => {
+
+const mutationKey = getConfirmMfaEnrollmentMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof confirmMfaEnrollment>>, ConfirmMfaEnrollmentMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  confirmMfaEnrollment(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConfirmMfaEnrollmentMutationResult = NonNullable<Awaited<ReturnType<typeof confirmMfaEnrollment>>>
+    export type ConfirmMfaEnrollmentMutationBody = CodeRequest
+    export type ConfirmMfaEnrollmentMutationError = ErrorType<ApiError>
+    export type ConfirmMfaEnrollmentMutationVariables = {data: CodeRequest;headers: ConfirmMfaEnrollmentHeaders}
+
+    export const useConfirmMfaEnrollment = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmMfaEnrollment>>, TError,ConfirmMfaEnrollmentMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof confirmMfaEnrollment>>,
+        TError,
+        ConfirmMfaEnrollmentMutationVariables,
+        TContext
+      > => {
+      return useMutation(getConfirmMfaEnrollmentMutationOptions(options), queryClient);
+    }
+
+export const getRegenerateRecoveryCodesUrl = () => {
+
+
+
+
+  return `/panel/api/v1/mfa/recovery-codes`
+}
+
+export const regenerateRecoveryCodes = async (emptyRequest: EmptyRequest,
+    headers: RegenerateRecoveryCodesHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<RecoveryCodes> => {
+
+  return apiFetch<RecoveryCodes>(getRegenerateRecoveryCodesUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(emptyRequest)
+  }
+);}
+
+
+
+
+
+export const getRegenerateRecoveryCodesMutationKey = () => ['regenerateRecoveryCodes'] as const;
+
+export const getRegenerateRecoveryCodesMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof regenerateRecoveryCodes>>, TError,RegenerateRecoveryCodesMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof regenerateRecoveryCodes>>, TError,RegenerateRecoveryCodesMutationVariables, TContext> => {
+
+const mutationKey = getRegenerateRecoveryCodesMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof regenerateRecoveryCodes>>, RegenerateRecoveryCodesMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  regenerateRecoveryCodes(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RegenerateRecoveryCodesMutationResult = NonNullable<Awaited<ReturnType<typeof regenerateRecoveryCodes>>>
+    export type RegenerateRecoveryCodesMutationBody = EmptyRequest
+    export type RegenerateRecoveryCodesMutationError = ErrorType<ApiError>
+    export type RegenerateRecoveryCodesMutationVariables = {data: EmptyRequest;headers: RegenerateRecoveryCodesHeaders}
+
+    export const useRegenerateRecoveryCodes = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof regenerateRecoveryCodes>>, TError,RegenerateRecoveryCodesMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof regenerateRecoveryCodes>>,
+        TError,
+        RegenerateRecoveryCodesMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRegenerateRecoveryCodesMutationOptions(options), queryClient);
+    }
+
+export const getConfirmMfaStepUpUrl = () => {
+
+
+
+
+  return `/panel/api/v1/mfa/step-up`
+}
+
+export const confirmMfaStepUp = async (codeRequest: CodeRequest,
+    headers: ConfirmMfaStepUpHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<StaffSession> => {
+
+  return apiFetch<StaffSession>(getConfirmMfaStepUpUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(codeRequest)
+  }
+);}
+
+
+
+
+
+export const getConfirmMfaStepUpMutationKey = () => ['confirmMfaStepUp'] as const;
+
+export const getConfirmMfaStepUpMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmMfaStepUp>>, TError,ConfirmMfaStepUpMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof confirmMfaStepUp>>, TError,ConfirmMfaStepUpMutationVariables, TContext> => {
+
+const mutationKey = getConfirmMfaStepUpMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof confirmMfaStepUp>>, ConfirmMfaStepUpMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  confirmMfaStepUp(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConfirmMfaStepUpMutationResult = NonNullable<Awaited<ReturnType<typeof confirmMfaStepUp>>>
+    export type ConfirmMfaStepUpMutationBody = CodeRequest
+    export type ConfirmMfaStepUpMutationError = ErrorType<ApiError>
+    export type ConfirmMfaStepUpMutationVariables = {data: CodeRequest;headers: ConfirmMfaStepUpHeaders}
+
+    export const useConfirmMfaStepUp = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmMfaStepUp>>, TError,ConfirmMfaStepUpMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof confirmMfaStepUp>>,
+        TError,
+        ConfirmMfaStepUpMutationVariables,
+        TContext
+      > => {
+      return useMutation(getConfirmMfaStepUpMutationOptions(options), queryClient);
+    }
+
 export const getModerateAccountUrl = () => {
 
 
@@ -1945,6 +2405,176 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getModerateAccountMutationOptions(options), queryClient);
+    }
+
+export const getListReportsUrl = (params?: ListReportsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/panel/api/v1/reports?${stringifiedParams}` : `/panel/api/v1/reports`
+}
+
+export const listReports = async (params?: ListReportsParams, options?: Parameters<typeof apiFetch>[1]): Promise<ReportList> => {
+
+  return apiFetch<ReportList>(getListReportsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListReportsQueryKey = (params?: ListReportsParams,) => {
+    return [
+    `/panel/api/v1/reports`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListReportsQueryOptions = <TData = Awaited<ReturnType<typeof listReports>>, TError = ErrorType<ApiError>>(params?: ListReportsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listReports>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListReportsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listReports>>> = ({ signal }) => listReports(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listReports>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListReportsQueryResult = NonNullable<Awaited<ReturnType<typeof listReports>>>
+export type ListReportsQueryError = ErrorType<ApiError>
+
+
+export function useListReports<TData = Awaited<ReturnType<typeof listReports>>, TError = ErrorType<ApiError>>(
+ params: undefined |  ListReportsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listReports>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listReports>>,
+          TError,
+          Awaited<ReturnType<typeof listReports>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListReports<TData = Awaited<ReturnType<typeof listReports>>, TError = ErrorType<ApiError>>(
+ params?: ListReportsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listReports>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listReports>>,
+          TError,
+          Awaited<ReturnType<typeof listReports>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListReports<TData = Awaited<ReturnType<typeof listReports>>, TError = ErrorType<ApiError>>(
+ params?: ListReportsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listReports>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListReports<TData = Awaited<ReturnType<typeof listReports>>, TError = ErrorType<ApiError>>(
+ params?: ListReportsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listReports>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListReportsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getHandleReportUrl = () => {
+
+
+
+
+  return `/panel/api/v1/reports/handle`
+}
+
+export const handleReport = async (handleReportRequest: HandleReportRequest,
+    headers: HandleReportHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<HandleReportResult> => {
+
+  return apiFetch<HandleReportResult>(getHandleReportUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(handleReportRequest)
+  }
+);}
+
+
+
+
+
+export const getHandleReportMutationKey = () => ['handleReport'] as const;
+
+export const getHandleReportMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof handleReport>>, TError,HandleReportMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof handleReport>>, TError,HandleReportMutationVariables, TContext> => {
+
+const mutationKey = getHandleReportMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof handleReport>>, HandleReportMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  handleReport(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type HandleReportMutationResult = NonNullable<Awaited<ReturnType<typeof handleReport>>>
+    export type HandleReportMutationBody = HandleReportRequest
+    export type HandleReportMutationError = ErrorType<ApiError>
+    export type HandleReportMutationVariables = {data: HandleReportRequest;headers: HandleReportHeaders}
+
+    export const useHandleReport = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof handleReport>>, TError,HandleReportMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof handleReport>>,
+        TError,
+        HandleReportMutationVariables,
+        TContext
+      > => {
+      return useMutation(getHandleReportMutationOptions(options), queryClient);
     }
 
 export const getGetServerStatusUrl = () => {
@@ -2376,9 +3006,9 @@ export const getSignInStaffUrl = () => {
 }
 
 export const signInStaff = async (signInRequest: SignInRequest,
-    headers: SignInStaffHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<StaffSession> => {
+    headers: SignInStaffHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<SignInOutcome> => {
 
-  return apiFetch<StaffSession>(getSignInStaffUrl(),
+  return apiFetch<SignInOutcome>(getSignInStaffUrl(),
   {
     ...options,
     method: 'POST',
@@ -2434,6 +3064,75 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getSignInStaffMutationOptions(options), queryClient);
+    }
+
+export const getVerifyStaffCodeUrl = () => {
+
+
+
+
+  return `/panel/api/v1/sign-in/code`
+}
+
+export const verifyStaffCode = async (signInCodeRequest: SignInCodeRequest,
+    headers: VerifyStaffCodeHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<StaffSession> => {
+
+  return apiFetch<StaffSession>(getVerifyStaffCodeUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(signInCodeRequest)
+  }
+);}
+
+
+
+
+
+export const getVerifyStaffCodeMutationKey = () => ['verifyStaffCode'] as const;
+
+export const getVerifyStaffCodeMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifyStaffCode>>, TError,VerifyStaffCodeMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof verifyStaffCode>>, TError,VerifyStaffCodeMutationVariables, TContext> => {
+
+const mutationKey = getVerifyStaffCodeMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof verifyStaffCode>>, VerifyStaffCodeMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  verifyStaffCode(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type VerifyStaffCodeMutationResult = NonNullable<Awaited<ReturnType<typeof verifyStaffCode>>>
+    export type VerifyStaffCodeMutationBody = SignInCodeRequest
+    export type VerifyStaffCodeMutationError = ErrorType<ApiError>
+    export type VerifyStaffCodeMutationVariables = {data: SignInCodeRequest;headers: VerifyStaffCodeHeaders}
+
+    export const useVerifyStaffCode = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifyStaffCode>>, TError,VerifyStaffCodeMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof verifyStaffCode>>,
+        TError,
+        VerifyStaffCodeMutationVariables,
+        TContext
+      > => {
+      return useMutation(getVerifyStaffCodeMutationOptions(options), queryClient);
     }
 
 export const getSignOutStaffUrl = () => {
@@ -2502,4 +3201,73 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getSignOutStaffMutationOptions(options), queryClient);
+    }
+
+export const getSignOutEverywhereUrl = () => {
+
+
+
+
+  return `/panel/api/v1/sign-out-everywhere`
+}
+
+export const signOutEverywhere = async (emptyRequest: EmptyRequest,
+    headers: SignOutEverywhereHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<SignedOut> => {
+
+  return apiFetch<SignedOut>(getSignOutEverywhereUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(emptyRequest)
+  }
+);}
+
+
+
+
+
+export const getSignOutEverywhereMutationKey = () => ['signOutEverywhere'] as const;
+
+export const getSignOutEverywhereMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof signOutEverywhere>>, TError,SignOutEverywhereMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof signOutEverywhere>>, TError,SignOutEverywhereMutationVariables, TContext> => {
+
+const mutationKey = getSignOutEverywhereMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof signOutEverywhere>>, SignOutEverywhereMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  signOutEverywhere(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SignOutEverywhereMutationResult = NonNullable<Awaited<ReturnType<typeof signOutEverywhere>>>
+    export type SignOutEverywhereMutationBody = EmptyRequest
+    export type SignOutEverywhereMutationError = ErrorType<ApiError>
+    export type SignOutEverywhereMutationVariables = {data: EmptyRequest;headers: SignOutEverywhereHeaders}
+
+    export const useSignOutEverywhere = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof signOutEverywhere>>, TError,SignOutEverywhereMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof signOutEverywhere>>,
+        TError,
+        SignOutEverywhereMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSignOutEverywhereMutationOptions(options), queryClient);
     }

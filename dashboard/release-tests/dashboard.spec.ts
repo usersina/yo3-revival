@@ -8,6 +8,7 @@ import {
   GiveBpResult,
   GiftChoices,
   StaffSession,
+  SignInOutcome,
 } from '../src/api/generated/validation/schemas'
 
 async function signIn(page: Page, user = 'CheckAdmin') {
@@ -16,7 +17,7 @@ async function signIn(page: Page, user = 'CheckAdmin') {
   await page.getByLabel('Password', { exact: true }).fill('GateCheck12345')
   const signingIn = page.waitForResponse((r) => r.url().endsWith('/panel/api/v1/sign-in'))
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  StaffSession.parse(await (await signingIn).json())
+  SignInOutcome.parse(await (await signingIn).json())
   await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible()
 }
 

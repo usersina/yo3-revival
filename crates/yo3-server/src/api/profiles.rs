@@ -37,7 +37,9 @@ pub struct AccountEditResult {
 pub struct AccountDetail {
     #[schema(maximum = 4294967295_u32)] pub user_id: u32, pub login: Option<String>, pub has_key: bool, pub password_ready: Option<bool>, pub role: Role,
     #[schema(maximum = 4294967295_u32)] pub bp: u32, pub country: Option<String>, pub standing: Option<AccountStanding>, pub muted: Option<AccountMute>,
-    #[schema(maximum = 4294967295_u32)] pub device_count: u32, pub reset_pending: bool, pub players: Vec<PlayerDetail>, pub checked_at: DateTime<Utc>,
+    #[schema(maximum = 4294967295_u32)] pub device_count: u32, pub reset_pending: bool, pub players: Vec<PlayerDetail>,
+    /// The banlist the account's game logs in with (its own choice with `/banlist`, a staff override, or the server's).
+    pub banlist: super::banlist::AccountBanlist, pub checked_at: DateTime<Utc>,
 }
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -125,6 +127,7 @@ impl Api {
         Ok(AccountDetail { user_id: user, login: login.map(|l| l.user.clone()), has_key: d.entries().any(|(_, k, a)| a.user_id == user && k.is_some()),
             password_ready: login.map(|l| !l.password.is_empty()), role: login.map_or(Role::Player, |l| l.role), bp: a.dpoint, country: (!a.country.is_empty()).then_some(a.country), standing, muted,
             device_count: login.map_or(0, |l| l.devices.len() as u32), reset_pending: login.and_then(|l| l.reset.as_ref()).is_some_and(|(_, t)| *t > now),
+            banlist: self.account_banlist(a.banlist),
             players: a.players.iter().map(|p| PlayerDetail { player_id: p.player_id, name: p.name.clone(), slot: p.index, level: p.level, title_id: p.title,
                 additional_cards: p.cards.values().map(|&n| u64::from(n)).sum(), card_kinds: p.cards.len() as u32, purchased_decks: p.decks.len() as u32,
                 uploaded_decks: p.uploaded.len() as u32, owned_items: p.items.len() as u32, online: hub.as_ref().map(|h| h.is_online(p.player_id)),

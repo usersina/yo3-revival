@@ -16,6 +16,26 @@ export const AccessCode = zod.string().min(AccessCodeMin).max(AccessCodeMax).reg
 export type AccessCode = zod.input<typeof AccessCode>;
 export type AccessCodeOutput = zod.output<typeof AccessCode>;
 
+export const banlistChoiceIdMin = 0;
+export const banlistChoiceIdMax = 4294967295;
+
+
+
+export const BanlistChoice = zod.object({
+  "id": zod.int().min(banlistChoiceIdMin).max(banlistChoiceIdMax),
+  "name": zod.string()
+});
+
+export type BanlistChoice = zod.input<typeof BanlistChoice>;
+export type BanlistChoiceOutput = zod.output<typeof BanlistChoice>;
+
+export const AccountBanlist = BanlistChoice.and(zod.object({
+  "chosen": zod.boolean().describe('True when the account (or the staff) chose it; false when it is the server\'s `login-regulation`.')
+})).describe('The banlist an account\'s game logs in with.');
+
+export type AccountBanlist = zod.input<typeof AccountBanlist>;
+export type AccountBanlistOutput = zod.output<typeof AccountBanlist>;
+
 export const AccountCodeKind = zod.enum(['setup', 'reset']);
 
 export type AccountCodeKind = zod.input<typeof AccountCodeKind>;
@@ -156,6 +176,7 @@ export const accountDetailUserIdMax = 4294967295;
 
 
 export const AccountDetail = zod.object({
+  "banlist": AccountBanlist.describe('The banlist the account\'s game logs in with (its own choice with `/banlist`, a staff override, or the server\'s).'),
   "bp": zod.int().min(accountDetailBpMin).max(accountDetailBpMax),
   "checked_at": zod.iso.datetime({"offset":true}),
   "country": zod.string().nullish(),
@@ -295,7 +316,7 @@ export const AccountList = zod.object({
 export type AccountList = zod.input<typeof AccountList>;
 export type AccountListOutput = zod.output<typeof AccountList>;
 
-export const ApiErrorCode = zod.enum(['invalid_request', 'unauthenticated', 'forbidden', 'invalid_origin', 'csrf_invalid', 'rate_limited', 'not_found', 'already_exists', 'request_conflict', 'persistence_failed', 'reauthentication_required', 'method_not_allowed', 'payload_too_large', 'unsupported_media_type', 'internal_error']);
+export const ApiErrorCode = zod.enum(['invalid_request', 'unauthenticated', 'forbidden', 'invalid_origin', 'csrf_invalid', 'rate_limited', 'not_found', 'already_exists', 'request_conflict', 'persistence_failed', 'reauthentication_required', 'invalid_code', 'mfa_enrollment_required', 'method_not_allowed', 'payload_too_large', 'unsupported_media_type', 'internal_error']);
 
 export type ApiErrorCode = zod.input<typeof ApiErrorCode>;
 export type ApiErrorCodeOutput = zod.output<typeof ApiErrorCode>;
@@ -369,6 +390,15 @@ export const BackupList = zod.object({
 export type BackupList = zod.input<typeof BackupList>;
 export type BackupListOutput = zod.output<typeof BackupList>;
 
+export const BanlistChoices = zod.object({
+  "checked_at": zod.iso.datetime({"offset":true}),
+  "choices": zod.array(BanlistChoice),
+  "server_default": BanlistChoice.describe('What an account without a choice logs in with.')
+});
+
+export type BanlistChoices = zod.input<typeof BanlistChoices>;
+export type BanlistChoicesOutput = zod.output<typeof BanlistChoices>;
+
 export const bpCodeClaimUserIdMin = 0;
 export const bpCodeClaimUserIdMax = 4294967295;
 
@@ -439,6 +469,18 @@ export const CardPng = zod.instanceof(Blob);
 
 export type CardPng = zod.input<typeof CardPng>;
 export type CardPngOutput = zod.output<typeof CardPng>;
+
+export const codeRequestCodeMin = 6;
+export const codeRequestCodeMax = 32;
+
+
+
+export const CodeRequest = zod.object({
+  "code": zod.string().min(codeRequestCodeMin).max(codeRequestCodeMax).describe('An authenticator code (six digits) or an unused recovery code.')
+});
+
+export type CodeRequest = zod.input<typeof CodeRequest>;
+export type CodeRequestOutput = zod.output<typeof CodeRequest>;
 
 export const CountryList = zod.object({
   "codes": zod.array(zod.string())
@@ -600,6 +642,13 @@ export const DownloadBackupRequest = zod.object({
 
 export type DownloadBackupRequest = zod.input<typeof DownloadBackupRequest>;
 export type DownloadBackupRequestOutput = zod.output<typeof DownloadBackupRequest>;
+
+export const EmptyRequest = zod.object({
+
+});
+
+export type EmptyRequest = zod.input<typeof EmptyRequest>;
+export type EmptyRequestOutput = zod.output<typeof EmptyRequest>;
 
 export const recipeChoiceCardCountMin = 0;
 export const recipeChoiceCardCountMax = 4294967295;
@@ -766,6 +815,77 @@ export const GiveBpResult = zod.object({
 export type GiveBpResult = zod.input<typeof GiveBpResult>;
 export type GiveBpResultOutput = zod.output<typeof GiveBpResult>;
 
+export const Status = zod.enum(['open', 'handled', 'dismissed']).describe('Where a report stands.');
+
+export type Status = zod.input<typeof Status>;
+export type StatusOutput = zod.output<typeof Status>;
+
+export const handleReportRequestNoteMax = 300;
+
+export const handleReportRequestReportIdMin = 0;
+export const handleReportRequestReportIdMax = 4294967295;
+
+
+
+export const HandleReportRequest = zod.object({
+  "note": zod.string().max(handleReportRequestNoteMax).optional().describe('What was done, shown with the report (optional).'),
+  "report_id": zod.int().min(handleReportRequestReportIdMin).max(handleReportRequestReportIdMax),
+  "status": Status.describe('handled or dismissed.')
+});
+
+export type HandleReportRequest = zod.input<typeof HandleReportRequest>;
+export type HandleReportRequestOutput = zod.output<typeof HandleReportRequest>;
+
+export const reportIdMin = 0;
+export const reportIdMax = 4294967295;
+
+export const reportReporterIdMin = 0;
+
+export const reportTargetIdMin = 0;
+
+
+
+export const Report = zod.object({
+  "at": zod.string().describe('RFC 3339 UTC, to the second.'),
+  "handled_at": zod.string().nullish(),
+  "handled_by": zod.string().nullish(),
+  "id": zod.int().min(reportIdMin).max(reportIdMax),
+  "note": zod.string().nullish(),
+  "reason": zod.string(),
+  "reporter": zod.string(),
+  "reporter_id": zod.int().min(reportReporterIdMin),
+  "status": Status,
+  "target": zod.string(),
+  "target_id": zod.int().min(reportTargetIdMin)
+});
+
+export type Report = zod.input<typeof Report>;
+export type ReportOutput = zod.output<typeof Report>;
+
+export const reportViewTwoReporterUserIdMin = 0;
+export const reportViewTwoReporterUserIdMax = 4294967295;
+
+export const reportViewTwoTargetUserIdMin = 0;
+export const reportViewTwoTargetUserIdMax = 4294967295;
+
+
+
+export const ReportView = Report.and(zod.object({
+  "reporter_user_id": zod.int().min(reportViewTwoReporterUserIdMin).max(reportViewTwoReporterUserIdMax).nullish().describe('The account of the reporting player (none once deleted).'),
+  "target_user_id": zod.int().min(reportViewTwoTargetUserIdMin).max(reportViewTwoTargetUserIdMax).nullish()
+})).describe('A report with the accounts of the two players, for the page\'s links.');
+
+export type ReportView = zod.input<typeof ReportView>;
+export type ReportViewOutput = zod.output<typeof ReportView>;
+
+export const HandleReportResult = zod.object({
+  "message": zod.string(),
+  "report": ReportView
+});
+
+export type HandleReportResult = zod.input<typeof HandleReportResult>;
+export type HandleReportResultOutput = zod.output<typeof HandleReportResult>;
+
 export const inviteClaimUserIdMin = 0;
 export const inviteClaimUserIdMax = 4294967295;
 
@@ -916,6 +1036,48 @@ export const LogPage = zod.object({
 export type LogPage = zod.input<typeof LogPage>;
 export type LogPageOutput = zod.output<typeof LogPage>;
 
+export const staffSessionRecoveryCodesRemainingMin = 0;
+export const staffSessionRecoveryCodesRemainingMax = 100;
+
+export const staffSessionUserIdMin = 0;
+export const staffSessionUserIdMax = 4294967295;
+
+
+
+export const StaffSession = zod.object({
+  "csrf_token": zod.string(),
+  "expires_at": zod.iso.datetime({"offset":true}).describe('Idle expiry, refreshed by an authenticated request; capped by the absolute session lifetime.'),
+  "limited": zod.boolean().describe('An enrollment-only session: every route but enrollment, sign-out and this session answers `mfa_enrollment_required`.'),
+  "mfa_enabled": zod.boolean().describe('The account has an active authenticator (TOTP).'),
+  "mfa_recent_until": zod.iso.datetime({"offset":true}).nullish().describe('When the authenticator\'s recent check ends; none: sensitive operations ask for a code first.'),
+  "mfa_required": zod.boolean().describe('The server requires an authenticator of every staff account (the default policy).'),
+  "recovery_codes_remaining": zod.int().min(staffSessionRecoveryCodesRemainingMin).max(staffSessionRecoveryCodesRemainingMax).describe('Unused recovery codes left.'),
+  "role": Role,
+  "user": zod.string(),
+  "user_id": zod.int().min(staffSessionUserIdMin).max(staffSessionUserIdMax)
+});
+
+export type StaffSession = zod.input<typeof StaffSession>;
+export type StaffSessionOutput = zod.output<typeof StaffSession>;
+
+export const MfaEnrolled = zod.object({
+  "recovery_codes": zod.array(zod.string()),
+  "session": StaffSession
+}).describe('An authenticator was activated. The recovery codes are shown once and are kept only as digests.');
+
+export type MfaEnrolled = zod.input<typeof MfaEnrolled>;
+export type MfaEnrolledOutput = zod.output<typeof MfaEnrolled>;
+
+export const MfaEnrollmentStart = zod.object({
+  "account": zod.string(),
+  "issuer": zod.string(),
+  "otpauth_uri": zod.string(),
+  "secret": zod.string()
+}).describe('The seed of a new authenticator, shown to its owner once. The QR code is the `otpauth_uri`.');
+
+export type MfaEnrollmentStart = zod.input<typeof MfaEnrollmentStart>;
+export type MfaEnrollmentStartOutput = zod.output<typeof MfaEnrollmentStart>;
+
 export const moderationRequestOneUserIdMin = 0;
 export const moderationRequestOneUserIdMax = 4294967295;
 
@@ -1025,6 +1187,13 @@ export const OnlinePlayer = zod.object({
 export type OnlinePlayer = zod.input<typeof OnlinePlayer>;
 export type OnlinePlayerOutput = zod.output<typeof OnlinePlayer>;
 
+export const RecoveryCodes = zod.object({
+  "recovery_codes": zod.array(zod.string())
+});
+
+export type RecoveryCodes = zod.input<typeof RecoveryCodes>;
+export type RecoveryCodesOutput = zod.output<typeof RecoveryCodes>;
+
 export const regulationChoiceIdMin = 0;
 
 
@@ -1059,6 +1228,20 @@ export const RemoveBpCodeResult = zod.object({
 
 export type RemoveBpCodeResult = zod.input<typeof RemoveBpCodeResult>;
 export type RemoveBpCodeResultOutput = zod.output<typeof RemoveBpCodeResult>;
+
+export const reportListOpenMin = 0;
+export const reportListOpenMax = 4294967295;
+
+
+
+export const ReportList = zod.object({
+  "checked_at": zod.iso.datetime({"offset":true}),
+  "open": zod.int().min(reportListOpenMin).max(reportListOpenMax).describe('Open reports in all, whatever the list shows.'),
+  "reports": zod.array(ReportView)
+});
+
+export type ReportList = zod.input<typeof ReportList>;
+export type ReportListOutput = zod.output<typeof ReportList>;
 
 export const serverOverviewAccountsMin = 0;
 export const serverOverviewAccountsMax = 4294967295;
@@ -1099,6 +1282,22 @@ export const ServerOverview = zod.object({
 
 export type ServerOverview = zod.input<typeof ServerOverview>;
 export type ServerOverviewOutput = zod.output<typeof ServerOverview>;
+
+export const setBanlistRequestBanlistMin = 0;
+export const setBanlistRequestBanlistMax = 4294967295;
+
+export const setBanlistRequestUserIdMin = 0;
+export const setBanlistRequestUserIdMax = 4294967295;
+
+
+
+export const SetBanlistRequest = zod.object({
+  "banlist": zod.int().min(setBanlistRequestBanlistMin).max(setBanlistRequestBanlistMax).nullish().describe('A banlist\'s id from the choices; null or omitted goes back to the server\'s.'),
+  "user_id": zod.int().min(setBanlistRequestUserIdMin).max(setBanlistRequestUserIdMax)
+});
+
+export type SetBanlistRequest = zod.input<typeof SetBanlistRequest>;
+export type SetBanlistRequestOutput = zod.output<typeof SetBanlistRequest>;
 
 export const settingKindOneMaxLengthMin = 0;
 
@@ -1185,6 +1384,31 @@ export const SettingsResult = zod.object({
 export type SettingsResult = zod.input<typeof SettingsResult>;
 export type SettingsResultOutput = zod.output<typeof SettingsResult>;
 
+export const signInCodeRequestChallengeMin = 64;
+export const signInCodeRequestChallengeMax = 64;
+
+export const signInCodeRequestCodeMin = 6;
+export const signInCodeRequestCodeMax = 32;
+
+
+
+export const SignInCodeRequest = zod.object({
+  "challenge": zod.string().min(signInCodeRequestChallengeMin).max(signInCodeRequestChallengeMax),
+  "code": zod.string().min(signInCodeRequestCodeMin).max(signInCodeRequestCodeMax).describe('An authenticator code (six digits) or an unused recovery code.')
+});
+
+export type SignInCodeRequest = zod.input<typeof SignInCodeRequest>;
+export type SignInCodeRequestOutput = zod.output<typeof SignInCodeRequest>;
+
+export const SignInOutcome = zod.object({
+  "challenge": zod.string().nullish().describe('Present with `code_required`: send it back with the code to `/sign-in/code` within five minutes.'),
+  "code_required": zod.boolean(),
+  "session": zod.union([StaffSession,zod.null()]).optional()
+}).describe('The result of the password step: a code is still owed (`challenge`), or a session was opened (see its `limited`).');
+
+export type SignInOutcome = zod.input<typeof SignInOutcome>;
+export type SignInOutcomeOutput = zod.output<typeof SignInOutcome>;
+
 export const signInRequestUserMax = 64;
 
 
@@ -1203,22 +1427,6 @@ export const SignedOut = zod.object({
 
 export type SignedOut = zod.input<typeof SignedOut>;
 export type SignedOutOutput = zod.output<typeof SignedOut>;
-
-export const staffSessionUserIdMin = 0;
-export const staffSessionUserIdMax = 4294967295;
-
-
-
-export const StaffSession = zod.object({
-  "csrf_token": zod.string(),
-  "expires_at": zod.iso.datetime({"offset":true}).describe('Idle expiry, refreshed by an authenticated request; capped by the absolute session lifetime.'),
-  "role": Role,
-  "user": zod.string(),
-  "user_id": zod.int().min(staffSessionUserIdMin).max(staffSessionUserIdMax)
-});
-
-export type StaffSession = zod.input<typeof StaffSession>;
-export type StaffSessionOutput = zod.output<typeof StaffSession>;
 
 export const stopRequestRunIdMin = 64;
 export const stopRequestRunIdMax = 64;
@@ -1267,6 +1475,42 @@ export const ListAccounts415Response = ApiError
 export const ListAccounts500Response = ApiError
 
 export const ListAccounts503Response = ApiError
+
+
+export const setAccountBanlistHeaderIdempotencyKeyMin = 16;
+export const setAccountBanlistHeaderIdempotencyKeyMax = 128;
+
+
+export const setAccountBanlistHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const SetAccountBanlistHeader = zod.object({
+  "Idempotency-Key": zod.string().min(setAccountBanlistHeaderIdempotencyKeyMin).max(setAccountBanlistHeaderIdempotencyKeyMax).regex(setAccountBanlistHeaderIdempotencyKeyRegExp).describe('One ID per change; the change is the same when repeated.')
+})
+
+export const SetAccountBanlistBody = SetBanlistRequest
+
+export const SetAccountBanlist200Response = AccountBanlist
+
+export const SetAccountBanlist400Response = ApiError
+
+export const SetAccountBanlist401Response = ApiError
+
+export const SetAccountBanlist403Response = ApiError
+
+export const SetAccountBanlist404Response = ApiError
+
+export const SetAccountBanlist405Response = ApiError
+
+export const SetAccountBanlist409Response = ApiError
+
+export const SetAccountBanlist413Response = ApiError
+
+export const SetAccountBanlist415Response = ApiError
+
+export const SetAccountBanlist500Response = ApiError
+
+export const SetAccountBanlist503Response = ApiError
 
 
 export const issueAccountCodeHeaderIdempotencyKeyMin = 16;
@@ -1571,6 +1815,29 @@ export const DownloadBackup415Response = ApiError
 export const DownloadBackup500Response = ApiError
 
 export const DownloadBackup503Response = ApiError
+
+
+export const ListBanlists200Response = BanlistChoices
+
+export const ListBanlists400Response = ApiError
+
+export const ListBanlists401Response = ApiError
+
+export const ListBanlists403Response = ApiError
+
+export const ListBanlists404Response = ApiError
+
+export const ListBanlists405Response = ApiError
+
+export const ListBanlists409Response = ApiError
+
+export const ListBanlists413Response = ApiError
+
+export const ListBanlists415Response = ApiError
+
+export const ListBanlists500Response = ApiError
+
+export const ListBanlists503Response = ApiError
 
 
 export const ListBpCodes200Response = BpCodeList
@@ -1899,6 +2166,132 @@ export const GetServerLogs500Response = ApiError
 export const GetServerLogs503Response = ApiError
 
 
+export const startMfaEnrollmentHeaderIdempotencyKeyMin = 16;
+export const startMfaEnrollmentHeaderIdempotencyKeyMax = 128;
+
+
+export const startMfaEnrollmentHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const StartMfaEnrollmentHeader = zod.object({
+  "Idempotency-Key": zod.string().min(startMfaEnrollmentHeaderIdempotencyKeyMin).max(startMfaEnrollmentHeaderIdempotencyKeyMax).regex(startMfaEnrollmentHeaderIdempotencyKeyRegExp).describe('One ID per attempt. Authentication does not create a durable operation receipt.')
+})
+
+export const StartMfaEnrollment200Response = MfaEnrollmentStart
+
+export const StartMfaEnrollment400Response = ApiError
+
+export const StartMfaEnrollment401Response = ApiError
+
+export const StartMfaEnrollment403Response = ApiError
+
+export const StartMfaEnrollment405Response = ApiError
+
+export const StartMfaEnrollment413Response = ApiError
+
+export const StartMfaEnrollment415Response = ApiError
+
+export const StartMfaEnrollment429Response = ApiError
+
+export const StartMfaEnrollment500Response = ApiError
+
+
+export const confirmMfaEnrollmentHeaderIdempotencyKeyMin = 16;
+export const confirmMfaEnrollmentHeaderIdempotencyKeyMax = 128;
+
+
+export const confirmMfaEnrollmentHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const ConfirmMfaEnrollmentHeader = zod.object({
+  "Idempotency-Key": zod.string().min(confirmMfaEnrollmentHeaderIdempotencyKeyMin).max(confirmMfaEnrollmentHeaderIdempotencyKeyMax).regex(confirmMfaEnrollmentHeaderIdempotencyKeyRegExp).describe('One ID per attempt. Authentication does not create a durable operation receipt.')
+})
+
+export const ConfirmMfaEnrollmentBody = CodeRequest
+
+export const ConfirmMfaEnrollment200Response = MfaEnrolled
+
+export const ConfirmMfaEnrollment400Response = ApiError
+
+export const ConfirmMfaEnrollment401Response = ApiError
+
+export const ConfirmMfaEnrollment403Response = ApiError
+
+export const ConfirmMfaEnrollment405Response = ApiError
+
+export const ConfirmMfaEnrollment413Response = ApiError
+
+export const ConfirmMfaEnrollment415Response = ApiError
+
+export const ConfirmMfaEnrollment429Response = ApiError
+
+export const ConfirmMfaEnrollment500Response = ApiError
+
+
+export const regenerateRecoveryCodesHeaderIdempotencyKeyMin = 16;
+export const regenerateRecoveryCodesHeaderIdempotencyKeyMax = 128;
+
+
+export const regenerateRecoveryCodesHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const RegenerateRecoveryCodesHeader = zod.object({
+  "Idempotency-Key": zod.string().min(regenerateRecoveryCodesHeaderIdempotencyKeyMin).max(regenerateRecoveryCodesHeaderIdempotencyKeyMax).regex(regenerateRecoveryCodesHeaderIdempotencyKeyRegExp).describe('One ID per attempt. Authentication does not create a durable operation receipt.')
+})
+
+export const RegenerateRecoveryCodesBody = EmptyRequest
+
+export const RegenerateRecoveryCodes200Response = RecoveryCodes
+
+export const RegenerateRecoveryCodes400Response = ApiError
+
+export const RegenerateRecoveryCodes401Response = ApiError
+
+export const RegenerateRecoveryCodes403Response = ApiError
+
+export const RegenerateRecoveryCodes405Response = ApiError
+
+export const RegenerateRecoveryCodes413Response = ApiError
+
+export const RegenerateRecoveryCodes415Response = ApiError
+
+export const RegenerateRecoveryCodes429Response = ApiError
+
+export const RegenerateRecoveryCodes500Response = ApiError
+
+
+export const confirmMfaStepUpHeaderIdempotencyKeyMin = 16;
+export const confirmMfaStepUpHeaderIdempotencyKeyMax = 128;
+
+
+export const confirmMfaStepUpHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const ConfirmMfaStepUpHeader = zod.object({
+  "Idempotency-Key": zod.string().min(confirmMfaStepUpHeaderIdempotencyKeyMin).max(confirmMfaStepUpHeaderIdempotencyKeyMax).regex(confirmMfaStepUpHeaderIdempotencyKeyRegExp).describe('One ID per attempt. Authentication does not create a durable operation receipt.')
+})
+
+export const ConfirmMfaStepUpBody = CodeRequest
+
+export const ConfirmMfaStepUp200Response = StaffSession
+
+export const ConfirmMfaStepUp400Response = ApiError
+
+export const ConfirmMfaStepUp401Response = ApiError
+
+export const ConfirmMfaStepUp403Response = ApiError
+
+export const ConfirmMfaStepUp405Response = ApiError
+
+export const ConfirmMfaStepUp413Response = ApiError
+
+export const ConfirmMfaStepUp415Response = ApiError
+
+export const ConfirmMfaStepUp429Response = ApiError
+
+export const ConfirmMfaStepUp500Response = ApiError
+
+
 export const moderateAccountHeaderIdempotencyKeyMin = 16;
 export const moderateAccountHeaderIdempotencyKeyMax = 128;
 
@@ -1933,6 +2326,74 @@ export const ModerateAccount415Response = ApiError
 export const ModerateAccount500Response = ApiError
 
 export const ModerateAccount503Response = ApiError
+
+
+export const listReportsQueryLimitMax = 500;
+
+
+
+export const ListReportsQueryParams = zod.object({
+  "status": zod.enum(['open', 'handled', 'dismissed']).optional().describe('open, handled or dismissed; all when omitted.'),
+  "limit": zod.int().min(1).max(listReportsQueryLimitMax).optional()
+})
+
+export const ListReports200Response = ReportList
+
+export const ListReports400Response = ApiError
+
+export const ListReports401Response = ApiError
+
+export const ListReports403Response = ApiError
+
+export const ListReports404Response = ApiError
+
+export const ListReports405Response = ApiError
+
+export const ListReports409Response = ApiError
+
+export const ListReports413Response = ApiError
+
+export const ListReports415Response = ApiError
+
+export const ListReports500Response = ApiError
+
+export const ListReports503Response = ApiError
+
+
+export const handleReportHeaderIdempotencyKeyMin = 16;
+export const handleReportHeaderIdempotencyKeyMax = 128;
+
+
+export const handleReportHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const HandleReportHeader = zod.object({
+  "Idempotency-Key": zod.string().min(handleReportHeaderIdempotencyKeyMin).max(handleReportHeaderIdempotencyKeyMax).regex(handleReportHeaderIdempotencyKeyRegExp).describe('One ID per change; marking the same report the same way again answers as done.')
+})
+
+export const HandleReportBody = HandleReportRequest
+
+export const HandleReport200Response = HandleReportResult
+
+export const HandleReport400Response = ApiError
+
+export const HandleReport401Response = ApiError
+
+export const HandleReport403Response = ApiError
+
+export const HandleReport404Response = ApiError
+
+export const HandleReport405Response = ApiError
+
+export const HandleReport409Response = ApiError
+
+export const HandleReport413Response = ApiError
+
+export const HandleReport415Response = ApiError
+
+export const HandleReport500Response = ApiError
+
+export const HandleReport503Response = ApiError
 
 
 export const GetServerStatus200Response = ServerOverview
@@ -2073,7 +2534,7 @@ export const SignInStaffHeader = zod.object({
 
 export const SignInStaffBody = SignInRequest
 
-export const SignInStaff200Response = StaffSession
+export const SignInStaff200Response = SignInOutcome
 
 export const SignInStaff400Response = ApiError
 
@@ -2090,6 +2551,38 @@ export const SignInStaff415Response = ApiError
 export const SignInStaff429Response = ApiError
 
 export const SignInStaff500Response = ApiError
+
+
+export const verifyStaffCodeHeaderIdempotencyKeyMin = 16;
+export const verifyStaffCodeHeaderIdempotencyKeyMax = 128;
+
+
+export const verifyStaffCodeHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const VerifyStaffCodeHeader = zod.object({
+  "Idempotency-Key": zod.string().min(verifyStaffCodeHeaderIdempotencyKeyMin).max(verifyStaffCodeHeaderIdempotencyKeyMax).regex(verifyStaffCodeHeaderIdempotencyKeyRegExp).describe('One ID per attempt. Authentication does not create a durable operation receipt.')
+})
+
+export const VerifyStaffCodeBody = SignInCodeRequest
+
+export const VerifyStaffCode200Response = StaffSession
+
+export const VerifyStaffCode400Response = ApiError
+
+export const VerifyStaffCode401Response = ApiError
+
+export const VerifyStaffCode403Response = ApiError
+
+export const VerifyStaffCode405Response = ApiError
+
+export const VerifyStaffCode413Response = ApiError
+
+export const VerifyStaffCode415Response = ApiError
+
+export const VerifyStaffCode429Response = ApiError
+
+export const VerifyStaffCode500Response = ApiError
 
 
 export const signOutStaffHeaderIdempotencyKeyMin = 16;
@@ -2118,3 +2611,35 @@ export const SignOutStaff413Response = ApiError
 export const SignOutStaff415Response = ApiError
 
 export const SignOutStaff500Response = ApiError
+
+
+export const signOutEverywhereHeaderIdempotencyKeyMin = 16;
+export const signOutEverywhereHeaderIdempotencyKeyMax = 128;
+
+
+export const signOutEverywhereHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const SignOutEverywhereHeader = zod.object({
+  "Idempotency-Key": zod.string().min(signOutEverywhereHeaderIdempotencyKeyMin).max(signOutEverywhereHeaderIdempotencyKeyMax).regex(signOutEverywhereHeaderIdempotencyKeyRegExp).describe('One ID per attempt. Authentication does not create a durable operation receipt.')
+})
+
+export const SignOutEverywhereBody = EmptyRequest
+
+export const SignOutEverywhere200Response = SignedOut
+
+export const SignOutEverywhere400Response = ApiError
+
+export const SignOutEverywhere401Response = ApiError
+
+export const SignOutEverywhere403Response = ApiError
+
+export const SignOutEverywhere405Response = ApiError
+
+export const SignOutEverywhere413Response = ApiError
+
+export const SignOutEverywhere415Response = ApiError
+
+export const SignOutEverywhere429Response = ApiError
+
+export const SignOutEverywhere500Response = ApiError

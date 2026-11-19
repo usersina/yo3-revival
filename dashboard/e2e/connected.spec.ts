@@ -18,6 +18,7 @@ import {
   ApiError,
   GiveBpResult,
   StaffSession,
+  SignInOutcome,
 } from '../src/api/generated/validation/schemas'
 
 async function signIn(page: Page, user = 'TestAdmin') {
@@ -26,7 +27,7 @@ async function signIn(page: Page, user = 'TestAdmin') {
   await page.getByLabel('Password', { exact: true }).fill('DashboardDemo123!')
   const response = page.waitForResponse((r) => r.url().endsWith('/panel/api/v1/sign-in'))
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  expect(StaffSession.safeParse(await (await response).json()).success).toBe(true)
+  expect(SignInOutcome.safeParse(await (await response).json()).success).toBe(true)
   // The dev-only integration view loads every lazy panel; allow cold Vite compilation before testing actions.
   await expect(page.getByRole('heading', { name: 'Accounts', exact: true })).toBeVisible({
     timeout: 15000,

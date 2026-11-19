@@ -579,3 +579,49 @@ fn a_huge_collection_still_buys_and_shows_in_the_trunk() {
     let counts = trunk[0].items[0].get("cards").and_then(Value::as_bytes).unwrap().to_vec();
     assert!((1..=40).all(|row: usize| counts[row - 1] == 255), "{:?}", &counts[..40]);
 }
+
+#[test]
+fn the_hosts_prices_reach_the_shelves_and_every_purchase() {
+    // #16: what the shop asks is the host's (live settings, read at each request): a pack's and a structure deck's BP,
+    // the cards one Trade Card swap takes, and the Rental's cards, BP and days. The defaults are the constants.
+    let server = blister();
+    let mut c = server.join_with_bp(1001, "Yugi", 2000);
+    let settings = &server.world.settings;
+    let cost_of = |c: &mut common::Client, request, at: usize| one(c.send(req(request))).items[at].get("item_cost").and_then(Value::as_u32);
+    assert_eq!(cost_of(&mut c, 0x1B67, 0), Some(shop::PACK_COST));
+    assert_eq!(cost_of(&mut c, 0x1B6F, 0), Some(shop::EXCHANGE_COST));
+
+    settings.set("pack-cost", "250").unwrap();
+    assert_eq!(cost_of(&mut c, 0x1B67, 0), Some(250), "the shelf shows the host's price");
+    let buy = req_with(0x1B68, &[("sale_id", Value::U32(1)), ("item_num", Value::U32(2))]);
+    assert_eq!(one(c.send(buy)).get("dpoint"), Some(&Value::U32(2000 - 500)), "and a purchase takes it");
+
+    settings.set("trade-cards", "3").unwrap();
+    assert_eq!(cost_of(&mut c, 0x1B6F, 0), Some(3), "Cards Required follows the setting");
+    let exchange = |cards: &[u16]| req_with(0x1B6A, &[("sale_id", Value::U32(265)), ("item_id", Value::U32(40)), ("kaban", bin(cards))]);
+    assert_eq!(one(c.send(exchange(&[20; 10]))).request(), Some(0x1C29), "ten cards are no longer the price");
+
+    settings.set("rental-cards", "2").unwrap();
+    settings.set("rental-bp", "40").unwrap();
+    settings.set("rental-days", "3").unwrap();
+    let terms = one(c.send(req(0x2C40)));
+    let int = |k| terms.get(k).and_then(Value::as_u32);
+    assert_eq!(["rental_cardnum", "rental_point", "rental_term"].map(int), [Some(2), Some(40), Some(3)]);
+    let rent = |rows: &[u16]| req_with(0x2C41, &[("main_list", bin(rows))]);
+    assert_eq!(one(c.send(rent(&[2, 3, 4, 5, 5]))).request(), Some(0x2D78), "five cards are no longer the offer");
+    assert_eq!(one(c.send(rent(&[2, 3]))).get("dpoint"), Some(&Value::U32(1500 - 40)));
+
+    // A value outside what the game can show is refused and changes nothing.
+    assert!(settings.set("pack-cost", "0").is_err() && settings.set("rental-days", "400").is_err() && settings.set("trade-cards", "x").is_err());
+    settings.reset("pack-cost").unwrap();
+    assert_eq!(cost_of(&mut c, 0x1B67, 0), Some(shop::PACK_COST));
+}
+
+#[test]
+fn a_trade_card_swap_takes_the_hosts_number_of_cards() {
+    let server = blister();
+    server.world.settings.set("trade-cards", "3").unwrap();
+    let mut c = server.join_as(owner(&[20], 3));
+    let exchange = req_with(0x1B6A, &[("sale_id", Value::U32(265)), ("item_id", Value::U32(40)), ("kaban", bin(&[20, 20, 20]))]);
+    assert_eq!(one(c.send(exchange)).request(), Some(0x1C28));
+}

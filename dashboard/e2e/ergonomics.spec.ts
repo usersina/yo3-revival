@@ -133,7 +133,7 @@ test('card gifts identify artworks, link to official card details and validate c
 test('every workspace keeps table data and actions readable without sideways scrolling', async ({
   page,
 }) => {
-  test.setTimeout(90000) // Nine workspaces at four widths, with real requests at each navigation.
+  test.setTimeout(120000) // Ten workspaces at four widths, with real requests at each navigation.
   await page.route('**/panel/api/v1/bp-codes', async (route) => {
     const response = await route.fetch()
     await route.fulfill({
@@ -160,6 +160,7 @@ test('every workspace keeps table data and actions readable without sideways scr
       '/invites',
       '/news',
       '/moderation',
+      '/reports',
       '/audit',
       '/logs',
       '/backups',
@@ -172,6 +173,7 @@ test('every workspace keeps table data and actions readable without sideways scr
         '/accounts': 'Accounts table',
         '/moderation': 'Accounts table',
         '/invites': 'Registration invites table',
+        '/reports': 'Reports table',
         '/audit': 'Audit entries',
         '/backups': 'Available database backups',
       }

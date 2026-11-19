@@ -112,6 +112,11 @@ describe('generated API transport', () => {
       role: 'admin',
       csrf_token: 'token',
       expires_at: '2026-11-16T12:00:00Z',
+      mfa_enabled: true,
+      mfa_required: true,
+      limited: false,
+      mfa_recent_until: null,
+      recovery_codes_remaining: 10,
     }
     expect(StaffSession.safeParse(session).success).toBe(true)
     expect(StaffSession.safeParse({ ...session, expires_at: 'yesterday' }).success).toBe(false)

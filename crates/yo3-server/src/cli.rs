@@ -46,6 +46,14 @@ pub struct Args {
     /// Exact browser origin for the socket proxy (HTTPS, or HTTP localhost for local checks).
     #[arg(long, global = true)]
     pub dashboard_origin: Option<String>,
+    /// Whether staff must use an authenticator: `required` (the default) or `optional`, a transition setting under which
+    /// staff who have not enrolled keep a password-only session. See docs/dashboard.md.
+    #[arg(long, global = true, value_enum, default_value = "required")]
+    pub staff_mfa: crate::staff_mfa::StaffMfaPolicy,
+    /// Let the public (nginx) dashboard transport download backups: an admin with a recent authenticator check, audited.
+    /// Off by default: a backup holds every account's data.
+    #[arg(long, global = true)]
+    pub dashboard_public_backups: bool,
     /// Game install (for the patch index and the client's own data files).
     #[arg(long)]
     pub game_dir: Option<PathBuf>,
@@ -192,6 +200,10 @@ pub enum Admin {
         #[arg(long)] code_stdin: bool },
     /// Make USER a player, moderator or admin. Works while the server runs.
     SetRole { user: String, role: String, #[arg(long)] request_id: Option<String> },
+    /// Local recovery of a staff account's authenticator (a lost phone and lost recovery codes): removes USER's TOTP and
+    /// recovery codes and ends its staff sessions, audited. Only the host runs it (never a route of the staff dashboard);
+    /// USER enrolls again at the next dashboard sign-in. Works while the server runs.
+    StaffMfaReset { user: String },
     /// Print what a friend needs to join: the address (`--advertise`, with `--auth-port`), the server's identity and the
     /// invite link that carries both, for Desktop's Add a server or the Scripts helper's `--sign-in`. --invite also makes
     /// an invite code for one sign-up, working for a week. Works while the server runs.
@@ -244,6 +256,16 @@ pub enum Admin {
     /// Mute WHO: their chat lines go nowhere (for --minutes, or until `unmute`), and they are told why.
     Mute { who: String, #[arg(long, default_value = "")] reason: String, #[arg(long)] minutes: Option<u32>, #[arg(long)] request_id: Option<String> },
     Unmute { who: String, #[arg(long)] request_id: Option<String> },
+    /// List the player reports (`/report` in the game's chat), newest first: --status open, handled or dismissed (all
+    /// when omitted). Works while the server runs.
+    Reports { #[arg(long)] status: Option<String>, #[arg(long)] limit: Option<u32> },
+    /// Mark report ID handled, or dismissed with --dismiss, with an optional --note. A moderator may (`--by NAME`).
+    HandleReport { id: u32, #[arg(long)] dismiss: bool, #[arg(long, default_value = "")] note: String },
+    /// Set the banlist WHO's game logs in with (an account's, from its next login), by its id or name as `banlists` lists
+    /// it, or `default` for the server's `login-regulation`. Players choose their own with `/banlist` in the chat.
+    SetBanlist { who: String, banlist: String },
+    /// List the game's banlists and the one a player without a choice logs in with.
+    Banlists,
     /// Sign WHO out of every device and disconnect their game.
     SignOut { who: String, #[arg(long)] request_id: Option<String> },
     /// Delete WHO's account for good (an admin's): its players with their cards, decks, mail, friends, team, records and

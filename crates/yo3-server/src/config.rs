@@ -37,6 +37,10 @@ pub struct FileConfig {
     pub dashboard_socket: Option<PathBuf>,
     /// Exact browser origin for the socket proxy (HTTPS, or HTTP localhost for local checks).
     pub dashboard_origin: Option<String>,
+    /// `required` (default) or `optional`: whether staff must use an authenticator (docs/dashboard.md).
+    pub staff_mfa: Option<crate::staff_mfa::StaffMfaPolicy>,
+    /// Allow backup downloads through the public dashboard transport (off by default).
+    pub dashboard_public_backups: Option<bool>,
     pub advertise: Option<String>,
     pub game_dir: Option<PathBuf>,
     pub data_dir: Option<PathBuf>,

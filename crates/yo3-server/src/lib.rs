@@ -10,6 +10,7 @@ pub mod auth;
 mod transport;
 pub mod admin;
 pub mod panel;
+pub mod staff_mfa;
 pub mod dashboard;
 pub mod bootstrap;
 #[cfg(unix)] pub mod dashboard_socket;
@@ -35,6 +36,8 @@ pub mod front;
 pub mod shop;
 mod social;
 mod mail;
+pub mod reports;
+pub mod sources;
 mod teams;
 mod trade;
 mod deckcheck;
@@ -90,6 +93,10 @@ pub struct Config {
     pub dashboard_socket: Option<PathBuf>,
     /// Exact browser origin for the socket proxy (HTTPS, or HTTP localhost for local checks).
     pub dashboard_origin: Option<String>,
+    /// Whether staff must use an authenticator (`staff_mfa.rs`); required unless the host chooses the transition mode.
+    pub staff_mfa: staff_mfa::StaffMfaPolicy,
+    /// Backup downloads through the socket proxy: off unless the host enables them (admin, recent MFA, audited).
+    pub dashboard_public_backups: bool,
     pub game_dir: PathBuf,
     /// Protocol-test fixtures only: permit an empty world when no game installation is available.
     /// Normal hosting always requires game data; this is not exposed as a CLI option.
@@ -138,6 +145,7 @@ impl Config {
             advertise: None,
             http_port: 0,
             dashboard_port: None, dashboard_socket: None, dashboard_origin: None,
+            staff_mfa: staff_mfa::StaffMfaPolicy::Required, dashboard_public_backups: false,
             game_dir: yo3_data::default_game_dir(),
             allow_missing_game_data: true,
             log_dir: log_dir.clone(),
@@ -309,6 +317,40 @@ pub fn token_rows(cards: &yo3_data::CardDb) -> std::collections::HashMap<String,
     rows
 }
 
+/// Where each card comes from, for `/where` (#55): the booster packs, structure decks, Trade Card pools, the shop's
+/// rental and the decks every player starts with.
+fn card_sources(data: &yo3_data::GameData) -> Vec<sources::CardSource> {
+    use sources::{CardSource, Kind};
+    let cid = |row: &u16| data.cards.by_row(*row).map(|c| c.cid);
+    let of = |rows: &mut dyn Iterator<Item = u16>| -> std::collections::HashSet<u16> { rows.filter_map(|r| cid(&r)).collect() };
+    let mut all = vec![];
+    for p in data.packs.iter().filter(|p| !p.cards.is_empty()) {
+        let name = p.record.get("name_id").and_then(Value::as_u32).and_then(|id| data.text(id)).filter(|n| !n.is_empty());
+        let (kind, name) = match (p.kind, name) {
+            (1, Some(name)) => (Kind::Pack, name.to_string()),
+            (1, None) => (Kind::Pack, format!("Booster Pack {}", p.id)),
+            _ if shop::EXCHANGE_POOLS.contains(&p.id) => (Kind::TradePool, sources::trade_pool_name(p.id)),
+            _ if p.id == shop::RENTAL_POOL => (Kind::Rental, "Blister's Rental (the shop lends it)".to_string()),
+            _ => continue,
+        };
+        all.push(CardSource { kind, name, cards: of(&mut p.cards.iter().copied()) });
+    }
+    // Structure decks are the shop's (deck_type 1 with art of their own); the starter and the characters' decks are free.
+    for d in data.decks.iter().filter(|d| d.kind == 1 && d.record.get("deck_image").and_then(Value::as_str).is_some_and(|i| i != "noImage")) {
+        let name = d.name_id().and_then(|id| data.text(id)).unwrap_or("Structure Deck").to_string();
+        all.push(CardSource { kind: Kind::StructureDeck, name, cards: of(&mut d.cards()) });
+    }
+    if let Some(d) = data.starter_deck(STARTER_REGULATION) {
+        all.push(CardSource { kind: Kind::FreeDeck, name: "the Starter Deck (every player starts with it)".into(), cards: of(&mut d.cards()) });
+    }
+    for (npc, who) in OFFICIAL_DECKS {
+        if let Some(d) = data.npc_deck(npc) {
+            all.push(CardSource { kind: Kind::FreeDeck, name: format!("{who}'s deck (every player owns its cards)"), cards: of(&mut d.cards()) });
+        }
+    }
+    all
+}
+
 fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> {
     let duel_server = (cfg.advertise.clone().unwrap_or_default(), duel_port);
     let world = match yo3_data::GameData::load(&cfg.game_dir) {
@@ -413,6 +455,7 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
             free_items: data.free_items().iter().map(|e| e.id).collect(),
             banlists: data.regulations.iter().map(|r| (r.id, data.text(r.name_id).unwrap_or_default().to_string())).collect(),
             regulations: data.regulations.iter().map(|r| (r.id, r.clone())).collect(),
+            card_sources: card_sources(&data),
             ..World::new(data.regulations.iter().map(|r| r.id as u16).collect())
         },
         Err(e) => {
@@ -435,7 +478,7 @@ const EVENT_ROUND_DELAY: std::time::Duration = std::time::Duration::from_secs(20
 pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     anyhow::ensure!(cfg.dashboard_socket.is_none() || cfg.dashboard_port.is_none(), "Choose a dashboard socket or port, not both");
     anyhow::ensure!(cfg.dashboard_socket.is_some() == cfg.dashboard_origin.is_some(), "dashboard-socket and dashboard-origin must be set together");
-    let proxy_origin = cfg.dashboard_origin.as_deref().map(dashboard::ProxyOrigin::parse).transpose()?;
+    let proxy_origin = cfg.dashboard_origin.as_deref().map(dashboard::ProxyOrigin::parse).transpose()?.map(|o| o.public_backups(cfg.dashboard_public_backups));
     #[cfg(not(unix))] anyhow::ensure!(cfg.dashboard_socket.is_none(), "dashboard-socket requires Unix; use dashboard-port on Windows");
     #[cfg(unix)] let dashboard_socket = cfg.dashboard_socket.as_deref().map(dashboard_socket::Bound::bind).transpose()?;
     let packets = Arc::new(if cfg.packet_logging { log::PacketLog::create(&cfg.log_dir)? } else { log::PacketLog::disabled()? }.with_traces(cfg.packet_traces));
@@ -531,6 +574,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         hub.keep_events(&dir.join("events.json"));
         hub.keep_rentals(&dir.join("rentals.json"));
         hub.keep_duel_logs(dir, http_addr.port());
+        hub.reports = reports::Reports::at(dir);
     }
     hub.set_round_delay(EVENT_ROUND_DELAY);
     hub.set_directory(directory.clone());
@@ -595,7 +639,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     api.titles = Some(world.titles.clone());
     api.world = Some(world.clone());
     let api = Arc::new(api);
-    let panel = Arc::new(panel::Panel::new());
+    let panel = Arc::new(panel::Panel::with_policy(cfg.staff_mfa));
     let dashboard_task = dashboard.map(|listener| tokio::spawn(net::dashboard_loop(listener, dashboard::Dashboard { api: api.clone(), panel: panel.clone() })));
     #[cfg(unix)] let socket_task = dashboard_socket.map(|listener| tokio::spawn(dashboard_socket::serve(listener,
         dashboard::Dashboard { api: api.clone(), panel: panel.clone() }, proxy_origin.expect("validated socket origin"))));

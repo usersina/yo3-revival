@@ -44,6 +44,8 @@ pub mod deletion;
 pub mod server;
 pub mod observability;
 pub mod backups;
+pub mod reports;
+pub mod banlist;
 pub use give_bp::{GiveBpRequest, GiveBpResult};
 pub use mutation::{Actor, MutationError, MutationErrorCode};
 
@@ -86,6 +88,9 @@ pub enum Op {
     AddUser { user: String, code: credentials::AccessCode },
     ResetCode { user: String, code: credentials::AccessCode },
     SetRole { user: String, role: String },
+    /// Local recovery of a staff account's second factor: removes its authenticator and recovery codes and ends its
+    /// staff sessions. A host operation (the CLI and the management API), never a route of the staff dashboard.
+    StaffMfaReset { user: String },
     Settings,
     Set { name: String, value: String },
     Reset { name: String },
@@ -117,6 +122,14 @@ pub enum Op {
     Backups,
     /// A backup now (besides the hourly ones).
     BackUp,
+    /// Player reports (#44): the ones with this status (open, handled, dismissed; all when none), newest first.
+    Reports { #[serde(default)] status: Option<String>, #[serde(default)] limit: Option<u32> },
+    /// Marks a report handled or dismissed (`status`), with a note.
+    HandleReport { id: u32, status: String, #[serde(default)] note: String },
+    /// The banlist an account logs in with (#63): a banlist by id or name, or `default` for the server's.
+    SetBanlist { who: String, banlist: String },
+    /// The game's banlists and the one an account without a choice logs in with.
+    Banlists,
     /// The server's newest log lines (`problems`: only warnings and errors), newest first.
     Logs { #[serde(default)] limit: Option<u32>, #[serde(default)] problems: bool },
 }
@@ -132,7 +145,7 @@ impl Op {
     /// Whether it changes anything (and so writes an audit row).
     pub fn changes(&self) -> bool {
         !matches!(self, Op::Status | Op::Accounts | Op::Countries | Op::Titles | Op::Recipes | Op::Codes | Op::Invites | Op::Settings | Op::Audit { .. }
-            | Op::Account { .. } | Op::Backups | Op::Logs { .. })
+            | Op::Account { .. } | Op::Backups | Op::Logs { .. } | Op::Reports { .. } | Op::Banlists)
     }
 
     /// Whether a moderator may run it (the admin panel, #36): looking, moderation, invites and reset codes. Settings,
@@ -141,17 +154,17 @@ impl Op {
         matches!(self, Op::Status | Op::Accounts | Op::Account { .. } | Op::Countries | Op::Titles | Op::Codes | Op::Invites
             | Op::Settings | Op::Audit { .. } | Op::Logs { .. } | Op::Backups | Op::Invite { .. } | Op::ResetCode { .. }
             | Op::Rename { .. } | Op::Kick { .. } | Op::Ban { .. } | Op::Restrict { .. } | Op::Lift { .. } | Op::Mute { .. }
-            | Op::Unmute { .. } | Op::SignOut { .. })
+            | Op::Unmute { .. } | Op::SignOut { .. } | Op::Reports { .. } | Op::HandleReport { .. } | Op::SetBanlist { .. } | Op::Banlists)
     }
 
     /// The account it acts on, if it acts on one (a User ID or a player's name).
     fn account(&self) -> Option<&str> {
         match self {
-            Op::ResetCode { user, .. } | Op::SetRole { user, .. } => Some(user),
+            Op::ResetCode { user, .. } | Op::SetRole { user, .. } | Op::StaffMfaReset { user } => Some(user),
             Op::Rename { old, .. } => Some(old),
             Op::Kick { who } | Op::Ban { who, .. } | Op::Restrict { who, .. } | Op::Lift { who } | Op::Mute { who, .. }
             | Op::Unmute { who } | Op::SignOut { who } | Op::GiveBp { who, .. } | Op::SetCountry { who, .. } | Op::Key { who }
-            | Op::AddPlayer { who, .. } | Op::DeleteAccount { who } => Some(who),
+            | Op::AddPlayer { who, .. } | Op::DeleteAccount { who } | Op::SetBanlist { who, .. } => Some(who),
             Op::GrantTitle { player, .. } | Op::GiveCards { player, .. } | Op::GiveRecipe { player, .. } => Some(player),
             _ => None,
         }
@@ -163,13 +176,14 @@ impl Op {
             Op::AddPlayer { who, .. } | Op::Key { who } | Op::SetCountry { who, .. } | Op::GiveBp { who, .. } => who.clone(),
             Op::Rename { old, .. } => old.clone(),
             Op::GrantTitle { player, .. } | Op::GiveCards { player, .. } | Op::GiveRecipe { player, .. } => player.clone(),
-            Op::AddUser { user, .. } | Op::ResetCode { user, .. } | Op::SetRole { user, .. } => user.clone(),
+            Op::AddUser { user, .. } | Op::ResetCode { user, .. } | Op::SetRole { user, .. } | Op::StaffMfaReset { user } => user.clone(),
             Op::Kick { who } | Op::Ban { who, .. } | Op::Restrict { who, .. } | Op::Lift { who } | Op::Mute { who, .. }
             | Op::Unmute { who } | Op::SignOut { who } => who.clone(),
             Op::Set { name, .. } | Op::Reset { name } => name.clone(),
             Op::CreateAccount { names } => names.join(", "),
             Op::AddCode { code, .. } | Op::RemoveCode { code } => code.clone(),
-            Op::Account { who } | Op::DeleteAccount { who } => who.clone(),
+            Op::Account { who } | Op::DeleteAccount { who } | Op::SetBanlist { who, .. } => who.clone(),
+            Op::HandleReport { id, .. } => format!("report {id}"),
             _ => String::new(),
         }
     }
@@ -236,13 +250,15 @@ pub struct Api {
     memory: Mutex<Vec<AuditRow>>,
     effects: Mutex<std::collections::HashMap<(String,String), crate::store::EffectState>>,
     receipts: Mutex<std::collections::HashMap<(String, String), crate::store::Receipt>>,
+    /// The key that seals staff authenticator seeds, read at first use (`staff_mfa.rs`).
+    pub(crate) mfa_key: Mutex<Option<[u8; 32]>>,
 }
 
 type Done = Result<(Value, Option<Value>, Option<Value>), String>;
 
 impl Api {
     pub fn new(accounts: Arc<Mutex<Directory>>, settings: Arc<crate::settings::Live>, data_dir: Option<PathBuf>, game_dir: PathBuf, origin: &'static str) -> Api {
-        Api { accounts, settings, hub: None, sessions: None, shutdown: None, status: Status::default(), data_dir, game_dir, titles: None, world: None, gifts: Default::default(), card_images: Default::default(), origin, run_id: crate::logins::new_token(), memory: Mutex::default(), effects: Mutex::default(), receipts: Mutex::default() }
+        Api { accounts, settings, hub: None, sessions: None, shutdown: None, status: Status::default(), data_dir, game_dir, titles: None, world: None, gifts: Default::default(), card_images: Default::default(), origin, run_id: crate::logins::new_token(), memory: Mutex::default(), effects: Mutex::default(), receipts: Mutex::default(), mfa_key: Mutex::default() }
     }
 
     /// Runs `op` for `actor` and writes its audit row: its result, or why it was refused.
@@ -269,6 +285,7 @@ impl Api {
                 if staff && !own && !matches!(op, Op::Account { .. }) { return Err("a moderator can't act on an admin's or another moderator's account".into()) }
             }
         }
+        if let Some(done) = self.player_feature(op, actor, origin, role) { return done }
         if op.receipted() {
             let caller = if role.is_none() { Actor::Host { by: actor } } else {
                 let id = self.accounts.locked().login_of(actor).map(|(id, _)| id).ok_or("only an admin may do that")?;
@@ -287,6 +304,56 @@ impl Api {
             }
         }
         Ok(result)
+    }
+
+    /// The operations on player reports and banlists (#44, #63): each audits itself.
+    fn player_feature(&self, op: &Op, actor: &str, origin: &str, role: Option<crate::logins::Role>) -> Option<Result<Value, String>> {
+        use crate::reports::Status;
+        if !matches!(op, Op::Reports { .. } | Op::HandleReport { .. } | Op::SetBanlist { .. } | Op::Banlists) { return None }
+        let caller = if role.is_none() { Actor::Host { by: actor } } else {
+            match self.accounts.locked().login_of(actor).map(|(id, _)| id) {
+                Some(user_id) => Actor::Staff { user_id },
+                None => return Some(Err("only an admin may do that".into())),
+            }
+        };
+        let status = |s: &str| match s.trim().to_ascii_lowercase().as_str() {
+            "open" => Ok(Status::Open), "handled" => Ok(Status::Handled), "dismissed" => Ok(Status::Dismissed),
+            _ => Err(format!("a report's status is open, handled or dismissed, not {s:?}")),
+        };
+        Some((|| -> Result<Value, String> {
+            match op {
+                Op::Reports { status: s, limit } => {
+                    let query = reports::ReportQuery { status: s.as_deref().filter(|s| !s.is_empty() && *s != "all").map(status).transpose()?, limit: *limit };
+                    let list = self.list_reports(&query, caller).map_err(|e| e.to_string())?;
+                    let lines: Vec<String> = list.reports.iter().map(|r| format!("#{}\t{}\t{} -> {}\t{}{}", r.report.id, serde_json::to_value(r.report.status).ok().and_then(|v| v.as_str().map(str::to_owned)).unwrap_or_default(),
+                        r.report.reporter, r.report.target, r.report.reason, r.report.note.as_ref().map(|n| format!(" [{n}]")).unwrap_or_default())).collect();
+                    let message = if lines.is_empty() { "no reports".to_string() } else { lines.join("\n") };
+                    Ok(json!({ "reports": list.reports, "open": list.open, "message": message }))
+                }
+                Op::HandleReport { id, status: s, note } => {
+                    let status = status(s)?;
+                    let done = self.handle_report(&reports::HandleReportRequest { report_id: *id, status, note: note.clone() }, caller, origin).map_err(|e| e.to_string())?;
+                    Ok(json!({ "report": done.report, "message": done.message }))
+                }
+                Op::SetBanlist { who, banlist } => {
+                    let names = self.banlist_names_for_ops();
+                    let user_id = self.accounts.locked().user_of(who).ok_or_else(|| format!("no account with the User ID or a player named {who:?}"))?;
+                    let id = if banlist.trim().eq_ignore_ascii_case("default") { None } else {
+                        Some(crate::regulation_by(banlist, &names)?)
+                    };
+                    let done = self.set_banlist(&banlist::SetBanlistRequest { user_id, banlist: id }, caller, origin).map_err(|e| e.to_string())?;
+                    let message = if done.chosen { format!("{who} logs in with {} from their next login", done.banlist.name) } else { format!("{who} logs in with the server's banlist ({}) from their next login", done.banlist.name) };
+                    Ok(json!({ "banlist": done, "message": message }))
+                }
+                Op::Banlists => {
+                    let choices = self.banlist_choices(caller).map_err(|e| e.to_string())?;
+                    let mut lines = vec![format!("server default: {}", choices.server_default.name)];
+                    lines.extend(choices.choices.iter().map(|c| format!("{}\t{}", c.id, c.name)));
+                    Ok(json!({ "banlists": choices, "message": lines.join("\n") }))
+                }
+                _ => unreachable!(),
+            }
+        })())
     }
 
     fn typed_change(&self, op: &Op, id: &str, actor: Actor<'_>, origin: &str) -> Result<Value, MutationError> {
@@ -396,7 +463,7 @@ impl Api {
                         "items": p.items.len(), "record": record, "online": hub.as_ref().map(|h| h.is_online(p.player_id)) })
                 }).collect();
                 Ok((json!({ "user_id": user_id, "login": login.as_ref().map(|l| &l.user), "has_key": has_key, "bp": account.dpoint,
-                    "country": account.country, "role": login.as_ref().map(|l| l.role),
+                    "country": account.country, "role": login.as_ref().map(|l| l.role), "banlist": self.account_banlist(account.banlist),
                     "standing": login.as_ref().map(|l| if l.refusal(now).is_some() { json!(l.standing) } else { json!({ "kind": "active" }) }),
                     "muted": login.as_ref().and_then(|l| l.mute(now)), "devices": login.as_ref().map(|l| l.devices.len()),
                     "reset_pending": login.as_ref().and_then(|l| l.reset.as_ref()).is_some_and(|(_, until)| *until > now),
@@ -429,6 +496,7 @@ impl Api {
                 Ok((json!({ "recipes": rows, "message": lines.join("\n") }), None, None))
             }
             Op::Rename { .. } | Op::SetCountry { .. } | Op::SetRole { .. } => Err("profile edits require the typed mutation boundary".into()),
+            Op::StaffMfaReset { user } => self.reset_staff_mfa(user).map(|v| (v, None, None)),
             _ => self.accounts_op(op),
         }
     }

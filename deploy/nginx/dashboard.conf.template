@@ -38,19 +38,21 @@ server {
         add_header Cache-Control no-store always;
         return 503 '{"code":"persistence_failed","message":"The server is unavailable. A change may have completed; retry the same request."}';
     }
-    location = /panel/api/v1/sign-in {
-        limit_req zone=signin burst=5 nodelay;
+    # Password, sign-in code, enrollment code and step-up code attempts share one outer limit; Rust's own throttles
+    # (per address and per User ID) stay authoritative.
+    location ~ ^/panel/api/v1/(sign-in|sign-in/code|mfa/enrollment/confirm|mfa/step-up)$ {
+        limit_req zone=signin burst=8 nodelay;
         limit_req_status 429;
         include /etc/nginx/yo3-proxy.conf;
     }
     # Closed list of actual staff routes. No generic /panel/ or /api/ proxy.
-    location ~ ^/panel/api/v1/(session|sign-out|accounts|accounts/[0-9]+|accounts/edit|accounts/credentials|accounts/keys|accounts/delete|give-bp|bp-codes|bp-codes/remove|invites|countries|gifts|gifts/choices|cards/[0-9]+/(mini|full)|moderation|server|server/stop|settings|audit|logs|backups)$ {
+    location ~ ^/panel/api/v1/(session|sign-out|sign-out-everywhere|mfa/enrollment|mfa/recovery-codes|accounts|accounts/[0-9]+|accounts/edit|accounts/credentials|accounts/keys|accounts/banlist|accounts/delete|banlists|reports|reports/handle|give-bp|bp-codes|bp-codes/remove|invites|countries|gifts|gifts/choices|cards/[0-9]+/(mini|full)|moderation|server|server/stop|settings|audit|logs|backups)$ {
         include /etc/nginx/yo3-proxy.conf;
     }
     location = /panel/openapi.json { include /etc/nginx/yo3-proxy.conf; }
     # No public backup downloads; a snapshot contains every password hash.
     location = /panel/api/v1/backups/download { return 404; }
-    location ~ ^/(accounts|invites|news|moderation|audit|logs|backups|settings)?$ {
+    location ~ ^/(accounts|invites|news|moderation|reports|audit|logs|backups|settings)?$ {
         try_files /index.html =404;
         include /etc/nginx/yo3-security.conf;
         add_header Cache-Control no-cache always;

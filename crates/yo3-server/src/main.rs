@@ -49,6 +49,8 @@ fn apply_file(a: &mut Args, matches: &clap::ArgMatches) -> anyhow::Result<Option
     if let Some(v) = file.dashboard_port && unset("dashboard_port") { a.dashboard_port = Some(v) }
     if let Some(v) = file.dashboard_socket && unset("dashboard_socket") { a.dashboard_socket = Some(v) }
     if let Some(v) = file.dashboard_origin && unset("dashboard_origin") { a.dashboard_origin = Some(v) }
+    if let Some(v) = file.staff_mfa && unset("staff_mfa") { a.staff_mfa = v }
+    if let Some(v) = file.dashboard_public_backups && unset("dashboard_public_backups") { a.dashboard_public_backups = v }
     if let Some(v) = file.advertise && unset("advertise") { a.advertise = Some(v) }
     if let Some(v) = file.game_dir && unset("game_dir") { a.game_dir = Some(v) }
     if let Some(v) = file.data_dir && unset("data_dir") { a.data_dir = v }
@@ -88,6 +90,7 @@ fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
         Admin::Backup { .. } => Op::BackUp,
         Admin::ResetCode { user, .. } => Op::ResetCode { user: user.clone(), code: String::new().into() },
         Admin::SetRole { user, role, .. } => Op::SetRole { user: user.clone(), role: role.clone() },
+        Admin::StaffMfaReset { user } => Op::StaffMfaReset { user: user.clone() },
         // The caller creates the setup code before the operation, for a stable, secret-free receipt.
         Admin::AddUser { user, .. } => Op::AddUser { user: user.clone(), code: String::new().into() },
         Admin::Settings | Admin::Share { .. } => Op::Settings,
@@ -102,6 +105,10 @@ fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
         Admin::Mute { who, reason, minutes, .. } => Op::Mute { who: who.clone(), reason: reason.clone(), minutes: *minutes },
         Admin::Unmute { who, .. } => Op::Unmute { who: who.clone() },
         Admin::SignOut { who, .. } => Op::SignOut { who: who.clone() },
+        Admin::Reports { status, limit } => Op::Reports { status: status.clone(), limit: *limit },
+        Admin::HandleReport { id, dismiss, note } => Op::HandleReport { id: *id, status: if *dismiss { "dismissed" } else { "handled" }.into(), note: note.clone() },
+        Admin::SetBanlist { who, banlist } => Op::SetBanlist { who: who.clone(), banlist: banlist.clone() },
+        Admin::Banlists => Op::Banlists,
         Admin::DeleteAccount { who, yes, .. } => {
             anyhow::ensure!(*yes, "delete-account deletes {who:?} and everything kept for it for good: add --yes to go on");
             Op::DeleteAccount { who: who.clone() }
@@ -318,6 +325,7 @@ async fn run(mut a: Args) -> anyhow::Result<()> {
         advertise: a.advertise,
         http_port: a.http_port,
         dashboard_port: a.dashboard_port, dashboard_socket: a.dashboard_socket, dashboard_origin: a.dashboard_origin,
+        staff_mfa: a.staff_mfa, dashboard_public_backups: a.dashboard_public_backups,
         game_dir: a.game_dir.unwrap_or_else(yo3_data::default_game_dir),
         allow_missing_game_data: false,
         log_dir: a.log_dir,
@@ -390,6 +398,29 @@ mod tests {
         }
         std::fs::write(&file, "dashboard_bind = \"0.0.0.0\"\n").unwrap();
         assert!(yo3_server::config::FileConfig::read(&file).is_err(), "no public dashboard configuration before the MFA gate");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn staff_mfa_is_required_unless_the_host_sets_the_transition_policy() {
+        use yo3_server::staff_mfa::StaffMfaPolicy;
+        let dir = std::env::temp_dir().join(format!("yo3-staff-mfa-config-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("server.toml");
+        let parse = |flags: Vec<&str>| {
+            let args: Vec<std::ffi::OsString> = ["yo3-server".into(), "--config".into(), file.clone().into_os_string()].into_iter()
+                .chain(flags.into_iter().map(Into::into)).collect();
+            let matches = Args::command().try_get_matches_from(args).unwrap();
+            let mut args = Args::from_arg_matches(&matches).unwrap();
+            apply_file(&mut args, &matches).unwrap();
+            (args.staff_mfa, args.dashboard_public_backups)
+        };
+        std::fs::write(&file, "http_port = 18080\n").unwrap();
+        assert_eq!(parse(vec![]), (StaffMfaPolicy::Required, false), "safe defaults");
+        std::fs::write(&file, "staff_mfa = \"optional\"\ndashboard_public_backups = true\n").unwrap();
+        assert_eq!(parse(vec![]), (StaffMfaPolicy::Optional, true));
+        assert_eq!(parse(vec!["--staff-mfa", "required"]).0, StaffMfaPolicy::Required, "a flag wins over the file");
+        std::fs::write(&file, "staff_mfa = \"off\"\n").unwrap();
+        assert!(yo3_server::config::FileConfig::read(&file).is_err(), "no way to turn it off");
         std::fs::remove_dir_all(dir).unwrap();
     }
     #[test]

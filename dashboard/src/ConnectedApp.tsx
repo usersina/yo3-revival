@@ -2,21 +2,18 @@ import { Input } from './components/form-controls'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import {
-  MutationCache,
-  QueryCache,
-  QueryClient,
-  QueryClientProvider,
-  useQueryClient,
-} from '@tanstack/react-query'
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { LoaderCircle } from 'lucide-react'
 import { Button, Field, PageHeading, Panel } from './components/ui'
 import {
   getGetStaffSessionQueryKey,
   getSignInStaffMutationKey,
+  getVerifyStaffCodeMutationKey,
   useGetStaffSession,
   useSignInStaff,
 } from './api/generated/http/client'
+import { CodeStep, EnrollmentGate, SecurityPanel, StepUpDialog } from './ConnectedMfa'
+import { STEP_UP_EVENT, useAcceptSession } from './mfa-session'
 import { ApiHttpError, setCsrfToken } from './api/transport'
 import { ConnectedShell } from './ConnectedShell'
 import { AppearanceSettings, ThemeToggle } from './ThemeControls'
@@ -32,6 +29,9 @@ const ConnectedInvites = lazy(() =>
 )
 const ConnectedCodes = lazy(() =>
   import('./ConnectedCodes').then((m) => ({ default: m.ConnectedCodes })),
+)
+const ConnectedReports = lazy(() =>
+  import('./ConnectedReports').then((m) => ({ default: m.ConnectedReports })),
 )
 const ConnectedAudit = lazy(() =>
   import('./ConnectedAudit').then((m) => ({ default: m.ConnectedAudit })),
@@ -50,18 +50,17 @@ function errorText(error: unknown) {
 }
 
 function SignIn() {
-  const client = useQueryClient()
+  const accept = useAcceptSession()
   const [user, setUser] = useState('')
   const [password, setPassword] = useState('')
+  // A right password for an account with an authenticator waits here for its code.
+  const [challenge, setChallenge] = useState<string | null>(null)
   const signIn = useSignInStaff({
     mutation: {
-      onSuccess: (session) => {
+      onSuccess: (outcome) => {
         setPassword('')
-        setCsrfToken(session.csrf_token)
-        client.setQueryData(getGetStaffSessionQueryKey(), session)
-        void client.resetQueries({
-          predicate: (query) => query.queryKey[0] !== getGetStaffSessionQueryKey()[0],
-        })
+        if (outcome.code_required && outcome.challenge) setChallenge(outcome.challenge)
+        else if (outcome.session) accept(outcome.session, true)
       },
     },
   })
@@ -72,6 +71,17 @@ function SignIn() {
       data: { user: user.trim(), password },
       headers: { 'Idempotency-Key': crypto.randomUUID() },
     })
+  }
+  if (challenge) {
+    return (
+      <CodeStep
+        challenge={challenge}
+        onBack={() => {
+          setChallenge(null)
+          signIn.reset()
+        }}
+      />
+    )
   }
   return (
     <section className="panel auth-card" aria-labelledby="sign-in-heading">
@@ -128,16 +138,17 @@ function Workspace() {
     setCsrfToken(session.data?.csrf_token)
   }, [session.data?.csrf_token])
   const signedOut = session.error instanceof ApiHttpError && session.error.status === 401
-  const entry = !session.data || Boolean(session.error)
+  const entry = !session.data || Boolean(session.error) || session.data.limited
   useEffect(() => {
     if (entry) document.title = 'Sign in · YO3 Revival'
   }, [entry])
-  if (session.data && !session.error && !integration) {
+  if (session.data && !session.error && !session.data.limited && !integration) {
     const user = session.data
     const headings: Record<string, [string, string]> = {
       '/': ['Overview', 'Checked status from your running server.'],
       '/invites': ['Invites & codes', 'Manage registration invites and BOOSTERPASS rewards.'],
       '/news': ['News & maintenance', 'Publish game announcements and plan maintenance.'],
+      '/reports': ['Reports', 'Player reports sent with /report in the game’s chat.'],
       '/audit': ['Audit log', 'Persisted administrative changes and saved outcomes.'],
       '/logs': ['Server logs', 'Recent output from this server process.'],
       '/backups': ['Backups', 'Create snapshots and keep a private copy off the host.'],
@@ -147,6 +158,7 @@ function Workspace() {
     const accountPath = /^\/accounts\/([^/]+)\/?$/.exec(pathname)
     return (
       <ConnectedShell session={user}>
+        <StepUpDialog />
         <Suspense
           fallback={
             <p role="status" className="connected-state">
@@ -181,9 +193,11 @@ function Workspace() {
               {pathname === '/settings' && (
                 <>
                   <AppearanceSettings />
+                  <SecurityPanel session={user} />
                   <ConnectedSettings key="registry" session={user} view="registry" />
                 </>
               )}
+              {pathname === '/reports' && <ConnectedReports session={user} />}
               {pathname === '/audit' && <ConnectedAudit />}
               {pathname === '/logs' && <ConnectedLogs />}
               {pathname === '/backups' && <ConnectedBackups session={user} />}
@@ -235,6 +249,8 @@ function Workspace() {
               <Button onClick={() => void session.refetch()}>Try again</Button>
             </div>
           </Panel>
+        ) : session.data?.limited ? (
+          <EnrollmentGate session={session.data} />
         ) : session.data ? (
           <AccountWorkspace key={session.data.user_id} session={session.data} />
         ) : null}
@@ -257,9 +273,14 @@ export default function ConnectedApp() {
       }),
       mutationCache: new MutationCache({
         onError: (error, _variables, _context, mutation) => {
-          // A refused sign-in is a form error, not an expired staff session.
+          // A sensitive action wants a recent authenticator check: ask for it.
+          if (error instanceof ApiHttpError && error.data.code === 'reauthentication_required')
+            window.dispatchEvent(new Event(STEP_UP_EVENT))
+          // A refused sign-in or code is a form error, not an expired staff session.
           // Refetching the session would remount the form and discard that error.
-          if (mutation.options.mutationKey?.[0] !== getSignInStaffMutationKey()[0]) authError(error)
+          const key = mutation.options.mutationKey?.[0]
+          if (key !== getSignInStaffMutationKey()[0] && key !== getVerifyStaffCodeMutationKey()[0])
+            authError(error)
         },
       }),
       defaultOptions: { queries: { retry: false }, mutations: { retry: false, gcTime: 0 } },

@@ -37,11 +37,32 @@ const CSS: &str = include_str!("panel/panel.css");
 const JS: &str = include_str!("panel/panel.js");
 
 /// A signed-in staff account.
-struct Session { user_id: u32, user: String, credential: String, csrf: String, started: i64, last: i64, flash: Option<(bool, String)> }
+struct Session {
+    user_id: u32, user: String, credential: String, csrf: String, started: i64, last: i64, flash: Option<(bool, String)>,
+    /// When the second factor was last checked in this session (none: never).
+    mfa_at: Option<i64>,
+    /// A session that may only enroll an authenticator (a staff account that has none, under the Required policy).
+    limited: bool,
+    /// Opened by the loopback HTML panel's password form: the staff JSON API does not honour it.
+    legacy: bool,
+}
 
-/// The panel's state: its sessions and its sign-in throttle.
+/// A password was right and a code is still owed: held server-side for a few minutes, bound to the credential state.
+pub(crate) struct Challenge { pub user_id: u32, pub credential: String, pub expires: i64, pub misses: u8 }
+/// How long a signed-in password may wait for its code, and how many wrong codes it takes before it must start again.
+const CHALLENGE_TTL: i64 = 5 * 60;
+pub(crate) const CHALLENGE_MISSES: u8 = 5;
+const CHALLENGES_MAX: usize = 1000;
+/// An enrollment-only session ends after this long, whatever it does.
+const LIMITED: i64 = 20 * 60;
+
+/// The panel's state: its sessions, its sign-in throttle, the codes still owed and the second factor's throttle.
 #[derive(Default)]
-pub struct Panel { sessions: Mutex<HashMap<String, Session>>, throttle: Mutex<Throttle> }
+pub struct Panel {
+    sessions: Mutex<HashMap<String, Session>>, throttle: Mutex<Throttle>,
+    pub(crate) challenges: Mutex<HashMap<String, Challenge>>, pub(crate) mfa_throttle: Mutex<Throttle>,
+    policy: crate::staff_mfa::StaffMfaPolicy,
+}
 
 /// A parsed request.
 struct Request { method: String, path: String, query: HashMap<String, String>, headers: Vec<(String, String)>, form: HashMap<String, String> }
@@ -177,44 +198,160 @@ const PAGES: &[(&str, &str)] = &[
 
 /// Who is looking at a page.
 #[derive(Clone)]
-pub(crate) struct Viewer { pub user_id: u32, pub user: String, pub role: Role, pub csrf: String, pub authenticated_at: i64, pub expires: i64 }
+pub(crate) struct Viewer {
+    pub user_id: u32, pub user: String, pub role: Role, pub csrf: String, pub authenticated_at: i64, pub expires: i64,
+    /// The account has an active authenticator.
+    pub mfa_enabled: bool,
+    /// An enrollment-only session.
+    pub limited: bool,
+    pub mfa_at: Option<i64>,
+    pub recovery_left: u32,
+    pub policy: crate::staff_mfa::StaffMfaPolicy,
+}
 
 impl Viewer {
     pub(crate) fn fresh(&self)->bool{(0..=300).contains(&crate::logins::now().saturating_sub(self.authenticated_at))}
+    /// When the second factor's recent check ends, if it is recent.
+    pub(crate) fn mfa_recent_until(&self) -> Option<i64> {
+        let at = self.mfa_at?;
+        let now = crate::logins::now();
+        ((0..=crate::staff_mfa::RECENT).contains(&now.saturating_sub(at))).then_some(at + crate::staff_mfa::RECENT)
+    }
+    /// Whether a sensitive operation may go ahead: the authenticator was checked in the last five minutes. Only the
+    /// transition policy (Optional) lets an account that has not enrolled through, as it did before MFA.
+    pub(crate) fn sensitive_ok(&self) -> bool {
+        if self.limited { return false }
+        if self.mfa_enabled { return self.mfa_recent_until().is_some() }
+        self.policy == crate::staff_mfa::StaffMfaPolicy::Optional
+    }
+    /// The same for downloads, which already asked for a sign-in within five minutes before the second factor existed.
+    pub(crate) fn step_up_ok(&self) -> bool {
+        if self.limited { return false }
+        if self.mfa_enabled { return self.mfa_recent_until().is_some() }
+        self.policy == crate::staff_mfa::StaffMfaPolicy::Optional && self.fresh()
+    }
     fn admin(&self) -> bool { self.role == Role::Admin }
     /// The hidden field every form carries.
     fn token(&self) -> String { format!("<input type=\"hidden\" name=\"csrf\" value=\"{}\"><input type=\"hidden\" name=\"request_id\" value=\"{}\">", esc(&self.csrf), crate::logins::new_token()) }
 }
 
+/// How a session is opened.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct Opening { pub mfa_at: Option<i64>, pub limited: bool, pub legacy: bool }
+
 impl Panel {
+    /// Required for every staff account: see [`crate::staff_mfa::StaffMfaPolicy`].
     pub fn new() -> Panel { Panel::default() }
 
+    pub fn with_policy(policy: crate::staff_mfa::StaffMfaPolicy) -> Panel { Panel { policy, ..Panel::default() } }
+
+    pub(crate) fn policy(&self) -> crate::staff_mfa::StaffMfaPolicy { self.policy }
+
     /// Signs `user_id` in: the new session's cookie value.
-    fn open(&self, user_id: u32, user: &str, credential: String) -> String {
+    fn open(&self, user_id: u32, user: &str, credential: String, opening: Opening) -> String {
         let token = crate::logins::new_token();
         let now = crate::logins::now();
         let mut sessions = self.sessions.locked();
         sessions.retain(|_, s| now - s.last < IDLE && now - s.started < LONGEST);
-        sessions.insert(crate::logins::digest(&token), Session { user_id, user: user.into(), credential, csrf: crate::logins::new_token(), started: now, last: now, flash: None });
+        sessions.insert(crate::logins::digest(&token), Session { user_id, user: user.into(), credential, csrf: crate::logins::new_token(), started: now, last: now, flash: None,
+            mfa_at: opening.mfa_at, limited: opening.limited, legacy: opening.legacy });
         token
     }
 
+    /// Signs the account in as the staff dashboard does, after its password (and code, if it has an authenticator).
+    pub(crate) fn open_staff(&self, user_id: u32, user: &str, credential: String, opening: Opening, api: &Api) -> Option<(String, Viewer)> {
+        let token = self.open(user_id, user, credential, opening);
+        let viewer = self.view_as(&crate::logins::digest(&token), api, opening.legacy)?.0;
+        Some((token, viewer))
+    }
+
+    /// A session carries on after the account's own change (enrolling) moved its credential: the other sessions end.
+    pub(crate) fn rebind(&self, cookie: &str, api: &Api, mfa_at: Option<i64>) -> Option<Viewer> {
+        let key = crate::logins::digest(cookie);
+        {
+            let d = api.accounts.locked();
+            let mut sessions = self.sessions.locked();
+            let s = sessions.get_mut(&key)?;
+            let login = d.login_by_id(s.user_id)?;
+            s.credential = credential(login);
+            s.limited = false;
+            if mfa_at.is_some() { s.mfa_at = mfa_at }
+            let (user_id, kept) = (s.user_id, key.clone());
+            sessions.retain(|k, other| *k == kept || other.user_id != user_id || other.credential == credential(login));
+        }
+        self.view(&key, api).map(|(v, _)| v)
+    }
+
+    /// For tests: makes the session's last second-factor check `secs` older.
+    #[doc(hidden)]
+    pub fn backdate_mfa(&self, cookie: &str, secs: i64) {
+        if let Some(s) = self.sessions.locked().get_mut(&crate::logins::digest(cookie)) { s.mfa_at = s.mfa_at.map(|t| t - secs) }
+    }
+
+    /// For tests: the second factor was just checked in this session.
+    #[doc(hidden)]
+    pub fn stamp_for_tests(&self, cookie: &str) { self.stamp_mfa(cookie) }
+
+    /// The second factor was just checked in this session.
+    pub(crate) fn stamp_mfa(&self, cookie: &str) {
+        if let Some(s) = self.sessions.locked().get_mut(&crate::logins::digest(cookie)) { s.mfa_at = Some(crate::logins::now()) }
+    }
+
+    /// The account and credential state a challenge was issued for, while it is still open.
+    pub(crate) fn challenge_of(&self, token: &str) -> Option<(u32, String)> {
+        let now = crate::logins::now();
+        self.challenges.locked().get(&crate::logins::digest(token)).filter(|c| c.expires > now).map(|c| (c.user_id, c.credential.clone()))
+    }
+
+    /// A wrong code: the fifth ends the challenge, and the password must be entered again.
+    pub(crate) fn challenge_missed(&self, token: &str) {
+        let key = crate::logins::digest(token);
+        let mut held = self.challenges.locked();
+        if let Some(c) = held.get_mut(&key) { c.misses += 1; if c.misses >= CHALLENGE_MISSES { held.remove(&key); } }
+    }
+
+    pub(crate) fn challenge_done(&self, token: &str) { self.challenges.locked().remove(&crate::logins::digest(token)); }
+
+    /// Holds a password that was right until its code comes: the challenge's token.
+    pub(crate) fn challenge(&self, user_id: u32, credential: String) -> String {
+        let token = crate::logins::new_token();
+        let now = crate::logins::now();
+        let mut held = self.challenges.locked();
+        held.retain(|_, c| c.expires > now);
+        if held.len() >= CHALLENGES_MAX
+            && let Some(oldest) = held.iter().min_by_key(|(_, c)| c.expires).map(|(k, _)| k.clone()) { held.remove(&oldest); }
+        held.insert(crate::logins::digest(&token), Challenge { user_id, credential, expires: now + CHALLENGE_TTL, misses: 0 });
+        token
+    }
+
+    /// The loopback HTML panel's view of a session.
     fn view(&self, key: &str, api: &Api) -> Option<(Viewer, Option<(bool, String)>)> {
+        self.view_as(key, api, true)
+    }
+
+    /// `legacy`: the loopback HTML panel asks (it refuses an enrollment-only session); the staff API refuses what the
+    /// HTML panel's password form opened.
+    fn view_as(&self, key: &str, api: &Api, legacy: bool) -> Option<(Viewer, Option<(bool, String)>)> {
         let now = crate::logins::now();
         let mut sessions = self.sessions.locked();
         let s = sessions.get_mut(key)?;
-        if now - s.last >= IDLE || now - s.started >= LONGEST { sessions.remove(key); return None }
+        if now - s.last >= IDLE || now - s.started >= LONGEST || s.limited && now - s.started >= LIMITED { sessions.remove(key); return None }
+        if s.legacy != legacy && (legacy && s.limited || !legacy && s.legacy) { return None }
         let d = api.accounts.locked();
         let login = d.login_by_id(s.user_id).filter(|l| l.staff() && l.refusal(now).is_none()
             && l.user.eq_ignore_ascii_case(&s.user) && credential(l) == s.credential);
         let Some(login) = login else { drop(d); sessions.remove(key); return None };
         s.last = now;
+        let mfa = login.mfa.as_ref().filter(|m| m.active());
         Some((Viewer { user_id: s.user_id, user: login.user.clone(), role: login.role, csrf: s.csrf.clone(),
-            authenticated_at:s.started, expires: (now + IDLE).min(s.started + LONGEST) }, s.flash.take()))
+            authenticated_at:s.started, expires: (now + IDLE).min(s.started + LONGEST),
+            mfa_enabled: mfa.is_some(), limited: s.limited, mfa_at: s.mfa_at, recovery_left: mfa.map_or(0, |m| m.recovery.len() as u32), policy: self.policy },
+            s.flash.take()))
     }
 
+    /// The staff JSON API's view of a session cookie.
     pub(crate) fn session(&self, cookie: &str, api: &Api) -> Option<Viewer> {
-        self.view(&crate::logins::digest(cookie), api).map(|(viewer, _)| viewer)
+        self.view_as(&crate::logins::digest(cookie), api, false).map(|(viewer, _)| viewer)
     }
 
     pub(crate) fn close(&self, cookie: &str) { self.sessions.locked().remove(&crate::logins::digest(cookie)); }
@@ -289,6 +426,7 @@ fn login_page(error: Option<&str>, user: &str) -> Response {
     let body = format!("<main class=\"narrow\"><h1>YO3 Revival admin</h1>{error}<form method=\"post\" action=\"{PREFIX}/login\" class=\"stack\">\
 <label>User ID <input name=\"user\" autocomplete=\"username\" required value=\"{}\" autofocus></label>\
 <label>Password <input name=\"password\" type=\"password\" autocomplete=\"current-password\" required></label>\
+<label>Authenticator or recovery code (if the account has one) <input name=\"code\" autocomplete=\"one-time-code\"></label>\
 <button>Sign in</button></form><p class=\"muted\">An admin or moderator account. Hosting from YO3 Revival: create your \
 account on your server from Multiplayer, then type its User ID under Host for friends, <b>Make admin</b>. A server run on its own: \
 <code>yo3-server set-role USER admin</code>.</p></main>", esc(user));
@@ -303,24 +441,27 @@ async fn sign_in(r: &Request, peer: IpAddr, panel: &Panel, api: &Api) -> Respons
         tracing::warn!("[panel] a sign-in was refused: not from the panel's own page ({})", r.whence());
         return refused("403 Forbidden", "Sign in from the panel's own page.");
     }
-    match authenticate(r.field("user"), r.form.get("password").cloned().unwrap_or_default(), peer, panel, api).await {
+    match authenticate(r.field("user"), r.form.get("password").cloned().unwrap_or_default(), r.field("code"), peer, panel, api).await {
         Ok((token, _)) => redirect(&format!("{PREFIX}/"), vec![("Set-Cookie", session_cookie(&token, false))]),
         Err(SignInError::Throttled(wait)) => login_page(Some(&format!("Too many tries: wait {wait} seconds and try again.")), r.field("user")),
         Err(SignInError::Wrong) => login_page(Some(WRONG), r.field("user")),
+        Err(SignInError::CodeNeeded) => login_page(Some("This account has an authenticator: type its code (or a recovery code) too."), r.field("user")),
     }
 }
 
 /// Password or recovery changes invalidate existing staff cookies as well as devices.
+pub(crate) fn credential_of(login: &crate::logins::Login) -> String { credential(login) }
 fn credential(login: &crate::logins::Login) -> String { crate::logins::digest(&format!("{}:{}:{}", login.password, login.recovery, login.staff_epoch)) }
 
-pub(crate) enum SignInError { Wrong, Throttled(u64) }
+pub(crate) enum SignInError { Wrong, Throttled(u64), CodeNeeded }
 
 pub(crate) fn session_cookie(token: &str, clear: bool) -> String {
     format!("{COOKIE}={token}; Path={PREFIX}; HttpOnly; Secure; SameSite=Strict; Max-Age={}", if clear { 0 } else { LONGEST })
 }
 
-/// Shared by the existing forms and the typed API. Never trust a role snapshot captured before password verification.
-pub(crate) async fn authenticate(user: &str, password: String, peer: IpAddr, panel: &Panel, api: &Api) -> Result<(String, Viewer), SignInError> {
+/// The first factor, for the dashboard and the HTML panel: a staff account's password, throttled. Never trust a role
+/// snapshot captured before password verification.
+pub(crate) async fn verify_password(user: &str, password: String, peer: IpAddr, panel: &Panel, api: &Api) -> Result<(u32, crate::logins::Login), SignInError> {
     {
         let limits = api.settings.now().limits;
         let mut throttle = panel.throttle.locked();
@@ -336,14 +477,50 @@ pub(crate) async fn authenticate(user: &str, password: String, peer: IpAddr, pan
     let now = crate::logins::now();
     let valid = current.filter(|(_, l)| matched && l.staff() && l.refusal(now).is_none()
         && found.as_ref().is_some_and(|(_, old)| credential(old) == credential(l)));
-    let Some((user_id, login)) = valid else {
+    let Some(valid) = valid else {
         panel.throttle.locked().failed(user, Instant::now());
         tracing::warn!("[panel] a sign-in was refused");
         return Err(SignInError::Wrong)
     };
     panel.throttle.locked().succeeded(user);
-    let token = panel.open(user_id, &login.user, credential(&login));
-    let viewer = panel.session(&token, api).ok_or(SignInError::Wrong)?;
+    Ok(valid)
+}
+
+/// What the dashboard's password step leads to.
+pub(crate) enum Next {
+    /// The account has an authenticator: this challenge token awaits its code (no session yet).
+    Code(String),
+    /// A session: with the authenticator not yet enrolled it may only enroll (`limited`).
+    Session(String, Viewer),
+}
+
+/// The dashboard's sign-in: password, then either a code to come or (an account with no authenticator) a limited
+/// enrollment session, or under the Optional policy a password-only one.
+pub(crate) async fn begin_sign_in(user: &str, password: String, peer: IpAddr, panel: &Panel, api: &Api) -> Result<Next, SignInError> {
+    let (user_id, login) = verify_password(user, password, peer, panel, api).await?;
+    if login.mfa.as_ref().is_some_and(|m| m.active()) { return Ok(Next::Code(panel.challenge(user_id, credential(&login)))) }
+    let limited = panel.policy() == crate::staff_mfa::StaffMfaPolicy::Required;
+    let (token, viewer) = panel.open_staff(user_id, &login.user, credential(&login), Opening { limited, ..Opening::default() }, api).ok_or(SignInError::Wrong)?;
+    tracing::info!("[panel] {} signed in{}", login.user, if limited { " (enrollment only)" } else { "" });
+    api.note(&login.user, "dashboard", if limited { "staff-sign-in-enrollment-only" } else { "staff-sign-in" }, &login.user);
+    Ok(Next::Session(token, viewer))
+}
+
+/// Shared by the existing forms: the loopback HTML panel. An account with an authenticator also gives its code.
+pub(crate) async fn authenticate(user: &str, password: String, code: &str, peer: IpAddr, panel: &Panel, api: &Api) -> Result<(String, Viewer), SignInError> {
+    let (user_id, login) = verify_password(user, password, peer, panel, api).await?;
+    let mut mfa_at = None;
+    if login.mfa.as_ref().is_some_and(|m| m.active()) {
+        if code.is_empty() { return Err(SignInError::CodeNeeded) }
+        match panel.use_code(api, user_id, peer, code) {
+            Ok(_) => mfa_at = Some(crate::logins::now()),
+            Err(crate::staff_mfa::CodeError::Throttled(wait)) => return Err(SignInError::Throttled(wait)),
+            Err(_) => return Err(SignInError::Wrong),
+        }
+    }
+    // A code that moved the credential (it did not) or a change since the password check: look again.
+    let current = api.accounts.locked().login_by_id(user_id).cloned().ok_or(SignInError::Wrong)?;
+    let (token, viewer) = panel.open_staff(user_id, &current.user, credential(&current), Opening { mfa_at, legacy: true, ..Opening::default() }, api).ok_or(SignInError::Wrong)?;
     tracing::info!("[panel] {} signed in", login.user);
     api.note(&login.user, ORIGIN, "panel-sign-in", &login.user);
     Ok((token, viewer))
@@ -818,7 +995,7 @@ mod tests {
     #[test]
     fn sensitive_downloads_require_a_sign_in_within_five_minutes_without_future_timestamps() {
         let now=crate::logins::now();
-        let mut viewer=Viewer{user_id:1,user:"Admin".into(),role:Role::Admin,csrf:"csrf".into(),authenticated_at:now-299,expires:now+600};
+        let mut viewer=Viewer{user_id:1,user:"Admin".into(),role:Role::Admin,csrf:"csrf".into(),authenticated_at:now-299,expires:now+600,mfa_enabled:false,limited:false,mfa_at:None,recovery_left:0,policy:crate::staff_mfa::StaffMfaPolicy::Optional};
         assert!(viewer.fresh());viewer.authenticated_at=now-301;assert!(!viewer.fresh());viewer.authenticated_at=now+30;assert!(!viewer.fresh());
     }
     #[test]

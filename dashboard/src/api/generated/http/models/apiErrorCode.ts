@@ -18,6 +18,8 @@ export const ApiErrorCode = {
   request_conflict: 'request_conflict',
   persistence_failed: 'persistence_failed',
   reauthentication_required: 'reauthentication_required',
+  invalid_code: 'invalid_code',
+  mfa_enrollment_required: 'mfa_enrollment_required',
   method_not_allowed: 'method_not_allowed',
   payload_too_large: 'payload_too_large',
   unsupported_media_type: 'unsupported_media_type',

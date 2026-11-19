@@ -2,6 +2,7 @@
 //!
 //! The request/reply catalog, with the client evidence and status of every pair, is
 //! `docs/protocol.md`. Keep it, this file and the contract tests in step.
+mod commands;
 use crate::lock::Locked;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
@@ -245,11 +246,14 @@ pub struct Account {
     pub players: Vec<Player>,
     /// The country the host set for the account (empty: derived from the client's language at login).
     pub country: String,
+    /// The banlist the account chose for its next logins (`/banlist`, #63): a regulation id. None: the server's
+    /// `login-regulation`. Per account, not per player, because the game asks for it at login, before a player is chosen.
+    pub banlist: Option<u32>,
 }
 
 impl Account {
     pub fn test() -> Account {
-        Account { user_id: 1001, name: "test".into(), dpoint: 0, players: vec![Player::new(1001, "test")], country: String::new() }
+        Account { user_id: 1001, name: "test".into(), dpoint: 0, players: vec![Player::new(1001, "test")], country: String::new(), banlist: None }
     }
 }
 
@@ -365,6 +369,9 @@ pub struct DuelEntry {
     pub peer: Option<std::net::IpAddr>,
     /// The player's DUEL OPTIONS auto card placing is off (`autoSet` 0 on the duel connection): they pick the zones.
     pub manual_place: bool,
+    /// The match's rule turned Surrender off (`surrender` 0 in the host's settings or the event's): the Deck's menu
+    /// does not offer it. A duel with no rule (Auto Duel, an NPC) allows it.
+    pub no_surrender: bool,
 }
 
 /// The rule's match_type (DuelMenu's table 0x790C50 by Rule Format button): Single Mode, Match Mode (best of three),
@@ -414,7 +421,18 @@ const ACCEPT: u32 = 2;
 struct Waiting {
     player_id: u32,
     match_type: u32,
+    /// The banlist the player logged in with, which the client checks the Auto Duel deck against: only the same
+    /// list pairs (#63).
+    regulation: u32,
     record: Message,
+}
+
+impl Waiting {
+    /// Whether two waiting players may duel: the same Rule Format (Both fits either) and the same banlist.
+    fn fits(&self, other: &Waiting) -> bool {
+        let (a, b) = (self.match_type, other.match_type);
+        self.regulation == other.regulation && (a == b || a == EITHER_MODE || b == EITHER_MODE)
+    }
 }
 
 /// Two matched players (0x1978) and their duel's rule, by duel_id.
@@ -600,6 +618,8 @@ pub struct World {
     /// Blister's exchange pools, and the cards the shop rents out (both from the client's pack files).
     pub exchange_pools: Vec<crate::shop::ExchangePool>,
     pub rental_pool: std::collections::HashSet<u16>,
+    /// Where each card comes from, for `/where` (#55).
+    pub card_sources: Vec<crate::sources::CardSource>,
 }
 
 /// The Information list (0x21FC, read by the global dispatcher `0x4F4700` whenever it arrives, so the server may push
@@ -687,6 +707,7 @@ impl World {
             avatar_items: vec![],
             exchange_pools: vec![],
             rental_pool: Default::default(),
+            card_sources: vec![],
         }
     }
 
@@ -744,6 +765,8 @@ pub struct Hub {
     host_presents: HashMap<u32, VecDeque<crate::shop::Present>>,
     rental_invites: HashMap<u32, u32>,
     rentals: crate::rental::Rentals,
+    /// Player reports (`/report`, #44).
+    pub reports: crate::reports::Reports,
     /// User events, and the last event id handed out.
     events: Vec<crate::events::Event>,
     last_event: u32,
@@ -860,10 +883,9 @@ impl Hub {
     /// Pairs the players waiting for an Auto Duel while the duel cap allows (called every second): at the cap a new
     /// player waits rather than starting a duel the server can't run, and is matched once one ends.
     pub fn match_waiting(&mut self) {
-        let fits = |a: u32, b: u32| a == b || a == EITHER_MODE || b == EITHER_MODE;
         while !self.duels_busy() {
             let n = self.waiting.len();
-            let Some((i, j)) = (0..n).find_map(|i| (i + 1..n).find(|&j| fits(self.waiting[i].match_type, self.waiting[j].match_type)).map(|j| (i, j))) else { return };
+            let Some((i, j)) = (0..n).find_map(|i| (i + 1..n).find(|&j| self.waiting[i].fits(&self.waiting[j])).map(|j| (i, j))) else { return };
             let me = self.waiting.remove(j);
             let other = self.waiting.remove(i);
             let (_, pushes) = self.pair(other, me);
@@ -2450,9 +2472,9 @@ impl Hub {
     /// duel: then the new duel's id, the opponent, and both match pushes (the opponent's first).
     fn wait_for_match(&mut self, me: Waiting) -> Option<(u32, [(u32, Message); 2])> {
         self.waiting.retain(|w| w.player_id != me.player_id);
-        // The same Rule Format matches, and Both matches either (two Both players get a Single duel, **guess**).
-        let fits = |a: u32, b: u32| a == b || a == EITHER_MODE || b == EITHER_MODE;
-        let at = self.waiting.iter().position(|w| fits(w.match_type, me.match_type));
+        // The same Rule Format matches, and Both matches either (two Both players get a Single duel, **guess**), under
+        // the same banlist (#63).
+        let at = self.waiting.iter().position(|w| w.fits(&me));
         // At the duel cap the player waits like anyone without an opponent (`match_waiting` pairs them later).
         let Some(at) = at.filter(|_| !self.duels_busy()) else {
             self.waiting.push(me);
@@ -2659,8 +2681,18 @@ impl FrontSession {
     /// The banlist this session logged in with: the `login-regulation` setting at its login, kept until the player
     /// logs in again (a change reaches players at their next login, #24).
     fn login_regulation(&mut self) -> u32 {
-        let world = &self.world;
-        *self.login_regulation.get_or_insert_with(|| world.settings.now().login_regulation)
+        if self.login_regulation.is_none() {
+            self.login_regulation = Some(self.chosen_regulation());
+        }
+        self.login_regulation.unwrap_or_default()
+    }
+
+    /// The banlist this account logs in with now: the one it chose with `/banlist` (while the client still has it),
+    /// else the server's `login-regulation` (#63).
+    fn chosen_regulation(&self) -> u32 {
+        let own = self.directory.as_ref().and_then(|d| d.locked().account_of(self.account.user_id)).map_or(self.account.banlist, |a| a.banlist);
+        own.filter(|id| self.world.banlists.is_empty() || self.world.banlists.iter().any(|(known, _)| known == id))
+            .unwrap_or_else(|| self.world.settings.now().login_regulation)
     }
 
     /// The regulation a duel is played under (its rule's `regulation_id`; 0 means the login one).
@@ -2686,7 +2718,7 @@ impl FrontSession {
         let (lent, borrowed) = { let hub = self.hub(); (hub.rentals.lent_by(me.player_id), hub.rentals.borrowed_by(me.player_id)) };
         let owned = crate::trade::usable(&self.world, saved.as_ref().unwrap_or(me), &lent, &borrowed);
         // A duel that names no banlist, or one the client doesn't have, uses the one this player logged in with.
-        let login = self.login_regulation.unwrap_or_else(|| self.world.settings.now().login_regulation);
+        let login = self.login_regulation.unwrap_or_else(|| self.chosen_regulation());
         let regulation = Some(self.duel_regulation(duel_id)).filter(|id| self.world.regulations.contains_key(id)).unwrap_or(login);
         crate::deckcheck::check(&self.world, regulation, &owned, deck)
     }
@@ -2838,7 +2870,7 @@ impl FrontSession {
     fn purchase(&mut self, sale_id: u32, count: u32) -> Result<u32, String> {
         let world = self.world.clone();
         let goods = crate::shop::Goods::find(&world, sale_id).ok_or("not on sale")?;
-        let (price, max) = goods.price();
+        let (price, max) = goods.price(&world.settings.now().shop);
         if count == 0 || count > max {
             return Err(format!("count {count} outside 1..={max}"));
         }
@@ -2895,7 +2927,7 @@ impl FrontSession {
         let Some(kaban) = msg.get("kaban").and_then(Value::as_bytes) else { return fail };
         let given: Vec<u16> = kaban.as_chunks::<2>().0.iter().map(|&b| u16::from_be_bytes(b)).collect();
         let Some(at) = self.selected else { return fail };
-        if given.len() != crate::shop::EXCHANGE_COST as usize || kaban.len() % 2 != 0 {
+        if given.len() != world.settings.now().shop.trade_cards as usize || kaban.len() % 2 != 0 {
             return fail;
         }
         let me = self.account.players[at].player_id;
@@ -2930,8 +2962,8 @@ impl FrontSession {
     /// The shop's rental offer (0x2D75 for 0x2C40): how many cards, for how many BP, for how many days; all 0 (an offer
     /// nobody can confirm) without the client's rental pool.
     fn rental_terms(&self) -> Message {
-        use crate::shop::{RENTAL_BP, RENTAL_CARDS, RENTAL_DAYS};
-        let terms = if self.world.rental_pool.is_empty() { [0; 3] } else { [RENTAL_CARDS, RENTAL_BP, RENTAL_DAYS] };
+        let shop = self.world.settings.now().shop;
+        let terms = if self.world.rental_pool.is_empty() { [0; 3] } else { [shop.rental_cards, shop.rental_bp, shop.rental_days] };
         ["rental_cardnum", "rental_point", "rental_term"].into_iter().zip(terms).fold(Message::reply(0x2D75), |m, (k, v)| m.with(k, Value::U32(v)))
     }
 
@@ -2940,30 +2972,31 @@ impl FrontSession {
     /// player's rental from the shop under way. The client then asks for the rental records itself (0x2C34, live), from
     /// which it adds the cards to its collection.
     fn rent_from_shop(&mut self, msg: &Message) -> Message {
-        use crate::shop::{RENTAL_BP, RENTAL_CARDS, RENTAL_DAYS};
+        let shop = self.world.settings.now().shop;
+        let (rental_bp, rental_cards, rental_days) = (shop.rental_bp, shop.rental_cards, shop.rental_days);
         let fail = Message::reply(0x2D78);
         let Some(list) = msg.get("main_list").and_then(Value::as_bytes) else { return fail };
         let cards: Vec<u16> = list.as_chunks::<2>().0.iter().map(|&b| u16::from_be_bytes(b)).collect();
         let pool = &self.world.rental_pool;
-        if list.len() % 2 != 0 || cards.len() != RENTAL_CARDS as usize || pool.is_empty() || !cards.iter().all(|c| pool.contains(c)) {
+        if list.len() % 2 != 0 || cards.len() != rental_cards as usize || pool.is_empty() || !cards.iter().all(|c| pool.contains(c)) {
             return fail;
         }
         let Some(at) = self.selected else { return fail };
         let me = (self.account.players[at].player_id, self.account.players[at].name.clone());
         match &self.directory {
-            Some(d) => match d.locked().purchase(me.0, RENTAL_BP, None, |_| {}) {
+            Some(d) => match d.locked().purchase(me.0, rental_bp, None, |_| {}) {
                 Ok((left, _)) => self.account.dpoint = left,
                 Err(why) => {
                     tracing::warn!("[shop] rental refused: {why}");
                     return fail;
                 }
             },
-            None => match self.account.dpoint.checked_sub(RENTAL_BP) {
+            None => match self.account.dpoint.checked_sub(rental_bp) {
                 Some(left) => self.account.dpoint = left,
                 None => return fail,
             },
         }
-        self.hub().rentals.start_from_shop(me, cards, RENTAL_DAYS, chrono::Utc::now().timestamp());
+        self.hub().rentals.start_from_shop(me, cards, rental_days, chrono::Utc::now().timestamp());
         Message::reply(0x2D77).with("dpoint", Value::U32(self.account.dpoint))
     }
 
@@ -3101,12 +3134,16 @@ impl FrontSession {
             // items (the last clears isLoading).
             0x1B66 => Message::reply(0x1C20).with("text", Value::text("Welcome! Take a look at the packs.")),
             0x1B67 => {
-                let packs = self.world.packs.iter().map(crate::shop::shelf_item);
-                let decks = self.world.structure_decks.iter().map(crate::shop::shelf_deck);
+                let shop = self.world.settings.now().shop;
+                let packs = self.world.packs.iter().map(|p| crate::shop::shelf_item(p, shop.pack_cost));
+                let decks = self.world.structure_decks.iter().map(|d| crate::shop::shelf_deck(d, shop.deck_cost));
                 packs.chain(decks).fold(Message::reply(0x1C22), Message::item)
             }
             0x1B68 => self.buy(msg),
-            0x1B6F => self.world.exchange_pools.iter().map(crate::shop::exchange_item).fold(Message::reply(0x1C26), Message::item),
+            0x1B6F => {
+                let cost = self.world.settings.now().shop.trade_cards;
+                self.world.exchange_pools.iter().map(|p| crate::shop::exchange_item(p, cost)).fold(Message::reply(0x1C26), Message::item)
+            }
             0x1B6A => self.exchange(msg),
             0x1B6B => self.world.protectors.iter().map(|&id| crate::shop::shelf_protector(id)).fold(Message::reply(0x1C32), Message::item),
             0x1B6D => Message::reply(0x1C2E),
@@ -3260,7 +3297,8 @@ impl FrontSession {
                         let lp = rule("lp_start").filter(|&lp| lp > 0);
                         let best_of = if rule("match_type") == Some(MATCH_MODE) { 3 } else { 1 };
                         let times = m.times;
-                        hub.enter_duel(player_id, DuelEntry { deck, duel_id: Some(id), opponent, lp, best_of, times, identity: self.identity, peer: self.peer, ..DuelEntry::default() });
+                        let no_surrender = rule("surrender") == Some(0);
+                        hub.enter_duel(player_id, DuelEntry { deck, duel_id: Some(id), opponent, lp, best_of, times, no_surrender, identity: self.identity, peer: self.peer, ..DuelEntry::default() });
                     }
                 }
                 Message::reply(0x22CA)
@@ -3334,7 +3372,8 @@ impl FrontSession {
             0x1798 => {
                 let player = self.player();
                 let match_type = msg.get("match_type").and_then(Value::as_u32).unwrap_or(0);
-                let me = Waiting { player_id: player.player_id, match_type, record: player.record() };
+                let (player_id, record) = (player.player_id, player.record());
+                let me = Waiting { player_id, match_type, regulation: self.login_regulation(), record };
                 let matched = self.hub().wait_for_match(me);
                 if let Some((_, [(other, to_other), (_, to_me)])) = matched {
                     self.hub().push(other, &to_other);
@@ -3736,7 +3775,7 @@ impl FrontSession {
             let challenger_record = hub.online.values().find(|o| o.player_id == challenger).map(|o| o.record.clone());
             let match_type = host.setting("match_type").and_then(Value::as_u32).unwrap_or(SINGLE_MODE);
             let mut rule: Vec<(String, Value)> = host.settings.iter()
-                .filter(|(k, _)| k == "lp_start" || k == "regulation_id").cloned().collect();
+                .filter(|(k, _)| k == "lp_start" || k == "regulation_id" || k == "surrender").cloned().collect();
             rule.push(("match_type".to_string(), Value::U32(match_type)));
             let push = |vs: &Message| {
                 let data = rule.iter().fold(Message::record().with("name", Value::text("duelData")), |m, (k, v)| m.with(k, v.clone()));
@@ -3768,10 +3807,18 @@ impl FrontSession {
     /// target). The client sends its fields in one item (tag 10): chat_str, chat_type, and to_id
     /// (room chat: chat_type 1, to_id = the room) or to_name (whisper). The client shows nothing
     /// on 0x2456, so the sender gets the 0x2455 echo too. 0x2455 is read by ChatWindow 0x435950.
-    fn chat(&self, msg: &Message) -> Vec<Message> {
+    fn chat(&mut self, msg: &Message) -> Vec<Message> {
         const ROOM_CHAT: u32 = 1;
         const TEAM_CHAT: u32 = 3;
         let Some(id) = self.online else { return vec![Message::reply(0x2457)] };
+        // The server's chat commands (`/p Server banlist`, `!draw5`): answered to the sender alone, even when muted.
+        {
+            let body = msg.items.first().unwrap_or(msg);
+            let text = body.get("chat_str").and_then(Value::as_str).unwrap_or_default();
+            if let Some(lines) = self.chat_command(&text, body.get("to_name").and_then(Value::as_str).as_deref()) {
+                return commands::reply(&lines);
+            }
+        }
         // A muted player's lines go nowhere; they are told why in their own chat window (the game has no muted reply
         // or text of its own: R6, #26).
         let muted = self.directory.as_ref().and_then(|d| d.locked().mute_of_player(self.player().player_id, crate::logins::now()));

@@ -1,7 +1,7 @@
 import { chooseOption } from './select'
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { ModerationResponse, StaffSession } from '../src/api/generated/validation/schemas'
+import { ModerationResponse, SignInOutcome } from '../src/api/generated/validation/schemas'
 
 async function signIn(page: Page, user = 'TestAdmin') {
   await page.goto('/connected')
@@ -9,7 +9,7 @@ async function signIn(page: Page, user = 'TestAdmin') {
   await page.getByLabel('Password', { exact: true }).fill('DashboardDemo123!')
   const signedIn = page.waitForResponse((r) => r.url().endsWith('/panel/api/v1/sign-in'))
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  StaffSession.parse(await (await signedIn).json())
+  SignInOutcome.parse(await (await signedIn).json())
   await expect(page.getByRole('heading', { name: 'Accounts', exact: true })).toBeVisible()
 }
 async function moderate(page: Page, who = 'TestModTarget') {

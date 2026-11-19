@@ -2,7 +2,12 @@ import { chooseOption } from './select'
 import { test, expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
-import { AccountList, ServerOverview, StaffSession } from '../src/api/generated/validation/schemas'
+import {
+  AccountList,
+  ServerOverview,
+  StaffSession,
+  SignInOutcome,
+} from '../src/api/generated/validation/schemas'
 async function signIn(page: Page, start = '/') {
   await page.goto(start)
   await page.getByLabel('User ID', { exact: true }).fill('TestAdmin')
@@ -11,7 +16,7 @@ async function signIn(page: Page, start = '/') {
     response.url().endsWith('/panel/api/v1/sign-in'),
   )
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  StaffSession.parse(await (await signingIn).json())
+  SignInOutcome.parse(await (await signingIn).json())
   await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible()
 }
 test('overview shows checked operational metrics, backup failures and links online players to real account details', async ({

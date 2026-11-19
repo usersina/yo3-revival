@@ -12,6 +12,8 @@ services:
       YO3_HTTPS_PORT: ${YO3_HTTPS_PORT:-443}
       YO3_DOMAIN: ${YO3_DOMAIN:?Set YO3_DOMAIN in .env}
       YO3_DASHBOARD_ORIGIN: https://${YO3_DOMAIN}:${YO3_HTTPS_PORT:-443}
+      # required (default): staff sign in with password and authenticator. optional: a transition mode, docs/dashboard.md.
+      YO3_STAFF_MFA: ${YO3_STAFF_MFA:-required}
     ports:
       - "${YO3_GAME_BIND:-0.0.0.0}:${YO3_GAME_PORT:-7443}:7443"
     volumes:

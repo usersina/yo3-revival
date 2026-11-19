@@ -101,11 +101,11 @@ impl<'a> Goods<'a> {
         world.structure_decks.iter().find(|d| Some(d.deck.id) == sale_id.checked_sub(DECK_SALE)).map(Goods::Deck)
     }
 
-    /// Its price in BP and the most one purchase may take.
-    pub fn price(&self) -> (u32, u32) {
+    /// Its price in BP (a pack's and a deck's are the host's settings) and the most one purchase may take.
+    pub fn price(&self, shop: &crate::settings::Shop) -> (u32, u32) {
         match self {
-            Goods::Pack(_) => (PACK_COST, PACK_MAX),
-            Goods::Deck(_) => (DECK_COST, DECK_MAX),
+            Goods::Pack(_) => (shop.pack_cost, PACK_MAX),
+            Goods::Deck(_) => (shop.deck_cost, DECK_MAX),
             Goods::Protector(_) => (PROTECTOR_COST, 1),
             Goods::AvatarItem(..) => (AVATAR_ITEM_COST, 1),
         }
@@ -222,11 +222,11 @@ pub fn open(pack: &ShopPack, rng: &mut u64) -> Vec<u16> {
 
 /// A pack on the shelves (a 0x1C22 item, read by 0x485E50): item_type 0 puts it on the Booster Packs shelf
 /// (AddPack, 0x48C790). sale_id is what a purchase names: the pack's id.
-pub fn shelf_item(pack: &ShopPack) -> Message {
+pub fn shelf_item(pack: &ShopPack, cost: u32) -> Message {
     Message::record()
         .with("item_type", Value::U32(0))
         .with("item_id", Value::U32(pack.id))
-        .with("item_cost", Value::U32(PACK_COST))
+        .with("item_cost", Value::U32(cost))
         .with("item_max", Value::U32(PACK_MAX))
         .with("sale_id", Value::U32(pack.id))
         .with("sale", Value::U32(0))
@@ -236,11 +236,11 @@ pub fn shelf_item(pack: &ShopPack) -> Message {
 }
 
 /// A structure deck on the shelves: item_type 1 puts it on the STRUCTURE DECK tab (AddStruct, 0x48CE40).
-pub fn shelf_deck(deck: &ShopDeck) -> Message {
+pub fn shelf_deck(deck: &ShopDeck, cost: u32) -> Message {
     Message::record()
         .with("item_type", Value::U32(1))
         .with("item_id", Value::U32(deck.deck.id))
-        .with("item_cost", Value::U32(DECK_COST))
+        .with("item_cost", Value::U32(cost))
         .with("item_max", Value::U32(DECK_MAX))
         .with("sale_id", Value::U32(DECK_SALE + deck.deck.id))
         .with("sale", Value::U32(0))
@@ -278,11 +278,11 @@ pub fn shelf_avatar_item(id: u16) -> Message {
 /// its own pack file, into one card per row, each costing item_cost of the player's cards; item_trade 0 leaves the
 /// received card tradable, and the exchange names sale_id. The case appends those cards to the list Purchase Pack
 /// shelves (0x48E240), so item_type is one it leaves out (EXCHANGE_TYPE); with 0 each card was a 10 BP "pack" (#46).
-pub fn exchange_item(pool: &ExchangePool) -> Message {
+pub fn exchange_item(pool: &ExchangePool, cost: u32) -> Message {
     Message::record()
         .with("item_type", Value::U32(EXCHANGE_TYPE))
         .with("item_id", Value::U32(pool.id))
-        .with("item_cost", Value::U32(EXCHANGE_COST))
+        .with("item_cost", Value::U32(cost))
         .with("item_trade", Value::U32(0))
         .with("sale_id", Value::U32(pool.id))
         .with("modified", Value::text(&pool.modified))

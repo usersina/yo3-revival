@@ -7,6 +7,10 @@ if [ "${YO3_HTTPS_PORT:-443}" = 443 ]; then YO3_DASHBOARD_ORIGIN="https://${YO3_
 if [ -n "${YO3_DASHBOARD_ORIGIN:-}" ]; then
     set -- --dashboard-origin "$YO3_DASHBOARD_ORIGIN" "$@"
 fi
+# Staff must use an authenticator unless the host sets the documented transition mode (docs/dashboard.md).
+if [ -n "${YO3_STAFF_MFA:-}" ]; then
+    set -- --staff-mfa "$YO3_STAFF_MFA" "$@"
+fi
 if [ -n "${YO3_DOMAIN:-}" ]; then
     set -- --advertise "$YO3_DOMAIN" "$@"
 fi

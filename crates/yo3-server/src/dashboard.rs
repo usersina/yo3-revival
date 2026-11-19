@@ -24,6 +24,8 @@ use crate::api::keys::{KeyAccountRequest, KeyAccountResult};
 use crate::api::credentials::{IssueAccountCodeRequest, AccountCodeResponse};
 use crate::api::profiles::{AccountDetail, AccountEditRequest, AccountEditResult, CountryList};
 use crate::api::invites::{CreateInviteRequest, CreateInviteResult, InviteList};
+use crate::api::reports::{HandleReportRequest, HandleReportResult, ReportList, ReportQuery};
+use crate::api::banlist::{AccountBanlist, BanlistChoices, SetBanlistRequest};
 use crate::api::codes::{BpCodeList, CreateBpCodeRequest, CreateBpCodeResult, RemoveBpCodeRequest, RemoveBpCodeResult};
 
 #[derive(Clone)]
@@ -33,7 +35,7 @@ pub struct Dashboard { pub api: Arc<Api>, pub panel: Arc<Panel> }
 #[serde(rename_all = "snake_case")]
 pub enum ApiErrorCode {
     InvalidRequest, Unauthenticated, Forbidden, InvalidOrigin, CsrfInvalid, RateLimited, NotFound,
-    AlreadyExists, RequestConflict, PersistenceFailed, ReauthenticationRequired, MethodNotAllowed, PayloadTooLarge, UnsupportedMediaType, InternalError,
+    AlreadyExists, RequestConflict, PersistenceFailed, ReauthenticationRequired, InvalidCode, MfaEnrollmentRequired, MethodNotAllowed, PayloadTooLarge, UnsupportedMediaType, InternalError,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -44,7 +46,7 @@ impl ApiError {
         match self.code {
             ApiErrorCode::InvalidRequest => StatusCode::BAD_REQUEST,
             ApiErrorCode::Unauthenticated => StatusCode::UNAUTHORIZED,
-            ApiErrorCode::ReauthenticationRequired | ApiErrorCode::Forbidden | ApiErrorCode::InvalidOrigin | ApiErrorCode::CsrfInvalid => StatusCode::FORBIDDEN,
+            ApiErrorCode::ReauthenticationRequired | ApiErrorCode::InvalidCode | ApiErrorCode::MfaEnrollmentRequired | ApiErrorCode::Forbidden | ApiErrorCode::InvalidOrigin | ApiErrorCode::CsrfInvalid => StatusCode::FORBIDDEN,
             ApiErrorCode::RateLimited => StatusCode::TOO_MANY_REQUESTS,
             ApiErrorCode::NotFound => StatusCode::NOT_FOUND,
             ApiErrorCode::RequestConflict | ApiErrorCode::AlreadyExists => StatusCode::CONFLICT,
@@ -87,13 +89,65 @@ pub struct StaffSession {
     #[schema(maximum = 4294967295_u32)] pub user_id: u32, pub user: String, pub role: Role, pub csrf_token: String,
     /// Idle expiry, refreshed by an authenticated request; capped by the absolute session lifetime.
     pub expires_at: chrono::DateTime<chrono::Utc>,
+    /// The account has an active authenticator (TOTP).
+    pub mfa_enabled: bool,
+    /// The server requires an authenticator of every staff account (the default policy).
+    pub mfa_required: bool,
+    /// An enrollment-only session: every route but enrollment, sign-out and this session answers `mfa_enrollment_required`.
+    pub limited: bool,
+    /// When the authenticator's recent check ends; none: sensitive operations ask for a code first.
+    pub mfa_recent_until: Option<chrono::DateTime<chrono::Utc>>,
+    /// Unused recovery codes left.
+    #[schema(maximum = 100)] pub recovery_codes_remaining: u32,
 }
 impl From<Viewer> for StaffSession {
     fn from(v: Viewer) -> Self {
+        let recent = v.mfa_recent_until();
         Self { user_id: v.user_id, user: v.user, role: v.role, csrf_token: v.csrf,
-            expires_at: chrono::DateTime::from_timestamp(v.expires, 0).expect("valid session expiry") }
+            expires_at: chrono::DateTime::from_timestamp(v.expires, 0).expect("valid session expiry"),
+            mfa_enabled: v.mfa_enabled, mfa_required: v.policy == crate::staff_mfa::StaffMfaPolicy::Required, limited: v.limited,
+            mfa_recent_until: recent.and_then(|t| chrono::DateTime::from_timestamp(t, 0)), recovery_codes_remaining: v.recovery_left }
     }
 }
+
+/// The result of the password step: a code is still owed (`challenge`), or a session was opened (see its `limited`).
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct SignInOutcome {
+    pub code_required: bool,
+    /// Present with `code_required`: send it back with the code to `/sign-in/code` within five minutes.
+    pub challenge: Option<String>,
+    pub session: Option<StaffSession>,
+}
+
+#[derive(Serialize, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SignInCodeRequest {
+    #[schema(min_length = 64, max_length = 64)] pub challenge: String,
+    /// An authenticator code (six digits) or an unused recovery code.
+    #[schema(write_only, min_length = 6, max_length = 32)] pub code: String,
+}
+
+#[derive(Serialize, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CodeRequest {
+    /// An authenticator code (six digits) or an unused recovery code.
+    #[schema(write_only, min_length = 6, max_length = 32)] pub code: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EmptyRequest {}
+
+/// The seed of a new authenticator, shown to its owner once. The QR code is the `otpauth_uri`.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct MfaEnrollmentStart { pub secret: String, pub otpauth_uri: String, pub account: String, pub issuer: String }
+
+/// An authenticator was activated. The recovery codes are shown once and are kept only as digests.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct MfaEnrolled { pub recovery_codes: Vec<String>, pub session: StaffSession }
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct RecoveryCodes { pub recovery_codes: Vec<String> }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct SignedOut { pub signed_out: bool }
@@ -111,10 +165,11 @@ pub struct AccountList { pub accounts: Vec<AccountSummary> }
 
 /// Collect paths and their schemas before attaching state. Both the export binary and the real router call this.
 fn documented_routes() -> OpenApiRouter<Dashboard> {
-    OpenApiRouter::new().routes(routes!(staff_session)).routes(routes!(sign_in)).routes(routes!(sign_out))
+    OpenApiRouter::new().routes(routes!(staff_session)).routes(routes!(sign_in)).routes(routes!(sign_in_code)).routes(routes!(sign_out)).routes(routes!(sign_out_everywhere))
+        .routes(routes!(start_enrollment)).routes(routes!(confirm_enrollment)).routes(routes!(step_up)).routes(routes!(regenerate_recovery_codes))
         .routes(routes!(accounts)).routes(routes!(give_bp)).routes(routes!(list_bp_codes))
         .routes(routes!(create_bp_code)).routes(routes!(remove_bp_code)).routes(routes!(list_invites)).routes(routes!(create_invite))
-        .routes(routes!(get_account)).routes(routes!(edit_account)).routes(routes!(country_choices)).routes(routes!(issue_account_code)).routes(routes!(key_account)).routes(routes!(give_gift)).routes(routes!(gift_choices)).routes(routes!(card_image)).routes(routes!(moderate)).routes(routes!(delete_account)).routes(routes!(server_status)).routes(routes!(audit_history)).routes(routes!(server_logs)).routes(routes!(backups)).routes(routes!(create_backup)).routes(routes!(download_backup)).routes(routes!(stop_server)).routes(routes!(live_settings)).routes(routes!(change_settings).layer(DefaultBodyLimit::max(256 * 1024)))
+        .routes(routes!(get_account)).routes(routes!(edit_account)).routes(routes!(country_choices)).routes(routes!(issue_account_code)).routes(routes!(key_account)).routes(routes!(give_gift)).routes(routes!(gift_choices)).routes(routes!(card_image)).routes(routes!(moderate)).routes(routes!(delete_account)).routes(routes!(server_status)).routes(routes!(audit_history)).routes(routes!(server_logs)).routes(routes!(backups)).routes(routes!(create_backup)).routes(routes!(download_backup)).routes(routes!(stop_server)).routes(routes!(live_settings)).routes(routes!(change_settings).layer(DefaultBodyLimit::max(256 * 1024))).routes(routes!(list_reports)).routes(routes!(handle_report)).routes(routes!(banlist_choices)).routes(routes!(set_banlist))
 }
 
 pub fn openapi() -> OpenApi {
@@ -133,7 +188,7 @@ pub fn openapi_json() -> String { format!("{}\n", serde_json::to_string_pretty(&
 /// The socket is a filesystem capability held only by nginx. Forwarded identity is accepted on that transport
 /// alone; the TCP router never trusts it. No proxy request gains local management authority.
 #[derive(Clone)]
-pub struct ProxyOrigin { origin: String, authority: String, scheme: String }
+pub struct ProxyOrigin { origin: String, authority: String, scheme: String, backups: bool }
 impl ProxyOrigin {
     pub fn parse(value: &str) -> anyhow::Result<Self> {
         let uri: axum::http::Uri = value.parse()?;
@@ -142,8 +197,10 @@ impl ProxyOrigin {
         anyhow::ensure!(!authority.as_str().contains('@') && uri.path_and_query().is_none_or(|p|p.as_str()=="/")
             && !value.ends_with('/') && (scheme=="https" || scheme=="http" && matches!(authority.host(),"localhost"|"127.0.0.1"|"[::1]")),
             "dashboard-origin must be an exact HTTPS origin without a path (HTTP localhost is allowed for local checks)");
-        Ok(Self { origin:value.into(), authority:authority.as_str().into(), scheme:scheme.into() })
+        Ok(Self { origin:value.into(), authority:authority.as_str().into(), scheme:scheme.into(), backups:false })
     }
+    /// Lets backups be downloaded through this transport (the host's `--dashboard-public-backups`; off by default).
+    pub fn public_backups(mut self, allowed: bool) -> Self { self.backups = allowed; self }
     fn peer(&self, headers:&HeaderMap) -> Result<std::net::IpAddr,ApiError> {
         if one(headers,"host")!=Some(self.authority.as_str()) || one(headers,"x-forwarded-proto")!=Some(self.scheme.as_str())
             || headers.contains_key("forwarded") {
@@ -185,6 +242,9 @@ fn same_origin(headers: &HeaderMap) -> bool {
         && site.is_none_or(|s| s == "same-origin" || s == "none") && (origin.is_some() || site.is_some())
         && headers.get_all("origin").iter().count() <= 1 && headers.get_all("sec-fetch-site").iter().count() <= 1
 }
+/// What an enrollment-only session may reach.
+const ENROLLMENT_ONLY: [&str; 5] = ["/panel/api/v1/session", "/panel/api/v1/sign-out", "/panel/api/v1/mfa/enrollment", "/panel/api/v1/mfa/enrollment/confirm", "/panel/api/v1/sign-out-everywhere"];
+
 async fn guard(State(state): State<Dashboard>, ConnectInfo(peer): ConnectInfo<SocketAddr>, mut req: axum::http::Request<Body>, next: Next) -> Response {
     let refusal = (|| -> Result<(), ApiError> {
         let proxy = req.extensions().get::<ProxyOrigin>().cloned();
@@ -195,14 +255,17 @@ async fn guard(State(state): State<Dashboard>, ConnectInfo(peer): ConnectInfo<So
             return Err(ApiError::new(ApiErrorCode::Forbidden, "The dashboard API answers localhost only."))
         }
         let path = req.uri().path();
-        if proxy.is_some() && path=="/panel/api/v1/backups/download" {
+        if proxy.as_ref().is_some_and(|p| !p.backups) && path=="/panel/api/v1/backups/download" {
             return Err(ApiError::new(ApiErrorCode::Forbidden,"Backup downloads are disabled on the proxy. Copy a backup through SSH, or use the private dashboard port."))
         }
-        let signing_in = path == "/panel/api/v1/sign-in";
+        let signing_in = path == "/panel/api/v1/sign-in" || path == "/panel/api/v1/sign-in/code";
         let viewer = if signing_in || path == "/panel/openapi.json" { None } else {
             Some(state.panel.session(cookie(req.headers()), &state.api).ok_or_else(||
                 ApiError::new(ApiErrorCode::Unauthenticated, "Your session has ended. Sign in again."))?)
         };
+        if let Some(v) = &viewer && v.limited && !ENROLLMENT_ONLY.contains(&path) {
+            return Err(ApiError::new(ApiErrorCode::MfaEnrollmentRequired, "Set up your authenticator app before using the dashboard."))
+        }
         if req.method() == axum::http::Method::POST {
             let origin_ok = if let Some(origin)=&proxy {
                 one(req.headers(),"origin")==Some(origin.origin.as_str())
@@ -242,11 +305,11 @@ fn secure(response: &mut Response) {
         (status = 405, description = "Method not allowed", body = ApiError), (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError), (status = 500, description = "Internal error; mutation outcome may be unknown", body = ApiError)))]
 async fn staff_session(Extension(viewer): Extension<Viewer>) -> Json<StaffSession> { Json(viewer.into()) }
 
-#[utoipa::path(post, path = "/panel/api/v1/sign-in", operation_id = "signInStaff", tag = "Staff", security(),
+#[utoipa::path(post, path = "/panel/api/v1/sign-in", operation_id = "signInStaff", tag = "Staff", security(()),
     request_body = SignInRequest,
     params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$",
         description = "One ID per sign-in attempt. Authentication does not create a durable operation receipt.")),
-    responses((status = 200, description = "Success", body = StaffSession), (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError),
+    responses((status = 200, description = "A code is owed (code_required and a challenge), or a session was opened: an enrollment-only one (limited) for an account with no authenticator", body = SignInOutcome), (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Wrong User ID or password", body = ApiError),
         (status = 403, description = "Forbidden", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError), (status = 413, description = "Request too large", body = ApiError),
         (status = 415, description = "JSON required", body = ApiError), (status = 429, description = "Too many sign-in attempts", body = ApiError), (status = 500, description = "Internal error; mutation outcome may be unknown", body = ApiError)))]
 async fn sign_in(State(state): State<Dashboard>, ConnectInfo(peer): ConnectInfo<SocketAddr>, body: Result<Json<SignInRequest>, JsonRejection>) -> Result<Response, ApiError> {
@@ -254,19 +317,72 @@ async fn sign_in(State(state): State<Dashboard>, ConnectInfo(peer): ConnectInfo<
     if body.user.is_empty() || body.user.len() > 64 {
         return Err(ApiError::new(ApiErrorCode::InvalidRequest, "Enter a User ID of at most 64 characters."))
     }
-    match panel::authenticate(&body.user, body.password, peer.ip(), &state.panel, &state.api).await {
-        Ok((token, viewer)) => {
-            let mut response = Json(StaffSession::from(viewer)).into_response();
+    match panel::begin_sign_in(&body.user, body.password, peer.ip(), &state.panel, &state.api).await {
+        Ok(panel::Next::Code(challenge)) => Ok(Json(SignInOutcome { code_required: true, challenge: Some(challenge), session: None }).into_response()),
+        Ok(panel::Next::Session(token, viewer)) => {
+            let mut response = Json(SignInOutcome { code_required: false, challenge: None, session: Some(StaffSession::from(viewer)) }).into_response();
             response.headers_mut().insert(header::SET_COOKIE, HeaderValue::from_str(&panel::session_cookie(&token, false)).unwrap());
             Ok(response)
         }
-        Err(panel::SignInError::Wrong) => Err(ApiError::new(ApiErrorCode::Unauthenticated, "Wrong User ID or password, or this account can't use the admin panel.")),
-        Err(panel::SignInError::Throttled(wait)) => {
-            let mut response = ApiError::new(ApiErrorCode::RateLimited, format!("Too many tries. Wait {wait} seconds before trying again.")).into_response();
-            response.headers_mut().insert(header::RETRY_AFTER, HeaderValue::from_str(&wait.to_string()).unwrap());
-            Ok(response)
-        }
+        Err(panel::SignInError::Wrong | panel::SignInError::CodeNeeded) => Err(ApiError::new(ApiErrorCode::Unauthenticated, "Wrong User ID or password, or this account can't use the admin panel.")),
+        Err(panel::SignInError::Throttled(wait)) => Ok(throttled(wait)),
     }
+}
+
+fn throttled(wait: u64) -> Response {
+    let mut response = ApiError::new(ApiErrorCode::RateLimited, format!("Too many tries. Wait {wait} seconds before trying again.")).into_response();
+    response.headers_mut().insert(header::RETRY_AFTER, HeaderValue::from_str(&wait.to_string()).unwrap());
+    response
+}
+
+/// A refused code, as the API says it.
+fn code_error(error: crate::staff_mfa::CodeError) -> Response {
+    use crate::staff_mfa::CodeError;
+    match error {
+        CodeError::Invalid => ApiError::new(ApiErrorCode::InvalidCode, "That code is not right, or was already used. Check your authenticator's clock, or use a recovery code.").into_response(),
+        CodeError::Throttled(wait) => throttled(wait),
+        CodeError::Unavailable => ApiError::new(ApiErrorCode::Forbidden, "This account has no active authenticator.").into_response(),
+        CodeError::Failed(why) => { tracing::error!("[staff-mfa] {why}"); ApiError::new(ApiErrorCode::InternalError, "The authenticator could not be checked. Ask the host to check the server log.").into_response() }
+    }
+}
+
+#[utoipa::path(post, path = "/panel/api/v1/sign-in/code", operation_id = "verifyStaffCode", tag = "Staff", security(()),
+    request_body = SignInCodeRequest,
+    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$",
+        description = "One ID per attempt. Authentication does not create a durable operation receipt.")),
+    responses((status = 200, description = "The password and the code were right: a session was opened", body = StaffSession), (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "The challenge expired or was used up: sign in again", body = ApiError),
+        (status = 403, description = "The code is not right, or was already used (invalid_code)", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError), (status = 413, description = "Request too large", body = ApiError),
+        (status = 415, description = "JSON required", body = ApiError), (status = 429, description = "Too many attempts", body = ApiError), (status = 500, description = "Internal error", body = ApiError)))]
+async fn sign_in_code(State(state): State<Dashboard>, ConnectInfo(peer): ConnectInfo<SocketAddr>, body: Result<Json<SignInCodeRequest>, JsonRejection>) -> Result<Response, ApiError> {
+    let Json(body) = body?;
+    if body.challenge.len() != 64 || body.code.is_empty() || body.code.len() > 32 {
+        return Err(ApiError::new(ApiErrorCode::InvalidRequest, "Send the sign-in challenge and one code."))
+    }
+    let expired = || ApiError::new(ApiErrorCode::Unauthenticated, "Your sign-in expired. Enter your password again.");
+    let (user_id, bound) = state.panel.challenge_of(&body.challenge).ok_or_else(expired)?;
+    let outcome = {
+        let (panel, api) = (state.panel.clone(), state.api.clone());
+        let code = body.code.clone();
+        tokio::task::spawn_blocking(move || panel.use_code(&api, user_id, peer.ip(), &code)).await
+            .map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The code could not be checked."))?
+    };
+    let used = match outcome {
+        Ok(used) => used,
+        Err(crate::staff_mfa::CodeError::Invalid) => { state.panel.challenge_missed(&body.challenge); return Ok(code_error(crate::staff_mfa::CodeError::Invalid)) }
+        Err(e) => return Ok(code_error(e)),
+    };
+    state.panel.challenge_done(&body.challenge);
+    // The password was right a moment ago; the account must still be exactly as it was (no change of password, role or standing).
+    let login = state.api.accounts.locked().login_by_id(user_id).cloned().filter(|l| panel::credential_of(l) == bound).ok_or_else(expired)?;
+    if let crate::staff_mfa::Used::Recovery { left } = used {
+        state.api.note(&login.user, "dashboard", "staff-recovery-code-used", &format!("{left} left"));
+    }
+    let opening = panel::Opening { mfa_at: Some(crate::logins::now()), ..Default::default() };
+    let (token, viewer) = state.panel.open_staff(user_id, &login.user, bound, opening, &state.api).ok_or_else(expired)?;
+    state.api.note(&login.user, "dashboard", "staff-sign-in", &login.user);
+    let mut response = Json(StaffSession::from(viewer)).into_response();
+    response.headers_mut().insert(header::SET_COOKIE, HeaderValue::from_str(&panel::session_cookie(&token, false)).unwrap());
+    Ok(response)
 }
 
 #[utoipa::path(post, path = "/panel/api/v1/sign-out", operation_id = "signOutStaff", tag = "Staff",
@@ -280,6 +396,108 @@ async fn sign_out(State(state): State<Dashboard>, headers: HeaderMap) -> Respons
     response.headers_mut().insert(header::SET_COOKIE, HeaderValue::from_str(&panel::session_cookie("", true)).unwrap());
     response
 }
+
+#[utoipa::path(post, path = "/panel/api/v1/mfa/enrollment", operation_id = "startMfaEnrollment", tag = "Staff",
+    security(("staffSession" = [], "csrfToken" = [])),
+    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "One ID per attempt. Authentication does not create a durable operation receipt.")),
+    responses((status = 200, description = "A fresh seed, pending until a valid code confirms it. Shown to its owner once.", body = MfaEnrollmentStart), (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError),
+        (status = 403, description = "Forbidden, or the code is not right (invalid_code), or a recent authenticator code is required (reauthentication_required)", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError), (status = 413, description = "Request too large", body = ApiError),
+        (status = 415, description = "JSON required", body = ApiError), (status = 429, description = "Too many attempts", body = ApiError), (status = 500, description = "Internal error", body = ApiError)))]
+async fn start_enrollment(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>) -> Result<Json<MfaEnrollmentStart>, ApiError> {
+    // Replacing an authenticator that is active needs the old one's recent code.
+    if viewer.mfa_enabled && !viewer.sensitive_ok() { return Err(needs_code()) }
+    let (secret, otpauth_uri, account) = tokio::task::spawn_blocking(move || {
+        let started = state.panel.begin_enrollment(&state.api, viewer.user_id)?;
+        state.api.note(&viewer.user, "dashboard", "staff-mfa-enrollment-started", &viewer.user);
+        Ok::<_, String>(started)
+    }).await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "Enrollment could not start."))?
+        .map_err(|e| { tracing::error!("[staff-mfa] {e}"); ApiError::new(ApiErrorCode::PersistenceFailed, "Enrollment could not be saved. Ask the host to check the server log.") })?;
+    Ok(Json(MfaEnrollmentStart { secret, otpauth_uri, account, issuer: "YO3 Revival".into() }))
+}
+
+#[utoipa::path(post, path = "/panel/api/v1/mfa/enrollment/confirm", operation_id = "confirmMfaEnrollment", tag = "Staff",
+    security(("staffSession" = [], "csrfToken" = [])), request_body = CodeRequest,
+    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "One ID per attempt. Authentication does not create a durable operation receipt.")),
+    responses((status = 200, description = "Activated. The recovery codes are shown once; the session carries on and every other session of the account ended.", body = MfaEnrolled), (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError),
+        (status = 403, description = "Forbidden, or the code is not right (invalid_code), or a recent authenticator code is required (reauthentication_required)", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError), (status = 413, description = "Request too large", body = ApiError),
+        (status = 415, description = "JSON required", body = ApiError), (status = 429, description = "Too many attempts", body = ApiError), (status = 500, description = "Internal error", body = ApiError)))]
+async fn confirm_enrollment(State(state): State<Dashboard>, ConnectInfo(peer): ConnectInfo<SocketAddr>, Extension(viewer): Extension<Viewer>, headers: HeaderMap,
+    body: Result<Json<CodeRequest>, JsonRejection>) -> Result<Response, ApiError> {
+    let Json(body) = body?;
+    if body.code.len() > 32 { return Err(ApiError::new(ApiErrorCode::InvalidRequest, "Send the six digits your authenticator shows.")) }
+    let state2 = state.clone();
+    let codes = tokio::task::spawn_blocking(move || state2.panel.confirm_enrollment(&state2.api, viewer.user_id, peer.ip(), &body.code)).await
+        .map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The code could not be checked."))?;
+    let codes = match codes { Ok(codes) => codes, Err(e) => return Ok(code_error(e)) };
+    state.api.note(&viewer.user, "dashboard", "staff-mfa-enrolled", &viewer.user);
+    let session = state.panel.rebind(cookie(&headers), &state.api, Some(crate::logins::now()))
+        .ok_or_else(|| ApiError::new(ApiErrorCode::Unauthenticated, "Your session has ended. Sign in again."))?;
+    Ok(Json(MfaEnrolled { recovery_codes: codes, session: session.into() }).into_response())
+}
+
+#[utoipa::path(post, path = "/panel/api/v1/mfa/step-up", operation_id = "confirmMfaStepUp", tag = "Staff",
+    security(("staffSession" = [], "csrfToken" = [])), request_body = CodeRequest,
+    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "One ID per attempt. Authentication does not create a durable operation receipt.")),
+    responses((status = 200, description = "The authenticator was checked: sensitive operations are allowed for five minutes.", body = StaffSession), (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError),
+        (status = 403, description = "Forbidden, or the code is not right (invalid_code), or a recent authenticator code is required (reauthentication_required)", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError), (status = 413, description = "Request too large", body = ApiError),
+        (status = 415, description = "JSON required", body = ApiError), (status = 429, description = "Too many attempts", body = ApiError), (status = 500, description = "Internal error", body = ApiError)))]
+async fn step_up(State(state): State<Dashboard>, ConnectInfo(peer): ConnectInfo<SocketAddr>, Extension(viewer): Extension<Viewer>, headers: HeaderMap,
+    body: Result<Json<CodeRequest>, JsonRejection>) -> Result<Response, ApiError> {
+    let Json(body) = body?;
+    if body.code.is_empty() || body.code.len() > 32 { return Err(ApiError::new(ApiErrorCode::InvalidRequest, "Send an authenticator code or a recovery code.")) }
+    let state2 = state.clone();
+    let used = tokio::task::spawn_blocking(move || state2.panel.use_code(&state2.api, viewer.user_id, peer.ip(), &body.code)).await
+        .map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The code could not be checked."))?;
+    match used { Ok(crate::staff_mfa::Used::Recovery { left }) => state.api.note(&viewer.user, "dashboard", "staff-recovery-code-used", &format!("{left} left")), Ok(_) => {}, Err(e) => return Ok(code_error(e)) }
+    state.panel.stamp_mfa(cookie(&headers));
+    let session = state.panel.session(cookie(&headers), &state.api).ok_or_else(|| ApiError::new(ApiErrorCode::Unauthenticated, "Your session has ended. Sign in again."))?;
+    Ok(Json(StaffSession::from(session)).into_response())
+}
+
+#[utoipa::path(post, path = "/panel/api/v1/mfa/recovery-codes", operation_id = "regenerateRecoveryCodes", tag = "Staff",
+    security(("staffSession" = [], "csrfToken" = [])), request_body = EmptyRequest,
+    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "One ID per attempt. Authentication does not create a durable operation receipt.")),
+    responses((status = 200, description = "New recovery codes, shown once; the old ones no longer work.", body = RecoveryCodes), (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError),
+        (status = 403, description = "Forbidden, or the code is not right (invalid_code), or a recent authenticator code is required (reauthentication_required)", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError), (status = 413, description = "Request too large", body = ApiError),
+        (status = 415, description = "JSON required", body = ApiError), (status = 429, description = "Too many attempts", body = ApiError), (status = 500, description = "Internal error", body = ApiError)))]
+async fn regenerate_recovery_codes(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, body: Result<Json<EmptyRequest>, JsonRejection>) -> Result<Json<RecoveryCodes>, ApiError> {
+    let _ = body?;
+    if !viewer.mfa_enabled { return Err(ApiError::new(ApiErrorCode::Forbidden, "Set up an authenticator first.")) }
+    sensitive(&viewer)?;
+    tokio::task::spawn_blocking(move || {
+        let codes = state.panel.regenerate_recovery(&state.api, viewer.user_id)?;
+        state.api.note(&viewer.user, "dashboard", "staff-recovery-codes-regenerated", &viewer.user);
+        Ok::<_, String>(codes)
+    }).await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The codes could not be made."))?
+        .map(|recovery_codes| Json(RecoveryCodes { recovery_codes }))
+        .map_err(|e| { tracing::error!("[staff-mfa] {e}"); ApiError::new(ApiErrorCode::PersistenceFailed, "The codes could not be saved. Try again.") })
+}
+
+#[utoipa::path(post, path = "/panel/api/v1/sign-out-everywhere", operation_id = "signOutEverywhere", tag = "Staff",
+    security(("staffSession" = [], "csrfToken" = [])), request_body = EmptyRequest,
+    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "One ID per attempt. Authentication does not create a durable operation receipt.")),
+    responses((status = 200, description = "Every staff session of this account ended, this one too.", body = SignedOut), (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError),
+        (status = 403, description = "Forbidden, or the code is not right (invalid_code), or a recent authenticator code is required (reauthentication_required)", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError), (status = 413, description = "Request too large", body = ApiError),
+        (status = 415, description = "JSON required", body = ApiError), (status = 429, description = "Too many attempts", body = ApiError), (status = 500, description = "Internal error", body = ApiError)))]
+async fn sign_out_everywhere(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, body: Result<Json<EmptyRequest>, JsonRejection>) -> Result<Response, ApiError> {
+    let _ = body?;
+    let state2 = state.clone();
+    tokio::task::spawn_blocking(move || {
+        state2.api.accounts.locked().update_login(viewer.user_id, |login| {
+            login.staff_epoch = login.staff_epoch.checked_add(1).ok_or("session revision exhausted")?;
+            Ok(())
+        })
+    }).await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The sessions could not be ended."))?
+        .map_err(|_| ApiError::new(ApiErrorCode::PersistenceFailed, "The sessions could not be ended. Try again."))?;
+    state.api.note(&viewer.user, "dashboard", "staff-sign-out-everywhere", &viewer.user);
+    let mut response = Json(SignedOut { signed_out: true }).into_response();
+    response.headers_mut().insert(header::SET_COOKIE, HeaderValue::from_str(&panel::session_cookie("", true)).unwrap());
+    Ok(response)
+}
+
+/// A sensitive operation asks for an authenticator check in the last five minutes (see docs/dashboard.md).
+fn needs_code() -> ApiError { ApiError::new(ApiErrorCode::ReauthenticationRequired, "Confirm with your authenticator code to do this.") }
+fn sensitive(viewer: &Viewer) -> Result<(), ApiError> { if viewer.sensitive_ok() { Ok(()) } else { Err(needs_code()) } }
 
 #[utoipa::path(get, path = "/panel/api/v1/accounts", operation_id = "listAccounts", tag = "Accounts",
     security(("staffSession" = [])), responses((status = 200, description = "Success", body = AccountList),
@@ -412,6 +630,7 @@ async fn country_choices(State(state): State<Dashboard>, Extension(viewer): Exte
 async fn edit_account(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, headers: HeaderMap,
     body: Result<Json<AccountEditRequest>, JsonRejection>) -> Result<Json<AccountEditResult>, ApiError> {
     let Json(request) = body?;
+    if matches!(request, crate::api::profiles::AccountEditRequest::SetRole { .. }) { sensitive(&viewer)? }
     let id = one(&headers, "idempotency-key").unwrap_or_default().to_string();
     tokio::task::spawn_blocking(move || state.api.edit_account(&request, &id, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
         .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The result could not be confirmed. Retry with the same request ID."))?
@@ -429,6 +648,7 @@ async fn edit_account(State(state): State<Dashboard>, Extension(viewer): Extensi
 async fn issue_account_code(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, headers: HeaderMap,
     body: Result<Json<IssueAccountCodeRequest>, JsonRejection>) -> Result<Json<AccountCodeResponse>, ApiError> {
     let Json(request) = body?;
+    sensitive(&viewer)?;
     let id = one(&headers, "idempotency-key").unwrap_or_default().to_string();
     tokio::task::spawn_blocking(move || state.api.issue_account_code(&request, &id, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
         .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The result could not be confirmed. Retry with the same request ID and code."))?
@@ -446,6 +666,7 @@ async fn issue_account_code(State(state): State<Dashboard>, Extension(viewer): E
 async fn key_account(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, headers: HeaderMap,
     body: Result<Json<KeyAccountRequest>, JsonRejection>) -> Result<Json<KeyAccountResult>, ApiError> {
     let Json(request) = body?;
+    sensitive(&viewer)?;
     let id = one(&headers, "idempotency-key").unwrap_or_default().to_string();
     tokio::task::spawn_blocking(move || state.api.key_account(&request, &id, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
         .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The result could not be confirmed. Retry with the same request ID."))?
@@ -497,6 +718,7 @@ async fn moderate(State(state): State<Dashboard>, Extension(viewer): Extension<V
 async fn delete_account(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, headers: HeaderMap,
     body: Result<Json<DeleteAccountRequest>, JsonRejection>) -> Result<Json<DeleteAccountResponse>, ApiError> {
     let Json(request) = body?;
+    sensitive(&viewer)?;
     let id = one(&headers, "idempotency-key").unwrap_or_default().to_string();
     tokio::task::spawn_blocking(move || state.api.delete_account(&request, &id, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
         .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The result could not be confirmed. Retry with the same request ID."))?
@@ -559,6 +781,7 @@ async fn gift_choices(State(state): State<Dashboard>, Extension(viewer): Extensi
 async fn change_settings(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, headers: HeaderMap,
     body: Result<Json<SettingsRequest>, JsonRejection>) -> Result<Json<SettingsResult>, ApiError> {
     let Json(request) = body?;
+    sensitive(&viewer)?;
     let id = one(&headers, "idempotency-key").unwrap_or_default().to_string();
     tokio::task::spawn_blocking(move || state.api.change_settings(&request, &id, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
         .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The result could not be confirmed. Retry with the same request ID."))?
@@ -599,6 +822,7 @@ async fn server_status(State(state): State<Dashboard>) -> Result<Json<ServerOver
 async fn stop_server(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, headers: HeaderMap,
     body: Result<Json<StopRequest>, JsonRejection>) -> Result<Json<StopResponse>, ApiError> {
     let Json(request) = body?;
+    sensitive(&viewer)?;
     let id = one(&headers, "idempotency-key").unwrap_or_default().to_string();
     tokio::task::spawn_blocking(move || state.api.request_stop(&request, &id, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
         .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The result could not be confirmed. Retry with the same request ID."))?
@@ -650,7 +874,7 @@ async fn backups(State(state):State<Dashboard>,Extension(viewer):Extension<Viewe
         (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError),
         (status = 503, description = "Commit could not be confirmed; retry the same request", body = ApiError), (status = 500, description = "Internal error; outcome may be unknown", body = ApiError)))]
 async fn create_backup(State(state):State<Dashboard>,Extension(viewer):Extension<Viewer>,headers:HeaderMap,body:Result<Json<CreateBackupRequest>,JsonRejection>)->Result<Json<CreateBackupResponse>,ApiError>{
-    let Json(request)=body?;let id=one(&headers,"idempotency-key").unwrap_or_default().to_string();
+    let Json(request)=body?;sensitive(&viewer)?;let id=one(&headers,"idempotency-key").unwrap_or_default().to_string();
     tokio::task::spawn_blocking(move||state.api.create_backup(&request,&id,Actor::Staff{user_id:viewer.user_id},"dashboard")).await.map_err(|_|ApiError::new(ApiErrorCode::InternalError,"The backup outcome is unknown. Retry the same request."))?.map(Json).map_err(Into::into)
 }
 
@@ -662,8 +886,10 @@ async fn create_backup(State(state):State<Dashboard>,Extension(viewer):Extension
         (status = 404, description = "Backup unavailable", body = ApiError), (status = 409, description = "Retry input conflict", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError),
         (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError),
         (status = 503, description = "Commit could not be confirmed; retry the same request", body = ApiError), (status = 500, description = "Internal error; outcome may be unknown", body = ApiError)))]
-async fn download_backup(State(state):State<Dashboard>,Extension(viewer):Extension<Viewer>,headers:HeaderMap,body:Result<Json<DownloadBackupRequest>,JsonRejection>)->Result<Response,ApiError>{
-    if !viewer.fresh(){return Err(ApiError::new(ApiErrorCode::ReauthenticationRequired,"Sign out and sign in again before downloading a backup."))}
+async fn download_backup(State(state):State<Dashboard>,Extension(viewer):Extension<Viewer>,proxy:Option<Extension<ProxyOrigin>>,headers:HeaderMap,body:Result<Json<DownloadBackupRequest>,JsonRejection>)->Result<Response,ApiError>{
+    // Through the public proxy (when the host enables it) only an authenticator check in the last five minutes counts.
+    let strict=proxy.is_some();
+    if strict && !(viewer.mfa_enabled && viewer.sensitive_ok()) || !strict && !viewer.step_up_ok(){return Err(needs_code())}
     let Json(request)=body?;let id=one(&headers,"idempotency-key").unwrap_or_default().to_string();
     let snapshot=tokio::task::spawn_blocking(move||state.api.open_backup_download(&request,&id,Actor::Staff{user_id:viewer.user_id},"dashboard")).await
         .map_err(|_|ApiError::new(ApiErrorCode::InternalError,"The snapshot download could not be opened."))??;
@@ -672,4 +898,51 @@ async fn download_backup(State(state):State<Dashboard>,Extension(viewer):Extensi
     response.headers_mut().insert(header::CONTENT_LENGTH,HeaderValue::from_str(&snapshot.bytes.to_string()).unwrap());
     response.headers_mut().insert(header::CONTENT_DISPOSITION,HeaderValue::from_str(&format!("attachment; filename=\"{}\"",snapshot.filename)).unwrap());
     Ok(response)
+}
+
+#[utoipa::path(get, path = "/panel/api/v1/reports", operation_id = "listReports", tag = "Reports", params(ReportQuery),
+    security(("staffSession" = [])), responses((status = 200, description = "Player reports, newest first", body = ReportList),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 404, description = "Not found", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError), (status = 409, description = "Already handled", body = ApiError),
+        (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError), (status = 503, description = "Stored data could not be read or written", body = ApiError), (status = 500, description = "Internal error", body = ApiError)))]
+async fn list_reports(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, query: Result<Query<ReportQuery>, QueryRejection>) -> Result<Json<ReportList>, ApiError> {
+    let Query(query) = query.map_err(|_| ApiError::new(ApiErrorCode::InvalidRequest, "Use a status of open, handled or dismissed."))?;
+    tokio::task::spawn_blocking(move || state.api.list_reports(&query, Actor::Staff { user_id: viewer.user_id }))
+        .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The reports could not be read."))?.map(Json).map_err(Into::into)
+}
+
+#[utoipa::path(post, path = "/panel/api/v1/reports/handle", operation_id = "handleReport", tag = "Reports",
+    security(("staffSession" = [], "csrfToken" = [])), request_body = HandleReportRequest,
+    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "One ID per change; marking the same report the same way again answers as done.")),
+    responses((status = 200, description = "The report, handled or dismissed", body = HandleReportResult),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 404, description = "Not found", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError), (status = 409, description = "Already handled", body = ApiError),
+        (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError), (status = 503, description = "Stored data could not be read or written", body = ApiError), (status = 500, description = "Internal error", body = ApiError)))]
+async fn handle_report(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, body: Result<Json<HandleReportRequest>, JsonRejection>) -> Result<Json<HandleReportResult>, ApiError> {
+    let Json(request) = body?;
+    tokio::task::spawn_blocking(move || state.api.handle_report(&request, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
+        .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The report could not be updated."))?.map(Json).map_err(Into::into)
+}
+
+#[utoipa::path(get, path = "/panel/api/v1/banlists", operation_id = "listBanlists", tag = "Accounts",
+    security(("staffSession" = [])), responses((status = 200, description = "The game's banlists and the server's default", body = BanlistChoices),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 404, description = "Not found", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError), (status = 409, description = "Already handled", body = ApiError),
+        (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError), (status = 503, description = "Stored data could not be read or written", body = ApiError), (status = 500, description = "Internal error", body = ApiError)))]
+async fn banlist_choices(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>) -> Result<Json<BanlistChoices>, ApiError> {
+    tokio::task::spawn_blocking(move || state.api.banlist_choices(Actor::Staff { user_id: viewer.user_id }))
+        .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The banlists could not be read."))?.map(Json).map_err(Into::into)
+}
+
+#[utoipa::path(post, path = "/panel/api/v1/accounts/banlist", operation_id = "setAccountBanlist", tag = "Accounts",
+    security(("staffSession" = [], "csrfToken" = [])), request_body = SetBanlistRequest,
+    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "One ID per change; the change is the same when repeated.")),
+    responses((status = 200, description = "The banlist the account logs in with from its next login", body = AccountBanlist),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 404, description = "Not found", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError), (status = 409, description = "Already handled", body = ApiError),
+        (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError), (status = 503, description = "Stored data could not be read or written", body = ApiError), (status = 500, description = "Internal error", body = ApiError)))]
+async fn set_banlist(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, body: Result<Json<SetBanlistRequest>, JsonRejection>) -> Result<Json<AccountBanlist>, ApiError> {
+    let Json(request) = body?;
+    tokio::task::spawn_blocking(move || state.api.set_banlist(&request, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
+        .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The banlist could not be changed."))?.map(Json).map_err(Into::into)
 }

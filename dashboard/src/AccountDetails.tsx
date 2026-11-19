@@ -1,4 +1,5 @@
 import { Coins, Gift, KeyRound, Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { Badge, Button, Panel, ReadOnlyNote } from './components/ui'
 import type { AccountDetail, AccountEditRequest, StaffSession } from './api/generated/http/models'
 
@@ -16,6 +17,7 @@ export function AccountDetails({
   onResetPassword,
   onModerate,
   onDelete,
+  extra,
 }: {
   data: AccountDetail
   session: StaffSession
@@ -29,6 +31,8 @@ export function AccountDetails({
   onResetPassword: () => void
   onModerate: () => void
   onDelete: () => void
+  /** More sections of the account page, above the danger zone. */
+  extra?: ReactNode
 }) {
   const admin = session.role === 'admin'
   const standing = data.standing?.kind ?? 'Key account'
@@ -317,6 +321,7 @@ export function AccountDetails({
               </div>
             </Panel>
           </section>
+          {extra}
         </div>
       </div>
       {admin && (

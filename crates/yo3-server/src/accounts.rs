@@ -228,6 +228,12 @@ impl Directory {
         self.atomic(|d| { d.login_mut(user_id).ok_or("no such account")?.devices.retain(|x| x.token != digest); Ok(true) })
     }
 
+    /// Changes one password account's login in one saved step (the staff second factor, `staff_mfa.rs`); the change
+    /// is undone if it returns an error or cannot be saved.
+    pub fn update_login<T>(&mut self, user_id: u32, change: impl FnOnce(&mut crate::logins::Login) -> Result<T, String>) -> Result<T, String> {
+        self.atomic(|d| change(d.login_mut(user_id).ok_or("no such account")?))
+    }
+
     /// Signs every device of `user_id` out.
     pub fn revoke_devices(&mut self, user_id: u32) -> Result<(), String> {
         self.atomic(|d| { let login = d.login_mut(user_id).ok_or("no such account")?;
@@ -451,6 +457,7 @@ impl Directory {
             let mut account = Directory::account(user_id, players);
             account.dpoint = a["dpoint"].as_u64().map_or(START_BP, |n| n as u32);
             account.country = a["country"].as_str().unwrap_or_default().to_string();
+            account.banlist = a["banlist"].as_u64().map(|n| n as u32);
             for p in &mut account.players {
                 p.country.clone_from(&account.country);
             }
@@ -469,7 +476,7 @@ impl Directory {
     }
 
     fn account(user_id: u32, players: Vec<Player>) -> Account {
-        Account { user_id, name: format!("user{user_id}"), dpoint: START_BP, players, country: String::new() }
+        Account { user_id, name: format!("user{user_id}"), dpoint: START_BP, players, country: String::new(), banlist: None }
     }
 
     /// Tests only: the fixture account named by a made-up address (through a key made from it, so it survives a
@@ -678,6 +685,22 @@ impl Directory {
         Ok(next)
     }
 
+    /// Sets the banlist account `user_id` logs in with (a regulation id), or `None` for the server's (#63).
+    pub fn set_banlist_of(&mut self, user_id: u32, banlist: Option<u32>) -> Result<(), String> {
+        self.atomic(|d| {
+            d.account_mut_where(|a| a.user_id == user_id).ok_or("No such account.")?.banlist = banlist;
+            Ok(())
+        })
+    }
+
+    /// The player named `name` (ignoring case): their id, their account's User ID number and their name as spelled.
+    pub fn player_named(&self, name: &str) -> Option<(u32, u32, String)> {
+        let name = name.trim();
+        self.accounts.iter().map(|e| &*e.account).find_map(|a| {
+            a.players.iter().find(|p| p.name.eq_ignore_ascii_case(name)).map(|p| (p.player_id, a.user_id, p.name.clone()))
+        })
+    }
+
     /// The account `user_id`, as kept now.
     pub fn account_of(&self, user_id: u32) -> Option<Account> {
         self.accounts.iter().map(|e| &*e.account).find(|a| a.user_id == user_id).cloned()
@@ -687,7 +710,7 @@ impl Directory {
     /// are unique, ignoring case, printable and at most `MAX_NAME` characters; an account holds `MAX_PLAYERS`.
     pub fn create_player(&mut self, user_id: u32, index: u32, name: &str) -> Result<(), String> {
         let name = name.trim();
-        if name.is_empty() || name.chars().count() > MAX_NAME || name.chars().any(char::is_control) || self.taken(name) {
+        if name.is_empty() || name.chars().count() > MAX_NAME || name.chars().any(char::is_control) || self.taken(name) || reserved(name) {
             return Err(format!("the name {name:?} is empty, too long or taken"));
         }
         self.atomic(|d| {
@@ -1007,6 +1030,7 @@ impl Directory {
         if let Some(key) = &e.key { account["key"] = json!(key); }
         if let Some(login) = &e.login { account["login"] = serde_json::to_value(login).unwrap_or_default(); }
         if !a.country.is_empty() { account["country"] = json!(a.country); }
+        if let Some(banlist) = a.banlist { account["banlist"] = json!(banlist); }
         account
     }
 
@@ -1040,7 +1064,13 @@ fn checked_name(name: &str) -> Result<String, String> {
     if name.is_empty() || name.chars().count() > MAX_NAME || name.chars().any(char::is_control) {
         return Err(format!("Use 1 to {MAX_NAME} printable characters for a player name."))
     }
+    if reserved(name) { return Err("That player name is reserved.".into()) }
     Ok(name.into())
+}
+
+/// Names no player may take: the server's chat commands are whispers to it (`front::commands::SERVER`).
+fn reserved(name: &str) -> bool {
+    name.trim().eq_ignore_ascii_case("server")
 }
 
 fn free_slot(players: &[Player]) -> Option<u32> {

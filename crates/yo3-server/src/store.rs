@@ -35,7 +35,7 @@ const SCHEMA_SQL: &str = "
     CREATE TABLE IF NOT EXISTS items (domain TEXT NOT NULL, field TEXT NOT NULL, key TEXT NOT NULL,
         body TEXT NOT NULL CHECK(json_valid(body)), PRIMARY KEY (domain, field, key)) WITHOUT ROWID;";
 
-fn sql(e: rusqlite::Error) -> io::Error { io::Error::other(e.to_string()) }
+pub(crate) fn sql(e: rusqlite::Error) -> io::Error { io::Error::other(e.to_string()) }
 
 /// A data folder's one open connection, in WAL mode: saves don't reopen the database, and backups read beside them.
 /// Whoever uses it takes it out ([`hold`]) and puts it back; the others wait for it.
@@ -64,7 +64,7 @@ fn in_batch(dir: &Path) -> bool { BATCH.with(|b| b.borrow().as_ref().is_some_and
 
 /// `dir`'s connection, held until dropped: from this thread's [`together`] when it is in one for `dir`, else from the
 /// folder's slot (waiting while another thread holds it).
-struct Held { conn: Option<Connection>, home: Option<Arc<Slot>> }
+pub(crate) struct Held { conn: Option<Connection>, home: Option<Arc<Slot>> }
 impl std::ops::Deref for Held { type Target = Connection; fn deref(&self) -> &Connection { self.conn.as_ref().unwrap() } }
 impl std::ops::DerefMut for Held { fn deref_mut(&mut self) -> &mut Connection { self.conn.as_mut().unwrap() } }
 impl Drop for Held {
@@ -77,7 +77,7 @@ impl Drop for Held {
     }
 }
 
-fn hold(dir: &Path) -> io::Result<Held> {
+pub(crate) fn hold(dir: &Path) -> io::Result<Held> {
     if in_batch(dir) {
         let conn = BATCH.with(|b| b.borrow_mut().as_mut().and_then(|b| b.conn.take()));
         return conn.map(|conn| Held { conn: Some(conn), home: None }).ok_or_else(|| io::Error::other("the store's connection is already held on this thread"));
@@ -235,6 +235,7 @@ pub fn initialize(dir: &Path) -> io::Result<()> {
     }
     tx.execute_batch(DUEL_LOGS_TABLE).map_err(sql)?;
     tx.execute_batch(AUDIT_TABLE).map_err(sql)?;
+    tx.execute_batch(crate::reports::TABLE).map_err(sql)?;
     tx.execute_batch(RECEIPTS_TABLE).map_err(sql)?;
     let effects_exist: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='operation_effects')", [], |r| r.get(0)).map_err(sql)?;
     if effects_exist {

@@ -15,7 +15,13 @@ fn committed_openapi_matches_the_router_without_starting_a_server() {
     let expected = [
         ("/panel/api/v1/session", "get", "getStaffSession"),
         ("/panel/api/v1/sign-in", "post", "signInStaff"),
+        ("/panel/api/v1/sign-in/code", "post", "verifyStaffCode"),
         ("/panel/api/v1/sign-out", "post", "signOutStaff"),
+        ("/panel/api/v1/sign-out-everywhere", "post", "signOutEverywhere"),
+        ("/panel/api/v1/mfa/enrollment", "post", "startMfaEnrollment"),
+        ("/panel/api/v1/mfa/enrollment/confirm", "post", "confirmMfaEnrollment"),
+        ("/panel/api/v1/mfa/step-up", "post", "confirmMfaStepUp"),
+        ("/panel/api/v1/mfa/recovery-codes", "post", "regenerateRecoveryCodes"),
         ("/panel/api/v1/accounts", "get", "listAccounts"),
         ("/panel/api/v1/give-bp", "post", "giveBp"),
         ("/panel/api/v1/bp-codes", "get", "listBpCodes"),
@@ -42,8 +48,12 @@ fn committed_openapi_matches_the_router_without_starting_a_server() {
         ("/panel/api/v1/server/stop", "post", "stopServer"),
         ("/panel/api/v1/gifts/choices", "get", "listGiftChoices"),
         ("/panel/api/v1/cards/{row}/{size}", "get", "getCardImage"),
+        ("/panel/api/v1/reports", "get", "listReports"),
+        ("/panel/api/v1/reports/handle", "post", "handleReport"),
+        ("/panel/api/v1/banlists", "get", "listBanlists"),
+        ("/panel/api/v1/accounts/banlist", "post", "setAccountBanlist"),
     ];
-    assert_eq!(paths.len(), 25);
+    assert_eq!(paths.len(), 35);
     for (path, method, id) in expected {
         let op = &generated["paths"][path][method];
         assert_eq!(op["operationId"], id);
@@ -57,7 +67,7 @@ fn committed_openapi_matches_the_router_without_starting_a_server() {
     assert_eq!(generated["components"]["schemas"]["StaffSession"]["properties"]["expires_at"]["format"], "date-time");
 }
 
-struct Browser { live: Running, admin: yo3_server::admin::Live, endpoint: yo3_tunnel::Endpoint, cookie: String, csrf: String }
+struct Browser { live: Running, admin: yo3_server::admin::Live, endpoint: yo3_tunnel::Endpoint, cookie: String, csrf: String, data: std::path::PathBuf }
 struct Answer { status: u16, headers: String, body: Value }
 impl Browser {
     async fn new(name: &str) -> Self {
@@ -69,6 +79,8 @@ impl Browser {
         let _ = std::fs::remove_dir_all(&dir);
         let mut cfg = Config::ephemeral(dir);
         cfg.dashboard_port = enabled.then_some(0);
+        // These checks predate the second factor and use password-only staff; staff_mfa_contract.rs covers Required.
+        cfg.staff_mfa = yo3_server::staff_mfa::StaffMfaPolicy::Optional;
         let data = cfg.data_dir.clone().unwrap();
         cfg.game_dir = data.join("no-game-files-needed");
         let cert = cfg.tls.certificate.clone();
@@ -81,7 +93,7 @@ impl Browser {
             let token = admin.clone();
             tokio::task::spawn_blocking(move || api::call(&token, &Op::SetRole { user: user.into(), role: role.into() })).await.unwrap().unwrap();
         }
-        Self { live, admin, endpoint, cookie: String::new(), csrf: String::new() }
+        Self { live, admin, endpoint, cookie: String::new(), csrf: String::new(), data }
     }
     async fn raw(&self, method: &str, path: &str, body: &str, extra: &str) -> Answer {
         self.raw_on(self.live.dashboard.unwrap_or(self.live.http), method, path, body, extra).await
@@ -103,7 +115,7 @@ impl Browser {
         let a = self.call("POST", "/panel/api/v1/sign-in", json!({ "user": user, "password": PASSWORD })).await;
         assert_eq!(a.status, 200, "{}", a.body);
         self.cookie = a.headers.lines().find_map(|l| l.to_ascii_lowercase().starts_with("set-cookie:").then(|| l.split_once(':').unwrap().1.trim().split(';').next().unwrap().to_string())).unwrap();
-        self.csrf = a.body["csrf_token"].as_str().unwrap().to_string();
+        self.csrf = a.body["session"]["csrf_token"].as_str().unwrap().to_string();
         for flag in ["HttpOnly", "Secure", "SameSite=Strict", "Path=/panel"] { assert!(a.headers.contains(flag)); }
     }
 }
@@ -719,4 +731,50 @@ async fn account_lists_expose_current_moderation_badges_without_credentials(){
     let yugi=rows["accounts"].as_array().unwrap().iter().find(|a|a["login"]=="Yugi").unwrap();
     assert_eq!(yugi["standing"]["kind"],"banned");assert_eq!(yugi["muted"]["reason"],"chat test");
     let safe=rows.to_string();for secret in ["password","recovery","devices","HASH","credential"]{assert!(!safe.contains(secret),"list must not project {secret}");}
+}
+
+#[tokio::test]
+async fn staff_handle_player_reports_and_see_and_set_an_accounts_banlist() {
+    let mut b = Browser::new("reports").await;
+    // The game's `/report` writes into the database the running server and the API share; here the rows are made directly.
+    let mut reports = yo3_server::reports::Reports::at(&b.data);
+    reports.add((1, "Yugi"), (2, "Kaiba"), "cheats in duels", 5).unwrap();
+    reports.add((1, "Yugi"), (3, "Joey"), "rude in chat", 5).unwrap();
+
+    assert_eq!(b.call("GET", "/panel/api/v1/reports", json!(null)).await.status, 401, "no session, no reports");
+    b.sign_in("Croquet").await;
+    let open = b.call("GET", "/panel/api/v1/reports?status=open", json!(null)).await;
+    assert_eq!(open.status, 200, "{}", open.body);
+    assert_eq!((open.body["open"].as_u64(), open.body["reports"].as_array().unwrap().len()), (Some(2), 2));
+    assert_eq!((open.body["reports"][0]["target"].as_str(), open.body["reports"][0]["status"].as_str(), open.body["reports"][0]["id"].as_u64()), (Some("Joey"), Some("open"), Some(2)));
+    assert_eq!(b.call("GET", "/panel/api/v1/reports?status=sideways", json!(null)).await.status, 400);
+
+    // A moderator handles one with a note; the same change again is answered as done, another is a conflict.
+    let handle = json!({ "report_id": 1, "status": "handled", "note": "warned in chat" });
+    let done = b.call("POST", "/panel/api/v1/reports/handle", handle.clone()).await;
+    assert_eq!(done.status, 200, "{}", done.body);
+    assert_eq!((done.body["report"]["status"].as_str(), done.body["report"]["handled_by"].as_str(), done.body["report"]["note"].as_str()), (Some("handled"), Some("Croquet"), Some("warned in chat")));
+    assert_eq!(b.call("POST", "/panel/api/v1/reports/handle", handle).await.body["report"], done.body["report"]);
+    assert_eq!(b.call("POST", "/panel/api/v1/reports/handle", json!({ "report_id": 1, "status": "dismissed" })).await.status, 409);
+    assert_eq!(b.call("POST", "/panel/api/v1/reports/handle", json!({ "report_id": 99, "status": "handled" })).await.status, 404);
+    assert_eq!(b.call("POST", "/panel/api/v1/reports/handle", json!({ "report_id": 2, "status": "open" })).await.status, 400);
+    assert_eq!(b.call("POST", "/panel/api/v1/reports/handle", json!({ "report_id": 2, "status": "dismissed", "extra": 1 })).await.status, 400);
+    let still = b.call("GET", "/panel/api/v1/reports?status=open", json!(null)).await;
+    assert_eq!((still.body["open"].as_u64(), still.body["reports"].as_array().unwrap().len()), (Some(1), 1));
+    let audit = b.call("GET", "/panel/api/v1/audit", json!(null)).await;
+    assert!(audit.body["entries"].as_array().unwrap().iter().any(|e| e["operation"] == "handle-report" && e["actor"] == "Croquet" && e["origin"] == "dashboard"), "{}", audit.body);
+
+    // The account page shows the banlist; staff may set it (a moderator too) or put it back.
+    let list = b.call("GET", "/panel/api/v1/accounts", json!(null)).await;
+    let user = list.body["accounts"].as_array().unwrap().iter().find(|a| a["login"] == "Yugi").unwrap()["user_id"].as_u64().unwrap();
+    let detail = b.call("GET", &format!("/panel/api/v1/accounts/{user}"), json!(null)).await;
+    assert_eq!(detail.body["banlist"]["chosen"], false);
+    let choices = b.call("GET", "/panel/api/v1/banlists", json!(null)).await;
+    assert_eq!(choices.status, 200, "{}", choices.body);
+    assert!(choices.body["server_default"]["id"].is_u64());
+    // The fixture has no game files: no names to choose from, so only the server's list is accepted.
+    assert_eq!(b.call("POST", "/panel/api/v1/accounts/banlist", json!({ "user_id": user, "banlist": 3 })).await.status, 400);
+    let back = b.call("POST", "/panel/api/v1/accounts/banlist", json!({ "user_id": user, "banlist": null })).await;
+    assert_eq!((back.status, back.body["chosen"].clone()), (200, json!(false)), "{}", back.body);
+    assert_eq!(b.call("POST", "/panel/api/v1/accounts/banlist", json!({ "user_id": 4294967295_u32 })).await.status, 404);
 }

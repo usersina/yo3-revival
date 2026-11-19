@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test'
-import { SettingsList, SettingsResult, StaffSession } from '../src/api/generated/validation/schemas'
+import {
+  SettingsList,
+  SettingsResult,
+  SignInOutcome,
+} from '../src/api/generated/validation/schemas'
 import type { Page } from '@playwright/test'
 
 async function signIn(page: Page, user = 'TestAdmin') {
@@ -8,7 +12,7 @@ async function signIn(page: Page, user = 'TestAdmin') {
   await page.getByLabel('Password', { exact: true }).fill('DashboardDemo123!')
   const signedIn = page.waitForResponse((r) => r.url().endsWith('/panel/api/v1/sign-in'))
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  StaffSession.parse(await (await signedIn).json())
+  SignInOutcome.parse(await (await signedIn).json())
   await expect(page.getByRole('heading', { name: 'Accounts', exact: true })).toBeVisible()
 }
 

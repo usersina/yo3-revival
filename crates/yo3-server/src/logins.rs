@@ -198,7 +198,31 @@ pub struct Login {
     /// A moderator's mute (#26): the player's chat lines go nowhere until it ends.
     #[serde(default)]
     pub muted: Option<Mute>,
+    /// The staff dashboard's authenticator (TOTP) and recovery codes (`staff_mfa.rs`); none until enrolled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mfa: Option<StaffMfa>,
 }
+
+/// A staff account's second factor. The seeds are sealed with the server's `staff-mfa.key`, never kept in the clear.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StaffMfa {
+    /// The active TOTP seed, sealed (empty: no authenticator is active yet).
+    #[serde(default)]
+    pub seed: String,
+    /// A seed shown for enrollment that no valid code has confirmed yet, sealed.
+    #[serde(default)]
+    pub pending: String,
+    /// The newest 30-second step a code was accepted for: a step is used once.
+    #[serde(default)]
+    pub last_step: u64,
+    /// Digests of the unused recovery codes; each works once.
+    #[serde(default)]
+    pub recovery: Vec<String>,
+    #[serde(default)]
+    pub enrolled_at: i64,
+}
+
+impl StaffMfa { pub fn active(&self) -> bool { !self.seed.is_empty() } }
 
 /// A mute: why, and until when (Unix seconds; none: until lifted).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -207,7 +231,7 @@ pub struct Mute { pub reason: String, pub until: Option<i64> }
 impl Login {
     /// A new password account: User ID `user`, its password's PHC hash and its recovery code's digest.
     pub fn new(user: &str, password: String, recovery: String) -> Login {
-        Login { user: user.into(), password, role: Role::default(), staff_epoch: 0, standing: Standing::default(), recovery, reset: None, devices: vec![], muted: None }
+        Login { user: user.into(), password, role: Role::default(), staff_epoch: 0, standing: Standing::default(), recovery, reset: None, devices: vec![], muted: None, mfa: None }
     }
 
     /// Why a sign-in is refused, if it is (#26): a ban or a restriction still running at `now`. A ban also ended the

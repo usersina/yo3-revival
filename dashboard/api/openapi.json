@@ -119,6 +119,156 @@
         ]
       }
     },
+    "/panel/api/v1/accounts/banlist": {
+      "post": {
+        "tags": [
+          "Accounts"
+        ],
+        "operationId": "setAccountBanlist",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "One ID per change; the change is the same when repeated.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 16,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetBanlistRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The banlist the account logs in with from its next login",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountBanlist"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already handled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stored data could not be read or written",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "staffSession": []
+          }
+        ]
+      }
+    },
     "/panel/api/v1/accounts/credentials": {
       "post": {
         "tags": [
@@ -1405,6 +1555,131 @@
         "security": [
           {
             "csrfToken": [],
+            "staffSession": []
+          }
+        ]
+      }
+    },
+    "/panel/api/v1/banlists": {
+      "get": {
+        "tags": [
+          "Accounts"
+        ],
+        "operationId": "listBanlists",
+        "responses": {
+          "200": {
+            "description": "The game's banlists and the server's default",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BanlistChoices"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already handled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stored data could not be read or written",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
             "staffSession": []
           }
         ]
@@ -2841,6 +3116,516 @@
         ]
       }
     },
+    "/panel/api/v1/mfa/enrollment": {
+      "post": {
+        "tags": [
+          "Staff"
+        ],
+        "operationId": "startMfaEnrollment",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "One ID per attempt. Authentication does not create a durable operation receipt.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 16,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A fresh seed, pending until a valid code confirms it. Shown to its owner once.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MfaEnrollmentStart"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden, or the code is not right (invalid_code), or a recent authenticator code is required (reauthentication_required)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many attempts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "staffSession": []
+          }
+        ]
+      }
+    },
+    "/panel/api/v1/mfa/enrollment/confirm": {
+      "post": {
+        "tags": [
+          "Staff"
+        ],
+        "operationId": "confirmMfaEnrollment",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "One ID per attempt. Authentication does not create a durable operation receipt.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 16,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Activated. The recovery codes are shown once; the session carries on and every other session of the account ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MfaEnrolled"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden, or the code is not right (invalid_code), or a recent authenticator code is required (reauthentication_required)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many attempts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "staffSession": []
+          }
+        ]
+      }
+    },
+    "/panel/api/v1/mfa/recovery-codes": {
+      "post": {
+        "tags": [
+          "Staff"
+        ],
+        "operationId": "regenerateRecoveryCodes",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "One ID per attempt. Authentication does not create a durable operation receipt.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 16,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "New recovery codes, shown once; the old ones no longer work.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryCodes"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden, or the code is not right (invalid_code), or a recent authenticator code is required (reauthentication_required)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many attempts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "staffSession": []
+          }
+        ]
+      }
+    },
+    "/panel/api/v1/mfa/step-up": {
+      "post": {
+        "tags": [
+          "Staff"
+        ],
+        "operationId": "confirmMfaStepUp",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "One ID per attempt. Authentication does not create a durable operation receipt.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 16,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The authenticator was checked: sensitive operations are allowed for five minutes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden, or the code is not right (invalid_code), or a recent authenticator code is required (reauthentication_required)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many attempts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "staffSession": []
+          }
+        ]
+      }
+    },
     "/panel/api/v1/moderation": {
       "post": {
         "tags": [
@@ -2974,6 +3759,303 @@
           },
           "503": {
             "description": "Commit could not be confirmed; retry the same request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "staffSession": []
+          }
+        ]
+      }
+    },
+    "/panel/api/v1/reports": {
+      "get": {
+        "tags": [
+          "Reports"
+        ],
+        "operationId": "listReports",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "description": "open, handled or dismissed; all when omitted.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Status"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "maximum": 500,
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Player reports, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already handled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stored data could not be read or written",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "staffSession": []
+          }
+        ]
+      }
+    },
+    "/panel/api/v1/reports/handle": {
+      "post": {
+        "tags": [
+          "Reports"
+        ],
+        "operationId": "handleReport",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "One ID per change; marking the same report the same way again answers as done.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 16,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandleReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The report, handled or dismissed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandleReportResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already handled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stored data could not be read or written",
             "content": {
               "application/json": {
                 "schema": {
@@ -3616,11 +4698,11 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "A code is owed (code_required and a challenge), or a session was opened: an enrollment-only one (limited) for an account with no authenticator",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StaffSession"
+                  "$ref": "#/components/schemas/SignInOutcome"
                 }
               }
             }
@@ -3636,7 +4718,7 @@
             }
           },
           "401": {
-            "description": "Staff sign-in required",
+            "description": "Wrong User ID or password",
             "content": {
               "application/json": {
                 "schema": {
@@ -3706,7 +4788,136 @@
             }
           }
         },
-        "security": []
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/panel/api/v1/sign-in/code": {
+      "post": {
+        "tags": [
+          "Staff"
+        ],
+        "operationId": "verifyStaffCode",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "One ID per attempt. Authentication does not create a durable operation receipt.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 16,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignInCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The password and the code were right: a session was opened",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The challenge expired or was used up: sign in again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The code is not right, or was already used (invalid_code)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many attempts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
       }
     },
     "/panel/api/v1/sign-out": {
@@ -3817,6 +5028,136 @@
           }
         ]
       }
+    },
+    "/panel/api/v1/sign-out-everywhere": {
+      "post": {
+        "tags": [
+          "Staff"
+        ],
+        "operationId": "signOutEverywhere",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "One ID per attempt. Authentication does not create a durable operation receipt.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 16,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Every staff session of this account ended, this one too.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignedOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden, or the code is not right (invalid_code), or a recent authenticator code is required (reauthentication_required)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many attempts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "staffSession": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -3826,6 +5167,26 @@
         "maxLength": 19,
         "minLength": 16,
         "pattern": "^([A-Za-z0-9]{16}|[A-Za-z0-9]{4}(-[A-Za-z0-9]{4}){3})$"
+      },
+      "AccountBanlist": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BanlistChoice"
+          },
+          {
+            "type": "object",
+            "required": [
+              "chosen"
+            ],
+            "properties": {
+              "chosen": {
+                "type": "boolean",
+                "description": "True when the account (or the staff) chose it; false when it is the server's `login-regulation`."
+              }
+            }
+          }
+        ],
+        "description": "The banlist an account's game logs in with."
       },
       "AccountCodeConfirmation": {
         "type": "object",
@@ -3896,9 +5257,14 @@
           "device_count",
           "reset_pending",
           "players",
+          "banlist",
           "checked_at"
         ],
         "properties": {
+          "banlist": {
+            "$ref": "#/components/schemas/AccountBanlist",
+            "description": "The banlist the account's game logs in with (its own choice with `/banlist`, a staff override, or the server's)."
+          },
           "bp": {
             "type": "integer",
             "format": "int32",
@@ -4321,6 +5687,8 @@
           "request_conflict",
           "persistence_failed",
           "reauthentication_required",
+          "invalid_code",
+          "mfa_enrollment_required",
           "method_not_allowed",
           "payload_too_large",
           "unsupported_media_type",
@@ -4512,6 +5880,48 @@
           }
         }
       },
+      "BanlistChoice": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "BanlistChoices": {
+        "type": "object",
+        "required": [
+          "server_default",
+          "choices",
+          "checked_at"
+        ],
+        "properties": {
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BanlistChoice"
+            }
+          },
+          "server_default": {
+            "$ref": "#/components/schemas/BanlistChoice",
+            "description": "What an account without a choice logs in with."
+          }
+        }
+      },
       "BpCodeClaim": {
         "type": "object",
         "required": [
@@ -4644,6 +6054,22 @@
       "CardPng": {
         "type": "string",
         "format": "binary"
+      },
+      "CodeRequest": {
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "An authenticator code (six digits) or an unused recovery code.",
+            "writeOnly": true,
+            "maxLength": 32,
+            "minLength": 6
+          }
+        },
+        "additionalProperties": false
       },
       "CountryList": {
         "type": "object",
@@ -4957,6 +6383,10 @@
           "failed"
         ]
       },
+      "EmptyRequest": {
+        "type": "object",
+        "additionalProperties": false
+      },
       "GiftChoices": {
         "type": "object",
         "required": [
@@ -5266,6 +6696,46 @@
           }
         }
       },
+      "HandleReportRequest": {
+        "type": "object",
+        "required": [
+          "report_id",
+          "status"
+        ],
+        "properties": {
+          "note": {
+            "type": "string",
+            "description": "What was done, shown with the report (optional).",
+            "maxLength": 300
+          },
+          "report_id": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status",
+            "description": "handled or dismissed."
+          }
+        },
+        "additionalProperties": false
+      },
+      "HandleReportResult": {
+        "type": "object",
+        "required": [
+          "report",
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "report": {
+            "$ref": "#/components/schemas/ReportView"
+          }
+        }
+      },
       "InviteClaim": {
         "type": "object",
         "required": [
@@ -5561,6 +7031,49 @@
             "format": "int32",
             "maximum": 4294967295,
             "minimum": 0
+          }
+        }
+      },
+      "MfaEnrolled": {
+        "type": "object",
+        "description": "An authenticator was activated. The recovery codes are shown once and are kept only as digests.",
+        "required": [
+          "recovery_codes",
+          "session"
+        ],
+        "properties": {
+          "recovery_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "session": {
+            "$ref": "#/components/schemas/StaffSession"
+          }
+        }
+      },
+      "MfaEnrollmentStart": {
+        "type": "object",
+        "description": "The seed of a new authenticator, shown to its owner once. The QR code is the `otpauth_uri`.",
+        "required": [
+          "secret",
+          "otpauth_uri",
+          "account",
+          "issuer"
+        ],
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "issuer": {
+            "type": "string"
+          },
+          "otpauth_uri": {
+            "type": "string"
+          },
+          "secret": {
+            "type": "string"
           }
         }
       },
@@ -5985,6 +7498,20 @@
           }
         }
       },
+      "RecoveryCodes": {
+        "type": "object",
+        "required": [
+          "recovery_codes"
+        ],
+        "properties": {
+          "recovery_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "RegulationChoice": {
         "type": "object",
         "required": [
@@ -6035,6 +7562,130 @@
             "type": "string"
           }
         }
+      },
+      "Report": {
+        "type": "object",
+        "required": [
+          "id",
+          "at",
+          "reporter_id",
+          "reporter",
+          "target_id",
+          "target",
+          "reason",
+          "status"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "description": "RFC 3339 UTC, to the second."
+          },
+          "handled_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "handled_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "reporter": {
+            "type": "string"
+          },
+          "reporter_id": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "target": {
+            "type": "string"
+          },
+          "target_id": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "ReportList": {
+        "type": "object",
+        "required": [
+          "reports",
+          "open",
+          "checked_at"
+        ],
+        "properties": {
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "open": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Open reports in all, whatever the list shows.",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "reports": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportView"
+            }
+          }
+        }
+      },
+      "ReportView": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Report"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "reporter_user_id": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "description": "The account of the reporting player (none once deleted).",
+                "maximum": 4294967295,
+                "minimum": 0
+              },
+              "target_user_id": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "maximum": 4294967295,
+                "minimum": 0
+              }
+            }
+          }
+        ],
+        "description": "A report with the accounts of the two players, for the page's links."
       },
       "Role": {
         "type": "string",
@@ -6138,6 +7789,31 @@
             "type": "string"
           }
         }
+      },
+      "SetBanlistRequest": {
+        "type": "object",
+        "required": [
+          "user_id"
+        ],
+        "properties": {
+          "banlist": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "A banlist's id from the choices; null or omitted goes back to the server's.",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       },
       "SettingKind": {
         "oneOf": [
@@ -6432,6 +8108,57 @@
           }
         }
       },
+      "SignInCodeRequest": {
+        "type": "object",
+        "required": [
+          "challenge",
+          "code"
+        ],
+        "properties": {
+          "challenge": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 64
+          },
+          "code": {
+            "type": "string",
+            "description": "An authenticator code (six digits) or an unused recovery code.",
+            "writeOnly": true,
+            "maxLength": 32,
+            "minLength": 6
+          }
+        },
+        "additionalProperties": false
+      },
+      "SignInOutcome": {
+        "type": "object",
+        "description": "The result of the password step: a code is still owed (`challenge`), or a session was opened (see its `limited`).",
+        "required": [
+          "code_required"
+        ],
+        "properties": {
+          "challenge": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Present with `code_required`: send it back with the code to `/sign-in/code` within five minutes."
+          },
+          "code_required": {
+            "type": "boolean"
+          },
+          "session": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StaffSession"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "SignInRequest": {
         "type": "object",
         "required": [
@@ -6469,7 +8196,11 @@
           "user",
           "role",
           "csrf_token",
-          "expires_at"
+          "expires_at",
+          "mfa_enabled",
+          "mfa_required",
+          "limited",
+          "recovery_codes_remaining"
         ],
         "properties": {
           "csrf_token": {
@@ -6479,6 +8210,33 @@
             "type": "string",
             "format": "date-time",
             "description": "Idle expiry, refreshed by an authenticated request; capped by the absolute session lifetime."
+          },
+          "limited": {
+            "type": "boolean",
+            "description": "An enrollment-only session: every route but enrollment, sign-out and this session answers `mfa_enrollment_required`."
+          },
+          "mfa_enabled": {
+            "type": "boolean",
+            "description": "The account has an active authenticator (TOTP)."
+          },
+          "mfa_recent_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the authenticator's recent check ends; none: sensitive operations ask for a code first."
+          },
+          "mfa_required": {
+            "type": "boolean",
+            "description": "The server requires an authenticator of every staff account (the default policy)."
+          },
+          "recovery_codes_remaining": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Unused recovery codes left.",
+            "maximum": 100,
+            "minimum": 0
           },
           "role": {
             "$ref": "#/components/schemas/Role"
@@ -6493,6 +8251,15 @@
             "minimum": 0
           }
         }
+      },
+      "Status": {
+        "type": "string",
+        "description": "Where a report stands.",
+        "enum": [
+          "open",
+          "handled",
+          "dismissed"
+        ]
       },
       "StopRequest": {
         "type": "object",
