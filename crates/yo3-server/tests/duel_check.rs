@@ -25,11 +25,42 @@ fn play(dir: &std::path::Path, seed: u64) -> Result<selfplay::Played, String> {
     selfplay::play(dir, seed, decks, (seed % 2) as usize, seed.is_multiple_of(3))
 }
 
+/// Writes this part's effect coverage (#67) for `tools/duel/coverage.py`: per card, its chain links activated,
+/// resolved, resolved with a visible result, negated, and its summons, with the deck pool and the number of duels.
+fn coverage(part: u64, duels: u64, cards: &BTreeMap<u16, [u32; 5]>) {
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("duel-coverage");
+    let cards: serde_json::Map<String, serde_json::Value> = cards
+        .iter()
+        .map(|(cid, [a, r, v, n, s])| (cid.to_string(), serde_json::json!({"activated": a, "resolved": r, "visible": v, "negated": n, "summoned": s})))
+        .collect();
+    let report = serde_json::json!({"duels": duels, "pool": selfplay::pool(), "cards": cards});
+    let written = std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(dir.join(format!("part-{part}.json")), report.to_string()));
+    if let Err(e) = written {
+        eprintln!("effect coverage not written to {}: {e}", dir.display());
+    }
+}
+
 /// The `part`th share of the seeds, all played; fails listing every duel whose client view left the engine's.
 fn run(part: u64) {
     let Some(dir) = engine_dir() else { return };
     let per: u64 = std::env::var("YO3_CHECK_DUELS").ok().and_then(|n| n.parse().ok()).unwrap_or(30);
-    let failures: Vec<String> = (part * per..(part + 1) * per).filter_map(|seed| play(&dir, seed).err()).collect();
+    let mut failures = vec![];
+    let mut cards: BTreeMap<u16, [u32; 5]> = BTreeMap::new();
+    let mut duels = 0;
+    for seed in part * per..(part + 1) * per {
+        match play(&dir, seed) {
+            Ok(played) => {
+                duels += 1;
+                for (i, counts) in [&played.activated, &played.resolved, &played.visible, &played.negated, &played.summoned].into_iter().enumerate() {
+                    for (&cid, &n) in counts {
+                        cards.entry(cid).or_default()[i] += n;
+                    }
+                }
+            }
+            Err(e) => failures.push(e),
+        }
+    }
+    coverage(part, duels, &cards);
     assert!(failures.is_empty(), "{} of {per} duel(s) failed:\n{}", failures.len(), failures.join("\n\n"));
 }
 

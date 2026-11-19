@@ -7,8 +7,9 @@
 //! `YO3_CARD_SWEEP` picks the cards: unset, 24 spread over the table; `all`, every card (about ten minutes); a number
 //! n, n spread over the table; or Konami ids (`7986,7687`). `YO3_CARD_SWEEP_SEEDS=n` plays n duels per card (1);
 //! `YO3_CARD_SWEEP_OFFSET=i` numbers the list from i (a card's duel from a larger sweep, seed 1000 + 7i, alone).
-//! The report, one line per card (id, name, result, activations, summons), goes to `card-sweep.tsv` in Cargo's test
-//! temporary directory. Skipped unless the game is installed and engine/fetch.sh has run.
+//! The report, one line per card (id, name, result, activations, links resolved, resolved with a visible result,
+//! summons), goes to `card-sweep.tsv` in Cargo's test temporary directory (`tools/duel/coverage.py --sweep` reads
+//! it). Skipped unless the game is installed and engine/fetch.sh has run.
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -127,7 +128,7 @@ fn every_card_plays_with_the_client_view_matching_the_engine() {
     });
 
     let results = results.into_inner().unwrap();
-    let mut report = String::from("cid\tname\tseed\tresult\tactivated\tsummoned\tturns\tdecided for the player\n");
+    let mut report = String::from("cid\tname\tseed\tresult\tactivated\tresolved\tvisible\tsummoned\tturns\tdecided for the player\n");
     let mut decided: BTreeMap<u64, u32> = BTreeMap::new();
     let mut failures = vec![];
     let (mut used, mut total) = (0, 0);
@@ -135,18 +136,19 @@ fn every_card_plays_with_the_client_view_matching_the_engine() {
         let name = &data.names[cid];
         match result {
             Ok(p) => {
-                let (a, s) = (p.activated.get(cid).copied().unwrap_or(0), p.summoned.get(cid).copied().unwrap_or(0));
+                let n = |m: &BTreeMap<u16, u32>| m.get(cid).copied().unwrap_or(0);
+                let (a, r, v, s) = (n(&p.activated), n(&p.resolved), n(&p.visible), n(&p.summoned));
                 total += 1;
                 used += usize::from(a + s > 0);
                 for (kind, n) in &p.decided {
                     *decided.entry(*kind).or_default() += n;
                 }
                 let d: Vec<String> = p.decided.iter().map(|(k, n)| format!("{k}x{n}")).collect();
-                report.push_str(&format!("{cid}\t{name}\t{seed}\tok\t{a}\t{s}\t{}\t{}\n", p.turns, d.join(" ")));
+                report.push_str(&format!("{cid}\t{name}\t{seed}\tok\t{a}\t{r}\t{v}\t{s}\t{}\t{}\n", p.turns, d.join(" ")));
             }
             Err(e) => {
                 let first = e.lines().next().unwrap_or_default();
-                report.push_str(&format!("{cid}\t{name}\t{seed}\tFAIL {first}\t\t\t\n"));
+                report.push_str(&format!("{cid}\t{name}\t{seed}\tFAIL {first}\t\t\t\t\t\n"));
                 failures.push(format!("{cid} {name}: {e}"));
             }
         }

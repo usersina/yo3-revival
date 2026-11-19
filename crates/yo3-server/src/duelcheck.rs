@@ -51,6 +51,7 @@ use crate::wire::{Cmd, Place, Target, cmd, dialog, request, table_place, zone};
 pub mod native;
 pub mod coverage;
 pub mod summon;
+pub mod scenario;
 
 const SERVER_DUEL: u32 = crate::duel::SERVER_DUEL;
 /// The uids a mixed card list puts in the table for the time it is open (`translate.rs` STAGED_UID), and the first
@@ -740,6 +741,14 @@ pub mod selfplay {
     /// duel: a dialog with no card to click). Fiend's Sanctuary and Physical Double (tokens without a Konami id, found
     /// by name), Phantom Skyblaster (Skyblaster Tokens, 3935) and Gorz (Emissary of Darkness Token, 3922).
     pub const TOKENS: [u16; 7] = [5632, 5632, 5632, 7384, 7384, 5621, 6558];
+
+    /// Every card the duel check's decks draw from (Konami ids), for the effect coverage report.
+    pub fn pool() -> Vec<u16> {
+        let mut all: Vec<u16> = [&MONSTERS[..], &SPELLS, &TRAPS, &EXTRA, &FUSION, &FUSION_EXTRA, &TOKENS].concat();
+        all.sort_unstable();
+        all.dedup();
+        all
+    }
     /// The client's token cards for the token package: (row, Konami id, name).
     const TOKEN_CARDS: [(u16, u16, &str); 4] =
         [(60010, 3914, "Metal Fiend Token"), (60011, 3913, "Mirage Token"), (60012, 3935, "Skyblaster Token"), (60013, 3922, "Emissary of Darkness Token")];
@@ -828,6 +837,81 @@ pub mod selfplay {
         pub phase_windows: u32,
         /// Attack targets the client picked on the field (BattleSelect, #51).
         pub field_targets: u32,
+        /// Effect coverage (#67), by the Konami id of the card whose chain link it was: links that resolved, those
+        /// that resolved with a visible result (see [`Effects`]), and those negated or disabled.
+        pub resolved: BTreeMap<u16, u32>,
+        pub visible: BTreeMap<u16, u32>,
+        pub negated: BTreeMap<u16, u32>,
+    }
+
+    /// Follows the chain to the card whose effect resolves, for the effect coverage. A result is visible when, while a
+    /// link resolves, a card moves, is summoned, drawn, equipped, changes position or gets counters, LP change, or a
+    /// monster's ATK, DEF or Level on the field changes (the engine's field compared at each step: a change in the step that
+    /// solved a link counts for it, a rough attribution).
+    #[derive(Default)]
+    struct Effects {
+        chain: Vec<u16>,
+        solving: Option<u16>,
+        visible: bool,
+        solved: Vec<(u16, bool)>,
+        stats: Vec<(i64, i64, i64)>,
+    }
+
+    impl Effects {
+        fn message(&mut self, m: &Json, played: &mut Played) {
+            let kind = m["type"].as_u64().unwrap_or(0);
+            let link = || m["chain_size"].as_u64().unwrap_or(0) as usize;
+            match kind {
+                msg::CHAINING => {
+                    self.chain.truncate(link().saturating_sub(1));
+                    self.chain.push(m["cid"].as_u64().unwrap_or(0) as u16);
+                }
+                msg::CHAIN_SOLVING => {
+                    self.solving = self.chain.get(link().wrapping_sub(1)).copied();
+                    self.visible = false;
+                }
+                msg::CHAIN_SOLVED => {
+                    if let Some(cid) = self.solving.take() {
+                        self.solved.push((cid, self.visible));
+                    }
+                }
+                msg::CHAIN_NEGATED | msg::CHAIN_DISABLED => {
+                    if let Some(&cid) = self.chain.get(link().wrapping_sub(1)) {
+                        *played.negated.entry(cid).or_default() += 1;
+                    }
+                }
+                msg::CHAIN_END => {
+                    self.chain.clear();
+                    self.solving = None;
+                }
+                msg::MOVE | msg::DRAW | msg::DAMAGE | msg::RECOVER | msg::PAY_LPCOST | msg::POS_CHANGE | msg::SPSUMMONING | msg::EQUIP
+                | msg::ADD_COUNTER | msg::REMOVE_COUNTER | msg::SET | msg::SWAP | msg::SWAP_GRAVE_DECK
+                    if self.solving.is_some() =>
+                {
+                    self.visible = true
+                }
+                _ => {}
+            }
+        }
+
+        /// The step's field: a stat change counts for the links solved in this step (or the one still resolving).
+        fn field(&mut self, state: &Json, played: &mut Played) {
+            let stats: Vec<(i64, i64, i64)> = (0..2)
+                .flat_map(|t| state[t]["mzone"].as_array().cloned().unwrap_or_default())
+                .map(|c| (c["attack"].as_i64().unwrap_or(-1), c["defense"].as_i64().unwrap_or(-1), c["level"].as_i64().unwrap_or(-1)))
+                .collect();
+            let changed = stats != self.stats;
+            self.stats = stats;
+            if changed && self.solving.is_some() {
+                self.visible = true;
+            }
+            for (cid, visible) in self.solved.drain(..) {
+                *played.resolved.entry(cid).or_default() += 1;
+                if visible || changed {
+                    *played.visible.entry(cid).or_default() += 1;
+                }
+            }
+        }
     }
 
     /// How many answers an engine prompt has, roughly, for the prompts the translator may answer itself: options,
@@ -955,6 +1039,7 @@ pub mod selfplay {
         };
         let mut answer = engine.new_duel_with(seed, lp, [(&m0, &e0), (&m1, &e1)], &data.names, &skills);
         let mut played = Played::default();
+        let mut effects = Effects::default();
         let mut prompt: Option<Json> = None;
         let mut retries = 0;
         let mut actions = 0;
@@ -965,6 +1050,9 @@ pub mod selfplay {
                 return Err(format!("seed {seed}, step {}: the engine reported {:?}", played.steps, a.errors));
             }
             model.observe_engine(&a.messages);
+            for m in &a.messages {
+                effects.message(m, &mut played);
+            }
             let events: Vec<Event> = a.messages.iter().filter_map(|m| Event::lenient(m).ok().flatten()).collect();
             for m in &a.messages {
                 if let Some(kind) = m["type"].as_u64() {
@@ -1002,6 +1090,7 @@ pub mod selfplay {
                 }
             }
             let state = engine.state().map_err(|e| format!("seed {seed}: engine state: {e}"))?;
+            effects.field(&state, &mut played);
             let fail = |problems: Vec<String>| {
                 let recent: Vec<String> = a.messages.iter().map(short).collect();
                 format!(
