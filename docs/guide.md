@@ -446,7 +446,7 @@ hosting itself does not require elevation.
 
 ## Other programs inside the game
 
-**Unreleased.** `play` (and `yo3-launcher`) check what else runs inside the game before releasing it (#68): other programs'
+**Since v0.1.4 (2026-11-19).** `play` (and `yo3-launcher`) check what else runs inside the game before releasing it (#68): other programs'
 `.dll` and `.asi` files in the game folder, modules loaded from outside Windows' folders, redirected network functions and
 non-Microsoft 32-bit Winsock providers. The connection DLL writes what it finds to the game's session log (`[YO3 MOD] Survey: …`,
 with each module's size and SHA-256) and, for the launcher, a JSON summary at `--survey-file FILE` (default: beside the
@@ -480,5 +480,5 @@ The game keeps laying out its 1024×768 frame; the connection DLL draws it at th
 when the shapes differ, and maps the mouse back. In the game's own **Full** screen mode the window is borderless and the
 size of the screen, whatever the value. The launcher hands the value to the game as `YO3_RESOLUTION`; setting that
 variable yourself works the same. A value the DLL refuses, or a game whose drawing code differs from v1.153's, stops
-startup with `stage=mod-resolution`. **Unreleased:** opening `yo3.exe` directly uses the size the last Desktop PLAY saved (Desktop only; Scripts has no direct start). How it works:
+startup with `stage=mod-resolution`. **Since v0.1.4 (2026-11-19):** opening `yo3.exe` directly uses the size the last Desktop PLAY saved (Desktop only; Scripts has no direct start). How it works:
 [client internals](client-internals.md#higher-resolution).

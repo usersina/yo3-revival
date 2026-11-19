@@ -168,7 +168,7 @@ once and applies at the next PLAY (or your server's next start), without restart
 | Advanced | On Linux, the Wine prefix and the Wine program (empty for Wine's defaults; **Save** checks it); **Detailed logs** for your servers; **Export logs…** and **Open logs folder**; [Reset local game data](#reset-local-game-data) |
 | About | The version, **Check for updates**, release notes, the project, licences and credits |
 
-**Unreleased:** clicking the version at the bottom left also opens **About**.
+**Since v0.1.4 (2026-11-19):** clicking the version at the bottom left also opens **About**.
 
 ### Screen size
 
@@ -185,7 +185,7 @@ Changing **Screen** there closes the game, as it always has; the mode applies th
 The size applies at the next PLAY. If the higher resolution can't be used with your game files, the game doesn't start:
 choose **Original** to play.
 
-**Unreleased:** opening `yo3.exe` [directly](#open-the-game-directly) draws the game at the size the last PLAY used (the
+**Since v0.1.4 (2026-11-19):** opening `yo3.exe` [directly](#open-the-game-directly) draws the game at the size the last PLAY used (the
 loader sets it up before the game makes its window). Change the size in Settings, PLAY once, and the next direct start follows.
 A game this can't scale just opens at its own size.
 
@@ -353,7 +353,7 @@ Keep backups private: they can contain personal files and cached stock login det
 
 ## Other programs inside the game
 
-**Unreleased.** Each PLAY, before the game is released, the connection DLL looks at what else runs inside it: other programs'
+**Since v0.1.4 (2026-11-19).** Each PLAY, before the game is released, the connection DLL looks at what else runs inside it: other programs'
 `.dll` and `.asi` files in the game folder, the programs Windows loaded into the game from outside its own folders, whether
 anything has redirected the game's network functions, and the 32-bit Winsock providers the game's connection goes through
 (the game is a 32-bit program; YO3 Revival's own helper never uses that list). Nothing on your PC is changed by looking, and
@@ -390,7 +390,7 @@ Help in the footer has these topics too; an error's **Help** opens its own.
 | Missing DirectX or VC90 runtime | Setup's checklist names it. Follow [original game runtime repair](guide.md#original-game-runtimes), then **Retry**. |
 | YO3 Revival needs repair / antivirus removed a file | Extract the complete matching Desktop archive again. For a verified false positive, allow the affected file or exclude only the extracted Desktop folder. [Exact files and recovery steps](antivirus.md). |
 | The game doesn't start, or stops | Read the notice; **Details** has the technical text. Close any other copy of the game, then PLAY again. If it repeats, **Report** beside the error. |
-| The game disconnects you in the shop or another screen | Another program is running inside the game: a mod loader or plugin file in the game folder (a `winmm.dll` that isn't YO3 Revival's, a `dinput8.dll`, an `.asi` file), software in Windows' network path, or security software. **Unreleased:** PLAY now checks this each time and stops, with a dialog saying what it found ([below](#other-programs-inside-the-game)). Before that version the bell showed a notice for a foreign `winmm.dll`: close the game, move that file out of the game folder, then **PLAY** again. |
+| The game disconnects you in the shop or another screen | Another program is running inside the game: a mod loader or plugin file in the game folder (a `winmm.dll` that isn't YO3 Revival's, a `dinput8.dll`, an `.asi` file), software in Windows' network path, or security software. **Since v0.1.4 (2026-11-19):** PLAY now checks this each time and stops, with a dialog saying what it found ([below](#other-programs-inside-the-game)). Before that version the bell showed a notice for a foreign `winmm.dll`: close the game, move that file out of the game folder, then **PLAY** again. |
 | PLAY says "Another program is running in your game" | See [Other programs inside the game](#other-programs-inside-the-game): **Move it aside** for a file, `netsh winsock reset` for a network provider, an exception for security software, or **Continue anyway**. |
 | PLAY says "YO3 Revival can't start the game safely" | Another program has taken over the game's network connection (or a file known to break it is present). Close that program or move its file out of the game folder. There is no Continue anyway for this one. |
 | The game closes at once with `0xc0000139` or "waveInGetDevCapsW could not be located" | Update YO3 Revival, then PLAY. Versions up to v0.0.24 put a `winmm.dll` beside `yo3.exe` that Windows 10 version 1809 (LTSC 2019) couldn't use; PLAY replaces it with the current one. |

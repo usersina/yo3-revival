@@ -13,7 +13,9 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.1.4 (2026-11-19)
+
+Multiplayer: update to v0.1.4 to join the hosted server after deployment.
 
 - Duels can be given up (#57): click your own Deck pile, choose Surrender and answer Yes (from the fifth turn on, as the original game's text says). The other player wins, in NPC duels, Auto Duel and challenge duels; a host who turns Surrender off in Create Duel leaves it out.
 - The Extra Deck lights up only when you can summon from it (#16). To look through it at other times, click it and choose See Details.
