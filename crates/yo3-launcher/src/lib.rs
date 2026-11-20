@@ -230,7 +230,10 @@ impl Proxy {
                             }
                             Ok::<_, anyhow::Error>(())
                         }.await;
-                        if let Err(e) = result { let message = format!("{role:?} connection: {e:#}"); yo3_tunnel::diagnostics::event(&message); eprintln!("{message}"); }
+                        if let Err(e) = result {
+                            // Only when the game's side failed: that is where a program on the player's PC can have cut it.
+                            let tools = if format!("{e:#}").starts_with("the game's connection") { survey::tools_line(&survey::running_tools()).map(|line| format!(". {line}")) } else { None }.unwrap_or_default();
+                            let message = format!("{role:?} connection: {e:#}{tools}"); yo3_tunnel::diagnostics::event(&message); eprintln!("{message}"); }
                     });
                 }
             }));
@@ -269,33 +272,55 @@ impl Open {
 }
 impl Drop for Open { fn drop(&mut self) { self.0.fetch_sub(1, std::sync::atomic::Ordering::SeqCst); } }
 
+/// What one direction of a relay has carried, so an error can say what was in flight.
+#[derive(Default)]
+struct Flow { bytes: std::sync::atomic::AtomicU64, chunks: std::sync::atomic::AtomicU64 }
+impl Flow {
+    fn count(&self) -> (u64, u64) { (self.bytes.load(std::sync::atomic::Ordering::Relaxed), self.chunks.load(std::sync::atomic::Ordering::Relaxed)) }
+}
+
 /// Carries a game connection both ways until both sides finish, as `copy_bidirectional` does, but an error says which
-/// side failed: the game's local connection or the one to the server (#65: a bare Windows 10053 left that open).
+/// side failed (the game's local connection or the one to the server), whether it failed reading or writing, how many
+/// bytes the failed write held and what each direction had carried and for how long (#65: a bare Windows 10053 left all
+/// of that open, and who had closed the connection was a guess).
 async fn relay<G, S>(game: &mut G, server: &mut S) -> anyhow::Result<()>
 where G: AsyncRead + tokio::io::AsyncWrite + Unpin, S: AsyncRead + tokio::io::AsyncWrite + Unpin {
     const GAME: &str = "the game's connection";
     const SERVER: &str = "the connection to the server";
-    async fn pump(from: &mut (impl AsyncRead + Unpin), to: &mut (impl tokio::io::AsyncWrite + Unpin), source: &'static str,
-                  target: &'static str) -> anyhow::Result<()> {
+    struct Way<'a> { source: &'static str, target: &'static str, name: &'static str, flow: &'a Flow, other: &'a Flow, started: tokio::time::Instant }
+    impl Way<'_> {
+        fn failure(&self, side: &'static str, did: &str, held: usize) -> String {
+            let (bytes, chunks) = self.flow.count(); let (back, back_chunks) = self.other.count();
+            format!("{side}: failed {did}{} after {:.1} s; {} carried {bytes} bytes in {chunks} reads, the other way {back} bytes in {back_chunks}",
+                if held > 0 { format!(" ({held} bytes in flight)") } else { String::new() }, self.started.elapsed().as_secs_f32(), self.name)
+        }
+    }
+    async fn pump(from: &mut (impl AsyncRead + Unpin), to: &mut (impl tokio::io::AsyncWrite + Unpin), way: Way<'_>) -> anyhow::Result<()> {
         use anyhow::Context;
+        use std::sync::atomic::Ordering::Relaxed;
         let mut buffer = vec![0; 16 * 1024];
         loop {
             let n = match from.read(&mut buffer).await {
                 Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-                result => result.context(source)?,
+                result => result.with_context(|| way.failure(way.source, "while reading from it", 0))?,
             };
             if n == 0 {
                 // One side finished: tell the other, as copy_bidirectional does, and keep the other direction going.
-                to.shutdown().await.context(target)?;
+                to.shutdown().await.with_context(|| way.failure(way.target, "while closing it", 0))?;
                 return Ok(());
             }
-            to.write_all(&buffer[..n]).await.context(target)?;
-            to.flush().await.context(target)?;
+            way.flow.bytes.fetch_add(n as u64, Relaxed); way.flow.chunks.fetch_add(1, Relaxed);
+            to.write_all(&buffer[..n]).await.with_context(|| way.failure(way.target, "while writing to it", n))?;
+            to.flush().await.with_context(|| way.failure(way.target, "while flushing it", n))?;
         }
     }
     let (mut game_read, mut game_write) = tokio::io::split(game);
     let (mut server_read, mut server_write) = tokio::io::split(server);
-    tokio::try_join!(pump(&mut game_read, &mut server_write, GAME, SERVER), pump(&mut server_read, &mut game_write, SERVER, GAME))?;
+    let (up, down) = (Flow::default(), Flow::default());
+    let started = tokio::time::Instant::now();
+    tokio::try_join!(
+        pump(&mut game_read, &mut server_write, Way { source: GAME, target: SERVER, name: "the game's side", flow: &up, other: &down, started }),
+        pump(&mut server_read, &mut game_write, Way { source: SERVER, target: GAME, name: "the server's side", flow: &down, other: &up, started }))?;
     Ok(())
 }
 
@@ -588,11 +613,39 @@ mod tests {
         let aborted = Some(std::io::ErrorKind::ConnectionAborted);
         let (mut server, _keep) = tokio::io::duplex(64);
         let error = relay(&mut Broken { read: aborted, write: None }, &mut server).await.unwrap_err();
-        assert!(format!("{error:#}").starts_with("the game's connection: "), "{error:#}");
+        assert!(format!("{error:#}").starts_with("the game's connection: failed while reading from it"), "{error:#}");
         let (mut game, mut game_far) = tokio::io::duplex(64);
         game_far.write_all(b"request").await.unwrap();
         let error = relay(&mut game, &mut Broken { read: None, write: aborted }).await.unwrap_err();
-        assert!(format!("{error:#}").starts_with("the connection to the server: "), "{error:#}");
+        let text = format!("{error:#}");
+        assert!(text.starts_with("the connection to the server: failed while writing to it (7 bytes in flight) after "), "{text}");
+        assert!(text.contains("the game's side carried 7 bytes in 1 reads, the other way 0 bytes in 0"), "what was carried is in the line: {text}");
+    }
+
+    #[tokio::test]
+    async fn a_game_that_aborts_while_the_server_is_replying_says_which_write_failed_and_how_much_had_gone_before() {
+        // #65's shape: the replies went to the game until its connection was aborted by something on its PC.
+        struct Dies { replies: Vec<Vec<u8>>, left: usize }
+        impl tokio::io::AsyncRead for Dies {
+            fn poll_read(mut self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>, buf: &mut tokio::io::ReadBuf<'_>) -> std::task::Poll<std::io::Result<()>> {
+                match self.replies.pop() { Some(reply) => { buf.put_slice(&reply); std::task::Poll::Ready(Ok(())) } None => std::task::Poll::Pending }
+            }
+        }
+        impl tokio::io::AsyncWrite for Dies {
+            fn poll_write(mut self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>, buf: &[u8]) -> std::task::Poll<std::io::Result<usize>> {
+                if self.left == 0 { return std::task::Poll::Ready(Err(std::io::ErrorKind::ConnectionAborted.into())) }
+                self.left -= 1; std::task::Poll::Ready(Ok(buf.len()))
+            }
+            fn poll_flush(self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> { std::task::Poll::Ready(Ok(())) }
+            fn poll_shutdown(self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> { std::task::Poll::Ready(Ok(())) }
+        }
+        let mut game = Broken { read: None, write: Some(std::io::ErrorKind::ConnectionAborted) };
+        // The server's side carries three replies; the game takes none of them (its write fails at once).
+        let mut server = Dies { replies: vec![vec![1; 300], vec![2; 200], vec![3; 100]], left: 0 };
+        let error = relay(&mut game, &mut server).await.unwrap_err();
+        let text = format!("{error:#}");
+        assert!(text.starts_with("the game's connection: failed while writing to it (100 bytes in flight)"), "{text}");
+        assert!(text.contains("the server's side carried 100 bytes in 1 reads"), "{text}");
     }
 
     #[tokio::test]

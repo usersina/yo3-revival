@@ -124,3 +124,28 @@ fn play_names_a_winmm_dll_that_yo3_revival_did_not_put_there() {
     assert_eq!(direct::foreign_winmm(&game), Some(game.join("winmm.dll")), "no receipt: an old install's or another mod's");
     std::fs::remove_dir_all(p).unwrap();
 }
+#[test]
+fn our_own_loader_without_a_receipt_is_ours_and_is_repaired_never_called_foreign() {
+    // #65: a player's winmm.dll was YO3 Revival's own v0.1.3 loader. Its receipt was missing, so it was called "an unowned
+    // WINMM mod" and the player was told it wasn't ours.
+    let p = scratch(); let source = p.join("bootstrap.dll"); let game = p.join("game"); std::fs::create_dir(&game).unwrap();
+    std::fs::write(game.join("yo3.exe"), b"game").unwrap();
+    let new = yo3_launcher::components::crafted_loader_for_tests("v0.1.4"); std::fs::write(&source, &new).unwrap();
+    let old = yo3_launcher::components::crafted_loader_for_tests("v0.1.3"); std::fs::write(game.join("winmm.dll"), &old).unwrap();
+    assert_eq!(direct::foreign_winmm(&game), None, "our loader of an earlier release, no receipt");
+    assert!(direct::own_loader_without_receipt(&game));
+    direct::install_files(&game, &source).expect("Play puts the receipt right");
+    assert_eq!(std::fs::read(game.join("winmm.dll")).unwrap(), new, "replaced by this release's loader");
+    assert!(game.join("yo3-revival-loader.json").exists());
+    assert!(!direct::own_loader_without_receipt(&game), "with its receipt now");
+    // Turning direct start off removes our loader even when its receipt is gone.
+    std::fs::remove_file(game.join("yo3-revival-loader.json")).unwrap();
+    direct::remove_files(&game).expect("our loader is removable without its receipt");
+    assert!(!game.join("winmm.dll").exists());
+    // Another program's file still is refused and left alone.
+    std::fs::write(game.join("winmm.dll"), b"another mod").unwrap();
+    assert!(!direct::own_loader_without_receipt(&game));
+    assert!(direct::install_files(&game, &source).is_err() && direct::remove_files(&game).is_err());
+    assert_eq!(std::fs::read(game.join("winmm.dll")).unwrap(), b"another mod");
+    std::fs::remove_dir_all(p).unwrap();
+}

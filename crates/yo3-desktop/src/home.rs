@@ -139,8 +139,8 @@ impl Notice {
     pub fn direct(problem: &DirectProblem) -> Self { Self { details: Some(problem.reason.clone()), everywhere: true, ..Self::problem(problem.summary(), None) } }
     /// Another program's `winmm.dll` runs inside the game (#65): said at each Play, in the bell, without stopping it.
     pub fn foreign_winmm(file: &std::path::Path) -> Self {
-        Self { details: Some(format!("{}\nWindows loads this file into the game every time it starts. If it's from an older YO3 Revival \
-            or another mod, move it out of the game folder while you play with YO3 Revival.", file.display())), everywhere: true,
+        Self { details: Some(format!("{}\nWindows loads this file into the game every time it starts. It isn't a YO3 Revival file: if it came \
+            with another mod or a game folder copied from another PC, move it out of the game folder while you play with YO3 Revival.", file.display())), everywhere: true,
             ..Self::problem("Another program's file in your game folder runs inside the game beside YO3 Revival and can break it, \
                 for example by disconnecting you in the shop.", None) }
     }

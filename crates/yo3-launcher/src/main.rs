@@ -233,6 +233,7 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
     log.line("Connection DLL loaded and interface ready; authenticating");
     // What else runs inside the game (#68): the player hears about another program's file or provider before the game is
     // released, and a redirected network function stops it. The DLL's own lines are in this log.
+    if let Some(line) = yo3_launcher::survey::tools_line(&yo3_launcher::survey::running_tools()) { log.line(&format!("Survey: {line}")); }
     match yo3_launcher::survey::Survey::read(&survey_file) {
         Some(report) => {
             let verdict = report.assessment();
