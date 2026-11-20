@@ -53,7 +53,7 @@ def canonical(answer):
 # Keys only the native engine reports, which the sidecar never did: each monster's attribute and race in the field
 # report (e6f70ea, changed Types and Attributes), a card's own words for an option, question or hint (option_texts,
 # description_text, hint_text: the dialogs the connection DLL words). Ignored where the sidecar's answer lacks them.
-NATIVE_ONLY = {'attribute', 'race', 'description_text', 'hint_text', 'option_texts'}
+NATIVE_ONLY = {'attribute', 'race', 'description_text', 'hint_text', 'option_texts', 'relations'}
 
 
 def without_native_only(node, native):

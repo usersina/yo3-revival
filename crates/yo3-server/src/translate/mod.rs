@@ -239,6 +239,8 @@ const OPTION_LABELS: [(u64, u32, u32); 5] =
 /// main phase's end, the battle's start, steps and end, a chain's end, a draw.
 const QUIET_TIMINGS: u64 = 0x1 | 0x2 | 0x4 | 0x8 | 0x10 | 0x20 | 0x8000 | 0x10000 | 0x100_0000 | 0x400_0000;
 const SELECT_MAX: usize = 4;
+/// Options per page when an option prompt has more than `SELECT_MAX`: the fourth label is "More choices".
+const OPTION_PAGE: usize = SELECT_MAX - 1;
 const NUMBER_FORMATS: [(u64, u32); 3] = [(1000, 302), (100, 303), (1, 283)];
 /// The client's types (UI texts 1031-1052) and attributes (1061-1067) in its order, as EDOPro's RACE_* and
 /// ATTRIBUTE_* bits.
@@ -471,6 +473,8 @@ enum Steps {
     /// A number the number dialog can't show, narrowed by ranges: the options (indices of the engine's list, by value)
     /// each label stands for, and the dialog's title text.
     Number { groups: Vec<Vec<usize>>, title: u32 },
+    /// An option prompt of more than four options, a page at a time: the first option shown and the dialog's title.
+    Options { start: usize, title: u32 },
 }
 
 #[derive(Clone)]
@@ -578,6 +582,9 @@ pub struct Translator {
     /// Each chain link's target markers (MSG_BECOME_TARGET): (the link's number, the activating card's uid, the
     /// target's uid), until it is solved.
     target_marks: Vec<(u32, u32, u32)>,
+    /// The engine's lasting effects of field cards on monsters (the field report's `relations`): (source place,
+    /// monster place, marker type), places as `player | zone << 8`.
+    lasting: Vec<(u32, u32, u32)>,
 }
 
 impl Translator {
@@ -724,6 +731,7 @@ impl Translator {
             links: vec![],
             relations: vec![],
             target_marks: vec![],
+            lasting: vec![],
         };
         with_card_ids(&t.cards, &mut out);
         let mut t = t;

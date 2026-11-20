@@ -612,6 +612,27 @@ pub struct Monster {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct Field {
     pub monsters: Vec<Monster>,
+    /// The lasting effects of field cards on face-up monsters (the native engine's; the old sidecar sent none).
+    #[serde(default)]
+    pub relations: Vec<FieldRelation>,
+}
+
+/// A field card's lasting effect on a face-up monster in the field report: `kind` is the client's marker type (3 a
+/// Field Spell's, 5 another continuous Spell or Trap's, 7 a negation).
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct FieldRelation {
+    pub from: RelationPlace,
+    pub to: RelationPlace,
+    pub kind: u64,
+}
+
+/// A field place in a relation: the monster's has no location (a Monster Zone).
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct RelationPlace {
+    pub controller: u64,
+    #[serde(default)]
+    pub location: Option<u64>,
+    pub sequence: u64,
 }
 
 /// An event: an engine message the server shows (or keeps track of), not a prompt.

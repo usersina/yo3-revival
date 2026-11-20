@@ -247,30 +247,45 @@ impl Translator {
     /// string). None for more than the dialog's four labels or an option with no words. The title is the hint's, else
     /// "Select effect to activate." (276).
     pub(super) fn worded_options(&mut self, o: &SelectOption) -> Option<Vec<Message>> {
-        let options = Some(&o.options).filter(|o| !o.is_empty() && o.len() <= SELECT_MAX)?;
-        let texts: Vec<Option<&str>> = (0..options.len()).map(|i| o.option_texts.get(i).and_then(|t| t.as_deref()).filter(|t| !t.is_empty())).collect();
-        let own = |d: u64| OPTION_LABELS.iter().find(|(o, _, _)| *o == d).map(|&(_, label, _)| label)
-            .or_else(|| CARD_OPTION_LABELS.iter().find(|(o, _)| *o == d).map(|&(_, label)| label));
-        let codes: Vec<u64> = options.clone();
-        if codes.iter().zip(&texts).any(|(&d, t)| own(d).is_none() && t.is_none()) {
+        if o.options.is_empty() || (0..o.options.len()).any(|i| option_words(o, i).is_none()) {
             return None;
         }
         let mut out = vec![];
-        let mut labels = vec![];
-        for (&d, text) in codes.iter().zip(&texts) {
-            let label = match own(d) {
-                Some(label) => label,
-                None => self.text(&mut out, &shortened(text.unwrap_or_default(), LABEL_CHARS)),
-            };
-            labels.push(label | dialog::LISTED);
-        }
         let hint = std::mem::take(&mut self.hint);
         let title = self.hint_message(&mut out, hint).unwrap_or(text::SELECT_EFFECT);
-        out.push(command(cmd::LIST_BEGIN, [labels.len() as u32, 0, 0, 0]));
-        out.extend(fours(cmd::LIST_VALUES, &labels));
-        out.extend(message(&[entry::TEXT | title]));
-        out.push(Cmd::Dialog { kind: dialog::SELECT, message: dialog::FROM_ENTRIES, param: 0 }.message());
+        if o.options.len() > SELECT_MAX {
+            // More than the dialog's four labels: pages of three and "More choices", the last page's going round to the
+            // first (#16; before, the card list with the options' texts in the chat window).
+            out.extend(self.option_page(o, 0, title));
+            return Some(out);
+        }
+        let labels: Vec<u32> = (0..o.options.len()).map(|i| self.option_label(&mut out, o, i)).collect();
+        out.extend(select_dialog(&labels, title));
         Some(out)
+    }
+
+    /// One option's label in the Select dialog: the client's own, else the engine's text for it through the DLL.
+    fn option_label(&mut self, out: &mut Vec<Message>, o: &SelectOption, i: usize) -> u32 {
+        let label = match option_words(o, i) {
+            Some(OptionWords::Own(label)) => label,
+            Some(OptionWords::Text(text)) => self.text(out, &shortened(text, LABEL_CHARS)),
+            None => text::SELECT_EFFECT,
+        };
+        label | dialog::LISTED
+    }
+
+    /// A page of an option prompt too long for one Select dialog: up to `OPTION_PAGE` options from `start`, then "More
+    /// choices", which `Steps::Options` turns into the next page.
+    pub(super) fn option_page(&mut self, o: &SelectOption, start: usize, title: u32) -> Vec<Message> {
+        let mut out = vec![];
+        let end = (start + OPTION_PAGE).min(o.options.len());
+        let mut labels: Vec<u32> = (start..end).map(|i| self.option_label(&mut out, o, i)).collect();
+        let pages = o.options.len().div_ceil(OPTION_PAGE);
+        let more = self.text(&mut out, &format!("More choices ({}/{pages})", start / OPTION_PAGE + 1));
+        labels.push(more | dialog::LISTED);
+        out.extend(select_dialog(&labels, title));
+        self.asking = Asking::Steps(Steps::Options { start, title });
+        out
     }
 
     /// The CPU's card name declaration: the cards in the duel by turns, a new one each time it is asked.
@@ -493,6 +508,17 @@ impl Translator {
                 // Back to this step's labels (the texts they used may be gone from the DLL's slots).
                 None => Some(Prompt::Client(self.number_step(&n.options, groups.concat(), title))),
             },
+            (Steps::Options { start, title }, Ask::Option(o)) => {
+                let shown = OPTION_PAGE.min(o.options.len().saturating_sub(start));
+                let count = count as usize;
+                if count < shown {
+                    self.pending = None;
+                    return Some(Prompt::Answer(self.chosen_option(o, start + count)));
+                }
+                // "More choices" (or a stale click): the next page, after the last the first.
+                let next = if count == shown && start + OPTION_PAGE < o.options.len() { start + OPTION_PAGE } else { 0 };
+                Some(Prompt::Client(self.option_page(o, next, title)))
+            }
             _ => None,
         }
     }
@@ -933,5 +959,26 @@ impl Translator {
         self.asking = Asking::Zones(picks);
         Prompt::Client(self.zone_map(m))
     }
+}
 
+/// What an option of a SelectOption is called: the client's own label, or the engine's text for it.
+enum OptionWords<'a> {
+    Own(u32),
+    Text(&'a str),
+}
+
+fn option_words(o: &SelectOption, i: usize) -> Option<OptionWords<'_>> {
+    let d = *o.options.get(i)?;
+    let own = OPTION_LABELS.iter().find(|(o, _, _)| *o == d).map(|&(_, label, _)| label)
+        .or_else(|| CARD_OPTION_LABELS.iter().find(|(o, _)| *o == d).map(|&(_, label)| label));
+    own.map(OptionWords::Own).or_else(|| o.option_texts.get(i).and_then(|t| t.as_deref()).filter(|t| !t.is_empty()).map(OptionWords::Text))
+}
+
+/// The Select dialog (kind 4) with these labels under `title`.
+fn select_dialog(labels: &[u32], title: u32) -> Vec<Message> {
+    let mut out = vec![command(cmd::LIST_BEGIN, [labels.len() as u32, 0, 0, 0])];
+    out.extend(fours(cmd::LIST_VALUES, labels));
+    out.extend(message(&[entry::TEXT | title]));
+    out.push(Cmd::Dialog { kind: dialog::SELECT, message: dialog::FROM_ENTRIES, param: 0 }.message());
+    out
 }

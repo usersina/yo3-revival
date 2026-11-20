@@ -348,12 +348,16 @@ impl Session {
                     "attribute": get(decode::QUERY_ATTRIBUTE), "race": get(decode::QUERY_RACE) }));
             }
         }
-        let monsters = Json::Array(monsters);
-        if self.last_field.as_ref() == Some(&monsters) {
+        // What lasting effects of the field's cards apply to which monster, for the client's markers.
+        let relations: Vec<Json> = self.duel.as_mut().ok_or("TypeError: no duel")?.relations().into_iter()
+            .map(|[c, l, s, mc, ms, kind]| json!({ "from": { "controller": c, "location": l, "sequence": s }, "to": { "controller": mc, "sequence": ms }, "kind": kind }))
+            .collect();
+        let report = json!({ "monsters": monsters, "relations": relations });
+        if self.last_field.as_ref() == Some(&report) {
             return Ok(None);
         }
-        self.last_field = Some(monsters.clone());
-        Ok(Some(json!({ "type": "field", "monsters": monsters })))
+        self.last_field = Some(report.clone());
+        Ok(Some(json!({ "type": "field", "monsters": report["monsters"], "relations": report["relations"] })))
     }
 
     /// The bot's answer to the pending prompt (`{"op":"think","style":{…}}`, see bot::Style), for the server to give

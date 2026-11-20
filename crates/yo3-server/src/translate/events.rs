@@ -313,6 +313,16 @@ impl Translator {
                 }
             }
         }
+        // The engine's lasting effects (the field report), unless the card is Swords of Revealing Light: marked above.
+        let swords_at = |t: &Self, place: u32| {
+            t.sides[(place & 0xFF) as usize].zones.get(&(place >> 8)).and_then(|c| c.first()).and_then(|c| t.cards.get(&c.row)).is_some_and(|d| d.cid == SWORDS_OF_REVEALING_LIGHT)
+        };
+        let occupied = |t: &Self, place: u32| t.sides[(place & 0xFF) as usize].zones.get(&(place >> 8)).is_some_and(|c| !c.is_empty());
+        for &(a, b, mark) in &self.lasting {
+            if occupied(self, a) && occupied(self, b) && !swords_at(self, a) {
+                want(&mut wanted, (a, b, mark));
+            }
+        }
         let mut kept = vec![];
         for &link in &self.links {
             let (Some(a), Some(b)) = (place_of(self, link.0), place_of(self, link.1)) else { continue };
@@ -1288,6 +1298,21 @@ impl Translator {
     /// A Type or Attribute other than CARD_Prop's (DNA Surgery, Zombie World) goes in the record too: the info panel
     /// reads them from it (0x453740, 0x523F00).
     pub(super) fn field(&mut self, f: &Field) -> Vec<Message> {
+        // A Field Spell's, a continuous card's or a negation's hold on a monster: drawn by `sync_relations` (Swords of
+        // Revealing Light has its own marker there).
+        self.lasting = f
+            .relations
+            .iter()
+            .filter_map(|r| {
+                let source = match r.from.location.unwrap_or(loc::MZONE) {
+                    loc::MZONE if r.from.sequence < 5 => r.from.sequence as u32,
+                    loc::SZONE if r.from.sequence == 5 => zone::FIELD_SPELL,
+                    loc::SZONE if r.from.sequence < 5 => 5 + r.from.sequence as u32,
+                    _ => return None,
+                };
+                (r.to.sequence < 5).then(|| (self.side(r.from.controller) | source << 8, self.side(r.to.controller) | (r.to.sequence as u32) << 8, r.kind as u32))
+            })
+            .collect();
         let mut out = vec![];
         for s in &f.monsters {
             let stat = |v: Option<i64>| v.unwrap_or(0).max(0) as u32;

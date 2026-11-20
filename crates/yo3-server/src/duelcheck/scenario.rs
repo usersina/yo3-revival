@@ -254,6 +254,12 @@ impl Scenario {
         self.monster(team, cid)?["level"].as_u64()
     }
 
+    /// The hover markers seat `seat`'s client holds: (source place, target place, marker type), places as the
+    /// client's `player | zone << 8` (its own side 0).
+    pub fn markers(&self, seat: usize) -> &[(u32, u32, u32)] {
+        self.views[seat].1.relations()
+    }
+
     /// Card choices (targets, discards, Tributes) take these cards first, (controller, Konami id), when they are on offer:
     /// "Brionac returns the opponent's monster, not itself". Either team's choices; the default answer fills the rest.
     pub fn prefer(&mut self, picks: &[(usize, u16)]) {

@@ -108,6 +108,12 @@ pub struct ClientModel {
 }
 
 impl ClientModel {
+    /// The relations (hover markers) the client holds: (source place, target place, marker type), places as
+    /// `player | zone << 8`.
+    pub fn relations(&self) -> &[(u32, u32, u32)] {
+        &self.relations
+    }
+
     /// A model for a client that is player `first` of engine team 0, with the client's card data (rows' Konami ids).
     pub fn new(first: u32, cards: HashMap<u16, CardStats>) -> ClientModel {
         ClientModel {

@@ -13,6 +13,13 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- An effect with more than four choices now shows them as buttons, three at a time with "More choices" to see the next
+  ones, instead of a card list with the choices written in the chat window.
+- More of the hover markers in a duel: pointing at a monster or a card now also shows which Field Spell powers it up,
+  which continuous Spell or Trap holds it back (Gravity Bind, Messenger of Peace) and what negates it, both ways.
+
 ## v0.1.7 (2026-11-20)
 
 Multiplayer: update to v0.1.7 to join the hosted server after deployment.

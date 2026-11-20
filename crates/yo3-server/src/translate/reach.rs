@@ -203,6 +203,16 @@ impl Translator {
                 cases.push(("yes".into(), vec![(vec![], 1)], Response::yes(response, true).json()));
                 cases.push(("no".into(), vec![(vec![], 0)], Response::yes(response, false).json()));
             }
+            // A page at a time: "More choices" (after the page's options) until the option's page, then its label.
+            Ask::Option(o) if matches!(self.asking, Asking::Steps(Steps::Options { .. })) => {
+                let n = o.options.len();
+                for i in 0..n {
+                    let mut clicks: Vec<(Vec<u32>, u32)> =
+                        (0..i / OPTION_PAGE).map(|p| (vec![], OPTION_PAGE.min(n - p * OPTION_PAGE) as u32)).collect();
+                    clicks.push((vec![], (i % OPTION_PAGE) as u32));
+                    cases.push((format!("options[{i}]"), clicks, Response::Option(i).json()));
+                }
+            }
             Ask::Option(o) => {
                 for i in 0..o.options.len() as u32 {
                     let clicks = if self.option_cards { vec![(vec![i], 1)] } else { vec![(vec![], i)] };

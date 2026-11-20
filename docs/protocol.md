@@ -1406,7 +1406,7 @@ the card clicked at index 5 was the one the engine summoned). Missed, it put the
 engine's: see the hand-index rule under the moves above, and the crash it caused in
 [client-internals](client-internals.md#crash-history-and-the-rule-each-one-taught).
 
-**Card relations** (equips, lasting targets and Swords of Revealing Light sent; the other types not). The client keeps a list of relations between field places (engine store `+0x90`,
+**Card relations** (equips, lasting targets, Swords of Revealing Light, and Field Spells, continuous cards and negations sent; type 6 not). The client keeps a list of relations between field places (engine store `+0x90`,
 list at `+0xB8`/`+0xCC`) and draws them while the pointer is on a face-up field card (mouse move `0x50B700` →
 `0x50AC20` → `0x50B1C0`; command `0x26` redraws them too): every relation from the hovered card's place draws a
 marker on the related slot. Commands: 1017 (`0x3F9`) {param1 the source place `player | zone << 8` (client-relative,
@@ -1433,8 +1433,17 @@ equips use it (live, drawn as the same ∞ on the Axe). **3** (green star, 56): 
 place both ways. **7** (red ✕, 455): a place marked with itself, or a monster and a card, when an effect applies to it:
 Dimensional Prison and Effect Veiler (a place related to itself), Debris Dragon, Fiendish Chain, Royal Decree (negation).
 **258** appears four times (Fiendish Chain). Type 4 (red ✕ circle, the same picture as 7) never occurs in the logs, so the
-server's Swords of Revealing Light markers use it (a guess). Sending 3, 5, 6 and 7 needs what the core doesn't say (which
-monster a Field Spell or a continuous card affects, which card is negated); the engine's `state` op would have to report it.
+server's Swords of Revealing Light markers use it (a guess). The core sends no message for 3, 5, 6 and 7 (which monster
+a Field Spell or a continuous card affects, which card is negated), so the engine reports them in its field report after
+each step (`relations`, `crates/yo3-engine/src/query.cpp` `YO3_DuelRelations`, #16): for each face-up monster, the
+face-up field cards whose field effects apply to it (`is_available`, `is_target`, Lua run with the queued arguments
+set aside like the queries), and negations (EFFECT_DISABLE, EFFECT_DISABLE_EFFECT) put on it by a card still face up on
+the field. Kind 3 a Field Spell's, 7 a negation's, 5 another continuous Spell or Trap's (Gravity Bind, Messenger of
+Peace, Level Limit - Area B); a monster's own effects on other monsters (Command Knight) are left out, as the logs show
+none, and so are equips and targets (their own messages). The server draws them both ways like the others, except from
+Swords of Revealing Light (type 4 above). **Shape** for the kinds; **confirmed** through the real core in
+`card_scenarios.rs` (Gravity Bind's type 5 to the opponent's Level 4 monster, Sogen's type 3 from the Field Spell zone).
+Type 6 (the second ∞, 90 times in the logs) has no rule apart from 5 and is not sent.
 
 While Swords of Revealing Light (4354) lies face up, each monster of its opponent is marked from it, both ways, with type 4 (a
 guess; translate `sync_relations`); a Set Spell or Trap that activates counts as face up from its chain link.
@@ -2205,8 +2214,11 @@ DECLTYPE_MONSTER/SPELL/TRAP 70–72 → "Monster Cards", "Spell Cards", "Trap Ca
 table's per-card labels (400–495, 369/370 for a side of the field), which the original server listed per card and
 `card_options.rs` pairs by hand with EDOPro's strings where both say the same thing: 110 options of 44 cards
 (**guess**: the original pairing is unknown), under "Select effect to activate." (276). Missing client labels use the
-engine's option texts through the DLL; more than four options, or multiple options with a missing label and no
-engine text, use a card-list choice with available texts numbered in chat (see **Option texts** above). A single
+engine's option texts through the DLL. More than four worded options are asked a page at a time (#16, **shape**: the
+dialog shows four labels, `0x4C5880`): three options and a server-worded "More choices (page/pages)", whose result
+opens the next page (the last page's the first again); an option's label answers with its place in the engine's list.
+Multiple options with a missing label and no engine text use a card-list choice with available texts numbered in chat
+(see **Option texts** above). A single
 unworded option needs no player choice. Live (`--duel-deck 1404,1449`): Card Shuffle's effect from the field paid
 300 LP and listed "Your Deck" and "Opponent's Deck"; the second sent `DLGResult 1` and the engine shuffled Kaiba's
 deck. Live (Time Wizard):

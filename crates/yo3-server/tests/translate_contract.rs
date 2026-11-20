@@ -2499,6 +2499,29 @@ fn equips_and_targets_show_as_hover_markers_between_the_cards() {
 }
 
 #[test]
+fn lasting_effects_in_the_field_report_show_as_hover_markers() {
+    // The native engine's field report lists the lasting effects of field cards on face-up monsters (`relations`,
+    // crates/yo3-engine/src/query.cpp): each is the client's marker of its kind (3 a Field Spell's, 5 a continuous
+    // card's, 7 a negation's; guesses from Konami's logs), both ways, while both cards are there; a report without it
+    // takes it away (#16).
+    let mut t = with_cards();
+    let marks = |out: &[Message]| out.iter().map(cmd).filter(|(id, _)| [0x3F9, 0x26].contains(id)).collect::<Vec<_>>();
+    t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 2, 0, 10), "to": loc(0, 4, 2, 1) })]);
+    t.events(&[json!({ "type": 50, "cid": 4101, "from": loc(0, 2, 0, 10), "to": loc(0, 8, 5, 1) })]);
+    let report = |relations: serde_json::Value| json!({ "type": "field", "monsters": [], "relations": relations });
+    let field_spell = json!([{ "from": { "controller": 0, "location": 8, "sequence": 5 }, "to": { "controller": 0, "sequence": 2 }, "kind": 3 }]);
+    let (spell, monster) = (10 << 8, 2 << 8);
+    let out = marks(&t.events(&[report(field_spell.clone())]));
+    assert_eq!(out, [(0x3F9, [spell, monster, 3, 1]), (0x3F9, [monster, spell, 3, 1]), (0x26, [0; 4])]);
+    assert!(marks(&t.events(&[report(field_spell)])).is_empty(), "the same again: nothing sent");
+    let out = marks(&t.events(&[report(json!([]))]));
+    assert_eq!(out, [(0x3F9, [spell, monster, 3, 0]), (0x3F9, [monster, spell, 3, 0]), (0x26, [0; 4])]);
+    // A relation to an empty slot draws nothing.
+    let stray = json!([{ "from": { "controller": 0, "location": 8, "sequence": 5 }, "to": { "controller": 1, "sequence": 3 }, "kind": 5 }]);
+    assert!(marks(&t.events(&[report(stray)])).is_empty());
+}
+
+#[test]
 fn swords_of_revealing_light_marks_every_monster_it_holds_back() {
     // The engine gives Swords of Revealing Light (4354) no target (it keeps every monster the opponent controls from
     // attacking), so while it lies face up each of the opponent's monsters is marked from it with type 4 (the red circled
@@ -2898,20 +2921,35 @@ fn options_without_a_label_are_worded_by_the_server() {
 }
 
 #[test]
-fn options_beyond_the_dialogs_four_labels_are_spelled_out_in_the_chat_window() {
-    // More options than the Select dialog's four labels open as the card list, the card once per option in the engine's
-    // order; the engine's own text for each goes to the chat window as the list opens, numbered in its order
-    // (`take_notes`, sent by the duel as chat lines).
+fn options_beyond_the_dialogs_four_labels_are_asked_a_page_at_a_time() {
+    // More options than the Select dialog's four labels (0x4C5880 shows four): pages of three, worded as the dialog's
+    // labels, with "More choices (page/pages)" as the fourth; the last page's goes back to the first (#16). Before,
+    // the card list with the texts in the chat window.
+    let mut t = with_cards();
+    let seven: Vec<u64> = (0..7).map(|n| 4100u64 << 20 | n).collect();
+    let card = json!({ "type": 14, "player": 0, "options": seven, "option_cids": vec![4100; 7],
+        "option_texts": ["A", "B", "C", "D", "E", "F", "G"] });
+    let labels = |p: &Prompt| server_texts(p).into_iter().map(|(_, s)| s).collect::<Vec<_>>();
+    let select = |p: Prompt| client_commands(p).into_iter().filter(|(id, _)| matches!(id, 0x3EF | 0x36)).collect::<Vec<_>>();
+    let first = t.prompt(&card);
+    assert_eq!(labels(&first), ["A", "B", "C", "More choices (1/3)"]);
+    assert_eq!(select(first), [(0x3EF, [4, 0, 0, 0]), (0x36, [4, 1, 0, 0])]);
+    assert!(t.take_notes().is_empty(), "no chat lines");
+    // "More choices": the next page; its options answer by their place in the engine's list.
+    let Some(second) = t.dialog_result(3) else { panic!("the second page") };
+    assert_eq!(labels(&second), ["D", "E", "F", "More choices (2/3)"]);
+    let Some(third) = t.dialog_result(3) else { panic!("the third page") };
+    assert_eq!(labels(&third), ["G", "More choices (3/3)"]);
+    let Some(again) = t.dialog_result(1) else { panic!("back to the first page") };
+    assert_eq!(labels(&again), ["A", "B", "C", "More choices (1/3)"]);
+    t.dialog_result(3);
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 4, "index": 4 }))), "E");
+    // An option with no words keeps the card list, its texts in the chat window.
     let mut t = with_cards();
     let five: Vec<u64> = (0..5).map(|n| 4100u64 << 20 | n).collect();
-    let card = json!({ "type": 14, "player": 0, "options": five, "option_cids": [4100, 4100, 4100, 4100, 4100],
-        "option_texts": ["A", "B", "C", "D", "E"] });
-    assert!(matches!(t.prompt(&card), Prompt::Client(_)));
-    assert_eq!(t.take_notes(), ["1: A", "2: B", "3: C", "4: D", "5: E"]);
-    assert!(t.take_notes().is_empty(), "taken once");
-    // Labelled options (the select dialog) need none.
-    t.prompt(&json!({ "type": 14, "player": 0, "options": [60, 61], "option_texts": ["Heads", "Tails"] }));
-    assert!(t.take_notes().is_empty());
+    let unworded = json!({ "type": 14, "player": 0, "options": five, "option_cids": vec![4100; 5], "option_texts": ["A", "B", "", "D", "E"] });
+    assert!(matches!(t.prompt(&unworded), Prompt::Client(_)));
+    assert_eq!(t.take_notes(), ["1: A", "2: B", "4: D", "5: E"]);
 }
 
 #[test]

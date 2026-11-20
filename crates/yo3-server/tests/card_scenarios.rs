@@ -482,3 +482,36 @@ fn bladedge_pierces_a_defense_position_monster() {
     clean(&s);
 }
 
+const GRAVITY_BIND: u16 = 5134;
+
+/// Gravity Bind (5134): "Level 4 or higher monsters cannot attack." Its hold on the monsters it stops is drawn as the
+/// client's hover marker type 5 (#16, a guess from Konami's logs: continuous cards with the monsters they change), from
+/// its Spell/Trap zone to each Level 4 monster, both ways, on both seats' screens (each from its own side).
+#[test]
+fn gravity_bind_marks_the_monsters_it_holds_back() {
+    let Some(mut s) = start([(&deck_with(&[GRAVITY_BIND]), &[]), (&[WARWOLF; 40], &[])]) else { return };
+    s.run_both([&[SetSpell(GRAVITY_BIND), Chain(GRAVITY_BIND)], &[Summon(WARWOLF)]]).unwrap();
+    assert_eq!(s.count(0, "szone", GRAVITY_BIND), 1, "{}", s.context());
+    let held: Vec<_> = s.markers(0).iter().filter(|m| m.2 == 5).collect();
+    assert!(!held.is_empty(), "no marker from Gravity Bind: {:?} {}", s.markers(0), s.state());
+    // From the planned side's Spell/Trap zone (5-9) to the opponent's monster (player 1, zone 0-4), and back.
+    assert!(held.iter().any(|&&(a, b, _)| a & 0xFF == 0 && (5..=9).contains(&(a >> 8)) && b & 0xFF == 1 && b >> 8 <= 4), "{held:?}");
+    assert!(held.iter().any(|&&(a, b, _)| a & 0xFF == 1 && b & 0xFF == 0), "both ways: {held:?}");
+    assert!(s.markers(1).iter().any(|m| m.2 == 5), "the opponent's screen too: {:?}", s.markers(1));
+    clean(&s);
+}
+
+const SOGEN: u16 = 4339;
+
+/// Sogen (4339): "All Warrior and Beast-Warrior monsters on the field gain 200 ATK/DEF." Command Knight (a Warrior,
+/// 1600 with its own bonus) gets 1800, and the Field Spell's hold on it is the hover marker type 3 (#16, a guess from
+/// Konami's logs: a monster and the Field Spell that affects it), from the Field Spell zone (10).
+#[test]
+fn sogen_marks_the_warriors_it_powers_up() {
+    let Some(mut s) = start([(&deck_with(&[COMMAND_KNIGHT, SOGEN]), &[]), (&[WARWOLF; 40], &[])]) else { return };
+    s.run(&[Activate(SOGEN), Summon(COMMAND_KNIGHT)]).unwrap();
+    assert_eq!(s.attack_of(0, COMMAND_KNIGHT), Some(1800), "{}", s.state());
+    let field: Vec<_> = s.markers(0).iter().filter(|m| m.2 == 3).collect();
+    assert!(field.iter().any(|&&(a, b, _)| a == 10 << 8 && b & 0xFF == 0 && b >> 8 <= 4), "{:?}", s.markers(0));
+    clean(&s);
+}

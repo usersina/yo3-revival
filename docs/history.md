@@ -9,6 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-20 — Preset-deck scenarios, paged effect choices and lasting-effect markers (#67, #16)](#2026-11-20--preset-deck-scenarios-paged-effect-choices-and-lasting-effect-markers-67-16)
   - [2026-11-20 — Synchro Strike was never broken (#67)](#2026-11-20--synchro-strike-was-never-broken-67)
   - [2026-11-18 — Bundled GitHub TLS trust](#2026-11-18--bundled-github-tls-trust)
   - [2026-11-18 — Measured release-runner concurrency](#2026-11-18--measured-release-runner-concurrency)
@@ -155,6 +156,26 @@ version and were refused; they now send the helper's.
 
 Validation: every group CI's release job runs (lint, py, docs, rust, dashboard, e2e; actionlint not installed
 locally) and the local `mod` group passed.
+
+## 2026-11-20 — Preset-deck scenarios, paged effect choices and lasting-effect markers (#67, #16)
+
+**#67.** `task check:decks` (564 duels, 162 decks, 1,323 effect cards) listed 652 cards never activated. Most of them
+work without a chain link (continuous effects, summoning rules: Jinzo, Marshmallon, Bladedge), so the list is a guide,
+not a count of untested effects. Of the NPC decks' cards it lists in the most decks, five more got scenario tests,
+all passing without a fix: Negate Attack, Dimension Wall, Waboku, D.D. Assailant and Elemental HERO Bladedge (piercing
+a Set Spirit Reaper). With the preset-deck report, the scenarios and the native-screen recipe (Development guide,
+Effect coverage and scenario tests), #67's "done when" is met.
+
+**#16, more than four effect choices.** They opened as a card list with the choices numbered in the chat window. Worded
+options are now asked in the Select dialog a page at a time: three choices and "More choices (page/pages)", the last
+page's going back to the first (`Steps::Options`; the duel check's reachability follows the pages). Options with no
+words keep the card list.
+
+**#16, the other markers.** The core sends no message for a Field Spell's or a continuous card's hold on a monster, or
+for a negation, so `crates/yo3-engine/src/query.cpp` (`YO3_DuelRelations`) reads them from the core's effects after each
+step, into the field report's `relations`; the server draws them as types 3, 5 and 7 (Konami's logs' use, a guess).
+Gravity Bind's and Sogen's markers checked through the real core (`card_scenarios.rs`). `tools/engine/parity.py`
+ignores the key; a field report the old sidecar wouldn't send (relations changed, monsters not) still differs there.
 
 ## 2026-11-20 — Synchro Strike was never broken (#67)
 

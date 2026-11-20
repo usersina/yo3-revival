@@ -82,6 +82,7 @@ unsafe extern "C" {
     fn YO3_DuelQuery(duel: *mut c_void, length: *mut u32, info: *const QueryInfo) -> *mut c_void;
     fn YO3_DuelQueryLocation(duel: *mut c_void, length: *mut u32, info: *const QueryInfo) -> *mut c_void;
     fn YO3_DuelQueryField(duel: *mut c_void, length: *mut u32) -> *mut c_void;
+    fn YO3_DuelRelations(duel: *mut c_void, length: *mut u32) -> *mut c_void;
 }
 
 /// A build without the core (`no_core`, see build.rs): the program says so instead of linking.
@@ -101,6 +102,7 @@ mod missing {
     pub unsafe fn YO3_DuelQuery(_: *mut c_void, length: *mut u32, _: *const QueryInfo) -> *mut c_void { unsafe { *length = 0 }; std::ptr::null_mut() }
     pub unsafe fn YO3_DuelQueryLocation(_: *mut c_void, length: *mut u32, _: *const QueryInfo) -> *mut c_void { unsafe { *length = 0 }; std::ptr::null_mut() }
     pub unsafe fn YO3_DuelQueryField(_: *mut c_void, length: *mut u32) -> *mut c_void { unsafe { *length = 0 }; std::ptr::null_mut() }
+    pub unsafe fn YO3_DuelRelations(_: *mut c_void, length: *mut u32) -> *mut c_void { unsafe { *length = 0 }; std::ptr::null_mut() }
 }
 #[cfg(no_core)]
 use missing::*;
@@ -300,6 +302,14 @@ impl Duel {
         let mut length = 0;
         let buffer = unsafe { YO3_DuelQueryField(self.handle, &mut length) };
         copy(buffer, length)
+    }
+
+    /// The lasting effects of field cards on face-up monsters (src/query.cpp `YO3_DuelRelations`): six bytes each,
+    /// {source controller, location, sequence, monster controller, sequence, kind}.
+    pub fn relations(&mut self) -> Vec<[u8; 6]> {
+        let mut length = 0;
+        let buffer = unsafe { YO3_DuelRelations(self.handle, &mut length) };
+        copy(buffer, length).as_chunks::<6>().0.to_vec()
     }
 }
 
