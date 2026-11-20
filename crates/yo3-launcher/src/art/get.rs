@@ -61,7 +61,7 @@ pub fn face_from_jpeg(bytes: &[u8]) -> Result<Vec<u8>, String> {
     if (w as f64 / h as f64 - FACE.0 as f64 / FACE.1 as f64).abs() > 0.03 { return Err(format!("its shape, {w}x{h}, is not a card's")) }
     let pixels = decoder.decode().map_err(|e| e.to_string())?;
     let rgba: Vec<u8> = match info.pixel_format {
-        jpeg_decoder::PixelFormat::RGB24 => pixels.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect(),
+        jpeg_decoder::PixelFormat::RGB24 => pixels.as_chunks::<3>().0.iter().flat_map(|p| [p[0], p[1], p[2], 255]).collect(),
         jpeg_decoder::PixelFormat::L8 => pixels.iter().flat_map(|&g| [g, g, g, 255]).collect(),
         _ => return Err("its colours are not supported".into()),
     };
