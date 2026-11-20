@@ -517,11 +517,8 @@ impl State {
             Section::Advanced => self.advanced(ctx),
             Section::About => self.about(),
         };
-        // What just happened comes first, where the eye is.
-        let mut content = column![].spacing(16);
-        if let Some(busy) = self.busy.filter(|_| self.art_busy.is_none()) { content = content.push(yo3_skin::progress_bar(Bar::Starting, busy, 22.0)) }
-        if let Some(note) = &self.note { content = content.push(self.note(note)) }
-        let content = content.push(body);
+        // What is happening and what just happened float as toasts in the corner (the window lays them out).
+        let content = column![body].spacing(16);
         let panel = yo3_skin::panel(Some(self.section.title()), scrollable(content.padding([0, 14])).height(Fill));
         let screen: Element<'_, Message> = row![container(tabs).width(200).height(Fill), container(panel).width(Fill).height(Fill)].spacing(16).padding([16, 18]).height(Fill).into();
         match &self.dialog {
@@ -529,6 +526,17 @@ impl State {
             None => screen,
         }
     }
+
+    /// The toasts of Settings: a job in progress (with its waiting bar), then the note of what just happened.
+    pub fn toasts(&self) -> Vec<Element<'_, Message>> {
+        let mut out = Vec::new();
+        if let Some(busy) = self.busy.filter(|_| self.art_busy.is_none()) { out.push(yo3_skin::toast(yo3_skin::progress_bar(Bar::Starting, busy, 22.0), yo3_skin::Tone::Busy)) }
+        if let Some(note) = &self.note { out.push(yo3_skin::toast(self.note(note), if note.good { yo3_skin::Tone::Good } else { yo3_skin::Tone::Bad })) }
+        out
+    }
+
+    /// A good note's sentence (it goes by itself after a few seconds); a problem stays until dismissed.
+    pub fn good_toast(&self) -> Option<&str> { self.note.as_ref().filter(|n| n.good).map(|n| n.sentence.as_str()) }
 
     fn note<'a>(&'a self, note: &'a Note) -> Element<'a, Message> {
         let shade = if note.good { color::GOOD } else { color::BAD };

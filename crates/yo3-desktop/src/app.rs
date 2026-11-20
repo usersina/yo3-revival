@@ -74,6 +74,23 @@ pub enum Message {
     Restarted(Result<(), String>),
     OpenLink(String),
     LinkOpened(Result<(), String>),
+    /// Each second while a good toast shows: it goes by itself after `TOAST_SECONDS`.
+    ToastTick,
+}
+
+/// How long good news stays in the corner; a problem stays until it is dismissed.
+const TOAST_SECONDS: u64 = 6;
+
+/// One second of a good toast's life: the sentence on screen now against the one being timed. A new sentence starts its
+/// own time; the same one past `TOAST_SECONDS` has expired (true: dismiss it); none on screen ends the timing.
+fn toast_step(timed: Option<(String, std::time::Instant)>, shown: Option<String>, now: std::time::Instant) -> (Option<(String, std::time::Instant)>, bool) {
+    match (timed, shown) {
+        (_, None) => (None, false),
+        (Some((sentence, since)), Some(on_screen)) if sentence == on_screen => {
+            if now.duration_since(since) >= std::time::Duration::from_secs(TOAST_SECONDS) { (None, true) } else { (Some((sentence, since)), false) }
+        }
+        (_, Some(on_screen)) => (Some((on_screen, now)), false),
+    }
 }
 
 pub struct App {
@@ -91,6 +108,8 @@ pub struct App {
     transfer: updates::download::Transfer,
     startup: updates::activation::Startup,
     quitting: bool,
+    /// The good toast on screen and since when, for its own time out.
+    good_toast: Option<(String, std::time::Instant)>,
 }
 
 /// Runs blocking work (disk, processes, the network) off the window's thread.
@@ -130,7 +149,7 @@ impl App {
             listen_for_second_starts(&ctx.root, claim),
         ];
         if let Some(setup) = &mut setup { tasks.push(setup.start(&ctx).map(Message::Setup)) }
-        (Self { ctx, home, setup, settings: None, help: help::State::at(None), report: Report::default(), foreign: None, host: host::State::default(), dialog: None, updater, transfer: Default::default(), startup, quitting: false },
+        (Self { ctx, home, setup, settings: None, help: help::State::at(None), report: Report::default(), foreign: None, host: host::State::default(), dialog: None, updater, transfer: Default::default(), startup, quitting: false, good_toast: None },
             Task::batch(tasks))
     }
 
@@ -353,6 +372,17 @@ impl App {
             }
             Message::OpenLink(url) => return job(move || external::open(&url), Message::LinkOpened),
             Message::LinkOpened(result) => if let Err(error) = result { self.home.fail(&self.ctx, error) },
+            Message::ToastTick => {
+                let now = std::time::Instant::now();
+                let (settings, home) = (self.settings.as_ref().and_then(|s| s.good_toast()).map(str::to_owned), self.home.good_toast().map(str::to_owned));
+                let shown = settings.clone().or_else(|| home.clone());
+                let (timed, expired) = toast_step(self.good_toast.take(), shown.clone(), now);
+                self.good_toast = timed;
+                if expired {
+                    if settings.is_some() && settings == shown { return self.update(Message::Settings(settings::Message::Dismiss)) }
+                    return self.update(Message::Home(home::Message::Dismiss));
+                }
+            }
         }
         Task::none()
     }
@@ -449,6 +479,9 @@ impl App {
         if self.setup.is_none() { all.push(self.home.subscription().map(Message::Home)) }
         all.push(self.host.subscription().map(Message::Host));
         all.push(iced::time::every(std::time::Duration::from_secs(10 * 60)).map(|_| Message::UpdateTick));
+        if self.home.good_toast().is_some() || self.settings.as_ref().is_some_and(|s| s.good_toast().is_some()) {
+            all.push(iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::ToastTick));
+        }
         if matches!(self.updater.stage, updates::flow::Stage::Downloading(_)) && self.dialog.is_some() {
             all.push(iced::time::every(std::time::Duration::from_millis(400)).map(|_| Message::DownloadTick));
         }
@@ -463,6 +496,20 @@ impl App {
         };
         let page = column![self.title_bar(), container(body).height(Fill), self.footer()];
         let mut screen = stack![yo3_skin::backdrop(), page];
+        // Toasts float in the bottom right corner, above the footer: what happens never moves the page (the player's
+        // request, 2026-11-20). Settings' own come first while it is open; the main screen's otherwise.
+        if self.setup.is_none() {
+            let mut toasts: Vec<Element<'_, Message>> = match &self.settings {
+                Some(settings) => settings.toasts().into_iter().map(|t| t.map(Message::Settings)).collect(),
+                None => Vec::new(),
+            };
+            if self.settings.is_none() && let Some(toast) = self.home.toast() { toasts.push(toast.map(Message::Home)) }
+            if !toasts.is_empty() {
+                screen = screen.push(container(iced::widget::Column::with_children(toasts).spacing(8))
+                    .padding(iced::Padding { bottom: 46.0, right: 18.0, ..iced::Padding::ZERO }).width(Fill).height(Fill)
+                    .align_x(iced::alignment::Horizontal::Right).align_y(iced::alignment::Vertical::Bottom));
+            }
+        }
         if self.home.bell_open && self.setup.is_none() {
             // The notifications drop down from the bell; a click anywhere else closes them.
             screen = screen.push(mouse_area(Space::new().width(Fill).height(Fill)).on_press(Message::Home(home::Message::Bell(false))))
@@ -765,4 +812,25 @@ pub fn masks(ctx: &Ctx) -> Vec<(String, &'static str)> {
     }
     if let Some(home) = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }) { prefixes.push((home.to_string_lossy().into_owned(), "<user>")) }
     prefixes
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    /// Good news goes by itself after a few seconds, a new sentence gets its own time, and a problem (never timed) stays.
+    #[test]
+    fn a_good_toast_goes_by_itself_and_a_new_one_gets_its_own_time() {
+        let start = Instant::now();
+        let (timed, gone) = toast_step(None, Some("Backed up.".into()), start);
+        assert!(!gone && timed.as_ref().is_some_and(|(s, _)| s == "Backed up."));
+        let (timed, gone) = toast_step(timed, Some("Backed up.".into()), start + Duration::from_secs(TOAST_SECONDS - 1));
+        assert!(!gone, "still showing");
+        let (renewed, gone) = toast_step(timed.clone(), Some("The shortcut is on your desktop.".into()), start + Duration::from_secs(TOAST_SECONDS));
+        assert!(!gone && renewed.as_ref().is_some_and(|(s, at)| s.starts_with("The shortcut") && *at == start + Duration::from_secs(TOAST_SECONDS)), "a new sentence starts again");
+        let (timed, gone) = toast_step(timed, Some("Backed up.".into()), start + Duration::from_secs(TOAST_SECONDS));
+        assert!(gone && timed.is_none(), "its time is up");
+        assert_eq!(toast_step(Some(("x".into(), start)), None, start), (None, false), "dismissed by hand: nothing to time");
+    }
 }

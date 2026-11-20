@@ -685,6 +685,23 @@ pub fn badge<'a, M: 'a>(count: usize) -> Element<'a, M> {
             border: Border { color: alpha(Color::BLACK, 0.4), width: 1.0, radius: 8.0.into() }, ..container::Style::default() }).into()
 }
 
+/// What a toast is about: its accent stripe's colour.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tone { Good, Bad, Busy }
+
+/// A toast: a card floating over the screen's corner (laid out by the window, never pushing the page around), with an
+/// accent stripe on its left for good news, a problem, or something in progress, and a soft shadow.
+pub fn toast<'a, M: 'a>(content: impl Into<Element<'a, M>>, tone: Tone) -> Element<'a, M> {
+    let accent = match tone { Tone::Good => GOOD, Tone::Bad => BAD, Tone::Busy => GLOW };
+    // The stripe is the outer card's own colour showing on its left, so it is always as tall as the toast.
+    let inner = container(content).padding([10, 12]).width(Grow).style(|_| container::Style { background: Some(PANEL_TOP.into()),
+        border: Border { radius: iced::border::Radius { top_right: 3.0, bottom_right: 3.0, ..Default::default() }, ..Border::default() }, ..container::Style::default() });
+    container(inner).padding(Padding { left: 5.0, ..Padding::ZERO }).width(380).style(move |_| container::Style {
+        background: Some(accent.into()), border: Border { color: CHROME_EDGE, width: 1.0, radius: 4.0.into() },
+        shadow: iced::Shadow { color: alpha(Color::BLACK, 0.45), offset: iced::Vector::new(0.0, 4.0), blur_radius: 14.0 },
+        ..container::Style::default() }).into()
+}
+
 /// A text field on a panel: white well, dark text, a blue ring when focused.
 pub fn field(_theme: &Theme, status: text_input::Status) -> text_input::Style {
     let focused = matches!(status, text_input::Status::Focused { .. });
