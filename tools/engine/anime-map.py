@@ -520,19 +520,21 @@ def doc(data):
            " other; the Desktop tells the helper where Documents is). A game opened without the launcher (direct start) adapts at the next Play; the server places the deck for every duel meanwhile.",
            "",
            "## Artwork", "",
-           "Nothing in this project ships, fetches or converts Konami's or the anime's card images. A card shows its anime artwork"
-           " only if you put the picture in a folder the launcher reads at start; a card without a file keeps the game's own artwork.", "",
-           "- `anime-art/card/<Konami id>.png`: the whole card face as the anime version reads (frame, name, picture, text, stats), a"
-           " 200x290 PNG like the game's own `data/card/<id>_<art>.png`. One file per Konami id serves all of that card's artworks"
-           " (Flame Swordsman's two).",
-           "- `anime-art/mini/<Konami id>.png`: optional, the 50x72 thumbnail like `data/mini/<id>_<art>.png` (Edit Deck lists, the duel's"
-           " field). When it is missing the launcher makes it from the face (the thumbnails it made are listed in `mini/.derived`, made"
-           " again when the face changes, and never replace one you provided).",
-           "- The folder is `%LOCALAPPDATA%\\YO3 Revival\\anime-art` on Windows and `~/.local/share/yo3-revival/anime-art` on Linux (the"
-           " launcher's data folder; `$YO3_DESKTOP_DATA/anime-art` when that is set). The launcher creates it, passes it to the game as"
-           " `YO3_ANIME_ART` (and writes it into the direct-start profile) and logs how many faces it found and which files it skipped"
-           " (not a PNG, not 200x290). Games started without the launcher look in `anime-art` beside `yo3.exe`.",
-           "- A host's players each provide their own pictures: the server never sends artwork.", ""]
+           "**The project hosts no pictures.** They reach a player in one of two ways, both on the player's own PC and neither needing any server (Singleplayer works alone):",
+           "",
+           "- **Get pictures** (Desktop, Settings → Game → Anime pictures): on the player's click, never by itself, Desktop downloads about 10 MB from ProjectIgnis' picture server (`https://pics.projectignis.org:2096/pics/<passcode>.jpg`, the same pictures EDOPro shows), one card at a time with 0.4 s between requests, a generic `User-Agent` that says only that it is YO3 Revival and nothing about the player, timeouts, one retry per request, and **Cancel** at any moment. Which passcode each card is asked by comes from the reviewed map: `engine/anime/pictures.tsv` (418 cards: Konami id, anime passcode, official passcode), generated from `engine/anime-cards.json` by `tools/engine/anime-pictures.py` (`--check` compares) and compiled into Desktop; the three Gods are fetched by ProjectIgnis' anime passcodes like any card. When the server has no anime picture of a card (a 404) the official card's normal picture is fetched instead (Damage Polarizer, Dark Strike Fighter, Fortune Lady Fire; Temple of the Kings has no anime passcode, so its official picture). Each JPEG is checked before it is decoded (a JPEG, at most 2 MB, between 32 and 2048 pixels, the shape of a card) and then made the game's 200x290 face (bilinear enlargement from the server's 177x254) and its 50x72 thumbnail; anything else is refused and that card keeps the game's artwork. A second click only fetches the cards that still have no picture.",
+           "- **Add pictures from a file** takes a `.zip` in the folder's own layout, `card/<Konami id>.png` (200x290) and optionally `mini/<Konami id>.png` (50x72), at the root or inside the zip's single top folder; **Save pictures to a file** writes the folder as such a zip, so a player can pass theirs to a friend or keep them if the server ever goes away. Only those names are read (everything else is ignored and counted, a name that leaves the folder is refused), each entry has a size cap whatever the zip claims (1 MB each, 96 MB in all, 4000 entries), and each picture must be a PNG of exactly the size the folder wants.",
+           "",
+           "**What a card without a picture does.** A picture that is not there for any reason (not downloaded yet, cancelled, the server unreachable or without it, a file refused, or a download that finishes while a game is already open) leaves that card on **the game's own artwork, with the profile's stats and text unchanged**: never a blank or broken picture. Pictures are written whole or not at all (a temporary name, then renamed), so the game never reads a half-written file, and a partly finished download is simply a folder with some cards' pictures (`art.rs`, `art/get.rs` `a_partial_download_leaves_whole_pictures_and_cards_that_keep_the_games_art`). The game reads the folder when it starts, so pictures that arrive while it is open show after it is closed and PLAY is pressed again.",
+           "",
+           "**Never over your own pictures.** Desktop lists the faces its download made in `card/.downloaded`. A face not listed there is the player's own, and neither a later download nor a zip import replaces it (an import reports how many it kept); a face Desktop downloaded is replaced by a picture from a file. Thumbnails keep the existing rule below.",
+           "",
+           'The folder and its files:',
+           "",
+           "- `anime-art/card/<Konami id>.png`: the whole card face as the anime version reads (frame, name, picture, text, stats), a 200x290 PNG like the game's own `data/card/<id>_<art>.png`. One file per Konami id serves all of that card's artworks (Flame Swordsman's two). A player may also copy such files in by hand.",
+           "- `anime-art/mini/<Konami id>.png`: optional, the 50x72 thumbnail like `data/mini/<id>_<art>.png` (Edit Deck lists, the duel's field). When it is missing the launcher makes it from the face (the thumbnails it made are listed in `mini/.derived`, made again when the face changes, and never replace one you provided).",
+           "- The folder is `%LOCALAPPDATA%\\YO3 Revival\\anime-art` on Windows and `~/.local/share/yo3-revival/anime-art` on Linux (the launcher's data folder; `$YO3_DESKTOP_DATA/anime-art` when that is set). The launcher creates it, passes it to the game as `YO3_ANIME_ART` (and writes it into the direct-start profile) and logs how many faces it found and which files it skipped (not a PNG, not 200x290). Games started without the launcher look in `anime-art` beside `yo3.exe`.",
+           "- A host's players each get their own pictures: the server never sends artwork.", ""]
     if shown:
         out += ["## Shown as the anime card", "",
                 "These cards differ from the game's in what the client draws; the profile covers every difference. (The cards that do not"
