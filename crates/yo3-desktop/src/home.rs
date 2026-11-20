@@ -516,11 +516,13 @@ impl State {
                     return job(move || { backend.clear_direct_problem(&problem); Ok(()) }, |_: Result<(), String>| Message::DirectShown);
                 }
                 if ended {
+                    // Closed or cancelled by the player: its forced exit status is not a failure (a game that fell over alone is).
+                    let asked = self.game.closing.is_some() || self.cancelled;
                     self.game.closing = None;
                     self.waiting_since = None;
                     // Another program's file or provider stopped the start (#68): the window says so in its dialog.
                     let held = live.held.map(|held| Task::done(Message::Foreign(held)));
-                    if let Some(failure) = live.failure {
+                    if let Some(failure) = live.failure.filter(|_| !asked) {
                         self.fail(ctx, failure);
                         if !self.game.ready && let Some(notice) = Notice::foreign_winmm_in(&ctx.settings) { self.tell(notice) }
                     }
@@ -1105,6 +1107,22 @@ mod tests {
         state.notice = Some(Notice::problem("already running", None));
         let _ = state.update(Message::Started(Ok(false)), &mut ctx);
         assert!(state.notice.is_none(), "a settled start clears it");
+    }
+
+    /// Cancel (or Close game) kills the game by force, and the poll that sees it end finds a failed exit status: that is
+    /// the player's own doing, not a failure to say (live on Windows 11: Cancel left "The game could not start").
+    #[test]
+    fn a_game_the_player_cancelled_or_closed_leaves_no_failure_notice() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let _inside = runtime.enter();
+        let mut ctx = ctx();
+        let ended = |failure: &str| Message::Polled(Ok(Live { running: false, ready: false, stale: false, outside: false, failure: Some(failure.into()), direct: None, held: None, games: vec![], extra_failures: vec![] }));
+        let mut state = State { polling: true, cancelled: true, game: Game { running: true, closing: Some(Instant::now()), ..Game::default() }, ..State::default() };
+        let _ = state.update(ended("The game could not start (exit code: 1)."), &mut ctx);
+        assert!(state.notice.is_none(), "the cancelled game's exit status is not a failure");
+        let mut state = State { polling: true, game: Game { running: true, ..Game::default() }, ..State::default() };
+        let _ = state.update(ended("The game stopped unexpectedly (exit code: 1)."), &mut ctx);
+        assert!(state.notice.is_some(), "a game that fell over by itself is still said");
     }
 
     #[test]
