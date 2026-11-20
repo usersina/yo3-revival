@@ -410,3 +410,75 @@ fn wall_of_revealing_light_pays_the_number_picked_in_the_dialog() {
     assert_eq!(s.dialogs, 1, "8 numbers of 1000 are one number dialog");
     clean(&s);
 }
+
+// The NPC decks' cards the preset-deck coverage (`task check:decks`, 2026-11-20) listed as never activated, in the most
+// decks first. Cards whose effect never starts a chain (Jinzo, Marshmallon, Cyber Dragon above) are listed too; those
+// with a test here are ones the NPCs play in several decks.
+const NEGATE_ATTACK: u16 = 4804;
+const DIMENSION_WALL: u16 = 6448;
+const WABOKU: u16 = 4886;
+const DD_ASSAILANT: u16 = 5932;
+const BLADEDGE: u16 = 6477;
+
+/// Negate Attack (4804): "When an opponent's monster declares an attack: Target the attacking monster; negate the
+/// attack, then end the Battle Phase." Command Knight (1600 with its own bonus) is attacked by Gene-Warped Warwolf.
+#[test]
+fn negate_attack_stops_the_attack() {
+    let Some(mut s) = start([(&deck_with(&[COMMAND_KNIGHT, NEGATE_ATTACK]), &[]), (&[WARWOLF; 40], &[])]) else { return };
+    s.run_both([&[Summon(COMMAND_KNIGHT), SetSpell(NEGATE_ATTACK), ChainOnAttack(NEGATE_ATTACK)], &[Summon(WARWOLF), Attack(WARWOLF)]]).unwrap();
+    assert!(s.monster(0, COMMAND_KNIGHT).is_some(), "{}", s.context());
+    assert_eq!((s.lp(0), s.lp(1)), (8000, 8000));
+    assert_eq!(s.count(0, "grave", NEGATE_ATTACK), 1);
+    clean(&s);
+}
+
+/// Dimension Wall (6448): "Activate only when an opponent's monster declares an attack. Instead of you, your opponent
+/// takes the Battle Damage you would have taken from this battle." Command Knight still falls to Warwolf's 2000; the
+/// 400 goes to the attacker's controller.
+#[test]
+fn dimension_wall_sends_the_battle_damage_back() {
+    let Some(mut s) = start([(&deck_with(&[COMMAND_KNIGHT, DIMENSION_WALL]), &[]), (&[WARWOLF; 40], &[])]) else { return };
+    s.run_both([&[Summon(COMMAND_KNIGHT), SetSpell(DIMENSION_WALL), ChainOnAttack(DIMENSION_WALL)], &[Summon(WARWOLF), Attack(WARWOLF)]])
+        .unwrap();
+    assert_eq!((s.lp(0), s.lp(1)), (8000, 8000 - 400), "{}", s.context());
+    assert_eq!(s.count(0, "grave", COMMAND_KNIGHT), 1);
+    clean(&s);
+}
+
+/// Waboku (4886): "You take no battle damage this turn. Your monsters cannot be destroyed by battle this turn."
+#[test]
+fn waboku_saves_the_monster_and_the_life_points() {
+    let Some(mut s) = start([(&deck_with(&[COMMAND_KNIGHT, WABOKU]), &[]), (&[WARWOLF; 40], &[])]) else { return };
+    s.run_both([&[Summon(COMMAND_KNIGHT), SetSpell(WABOKU), ChainOnAttack(WABOKU)], &[Summon(WARWOLF), Attack(WARWOLF)]]).unwrap();
+    assert!(s.monster(0, COMMAND_KNIGHT).is_some(), "{}", s.context());
+    assert_eq!(s.lp(0), 8000);
+    assert_eq!(s.count(0, "grave", WABOKU), 1);
+    clean(&s);
+}
+
+/// D.D. Assailant (5932): "After damage calculation, when this card is destroyed by battle with an opponent's monster:
+/// Banish that monster, also banish this card." 1700 against Warwolf's 2000: 300 damage, then both are banished.
+#[test]
+fn dd_assailant_banishes_the_monster_that_destroyed_it() {
+    let Some(mut s) = start([(&deck_with(&[DD_ASSAILANT]), &[]), (&[WARWOLF; 40], &[])]) else { return };
+    s.run_both([&[Summon(DD_ASSAILANT)], &[Summon(WARWOLF), Attack(WARWOLF)]]).unwrap();
+    assert_eq!(s.lp(0), 8000 - 300, "{}", s.context());
+    assert_eq!(s.count(0, "removed", DD_ASSAILANT), 1, "{}", s.state());
+    assert_eq!(s.count(1, "removed", WARWOLF), 1);
+    assert!(s.monster(1, WARWOLF).is_none());
+    clean(&s);
+}
+
+/// Elemental HERO Bladedge (6477): "If this card attacks a Defense Position monster, inflict piercing battle damage."
+/// Tribute Summoned from two Warwolves, it attacks a Set Spirit Reaper (DEF 200, which can't be destroyed by battle):
+/// 2600 - 200 = 2400.
+#[test]
+fn bladedge_pierces_a_defense_position_monster() {
+    let Some(mut s) = start([(&deck_with(&[BLADEDGE]), &[]), (&deck_with(&[SPIRIT_REAPER]), &[])]) else { return };
+    let plan = [Summon(WARWOLF), EndTurn, Summon(WARWOLF), EndTurn, Summon(BLADEDGE), Attack(BLADEDGE)];
+    s.run_both([&plan, &[SetMonster(SPIRIT_REAPER)]]).unwrap();
+    assert!(s.monster(0, BLADEDGE).is_some(), "{}", s.context());
+    assert_eq!(s.lp(1), 8000 - 2400, "{}", s.state());
+    clean(&s);
+}
+
