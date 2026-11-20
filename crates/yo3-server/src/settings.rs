@@ -88,7 +88,8 @@ pub const REGISTRY: &[Setting] = &[
     Setting { name: "total-seconds", help: "Each player's total clock in duels between players, when the duel sets none (0: off)",
         kind: Kind::Number { min: 0, max: 36_000 }, applies: Applies::NextDuel, default: || json!(crate::clock::DEFAULT_TOTAL) },
     Setting { name: "anime-cards", help: "Duels play the cards with a reviewed anime version by their anime effects (off: the game's own; the cards \
-        the client could not show right keep theirs: docs/playing.md)", kind: Kind::Choice(&["off", "on"]), applies: Applies::NextDuel,
+        the client could not show right keep theirs: docs/playing.md). A game that started before a change cannot duel \
+        until it is restarted (Play again)", kind: Kind::Choice(&["off", "on"]), applies: Applies::NextDuel,
         default: || json!("off") },
     Setting { name: "pack-cost", help: "BP a booster pack costs in Blister's shop (the game shows it when you pick the pack)",
         kind: Kind::Number { min: 1, max: 100_000 }, applies: Applies::NextRequest, default: || json!(crate::shop::PACK_COST) },

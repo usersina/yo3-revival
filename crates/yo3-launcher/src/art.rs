@@ -199,6 +199,24 @@ mod tests {
     }
 
     #[test]
+    fn missing_artwork_is_no_error_and_leaves_each_card_on_the_games_own_art() {
+        // Nothing provided (the first start, or the folder deleted): the folder is made, no face is found, and every card of
+        // the profile is reported without one, so the game keeps its own artwork for all of them (#60).
+        let dir = scratch("missing");
+        let none = prepare(&dir).unwrap();
+        assert!(none.faces.is_empty() && none.made.is_empty() && none.skipped.is_empty());
+        let wanted: BTreeSet<u32> = [4021, 4008].into();
+        assert_eq!(coverage(&none, &wanted), (vec![], vec![4008, 4021]));
+        // One face of two, and a wrong-sized one: only the usable face is used; the other cards keep the game's art.
+        placeholder(&dir.join("card/4021.png"), FACE);
+        placeholder(&dir.join("card/4008.png"), (10, 10));
+        let some = prepare(&dir).unwrap();
+        assert_eq!(coverage(&some, &wanted), (vec![4021], vec![4008]));
+        assert_eq!(some.skipped.len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn a_picture_of_the_wrong_size_or_kind_is_skipped_and_named() {
         let dir = scratch("wrong");
         std::fs::create_dir_all(dir.join("card")).unwrap();

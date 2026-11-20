@@ -211,7 +211,7 @@ pub fn folder_for(original: &Path, server_id: &str) -> PathBuf {
 pub async fn fetch(port: u16, cookie: &str) -> anyhow::Result<String> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let mut stream = tokio::time::timeout(std::time::Duration::from_secs(5), tokio::net::TcpStream::connect(("127.0.0.1", port))).await??;
-    stream.write_all(format!("GET /session/{cookie}/web/card-profile HTTP/1.0\r\nHost: localhost\r\n\r\n").as_bytes()).await?;
+    stream.write_all(format!("GET /session/{cookie}/web/card-profile?for=decks HTTP/1.0\r\nHost: localhost\r\n\r\n").as_bytes()).await?;
     let mut reply = vec![];
     tokio::time::timeout(std::time::Duration::from_secs(10), stream.take(4 << 20).read_to_end(&mut reply)).await??;
     let text = String::from_utf8_lossy(&reply).into_owned();
@@ -302,6 +302,45 @@ mod tests {
     }
 
     #[test]
+    fn switching_the_profile_off_and_on_again_keeps_every_card_and_quantity_of_every_deck() {
+        // Rows: 101 and 102 are Flame Swordsman-like cards the profile moves (Extra in the game, Main in the profile),
+        // 10-12 and 50 are cards it never touches. Three decks, copies of each, and a side deck that is never touched.
+        let decks = [
+            ("A.y3d", (vec![10, 11, 11, 12], vec![101, 101, 101, 50])),
+            ("B.y3d", (vec![101, 10], vec![102, 50, 50])),
+            ("C.y3d", (vec![10, 10, 10], vec![])),
+        ];
+        let dir = fixture(&decks.iter().map(|(n, (m, e))| (*n, deck(m, e))).collect::<Vec<_>>());
+        let folder = dir.path().join("players/Duelist/decks");
+        let counts = |file: &str| {
+            let (main, extra) = lists(&folder.join(file));
+            let mut all: BTreeMap<u16, usize> = BTreeMap::new();
+            for row in main.iter().chain(&extra) { *all.entry(*row).or_default() += 1 }
+            all
+        };
+        let originals: Vec<_> = decks.iter().map(|(n, _)| counts(n)).collect();
+        let anime = |hash: &str| Wanted::parse(&profile(&[(101, 0), (102, 0)], hash));
+        for round in 0..3 {
+            adapt(dir.path(), &anime(&format!("on{round}"))).unwrap();
+            for (i, (name, _)) in decks.iter().enumerate() {
+                assert_eq!(counts(name), originals[i], "{name}: on, round {round}: every card and quantity is still there");
+                let (_, extra) = lists(&folder.join(name));
+                assert!(!extra.contains(&101) && !extra.contains(&102), "{name}: the profile's cards are in the main list");
+            }
+            adapt(dir.path(), &Wanted::parse("")).unwrap();
+            for (i, (name, (main, extra))) in decks.iter().enumerate() {
+                assert_eq!(counts(name), originals[i], "{name}: off, round {round}");
+                let (mut m, mut e) = lists(&folder.join(name));
+                assert!(!m.contains(&101) && !m.contains(&102), "{name}: off, round {round}: the game keeps them in the Extra Deck");
+                if *name == "B.y3d" { continue } // its Main Deck copy of 101 was the player's own and is a game's Extra Deck card again
+                let (mut main, mut extra) = (main.clone(), extra.clone());
+                for v in [&mut m, &mut e, &mut main, &mut extra] { v.sort() }
+                assert_eq!((m, e), (main, extra), "{name}: off, round {round}: exactly as the game had it");
+            }
+        }
+    }
+
+    #[test]
     fn a_card_the_player_put_where_the_profile_wants_it_is_not_recorded_as_moved() {
         let dir = fixture(&[("Mine.y3d", deck(&[101, 1], &[]))]);
         adapt(dir.path(), &Wanted::parse(&profile(&[(101, 0)], "h"))).unwrap();
@@ -358,7 +397,7 @@ mod tests {
             line
         });
         let fetched = fetch(port, "c00kie").await.unwrap();
-        assert_eq!(relay.await.unwrap(), "GET /session/c00kie/web/card-profile HTTP/1.0");
+        assert_eq!(relay.await.unwrap(), "GET /session/c00kie/web/card-profile?for=decks HTTP/1.0");
         assert_eq!(fetched, body);
         assert_eq!(Wanted::parse(&fetched).rows, BTreeMap::from([(101, false)]));
     }

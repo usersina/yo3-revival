@@ -489,9 +489,9 @@ impl CardView {
 pub struct Profiles {
     /// The anime profile over the game's cards (None: its files are missing, or the game's data is).
     pub anime: Option<std::sync::Arc<CardView>>,
-    /// The profile each account's game fetched at start (name, hash): a duel tells a player whose game loaded another
-    /// one to restart it (the client reads its card table once).
-    launches: std::sync::Mutex<HashMap<u32, (String, String)>>,
+    /// The profile each signed-in launch's game fetched at start (name, hash), by session: the client reads its card table
+    /// once, so a game that loaded another profile than the pinned one, or none, is refused every duel (`current_for`).
+    launches: std::sync::Mutex<BTreeMap<crate::auth::Identity, (String, String)>>,
 }
 
 impl Profiles {
@@ -528,19 +528,30 @@ impl Profiles {
         self.selected(anime_cards).map_or_else(String::new, |v| v.profile.render())
     }
 
-    /// What `account`'s game fetched (the profile's name and hash; the game's own is "official" and no hash).
-    pub fn note_launch(&self, account: u32, loaded: (String, String)) {
-        self.launches.lock().unwrap_or_else(|e| e.into_inner()).insert(account, loaded);
+    /// What the game of `who` (a signed-in session) fetched: the profile's name and hash (the game's own is "official" and
+    /// no hash). Only the game's own fetch counts, never the launcher's (`web/card-profile?for=decks`): a game whose
+    /// connection DLL has no profile support fetches nothing and so proves nothing.
+    pub fn note_launch(&self, who: crate::auth::Identity, loaded: (String, String)) {
+        let mut launches = self.launches.lock().unwrap_or_else(|e| e.into_inner());
+        launches.insert(who, loaded);
+        // Sessions are numbered upward and end with their game: the oldest records go first.
+        while launches.len() > MAX_LAUNCHES { launches.pop_first(); }
     }
 
-    /// Whether `account`'s game runs the profile now selected: a game started before the setting changed, or before it
-    /// fetched anything, does not (a game started elsewhere, which fetched nothing, counts as the game's own).
-    pub fn current_for(&self, account: u32, anime_cards: bool) -> bool {
+    /// Whether the game of `who` runs the profile now selected, the only state in which it may duel: a game that loaded
+    /// another profile (the host changed the setting, or the server restarted with another one) does not, and neither does
+    /// one that fetched nothing while a profile is pinned (it started before the setting was turned on, or without profile
+    /// support). With the game's own cards pinned every game is current, except one that loaded a profile. So standard mode
+    /// works for every client, and a profile only ever shuts out games that cannot show it.
+    pub fn current_for(&self, who: crate::auth::Identity, anime_cards: bool) -> bool {
         let want = self.selected(anime_cards).map(|v| v.profile.hash()).unwrap_or_default();
-        let has = self.launches.lock().unwrap_or_else(|e| e.into_inner()).get(&account).map(|(_, h)| h.clone()).unwrap_or_default();
+        let has = self.launches.lock().unwrap_or_else(|e| e.into_inner()).get(&who).map(|(_, h)| h.clone()).unwrap_or_default();
         want == has
     }
 }
+
+/// How many launches `Profiles` remembers.
+const MAX_LAUNCHES: usize = 4096;
 
 fn fnv(text: &str) -> String {
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;

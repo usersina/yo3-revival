@@ -285,7 +285,9 @@ connections, and say so to your players: they are asked to remove files from the
 - **Anime card versions.** `yo3 set anime-cards on` (a [live setting](guide.md#live-settings), off by default, at the
   next duel) makes NPC and player duels play 314 cards by their anime effects, the others as the game has them, and the
   game show them as the anime cards (the [card profile](anime-cards.md#the-card-profile): the server's `/web/card-profile`, which
-  each game fetches once at start, so **a change needs the players to restart their games** (Desktop offers RESTART THE GAME while a game runs the old cards); `yo3 card-profile FILE` writes the
+  each game fetches once at start, so **a change needs the players to restart their games** (Desktop offers RESTART THE GAME while a game runs the old cards, and until they do
+  the server refuses every duel of an open game that loaded another profile, with a chat line saying why; a server restart
+  applies the saved setting, and the games that were open must be restarted anyway); `yo3 card-profile FILE` writes the
   file for a check). Artwork is not shipped: each player puts their own pictures in their `anime-art` folder
   ([where](anime-cards.md#artwork)). What changes for players: [playing](playing.md#anime-card-versions); the list of cards:
   [anime cards](anime-cards.md).

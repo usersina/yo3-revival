@@ -950,6 +950,37 @@ duel-connection command 2 {1, 14} is ignored before the janken; a janken command
 Live with the asymmetric check (only Yugi's deck refused): Kaiba, at the pre-janken screen, got that dialog and went
 back to the map. Card Swaps (`update_type` 2) that fail the deck check are ignored, with `0x22CA`.
 
+**A game with stale card data cannot duel (#60).** The connection DLL fetches the card profile once at start
+(`GET /web/card-profile`, tools/mod/card-profile.h) and rewrites the client's card table in memory; it reads it once. The
+server notes, per signed-in launcher session, which profile (name and hash) each game fetched (`Profiles::note_launch`;
+the launcher's own read to place local decks, `?for=decks`, is not noted). A game is **current** when that hash is the
+pinned one (`anime-cards` on: the anime profile's; off: none, the game's own) and a game that fetched nothing counts as
+the game's own. A game that is not current is refused at every way into a duel, each with the reply the client already
+shows for a refusal, and a `0x2455` line from "Server" first (the one text, `STALE_GAME_NOTE`: close the game and press
+Play again):
+
+| Way in | Request | Refusal | What the client shows | Evidence |
+| --- | --- | --- | --- | --- |
+| Auto Duel, official events' Participate, user events' matching | `0x1798` | `0x179A {error_code 0}` | text 10508 "A transmission error has occurred." and back to the map, with the chat line (`0x4A1380`) | live (2026-11-20, scratch server, `anime-cards` switched off while the game that loaded the anime profile stood open: `0x179A`, the dialog and the line; `logs/d/shots/a3.png`) |
+| NPC duel, Create Duel | `0x17AC` | `0x17AE {error_code 2}` | text 10508 "A transmission error has occurred." and back to the map (`0x4A1790`, as at the duel cap) | client code |
+| Challenge to a hosted duel | `0x17B6` | `0x17B8 {error_code 201}` | "Duel Request was refused." | the table at the challenger step |
+| Create or enter a user event | `0x3390`, `0x3397` | `0x33F5`, `0x33FB` `{error_code 0}` | the events' error twins | `event_request`'s own `fail` |
+| Select Deck (the last gate: a game that went stale while queued, matched or hosting) | `0x1F4F` update_type 1 | `0x22CB` | "You have been disconnected from the Duel Server." and back to the map; the opponent is released as for any refused deck (`0x2009`, `duel_end` 3) | as the deck check above |
+| A stale host's Accept | `0x17CA` answer 2 | answered as a decline (`0x17CB`; the challenger gets `0x17CA` declined) | the challenger's offer is refused | |
+
+A game that loaded the pinned profile is unaffected, and while the game's own cards are pinned every client duels whether
+or not it fetched (so a client without profile support keeps working in standard mode). **Decision:** with a profile
+pinned a game that fetched nothing is refused too, since nothing proves it shows those cards; the DLL cannot report that
+it failed to apply a fetched profile, so that case is not noticed. A duel that starts in the moment between Select Deck's
+check and its own start with the profile changed in that window still adds `RESTART_NOTE` to its chat. Only a game's
+session is known, not its process: two games of one launcher session loading different profiles are not told apart.
+Status: **confirmed** (client code for each refusal), tests: `profile_lifecycle.rs`
+(`a_game_that_loaded_another_profile_cannot_start_any_duel`,
+`a_game_that_loaded_nothing_cannot_duel_while_a_profile_is_pinned_but_standard_mode_serves_every_client`,
+`a_game_that_became_stale_while_waiting_is_refused_at_select_deck_and_its_opponent_is_released`,
+`a_stale_challenger_is_refused_and_a_stale_host_declines`, `a_launch_is_remembered_per_session_and_a_relaunch_is_current`),
+`card_profile_route.rs` `a_restart_serves_the_profile_the_saved_setting_selects`. Live, after the refusal: Play again (stop, start, login) fetched the pinned profile (the game's own cards, then the anime profile with the setting back on) and an NPC duel against Seto Kaiba reached the janken and opened its duel connection, with `--duel-check` on and no refusal or check error in the server log.
+
 **Match membership (server enforcement).** Before a deck update can enter or cancel a duel, its selected player
 must belong to that match, or the NPC duel must have been created by this session. An outsider's Select Deck gets
 the existing `0x22CB` refusal (`0x50ECF0`); other update types are ignored with `0x22CA` (`0x50FDF0`). Neither changes

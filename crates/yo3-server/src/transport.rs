@@ -247,12 +247,14 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
                             return tls.shutdown().await;
                         }
                         // The card profile (#60): what the connection DLL rewrites the client's card table with at start. The
-                        // server notes which one this account's game loaded; a duel tells a game that runs another to restart.
+                        // server notes which one this account's game loaded; a game that runs another is refused every duel (`FrontSession::stale_game`).
                         if path.split('?').next() == Some(CARD_PROFILE_PATH) {
                             let body = world.profiles.file(world.settings.now().anime_cards);
                             let loaded = crate::profile::Profile::identify(&body).unwrap_or_default();
-                            tracing::info!("[tls] {peer} user {} fetched the card profile {} {}", identity.user_id, loaded.0, loaded.1);
-                            world.profiles.note_launch(identity.user_id, loaded);
+                            // The launcher asks too, to place the local decks (`?for=decks`): that proves nothing about the game.
+                            let for_decks = launcher_read(path);
+                            tracing::info!("[tls] {peer} user {} {} the card profile {} {}", identity.user_id, if for_decks { "(launcher) read" } else { "fetched" }, loaded.0, loaded.1);
+                            if !for_decks { world.profiles.note_launch(identity, loaded); }
                             let head = format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
                             tls.write_all(head.as_bytes()).await?;
                             tls.write_all(body.as_bytes()).await?;
@@ -336,6 +338,21 @@ mod handshake_tests {
 
 /// The path of the card profile (`profile.rs`), under the pages the connection DLL may ask for (`/web/`).
 pub const CARD_PROFILE_PATH: &str = "/web/card-profile";
+
+/// Whether a profile request is the launcher's own read to place the local decks (`?for=decks`), not the game's fetch.
+fn launcher_read(path: &str) -> bool {
+    path.split_once('?').is_some_and(|(_, query)| query.split('&').any(|p| p == "for=decks"))
+}
+
+#[cfg(test)]
+mod profile_read_tests {
+    #[test]
+    fn only_the_launchers_marked_read_is_not_a_launch() {
+        assert!(super::launcher_read("/web/card-profile?for=decks"));
+        assert!(!super::launcher_read("/web/card-profile"));
+        assert!(!super::launcher_read("/web/card-profile?for=decks2") && !super::launcher_read("/web/card-profile?x=for=decks"));
+    }
+}
 
 /// The local server's HTTP paths an authenticated launcher may reach: the game's patch and data downloads, duel logs, and
 /// the pages behind its old website links (`/web/`, crate::web); never the admin API (`/api/admin/v1/`, api.rs).
