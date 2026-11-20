@@ -196,6 +196,21 @@ about 20 s behind the server's (the trace's timestamps against the server log). 
 not a confirmed cause of the disconnect. Review regressions cover errors while shutting down either connection,
 retrying interrupted reads and receiving a reply after the request side closes; the warning is checked on both tabs.
 
+## 2026-11-20 — Three Discord reports after v0.1.5
+
+A player on the hosted server (v0.1.5, standard cards) reported that bought packs could not be used, disconnects after
+updating, and a reset duel record at Kaiba Corporation. Packs: the cards were in the account, but the client adds none of a
+present's cards to its trunk and asks for the trunk only at login and when the shop opens, so Edit Deck showed the old
+collection until then (trunk 498 after a pack, 503 after the next login, live on the headless client). This was always so
+(the shop code is the same in v0.1.4 and v0.1.5); the trunk now follows the last present. Disconnects: no close by the server
+turned up in a normal session (login, shop, Edit Deck, NPC duel); the server only closes a front connection when its account
+signs in again (the newest sign-in wins), its session's 12 hours end, a second account's game starts on a device at the
+`games-per-device` cap, or the client breaks a limit. The server's log now says which of these ended a connection. Not
+reproduced. Duel record: the records, the npcbin the Kaiba screen reads, and the NPC duel's result path are the same code in
+v0.1.4 and v0.1.5 (linked accounts leave NPC duels alone); not reproduced, an account or player other than the usual one
+signed in is the likeliest reading. Open: whether the host has `anime-cards` on, which would refuse duels of a game that
+fetched no profile (a game started with the login form typed after its start has none).
+
 ## 2026-11-20 — #65: the `winmm.dll` was ours
 
 The file the player attached (SHA-256 `1fa64875…`) is byte for byte the loader in the v0.1.3 Windows Desktop bundle: our own,

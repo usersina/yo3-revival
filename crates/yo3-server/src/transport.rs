@@ -266,11 +266,15 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
                     }
                 }
             };
+            // Why a connection ended is said in the log: a player who reports being disconnected can then be answered from it.
+            let user = identity.user_id;
             tokio::select! {
-                _ = lease.changed() => {},
-                result = tokio::time::timeout(expires.saturating_duration_since(Instant::now()), work) => {
-                    if let Ok(Err(e)) = result { tracing::debug!("authenticated connection ended: {e}"); }
-                }
+                _ = lease.changed() => tracing::info!("[tls] {peer} user {user} {role:?} closed by the server: the session ended (signed out, or the account signed in again: the newest sign-in wins)"),
+                result = tokio::time::timeout(expires.saturating_duration_since(Instant::now()), work) => match result {
+                    Err(_) => tracing::info!("[tls] {peer} user {user} {role:?} closed by the server: the session's 12 hours are over"),
+                    Ok(Err(e)) => tracing::info!("[tls] {peer} user {user} {role:?} ended with an error: {e}"),
+                    Ok(Ok(())) => tracing::debug!("[tls] {peer} user {user} {role:?} ended"),
+                },
             };
         });
     }
