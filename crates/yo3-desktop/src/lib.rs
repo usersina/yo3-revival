@@ -35,6 +35,7 @@ pub mod options;
 pub mod words;
 pub mod hosting;
 pub mod pictures;
+pub mod anime_cards;
 mod game_data_platform;
 mod process;
 mod github_http;
