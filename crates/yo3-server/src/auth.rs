@@ -126,7 +126,7 @@ pub(crate) fn test_config(log_dir: &std::path::Path) -> TlsConfig {
     tls
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Identity { pub user_id: u32, pub session_id: u64 }
 
 #[derive(Default)]

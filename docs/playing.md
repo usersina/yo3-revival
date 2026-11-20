@@ -152,7 +152,10 @@ Deck card.
 
 - **Restart the game after the host changes the setting.** The game reads its card table once, when it starts. While your game is
   open and the server's cards are not the ones it loaded, the big button reads RESTART THE GAME: it closes the game and starts it
-  again by itself. A duel also tells you when your game started before the change.
+  again by itself. Until you do, **your game cannot start a duel**: Auto Duel, NPC duels, Create Duel, a challenge, an event, and
+  a deck picked for a duel whose match you were already in are all refused, with a line from "Server" in the chat telling you to
+  close the game and press Play again (a game that started before the host turned the setting on is refused too, since it
+  cannot show those cards; with the setting off every game duels as always).
 - **Your decks keep every card and every copy.** A card whose class changes moves to the other list by itself (Flame Swordsman
   from the Extra Deck to the Main Deck); there is nothing to edit. Decks saved in your own Documents folder are the game's files: the launcher places their cards in the right
   lists when you press Play (it keeps the first version of each changed deck beside it as `<name>.y3d.pre-profile`, never

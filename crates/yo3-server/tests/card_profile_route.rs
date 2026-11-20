@@ -60,3 +60,68 @@ async fn the_launcher_gets_the_selected_profile_and_the_game_s_own_by_default() 
     assert!(head.starts_with("HTTP/1.1 200") && head.contains("Content-Length: 0"), "{head}");
     assert!(body.is_empty(), "the game's own cards: an empty file");
 }
+
+/// A server on `dir` (kept between starts: its accounts, TLS identity and settings.json), the way a host restarts it: no
+/// setting overrides, so what `settings.json` holds decides. Returns it with a signed-in launcher session's HTTP tunnel.
+async fn boot(dir: &std::path::Path) -> (yo3_server::Running, String) {
+    let first = !dir.join("server.crt").exists();
+    if first {
+        let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        std::fs::write(dir.join("server.crt"), cert.cert.pem()).unwrap();
+        std::fs::write(dir.join("server.key"), cert.signing_key.serialize_pem()).unwrap();
+        yo3_server::store::initialize(dir).unwrap();
+        let mut d = yo3_server::accounts::Directory::open(vec![], &dir.join("accounts.json")).unwrap();
+        let key = d.add_account(&["Alice".into()]).unwrap();
+        std::fs::write(dir.join("alice.key"), key).unwrap();
+    }
+    let cfg = Config { tls: TlsConfig { port: 0, certificate: dir.join("server.crt"), private_key: dir.join("server.key") },
+        data_dir: Some(dir.to_path_buf()), game_dir: yo3_data::default_game_dir(), allow_missing_game_data: false, ..Config::ephemeral(dir.join("logs")) };
+    let running = start(cfg).await.unwrap();
+    (running, dir.join("server.crt").to_string_lossy().into_owned())
+}
+
+/// What a launcher's game fetches from a running server: the profile file, signed in as Alice.
+async fn fetch_from(running: &yo3_server::Running, certificate: &str, dir: &std::path::Path) -> String {
+    let endpoint = Endpoint::new(running.auth.to_string(), "localhost".into(), std::path::Path::new(certificate)).unwrap();
+    let key = std::fs::read_to_string(dir.join("alice.key")).unwrap();
+    let session = endpoint.login(&key).await.unwrap();
+    let ticket = endpoint.ticket(&session, Role::Http).await.unwrap();
+    let mut tunnel = endpoint.connect(&ticket, Role::Http, 0).await.unwrap();
+    tunnel.write_all(b"GET /web/card-profile HTTP/1.1\r\nHost: x\r\n\r\n").await.unwrap();
+    let mut out = Vec::new();
+    let _ = tunnel.read_to_end(&mut out).await;
+    String::from_utf8_lossy(&out).split_once("\r\n\r\n").map(|(_, b)| b.to_string()).unwrap_or_default()
+}
+
+/// A server restart activates the profile the saved `anime-cards` setting selects, both ways: the game that starts after
+/// it fetches that profile (and the engine, which reads the same setting at each duel, plays the same cards).
+#[tokio::test]
+async fn a_restart_serves_the_profile_the_saved_setting_selects() {
+    let engine = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../engine");
+    if !yo3_data::default_game_dir().join("package/data002.ypk").is_file() || yo3_server::engine::anime_problem(&engine).is_some() {
+        eprintln!("game or anime data missing; skipping");
+        return;
+    }
+    // SAFETY: set before any server starts, to the one value every test of this binary uses.
+    unsafe { std::env::set_var("YO3_ENGINE_DIR", &engine) };
+    let dir = std::env::temp_dir().join(format!("yo3-profile-restart-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let settings = |value: Option<&str>| {
+        let live = yo3_server::settings::Live::open(Some(&dir.join("settings.json")), vec![]).unwrap();
+        match value { Some(v) => live.set("anime-cards", v).map(|_| ()).unwrap(), None => live.reset("anime-cards").map(|_| ()).unwrap() }
+    };
+    let mut seen = vec![];
+    for value in [None, Some("on"), None, Some("on")] {
+        settings(value);
+        let (running, certificate) = boot(&dir).await;
+        let file = fetch_from(&running, &certificate, &dir).await;
+        seen.push(Profile::identify(&file).map(|(name, _)| name));
+        let stop = running.stopper();
+        stop.send_replace(true);
+        running.wait().await;
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    // Each start serves what was saved before it: off, on, off, on.
+    assert_eq!(seen, [None, Some("anime".into()), None, Some("anime".into())], "{seen:?}");
+}

@@ -2829,6 +2829,18 @@ impl FrontSession {
         self.peer = Some(ip);
     }
 
+    /// Whether this game may not duel because its card versions are not the server's (#60): it loaded another profile
+    /// than the one pinned now, or none while one is pinned (`Profiles::current_for`). Says so in the player's chat, and
+    /// the caller refuses the request with the reply the client shows for that request. A session with no identity
+    /// (tests; the TLS front always has one) is never stale.
+    fn stale_game(&self) -> bool {
+        let Some(who) = self.identity else { return false };
+        if self.world.profiles.current_for(who, self.world.settings.now().anime_cards) { return false }
+        tracing::info!("user {}'s game runs another card profile than the server's now; refused", who.user_id);
+        let _ = self.outbox.send(chat_note("Server", crate::engine::STALE_GAME_NOTE));
+        true
+    }
+
     pub fn set_identity(&mut self, identity: crate::auth::Identity) {
         self.identity = Some(identity);
     }
@@ -3341,6 +3353,7 @@ impl FrontSession {
             // `official` set) and the Championship's search for its `event_type` 10 (none here).
             0x177A => self.hub().official_list(),
             // User events (Satellite Plaza's list and Create, the lobby).
+            0x3390 | 0x3397 if self.stale_game() => Message::reply(if id == 0x3390 { 0x33F5 } else { 0x33FB }).with("error_code", Value::U32(0)),
             0x339A | 0x339B | 0x3390 | 0x3397 | 0x178E | 0x3393 | 0x3395 | 0x177F | 0x32C9 | 0x32CA | 0x32CC | 0x32CD | 0x32CE | 0x32D5
             | 0x32CB | 0x1789 => {
                 let p = self.player();
@@ -3426,6 +3439,14 @@ impl FrontSession {
                 {
                     let reply = if msg.get("update_type").and_then(Value::as_u32) == Some(1) { 0x22CB } else { 0x22CA };
                     return vec![Message::reply(reply)];
+                }
+                // Select Deck is the last way into any duel (Auto Duel, NPC, hosted, events): a game that cannot show the
+                // server's card versions is refused here too, whatever it queued or matched under (#60).
+                if duel_id.is_some() && msg.get("update_type").and_then(Value::as_u32) == Some(1) && self.stale_game() {
+                    if let Some(id) = duel_id {
+                        self.hub().refuse_deck(id, player_id);
+                    }
+                    return vec![Message::reply(0x22CB)];
                 }
                 // An NPC duel's opponent is the client's cpu_id: one the server has no NPC for would leave the duel
                 // connection nothing to open (the client sat after the janken), so its Select Deck is refused too.
@@ -3559,6 +3580,7 @@ impl FrontSession {
             0x17CA => return self.answer_challenge(msg),
             // Automatic matching (DuelMenu's decideAuto, agent mode 2, step 0x4A1380): 0x1799 reads nothing, then the
             // agent waits (0x4A1D10) for the match push 0x1978 (0x4A2D30).
+            0x1798 if self.stale_game() => Message::reply(0x179A).with("error_code", Value::U32(0)),
             0x1798 => {
                 let player = self.player();
                 let mut match_type = msg.get("match_type").and_then(Value::as_u32).unwrap_or(0);
@@ -3597,6 +3619,7 @@ impl FrontSession {
             // the duel's rule (cpu_id, match_type, regulation_id, surrender, time_turn, time_total...).
             // At the duel cap (#27): the game's NPC duel and Create Duel error (0x17AE shows "A transmission error has
             // occurred.", text 10508, whatever the code: `0x4A1790`), and the reason in the player's chat.
+            0x17AC if self.stale_game() => Message::reply(0x17AE).with("error_code", Value::U32(2)),
             0x17AC if self.hub().duels_busy() => {
                 let _ = self.outbox.send(chat_note("Server", "Duels are busy: try again in a moment."));
                 Message::reply(0x17AE).with("error_code", Value::U32(1))
@@ -3938,6 +3961,7 @@ impl FrontSession {
         let duel_id = msg.get("duel_id").and_then(Value::as_u32).unwrap_or(0);
         let password = msg.get("password").and_then(Value::as_str).unwrap_or_default();
         let refuse = |code: u32| vec![Message::reply(0x17B8).with("error_code", Value::U32(code))];
+        if self.stale_game() { return refuse(REFUSED) }
         let mut hub = self.hub();
         let Some(host) = hub.hosts.get(&duel_id).filter(|h| h.player_id != me.player_id) else { return refuse(NO_DUEL) };
         let teammates = hub.teams.of(host.player_id).is_some_and(|t| t.member(me.player_id).is_some());
@@ -3966,7 +3990,8 @@ impl FrontSession {
     fn answer_challenge(&mut self, msg: &Message) -> Vec<Message> {
         let player_id = self.player().player_id;
         let duel_id = msg.get("duel_id").and_then(Value::as_u32).unwrap_or(0);
-        let accepted = msg.get("answer").and_then(Value::as_u32) == Some(ACCEPT);
+        // A host whose card versions went stale while it waited declines (the challenger sees its offer refused).
+        let accepted = msg.get("answer").and_then(Value::as_u32) == Some(ACCEPT) && !self.stale_game();
         let mut hub = self.hub();
         let Some(host) = hub.hosts.get_mut(&duel_id).filter(|h| h.player_id == player_id) else { return vec![Message::reply(0x17CB)] };
         let Some(challenger) = host.offer.take() else { return vec![Message::reply(0x17CB)] };

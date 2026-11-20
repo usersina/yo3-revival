@@ -36,6 +36,9 @@ Older entries describe their release at the time. For current setup, use the [RE
   [list](docs/anime-cards.md) names the cards and says why 6 others keep the game's version. When the host changes the
   setting, Desktop offers RESTART THE GAME instead of leaving you with the old cards, and the launcher places the cards of
   your own saved decks in the right lists before the game starts (the first version of a changed deck is kept beside it).
+  A game that is still open with the old cards cannot start any duel (Auto Duel, NPC duels, hosting or challenging a duel,
+  events): the server refuses it with a chat line telling you to press Play again, so nobody duels with card data that
+  differs from what the server plays. With the setting off every game duels as before.
 - Two anime cards ProjectIgnis has no real script for are now our own reconstructions, played with the anime setting on and
   marked as reconstructions in the card's text: **Dark Strike Fighter** (Level 7, 2600/1800; once per turn for each copy,
   in either Main Phase, Tribute another monster you control to inflict its Level x 200 damage, and it cannot attack the turn

@@ -607,7 +607,7 @@ impl DuelSession {
         }
         translator.tokens(self.world.token_rows.clone());
         if engine.plays_anime() { translator.note(crate::engine::ANIME_NOTE); }
-        if let Some(id) = self.identity.filter(|i| !self.world.profiles.current_for(i.user_id, anime)) {
+        if let Some(id) = self.identity.filter(|i| !self.world.profiles.current_for(*i, anime)) {
             tracing::info!("user {}'s game runs another card profile than the server's now", id.user_id);
             translator.note(crate::engine::RESTART_NOTE);
         }

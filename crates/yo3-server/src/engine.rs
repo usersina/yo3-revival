@@ -124,8 +124,11 @@ pub fn problem(dir: Option<&Path>, program: &Path) -> Option<String> {
 /// What a duel tells its players when it plays the anime card versions: the card panel shows the game's text.
 pub const ANIME_NOTE: &str = "Anime card versions are on: cards with one play by their anime effects, whatever their card text says.";
 
-/// What a duel tells a player whose game started before the card profile changed (or without fetching it): the game still
-/// shows the cards it started with, and reads its card table once.
+/// What a game is told when it may not duel because its card versions are not the server's (#60): refused at every way
+/// into a duel (Auto Duel, NPC duels, Create Duel and challenges, official and user events, Select Deck).
+pub const STALE_GAME_NOTE: &str = "Your game is not showing the card versions this server plays now (the host changed them, or your game started without them): close the game and press Play again to duel.";
+/// The note a duel that started in the window between Select Deck's check and the duel's start adds when the profile changed
+/// in that moment (the check itself refuses a stale game, `STALE_GAME_NOTE`).
 pub const RESTART_NOTE: &str = "The host changed the card versions since your game started: restart the game (Play again) to see them as they are played.";
 
 /// What the anime card versions need beside the engine's other files: the reviewed map, the unofficial card database
