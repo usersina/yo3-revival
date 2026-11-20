@@ -621,18 +621,17 @@ impl State {
         }
         let field = |placeholder: &'static str, value: &str, which: AccountField| text_input(placeholder, value)
             .on_input(move |v| Message::AccountEdit(which, v)).on_submit(Message::AccountSubmit).secure(true).style(yo3_skin::field).padding(7).size(15);
+        let mut rows = Vec::new();
         for account in accounts {
             let state = match (account.signed_in, account.stays) {
                 (_, true) => format!("Signed in as {}, and stays signed in on this PC.", account.user),
                 _ => format!("Signed in as {}.", account.user),
             };
+            // One row per server, as Settings' other rows: Sign out on the right, the account's other actions under it.
             let mut row_col = column![
-                row![text(account.server.clone()).size(16).font(BODY_BOLD).color(color::NAVY), Space::new().width(Fill),
-                    yo3_skin::link("Sign out", Message::AccountSignOut(account.key.clone()), false),
-                    yo3_skin::link("Sign out everywhere", Message::AccountForm(account.key.clone(), Some(AccountForm::Everywhere)), false),
-                    yo3_skin::link("Change password", Message::AccountForm(account.key.clone(), Some(AccountForm::Password)), false)].spacing(14).align_y(Center),
-                text(state).size(14).color(color::INK_SOFT),
-            ].spacing(4);
+                row![yo3_skin::link("Sign out everywhere", Message::AccountForm(account.key.clone(), Some(AccountForm::Everywhere)), false),
+                    yo3_skin::link("Change password", Message::AccountForm(account.key.clone(), Some(AccountForm::Password)), false)].spacing(16).align_y(Center),
+            ].spacing(8);
             if let Some((key, form)) = &self.account && *key == account.key {
                 let has_token = account.stays || self.signed_in.get(&account.key).is_some_and(|s| s.device_token.is_some());
                 let cancel = yo3_skin::link("Cancel", Message::AccountForm(account.key.clone(), None), false);
@@ -654,9 +653,10 @@ impl State {
                     ].spacing(8),
                 });
             }
-            col = col.push(container(row_col).padding([10, 12]).width(Fill).style(|_| container::Style { background: Some(color::ROW.into()),
-                border: iced::Border { color: color::CHROME_DARK, width: 1.0, radius: 3.0.into() }, ..container::Style::default() }));
+            rows.push(yo3_skin::setting(account.server.clone(), state, Some(pill("Sign out", Some(Message::AccountSignOut(account.key.clone())), Kind::Secondary, 120, 32)),
+                Some(row_col.into())));
         }
+        if !rows.is_empty() { col = col.push(yo3_skin::setting_group("Signed in on this PC", rows)) }
         if let Some((good, note)) = &self.account_note {
             let shade = if *good { color::GOOD } else { color::BAD };
             col = col.push(row![container(Space::new().width(9).height(9)).style(move |_| dot(shade)), text(note).size(14).font(BODY_BOLD).color(color::INK).width(Fill)]

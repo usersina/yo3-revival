@@ -22,8 +22,11 @@ Older entries describe their release at the time. For current setup, use the [RE
   Game. Ticking it sets it up right away; if your game folder is protected, Windows asks for permission then. Say no and it
   simply stays off: PLAY no longer asks you to **Allow** every time.
 - Anime pictures now sit right under the **Anime cards** tick in Settings → Singleplayer, shown while it is on.
-- The Settings cog moved from the title bar to the bottom left. The footer has a red-heart **Support us** and a new **Help &
-  contact** window: read the guide, ask the community, or report a problem.
+- A new footer: a red-heart **Support us** on the left, the version in the middle, and **Help** and **Settings** on the right
+  (Settings moved there from the title bar). Help opens a small window: read the guide, ask the community, or report a
+  problem; every problem's toast also has its own Report link.
+- Settings is easier to read: each section is short groups of rows, with the setting's name and one line on the left and
+  its control on the right, and switches for everything that is on or off.
 - Fixed: choosing another game folder in setup no longer asks Windows for permission to tidy a folder another launcher set
   up; the anime picture count refreshes when you come back to it; after Sign out you can type your User ID straight away;
   Cancel during a slow start no longer shows "Start your server first."; REPAIR checks the files again first, so a file you put back yourself turns it back into PLAY.

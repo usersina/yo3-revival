@@ -560,31 +560,31 @@ impl App {
     }
 
     fn footer(&self) -> Element<'_, Message> {
+        // Support on the left; the version and what runs in the middle; Help, then Settings in the far right corner
+        // (the player's layout, 2026-11-20). Report a problem is in Help and on every problem toast.
         let version = format!("v{}", yo3_tunnel::BUILD_VERSION.trim_start_matches('v'));
-        // The cog first: Settings, or back from it (not during setup).
-        let cog: Option<Element<'_, Message>> = self.setup.is_none()
-            .then(|| yo3_skin::icon_link(Icon::Cog, if self.settings.is_some() { "Close settings" } else { "Settings" }, Message::ToggleSettings, true));
         // The version opens About; a separate update link opens What's new (#32).
-        let versions = match self.updater.offered() {
-            Some(offered) => row![
-                row![yo3_skin::link(version, Message::OpenSettings(settings::Section::About), true),
-                    container(container(Space::new().width(8).height(8)).style(|_| dot(color::WARN))).height(20).align_y(iced::alignment::Vertical::Top)].spacing(1),
-                yo3_skin::link(update_line(offered, self.updater.ready().is_some()), Message::Home(home::Message::WhatsNew), true),
-            ],
-            None => row![yo3_skin::link(version, Message::OpenSettings(settings::Section::About), true)],
-        }.spacing(10).align_y(Center);
-        let mut line = match cog { Some(cog) => row![cog, versions], None => row![versions] }.spacing(18).align_y(Center);
+        let mut middle = row![yo3_skin::link(version, Message::OpenSettings(settings::Section::About), true)].spacing(10).align_y(Center);
+        if let Some(offered) = self.updater.offered() {
+            middle = middle.push(container(Space::new().width(8).height(8)).style(|_| dot(color::WARN)))
+                .push(yo3_skin::link(update_line(offered, self.updater.ready().is_some()), Message::Home(home::Message::WhatsNew), true));
+        }
         if self.host.hosted.is_some() {
             // Hosting for friends runs while the launcher is open: the footer says so and opens its dialog.
             let online = self.host.activity.online;
-            line = line.push(container(Space::new().width(9).height(9)).style(|_| dot(color::GOOD)))
+            middle = middle.push(container(Space::new().width(9).height(9)).style(|_| dot(color::GOOD)))
                 .push(yo3_skin::link(format!("Hosting for friends · {online} online"), Message::Home(home::Message::Multi(crate::multi::Message::Host)), true));
         }
-        // A red heart for Support, then one friendly door to the guide, the community and a report.
-        let footer = line.push(Space::new().width(Fill)).push(yo3_skin::support_link("Support us", Message::OpenSupport))
-            .push(Space::new().width(16)).push(yo3_skin::icon_link(Icon::Chat, "Help & contact", Message::OpenContact, true))
-            .padding([0, 16]).height(Fill).align_y(Center);
-        container(yo3_skin::footer_strip(footer)).height(38).into()
+        let mut right = row![yo3_skin::dock_button(Icon::Help, "Help", Message::OpenContact, matches!(self.dialog, Some(Dialog::Contact)))].spacing(8).align_y(Center);
+        if self.setup.is_none() {
+            right = right.push(yo3_skin::dock_button(Icon::Cog, "Settings", Message::ToggleSettings, self.settings.is_some()));
+        }
+        let footer = row![
+            container(yo3_skin::support_link("Support us", Message::OpenSupport)).width(Fill),
+            middle,
+            container(right).width(Fill).align_x(iced::alignment::Horizontal::Right),
+        ].align_y(Center).padding([0, 14]).height(Fill);
+        container(yo3_skin::footer_strip(footer)).height(44).into()
     }
 
     fn dialog(&self, which: Dialog) -> Element<'_, Message> {

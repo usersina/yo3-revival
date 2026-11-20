@@ -703,6 +703,61 @@ pub fn badge<'a, M: 'a>(count: usize) -> Element<'a, M> {
             border: Border { color: alpha(Color::BLACK, 0.4), width: 1.0, radius: 8.0.into() }, ..container::Style::default() }).into()
 }
 
+/// An on/off switch's look: blue when on, steel when off, a white knob; paler when it can't be changed now.
+pub fn switch(_theme: &Theme, status: iced::widget::toggler::Status) -> iced::widget::toggler::Style {
+    use iced::widget::toggler::Status;
+    let (on, hover, disabled) = match status {
+        Status::Active { is_toggled } => (is_toggled, false, false),
+        Status::Hovered { is_toggled } => (is_toggled, true, false),
+        Status::Disabled { is_toggled } => (is_toggled, false, true),
+    };
+    let track = match (on, hover) { (true, false) => PLAY, (true, true) => PLAY_TOP, (false, false) => CHROME_DARK, (false, true) => mix(CHROME_DARK, INK, 0.25) };
+    let track = if disabled { alpha(track, 0.45) } else { track };
+    iced::widget::toggler::Style { background: track.into(), background_border_width: 1.0, background_border_color: alpha(Color::BLACK, 0.25),
+        foreground: if disabled { alpha(Color::WHITE, 0.8) } else { Color::WHITE }.into(), foreground_border_width: 0.0, foreground_border_color: Color::TRANSPARENT,
+        text_color: Some(INK), border_radius: None, padding_ratio: 0.12 }
+}
+
+/// A settings group: a small heading over a card of rows (`setting`), with hairlines between them.
+pub fn setting_group<'a, M: 'a>(label: &'a str, rows: Vec<Element<'a, M>>) -> Element<'a, M> {
+    let mut card = iced::widget::Column::new();
+    let count = rows.len();
+    for (i, row) in rows.into_iter().enumerate() {
+        card = card.push(row);
+        if i + 1 < count { card = card.push(container(iced::widget::Space::new().width(Grow).height(1)).style(|_| container::Style { background: Some(alpha(CHROME_DARK, 0.45).into()), ..container::Style::default() })) }
+    }
+    iced::widget::column![
+        text(label).font(DISPLAY).size(15).color(NAVY),
+        container(card).width(Grow).style(|_| container::Style { background: Some(alpha(Color::WHITE, 0.55).into()),
+            border: Border { color: alpha(CHROME_DARK, 0.7), width: 1.0, radius: 6.0.into() }, ..container::Style::default() }),
+    ].spacing(6).into()
+}
+
+/// One setting: its name and one short line on the left, its control on the right; `below` (if any) under the line,
+/// for what belongs to it (a confirmation, a progress bar, a sub-setting).
+pub fn setting<'a, M: 'a>(title: impl text::IntoFragment<'a>, line: impl text::IntoFragment<'a>, control: Option<Element<'a, M>>, below: Option<Element<'a, M>>) -> Element<'a, M> {
+    let mut head = iced::widget::row![iced::widget::column![text(title).size(15).font(BODY_BOLD).color(INK), text(line).size(13).color(INK_SOFT)].spacing(2).width(Grow)]
+        .spacing(14).align_y(iced::Alignment::Center);
+    if let Some(control) = control { head = head.push(control) }
+    let mut body = iced::widget::column![head].spacing(10);
+    if let Some(below) = below { body = body.push(below) }
+    container(body).padding([10, 14]).width(Grow).into()
+}
+
+/// A button on the footer: an icon and a word in a quiet outline that lights up on hover; `active` while its screen is open.
+pub fn dock_button<'a, M: Clone + 'a>(which: Icon, label: impl text::IntoFragment<'a>, on_press: M, active: bool) -> Element<'a, M> {
+    button(iced::widget::row![
+        svg(ICONS[which as usize].clone()).width(16).height(16).style(move |_, status| svg::Style {
+            color: Some(if active || matches!(status, svg::Status::Hovered) { Color::WHITE } else { ON_DARK_SOFT }) }),
+        text(label).size(14).font(BODY_BOLD),
+    ].spacing(7).align_y(iced::Alignment::Center)).padding([4, 12]).on_press(on_press).style(move |_, status| {
+        let hover = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style { background: Some(alpha(GLOW, if active { 0.22 } else if hover { 0.14 } else { 0.0 }).into()),
+            text_color: if active || hover { Color::WHITE } else { ON_DARK },
+            border: Border { color: alpha(GLOW, if active || hover { 0.8 } else { 0.35 }), width: 1.0, radius: 12.0.into() }, ..button::Style::default() }
+    }).into()
+}
+
 /// What a toast is about: its accent stripe's colour.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tone { Good, Bad, Busy }

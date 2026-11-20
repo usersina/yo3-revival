@@ -93,11 +93,12 @@ Sizes: 15 px body, 14 px captions and footer, 19 px frame titles, about half the
 | Count | `badge(n)` on a control's corner | red with a white number, 9+ above nine |
 | Frame | `panel(Some(title), content)` | silver rim with four bolts, navy title strip with stripes, light-grey body |
 | Title bar, footer | `title_strip(content)`, `footer_strip(content)` | dark bars with a silver line toward the content |
+| Settings rows | `setting_group(label, rows)`, `setting(title, line, control, below)`, `switch` (a `toggler` style) | a labelled card of rows: name and one line left, control right; on/off settings are switches |
 | Toast | `toast(content, Tone)` | a card in the bottom right corner with a green, red or blue stripe; never moves the page |
 | Text field | `text_input(..).style(field)` | white well, blue ring when focused; `.secure(true)` for passwords |
 | Checkbox | `checkbox(..).style(tick)` | navy when ticked |
 | Drop-down | `pick_list(..).style(choice).menu_style(choice_menu)` | white well; the open list highlights in navy |
-| Link | `link(label, message, on_dark)`; `danger_link` in red; `icon_link(icon, ..)` led by an icon (the footer's Settings and Help & contact); `support_link` the footer's red-heart chip | blue on panels, pale on bars; brighter on hover |
+| Link | `link(label, message, on_dark)`; `danger_link` in red; `icon_link(icon, ..)` led by an icon; `support_link` the footer's red-heart chip; `dock_button(icon, ..)` the footer's Help and Settings | blue on panels, pale on bars; brighter on hover |
 | Icon | `icon(Icon::.., size, colour)`: line icons on a 24 px grid, tinted | copy, save, help, flag, heart, more, check, cross, pending, plus, trash, server, user, open, bell, link, refresh |
 | Icon button | `icon_button(icon, message, tip, on_dark)` | 30 px square, a tip under the pointer, a soft face on hover; faded when disabled |
 | Menu | `menu(items, width)` of `Item { icon, label, on_press, danger }` | a light card with a shadow; rows highlight on hover; red for a removal |

@@ -182,7 +182,7 @@ For a server that runs without the launcher (an always-on PC or a VPS), use the 
 
 ## Settings
 
-The cog at the bottom left (**Settings**) opens **Settings**; **Back**, the same cog (**Close settings**) or Escape returns to the main screen. **Unreleased:** the cog moved there from the title bar. Every change is saved at
+**Settings** at the bottom right opens **Settings**; **Back**, **Settings** again or Escape returns to the main screen. **Unreleased:** it moved there from the title bar, and each section is grouped rows: a setting's name and one line on the left, its control (a switch for on and off) on the right.
 once and applies at the next PLAY (or your server's next start), without restarting YO3 Revival.
 
 **Escape** closes the topmost thing first (**Since v0.1.5 (2026-11-20)**): an open dialog, then the bell's list or the server tools, then a
@@ -280,12 +280,12 @@ old one first.
 
 ## Help and errors
 
-**Help & contact** in the footer (**Unreleased**) opens **Need a hand?**: **Read the guide**, **Ask the community** (the
+**Help** at the bottom right, beside Settings (**Unreleased**), opens **Need a hand?**: **Read the guide**, **Ask the community** (the
 project's discussions) and **Report a problem**. The guide is inside the launcher, a topic at a time: getting started, Singleplayer,
 Multiplayer, hosting, settings, the common problems and where to talk with other players (the project's
 [discussions](https://github.com/usersina/yo3-revival/discussions)). Its **Report a problem** starts a report.
 
-**Support us**, the red heart in the footer, says how to help the project: its discussions, and a donation link. YO3 Revival
+**Support us**, the red heart at the bottom left, says how to help the project: its discussions, and a donation link. YO3 Revival
 is free, and giving changes nothing in the game.
 
 Every error is one plain sentence with one action: its own (**Retry**, **Fix**, **Repair**, **Restore a
@@ -300,7 +300,7 @@ folders written as names such as `<game>` or `<app data>`, and **Copy** puts it 
 
 ## Logs and support
 
-**Report a problem** (in the footer's **Help & contact**, in Help, or beside an error):
+**Report a problem** (in **Help** at the bottom right, in the guide, or on a problem's toast):
 
 1. Say what you were doing and what went wrong.
 2. Click **Continue on GitHub**. YO3 Revival saves this session's logs in a ZIP, with personal details removed, opens
