@@ -669,7 +669,7 @@ impl State {
         let choices = home.banlists();
         let selected = choices.iter().find(|c| c.value == ctx.settings.banlist).cloned();
         let banlist: Element<'_, Message> = if playing {
-            text(format!("{} (it can change while the game is closed)", selected.map_or_else(|| "Season 16 (default)".to_owned(), |b| b.name))).size(15).color(color::INK).into()
+            text(selected.map_or_else(|| "Season 16 (default)".to_owned(), |b| b.name)).size(15).color(color::INK).into()
         } else {
             pick_list(choices, selected, |b: home::Banlist| Message::Change(Change::Banlist(b.value))).style(yo3_skin::choice).menu_style(yo3_skin::choice_menu)
                 .width(280).padding([6, 10]).placeholder("Season 16 (default)").into()
@@ -682,7 +682,8 @@ impl State {
         }
         column![
             item("Anime cards", self.anime_cards_view(playing)),
-            item("Banlist", column![banlist, text("The banlist your own server checks decks against. From the next PLAY.").size(14).color(color::INK_SOFT)].spacing(6).into()),
+            item("Banlist", column![banlist, text(if playing { "The banlist your own server checks decks against. It can change while the game is closed." }
+                else { "The banlist your own server checks decks against. From the next PLAY." }).size(14).color(color::INK_SOFT)].spacing(6).into()),
             item("Backups", column![
                 text("Your server keeps a backup from each of its last starts.").size(14).color(color::INK_SOFT),
                 row![pill("Back up now", self.busy.is_none().then_some(Message::BackUp), Kind::Secondary, 150, 32),
