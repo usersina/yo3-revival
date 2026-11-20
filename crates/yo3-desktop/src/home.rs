@@ -349,7 +349,10 @@ impl State {
                 let settings = ctx.settings.clone();
                 return job(move || { if backend.games().iter().any(|g| g.id == id) { backend.force_close_game(&settings, id)? } Ok(()) }, Message::GameClosed);
             }
-            Message::ExtraStarted(result) => if let Err(error) = result { self.fail(ctx, error) },
+            Message::ExtraStarted(result) => {
+                let _ = self.multi.update(multi::Message::StartDone, ctx);
+                if let Err(error) = result { self.fail(ctx, error) }
+            }
             Message::Multi(multi::Message::Cancel) => return self.update(Message::Cancel, ctx),
             Message::Multi(multi::Message::Copy(text)) => {
                 let task = self.multi.update(multi::Message::Copy(text.clone()), ctx).map(Message::Multi);

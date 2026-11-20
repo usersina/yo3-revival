@@ -124,6 +124,8 @@ pub enum Message {
     PlayAsGo,
     PlayAsSignedIn(String, Result<SignedIn, Problem>),
     PlayAsStart(Box<Server>, SignedIn),
+    /// The extra game's start finished (it runs, or said why it didn't): "Starting a game as…" goes.
+    StartDone,
     /// The games running now (from the main screen), and one's Close (handled by the main screen).
     Games(Vec<GameInfo>),
     CloseGameId(u64),
@@ -404,6 +406,7 @@ impl State {
             }
             Message::Games(list) => self.games = list,
             Message::PlayAsStart(..) | Message::CloseGameId(_) => {}
+            Message::StartDone => self.note = None,
             Message::SignOut => if let Some(key) = self.selected.clone() { return self.sign_out(&key) },
             Message::SignedOut(result) => if let Err(problem) = result && problem != Problem::Unreachable { self.problem = Some(problem) },
             Message::Register => {
@@ -1051,6 +1054,9 @@ mod tests {
         // Its sign-in worked: the game starts, handled by the main screen, and the form closes.
         let _ = state.update(Message::PlayAsSignedIn(key.clone(), Ok(signed("Joey", None))), &ctx);
         assert!(!state.busy && state.form == Form::SignIn && state.note.as_deref().is_some_and(|n| n.contains("Joey")));
+        // Once the start is over (the game runs, or said why it didn't) the line goes: it stayed for the whole session before.
+        let _ = state.update(Message::StartDone, &ctx);
+        assert!(state.note.is_none(), "{:?}", state.note);
         // The server's own refusal (the host's cap of games per PC) is a plain sentence.
         let _ = state.update(Message::PlayAsSignedIn(key, Err(Problem::DeviceFull { limit: 1 })), &ctx);
         assert!(state.problem.as_ref().unwrap().sentence().contains("1 game"), "{:?}", state.problem);

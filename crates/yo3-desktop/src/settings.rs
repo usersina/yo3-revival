@@ -39,9 +39,25 @@ pub fn sizes(current: &str) -> Vec<Size> {
     list
 }
 
+/// What the Settings line says about opening the game without the launcher, from the saved choice and what the game folder holds.
+pub fn direct_of(wanted: bool, state: direct::State) -> Direct {
+    match state {
+        _ if !wanted => Direct::Off,
+        direct::State::Enabled => Direct::On,
+        direct::State::Conflict(why) => Direct::Conflict(why),
+        direct::State::NeedsRepair(_) => Direct::Repair,
+        direct::State::Disabled => Direct::NextPlay,
+    }
+}
+
 /// What opening the game without the launcher is like now.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Direct { Unknown, Off, On, NextPlay, Conflict(String) }
+pub enum Direct {
+    Unknown, Off, On, NextPlay,
+    /// YO3 Revival's own loader is in the game folder but needs its files put right (#65).
+    Repair,
+    Conflict(String),
+}
 
 #[derive(Clone, Debug)]
 pub enum Message {
@@ -136,12 +152,7 @@ impl State {
         let Some(backend) = ctx.backend.clone() else { return Task::none() };
         let settings = ctx.settings.clone();
         Task::perform(async move {
-            tokio::task::spawn_blocking(move || match backend.direct_state(&settings) {
-                _ if !settings.direct_start => Direct::Off,
-                direct::State::Enabled => Direct::On,
-                direct::State::Conflict(why) => Direct::Conflict(why),
-                direct::State::Disabled | direct::State::NeedsRepair(_) => Direct::NextPlay,
-            }).await.unwrap_or(Direct::Unknown)
+            tokio::task::spawn_blocking(move || direct_of(settings.direct_start, backend.direct_state(&settings))).await.unwrap_or(Direct::Unknown)
         }, Message::DirectChecked)
     }
 
@@ -364,6 +375,7 @@ impl State {
             Direct::Off => "Off: the game opens only from YO3 Revival.".to_owned(),
             Direct::On => "On: opening the game from its own shortcut signs you in to Singleplayer.".to_owned(),
             Direct::NextPlay => "On: the next PLAY sets it up.".to_owned(),
+            Direct::Repair => "On: YO3 Revival's own file in the game folder needs repair. The next PLAY puts it right.".to_owned(),
             Direct::Conflict(_) => "Another program's file is where it would go, so it stays off. Play from YO3 Revival.".to_owned(),
         };
         let mut direct = column![
@@ -488,6 +500,17 @@ mod tests {
     use super::*;
 
     fn ctx() -> Ctx { Ctx { root: std::env::temp_dir(), backend: None, store: None, settings: Default::default() } }
+
+    #[test]
+    fn our_own_loader_that_needs_repair_is_said_so_and_never_an_unowned_mod() {
+        // #65 on Windows 11: the line read "the next PLAY sets it up" for a loader without its receipt.
+        let own = direct_of(true, direct::State::NeedsRepair("receipt missing".into()));
+        assert_eq!(own, Direct::Repair);
+        assert_eq!(direct_of(true, direct::State::Disabled), Direct::NextPlay);
+        assert!(matches!(direct_of(true, direct::State::Conflict("another".into())), Direct::Conflict(_)));
+        assert_eq!(direct_of(false, direct::State::NeedsRepair("x".into())), Direct::Off, "the choice is off: nothing to repair");
+        assert_eq!(direct_of(true, direct::State::Enabled), Direct::On);
+    }
 
     /// Each setting the screen saves (the database round trip is `options`' tests): the window's copy changes at once,
     /// so the next Play reads it without a restart.
