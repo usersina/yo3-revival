@@ -1,5 +1,5 @@
 //! The anime artwork folder (issue #60, `docs/anime-cards.md`): pictures a player or host provides for the cards the card
-//! profile shows as their anime versions. Nothing here ships or fetches an image. The launcher creates the folder, hands
+//! profile shows as their anime versions. Nothing here ships an image. The launcher creates the folder, hands
 //! its path to the game as `YO3_ANIME_ART` (the connection DLL reads it) and keeps the thumbnails in step with the faces.
 //!
 //! ```text
@@ -7,8 +7,12 @@
 //! anime-art/mini/<Konami id>.png   the thumbnail, 50x72 (the game's data/mini/): optional, made from the face when missing
 //! ```
 //!
-//! A card without a file keeps its own artwork. A thumbnail the launcher made is listed in `mini/.derived` and made again when
-//! its face changes; one the player provided is never touched.
+//! Where the pictures come from: Desktop fetches them from ProjectIgnis' picture server when the player clicks (`get`), or
+//! takes a zip of this folder's own layout (`pack`). A card without a file keeps its own artwork. A thumbnail the launcher made is listed in `mini/.derived` and made
+//! again when its face changes; one the player provided is never touched.
+pub mod get;
+pub mod pack;
+
 use std::collections::BTreeSet;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -42,7 +46,12 @@ fn id_of(path: &Path) -> Option<u32> {
 
 fn read_png(path: &Path) -> Result<(u32, u32, Vec<u8>), String> {
     let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-    let mut decoder = png::Decoder::new(io::BufReader::new(file));
+    decode_png(io::BufReader::new(file))
+}
+
+/// A PNG as RGBA, judged exactly as the folder's files are: pictures much larger than a face come back without pixels.
+fn decode_png(input: impl io::BufRead + io::Seek) -> Result<(u32, u32, Vec<u8>), String> {
+    let mut decoder = png::Decoder::new(input);
     decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
     let mut reader = decoder.read_info().map_err(|e| e.to_string())?;
     // A face is 200x290: anything much larger is refused before it is decoded.
@@ -83,7 +92,7 @@ pub fn downscale(rgba: &[u8], (w, h): (u32, u32), to: (u32, u32)) -> Vec<u8> {
     out
 }
 
-fn write_png(path: &Path, (w, h): (u32, u32), rgba: &[u8]) -> io::Result<()> {
+pub(crate) fn write_png(path: &Path, (w, h): (u32, u32), rgba: &[u8]) -> io::Result<()> {
     let tmp = path.with_extension("png.tmp");
     {
         let mut encoder = png::Encoder::new(io::BufWriter::new(std::fs::File::create(&tmp)?), w, h);

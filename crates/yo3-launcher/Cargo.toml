@@ -12,6 +12,7 @@ workspace = true
 anyhow.workspace = true
 clap.workspace = true
 getrandom.workspace = true
+jpeg-decoder.workspace = true
 keyring.workspace = true
 png.workspace = true
 ring.workspace = true
@@ -19,10 +20,12 @@ serde.workspace = true
 serde_json.workspace = true
 subtle.workspace = true
 tokio.workspace = true
+zip.workspace = true
 yo3-proto.workspace = true
 yo3-tunnel.workspace = true
 
 [dev-dependencies]
+jpeg-encoder.workspace = true
 yo3-server.workspace = true
 
 [target.'cfg(windows)'.dependencies]

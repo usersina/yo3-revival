@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+"""tools/engine/anime-pictures.py and engine/anime/pictures.tsv (issue #60): the list of the pictures Desktop offers to
+fetch is exactly what the reviewed map says, one row per card, and holds no image."""
+import importlib.util
+import json
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+SPEC = importlib.util.spec_from_file_location('anime_pictures', Path(__file__).with_name('anime-pictures.py'))
+pictures = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(pictures)
+
+MAP = json.loads((ROOT / 'engine/anime-cards.json').read_text(encoding='utf-8'))
+
+
+class AnimePictures(unittest.TestCase):
+    def test_the_committed_list_is_what_the_map_builds(self):
+        self.assertEqual((ROOT / 'engine/anime/pictures.tsv').read_text(encoding='utf-8'), pictures.build(MAP))
+
+    def test_every_card_of_the_map_has_one_row_with_a_passcode_to_fetch(self):
+        rows = [line.split('\t') for line in pictures.build(MAP).splitlines()[1:]]
+        self.assertEqual([int(r[0]) for r in rows], sorted(c['cid'] for c in MAP['cards']))
+        self.assertEqual(len(rows), 418)
+        for cid, anime, official in rows:
+            self.assertTrue(int(official) > 0, cid)
+            self.assertTrue(anime.isdigit(), cid)
+        by = {int(r[0]): r for r in rows}
+        # The Gods use ProjectIgnis' anime passcodes like any card; Temple of the Kings has none, so its official picture is fetched.
+        self.assertEqual(by[4998][1:], ['511600398', '10000000'])
+        self.assertEqual(by[5231][1:], ['0', '29762407'])
+        self.assertEqual(by[8035][1:], ['513000079', '32646477'])
+
+    def test_a_card_without_any_passcode_is_refused(self):
+        with self.assertRaises(SystemExit):
+            pictures.build({'cards': [{'cid': 1, 'anime': 0, 'official': 0}]})
+
+
+if __name__ == '__main__':
+    unittest.main()

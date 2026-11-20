@@ -26,6 +26,8 @@ iced = { version = "0.14.0", default-features = false }
 if-addrs = "0.15.0"
 hyper = { version = "1.12.0", default-features = false, features = ["server", "http1"] }
 hyper-util = { version = "0.1.21", default-features = false, features = ["tokio", "service"] }
+jpeg-decoder = { version = "0.3.2", default-features = false }
+jpeg-encoder = { version = "0.7.0", default-features = false }
 keyring = { version = "4.2.0", default-features = false, features = ["v1"] }
 png = "0.17.16"
 proptest = "1.12.0"
