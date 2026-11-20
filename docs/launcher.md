@@ -185,6 +185,10 @@ For a server that runs without the launcher (an always-on PC or a VPS), use the 
 The gear at the top right opens **Settings**; **Back** or Escape returns to the main screen. Every change is saved at
 once and applies at the next PLAY (or your server's next start), without restarting YO3 Revival.
 
+**Escape** closes the topmost thing first (**Unreleased**): an open dialog, then the bell's list or the server tools, then a
+Multiplayer form (**Add a server**, **Create account**, **Forgot password?**; a recovery code shown once stays until you
+press **I saved it**), then Settings. In a text box the first Escape only leaves the box.
+
 ![Settings, Game: the game folder, Verify and repair, the screen size, direct start and the shortcut](../screenshots/settings.png)
 
 | Section | What it has |
