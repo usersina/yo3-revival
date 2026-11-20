@@ -54,6 +54,8 @@ pub enum Message {
     Host(host::Message),
     CloseDialog,
     Show,
+    /// A tick while an update downloads, so What's new's bar moves.
+    DownloadTick,
     Drag,
     Minimize,
     CloseRequested,
@@ -85,6 +87,8 @@ pub struct App {
     host: host::State,
     dialog: Option<Dialog>,
     updater: updates::flow::Updater,
+    /// The update download in the background: its bytes so far, for What's new's bar.
+    transfer: updates::download::Transfer,
     startup: updates::activation::Startup,
     quitting: bool,
 }
@@ -126,7 +130,7 @@ impl App {
             listen_for_second_starts(&ctx.root, claim),
         ];
         if let Some(setup) = &mut setup { tasks.push(setup.start(&ctx).map(Message::Setup)) }
-        (Self { ctx, home, setup, settings: None, help: help::State::at(None), report: Report::default(), foreign: None, host: host::State::default(), dialog: None, updater, startup, quitting: false },
+        (Self { ctx, home, setup, settings: None, help: help::State::at(None), report: Report::default(), foreign: None, host: host::State::default(), dialog: None, updater, transfer: Default::default(), startup, quitting: false },
             Task::batch(tasks))
     }
 
@@ -247,6 +251,7 @@ impl App {
                 return Task::batch([task, self.home.update(home::Message::Multi(crate::multi::Message::Hosted(Box::new(own))), &mut self.ctx).map(Message::Home)]);
             }
             Message::CloseDialog => self.dialog = None,
+            Message::DownloadTick => {}
             Message::Show => return window::latest().and_then(|id| Task::batch([window::minimize(id, false), window::gain_focus(id)])),
             Message::Drag => return window::latest().and_then(window::drag),
             Message::Minimize => return window::latest().and_then(|id| window::minimize(id, true)),
@@ -293,8 +298,10 @@ impl App {
                 // A new version downloads and is checked in the background; it installs only on restart.
                 let Some(release) = self.updater.checked(result) else { return Task::none() };
                 let (root, tag) = (self.ctx.root.clone(), release.tag.clone());
+                self.transfer = Default::default();
+                let transfer = self.transfer.clone();
                 return Task::perform(async move {
-                    let installed = updates::download::prepare(root.clone(), release, Default::default()).await?;
+                    let installed = updates::download::prepare(root.clone(), release, transfer).await?;
                     let pending = installed.clone();
                     tokio::task::spawn_blocking(move || updates::install::set_pending(&root, &pending)).await??;
                     anyhow::Ok(installed)
@@ -436,6 +443,9 @@ impl App {
         if self.setup.is_none() { all.push(self.home.subscription().map(Message::Home)) }
         all.push(self.host.subscription().map(Message::Host));
         all.push(iced::time::every(std::time::Duration::from_secs(10 * 60)).map(|_| Message::UpdateTick));
+        if matches!(self.updater.stage, updates::flow::Stage::Downloading(_)) && self.dialog.is_some() {
+            all.push(iced::time::every(std::time::Duration::from_millis(400)).map(|_| Message::DownloadTick));
+        }
         Subscription::batch(all)
     }
 
@@ -642,10 +652,16 @@ impl App {
             notes = notes.push(if block.bullet { row![text("•").size(15).color(color::INK), paragraph].spacing(8).into() } else { Element::from(paragraph) });
         }
         let restart = self.updater.ready().is_some() && !playing && !self.quitting;
+        let mut progress = column![].spacing(6);
+        if matches!(self.updater.stage, updates::flow::Stage::Downloading(_)) {
+            let (fraction, words) = updates::flow::download_line(self.transfer.bytes(), release.asset.bytes, self.transfer.verifying());
+            progress = progress.push(yo3_skin::progress_bar(fraction.map_or(yo3_skin::Bar::Starting, yo3_skin::Bar::Fraction), words, 22.0));
+        }
         let mut buttons = row![yo3_skin::icon_link(Icon::Open, "Release page", Message::OpenLink(release.url.clone()), false), Space::new().width(Fill)].spacing(10).align_y(Center);
         if self.updater.ready().is_some() { buttons = buttons.push(pill("Restart to install", restart.then_some(Message::Home(home::Message::RestartToInstall)), Kind::Primary, 190, 38)) }
         yo3_skin::dialog(&format!("What's new in {}", release.tag.trim_start_matches('v')), None, Message::CloseDialog, 620.0, 440.0, column![
             iced::widget::scrollable(notes).height(Fill),
+            progress,
             text(self.updater.status(playing)).size(14).font(yo3_skin::BODY_BOLD).color(color::INK_SOFT),
             buttons,
         ].spacing(12))

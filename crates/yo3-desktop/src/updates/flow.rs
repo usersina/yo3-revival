@@ -107,6 +107,14 @@ impl Updater {
     pub fn remedy(&self) -> Remedy { if self.release().is_some() { Remedy::WhatsNew } else { Remedy::Releases } }
 }
 
+/// The bar of an update being downloaded: how far (0 to 1, none while it is being checked) and its words, from the bytes received.
+pub fn download_line(received: u64, total: u64, verifying: bool) -> (Option<f32>, String) {
+    if verifying { return (None, "Checking the download…".into()) }
+    if received == 0 || total == 0 { return (None, "Starting the download…".into()) }
+    let mb = |bytes: u64| bytes as f64 / 1_048_576.0;
+    (Some((received as f32 / total as f32).clamp(0.0, 1.0)), format!("Downloading: {:.1} of {:.1} MB", mb(received.min(total)), mb(total)))
+}
+
 /// The ribbon above PLAY when an update is ready: its sentence, and whether Restart to install is offered.
 pub fn ribbon(version: &str, playing: bool) -> (String, bool) {
     if playing { (format!("Update {version} is ready · Installs after you close the game"), false) }
@@ -159,6 +167,15 @@ fn runs(text: &str) -> Vec<(String, bool)> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_download_says_how_far_it_is_and_waits_without_a_length_before_and_after() {
+        assert_eq!(super::download_line(0, 50_000_000, false), (None, "Starting the download…".to_owned()));
+        assert_eq!(super::download_line(26_214_400, 52_428_800, false), (Some(0.5), "Downloading: 25.0 of 50.0 MB".to_owned()));
+        assert_eq!(super::download_line(52_428_800, 52_428_800, true), (None, "Checking the download…".to_owned()));
+        assert_eq!(super::download_line(60_000_000, 52_428_800, false).0, Some(1.0), "never past the end");
+        for words in ["Starting the download…", "Checking the download…", "Downloading: 25.0 of 50.0 MB"] { assert_eq!(crate::words::technical(words), None) }
+    }
+
     use super::*;
     use super::super::Asset;
 

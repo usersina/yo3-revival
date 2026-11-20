@@ -148,6 +148,8 @@ pub struct State {
     getting: Option<(u32, u32, Arc<AtomicBool>)>,
     /// What the last download left that the bar must keep saying: its words, when it stopped on a problem.
     art_problem: Option<String>,
+    /// Adding or saving a zip: the wait is shown on the pictures' own bar.
+    art_busy: Option<&'static str>,
 }
 
 pub const LICENCES: &str = "YO3 Revival is free software under the MIT licence. Its rules engine is built on EDOPro's core and ProjectIgnis' \
@@ -159,7 +161,7 @@ impl State {
     pub fn new(ctx: &Ctx, section: Section) -> Self {
         Self { section, note: None, busy: None, direct: Direct::Unknown, prefix: ctx.settings.wine_prefix.clone(), wine: ctx.settings.wine_binary.clone(),
             confirm_reset: false, confirm_game_reset: false, licences: false, update: None, shortcut: yo3_desktop::shortcut::exists(),
-            moved: yo3_desktop::foreign::moved_aside(std::path::Path::new(&ctx.settings.game_dir)), pictures: None, getting: None, art_problem: None }
+            moved: yo3_desktop::foreign::moved_aside(std::path::Path::new(&ctx.settings.game_dir)), pictures: None, getting: None, art_problem: None, art_busy: None }
     }
 
     /// The first tasks: what direct start is like now, and how many anime pictures there are.
@@ -374,6 +376,7 @@ impl State {
             Message::AddPictures => {
                 let dir = yo3_launcher::art::folder_in(&ctx.root);
                 self.busy = Some("Adding the pictures…");
+                self.art_busy = self.busy;
                 return Task::perform(async move {
                     let Some(file) = rfd::AsyncFileDialog::new().set_title("Add pictures from a file").add_filter("ZIP", &["zip"]).pick_file().await else { return Ok(None) };
                     let path = file.path().to_path_buf();
@@ -382,6 +385,7 @@ impl State {
             }
             Message::PicturesAdded(result) => {
                 self.busy = None;
+                self.art_busy = None;
                 match result {
                     Ok(Some(done)) => {
                         let (good, mut sentence) = pictures::import_sentence(&done);
@@ -396,6 +400,7 @@ impl State {
             Message::SavePictures => {
                 let dir = yo3_launcher::art::folder_in(&ctx.root);
                 self.busy = Some("Saving the pictures…");
+                self.art_busy = self.busy;
                 return Task::perform(async move {
                     let Some(file) = rfd::AsyncFileDialog::new().set_title("Save pictures to a file").set_file_name("yo3-anime-pictures.zip").add_filter("ZIP", &["zip"]).save_file().await else { return Ok(None) };
                     let path = file.path().to_path_buf();
@@ -404,6 +409,7 @@ impl State {
             }
             Message::PicturesSaved(result) => {
                 self.busy = None;
+                self.art_busy = None;
                 match result { Ok(Some(done)) => self.good(pictures::export_sentence(&done)), Ok(None) => {}, Err(error) => self.fail(ctx, &error) }
             }
             Message::Licences => self.licences = !self.licences,
@@ -437,7 +443,7 @@ impl State {
         };
         // What just happened comes first, where the eye is.
         let mut content = column![].spacing(16);
-        if let Some(busy) = self.busy { content = content.push(text(busy).size(14).color(color::INK_SOFT)) }
+        if let Some(busy) = self.busy.filter(|_| self.art_busy.is_none()) { content = content.push(yo3_skin::progress_bar(Bar::Starting, busy, 22.0)) }
         if let Some(note) = &self.note { content = content.push(self.note(note)) }
         let content = content.push(body);
         let panel = yo3_skin::panel(Some(self.section.title()), scrollable(content.padding([0, 14])).height(Fill));
@@ -513,7 +519,7 @@ impl State {
                 _ => (Bar::of(*done, *all), format!("{done} of {all}")),
             }
         }
-        if let Some(busy) = self.busy.filter(|_| self.pictures.is_some()) { return (Bar::Starting, busy.to_owned()) }
+        if let Some(busy) = self.art_busy { return (Bar::Starting, busy.to_owned()) }
         let fraction = if total == 0 { 0.0 } else { have as f32 / total as f32 };
         match (&self.art_problem, self.pictures) {
             (_, None) => (Bar::Starting, "Counting…".into()),
@@ -718,8 +724,10 @@ mod tests {
         assert_eq!(state.pictures_bar().1, "Stopping…");
         state.getting = None;
         state.busy = Some("Adding the pictures…");
+        state.art_busy = state.busy;
         assert_eq!(state.pictures_bar(), (Bar::Starting, "Adding the pictures…".to_owned()), "a zip is read with a wait of unknown length");
         state.busy = None;
+        state.art_busy = None;
         state.pictures = Some((400, 418));
         state.art_problem = Some("18 not fetched".into());
         assert_eq!(state.pictures_bar().1, "400 of 418 pictures ready: 18 not fetched");

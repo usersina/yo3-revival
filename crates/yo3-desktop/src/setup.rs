@@ -277,8 +277,7 @@ impl State {
 
     fn checklist(&self) -> Element<'_, Message> {
         let Some(lines) = &self.lines else {
-            return row![container(Space::new().width(9).height(9)).style(|_| dot(color::CHROME_DARK)),
-                text("Checking this folder…").size(14).color(color::INK_SOFT)].spacing(8).align_y(Center).into();
+            return yo3_skin::progress_bar(yo3_skin::Bar::Starting, "Checking this folder…", 22.0);
         };
         let mut list = column![].spacing(6);
         for line in lines {

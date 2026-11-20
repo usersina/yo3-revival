@@ -82,6 +82,8 @@ impl Play {
             Play::Ready => Some(Message::Play), _ => None,
         }
     }
+    /// The game is on its way up or down for a time nobody can tell: its line is shown on a waiting bar.
+    pub fn waiting(self) -> bool { matches!(self, Play::StartingServer | Play::StartingGame | Play::Waiting | Play::Closing) }
     pub fn status(self) -> &'static str {
         match self {
             Play::Checking => "Checking your game and YO3 Revival's files…",
@@ -675,6 +677,8 @@ impl State {
                 if busy.action.is_some() { Kind::Primary } else { Kind::Play }),
             None => (play.label(), play.action(), play.status(), Kind::Play),
         };
+        // A start or a close that takes a while shows a waiting bar with its line; other states, the line alone.
+        let status: Element<'_, Message> = if play.waiting() { yo3_skin::progress_bar(yo3_skin::Bar::Starting, line, 22.0) } else { text(line).size(14).color(color::INK_SOFT).into() };
         let choices = banlist_choices(&self.banlists);
         let selected = choices.iter().find(|c| c.value == ctx.settings.banlist).cloned();
         // The banlist is chosen in Settings → Singleplayer; it is read when your server starts.
@@ -685,7 +689,7 @@ impl State {
                 yo3_skin::link("Change", Message::Settings(crate::settings::Section::Singleplayer), false)].align_y(Center),
             self.notice(),
             Space::new().height(Fill),
-            text(line).size(14).color(color::INK_SOFT),
+            status,
             pill(label, action, kind, Fill, 70),
         ].spacing(14))
     }
@@ -839,6 +843,9 @@ mod tests {
         assert_eq!(busy(Play::StartingServer, Some(long_ago)), Some(("CANCEL", Some(BusyAction::Cancel))));
         assert_eq!(busy(Play::Outside, None), Some(("PLAYING", None)), "a game opened elsewhere isn't ours to close");
         assert_eq!(busy(Play::Closing, None), Some(("CLOSING…", None)));
+        for (play, bar) in [(Play::StartingServer, true), (Play::StartingGame, true), (Play::Waiting, true), (Play::Closing, true), (Play::Ready, false), (Play::Playing, false), (Play::Stale, false), (Play::Repair, false)] {
+            assert_eq!(play.waiting(), bar, "{play:?}");
+        }
         for idle in [Play::Ready, Play::Checking, Play::SetUp, Play::Repair, Play::Retry] { assert_eq!(busy(idle, None), None) }
     }
 
