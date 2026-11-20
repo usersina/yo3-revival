@@ -208,6 +208,8 @@ impl App {
             Message::Settings(message) => return self.settings_update(message),
             Message::OpenSettings(section) => {
                 if self.setup.is_some() { return Task::none() }
+                // Already open (the footer's version while in Settings): go to that section, keeping what is typed elsewhere.
+                if self.settings.is_some() { return self.settings_update(settings::Message::Section(section)) }
                 let state = settings::State::new(&self.ctx, section);
                 let start = state.start(&self.ctx).map(Message::Settings);
                 // Accounts lists the Multiplayer tab's sign-ins: load its servers if it hasn't yet.
@@ -564,7 +566,7 @@ impl App {
         // (the player's layout, 2026-11-20). Report a problem is in Help and on every problem toast.
         let version = format!("v{}", yo3_tunnel::BUILD_VERSION.trim_start_matches('v'));
         // The version opens About; a separate update link opens What's new (#32).
-        let mut middle = row![yo3_skin::link(version, Message::OpenSettings(settings::Section::About), true)].spacing(10).align_y(Center);
+        let mut middle = row![yo3_skin::hint(yo3_skin::link(version, Message::OpenSettings(settings::Section::About), true), "About YO3 Revival")].spacing(10).align_y(Center);
         if let Some(offered) = self.updater.offered() {
             middle = middle.push(container(Space::new().width(8).height(8)).style(|_| dot(color::WARN)))
                 .push(yo3_skin::link(update_line(offered, self.updater.ready().is_some()), Message::Home(home::Message::WhatsNew), true));

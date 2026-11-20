@@ -758,6 +758,13 @@ pub fn dock_button<'a, M: Clone + 'a>(which: Icon, label: impl text::IntoFragmen
     }).into()
 }
 
+/// `content` with a small dark hint above it while the pointer rests on it (the footer's version: "About YO3 Revival").
+pub fn hint<'a, M: 'a>(content: impl Into<Element<'a, M>>, tip: &'a str) -> Element<'a, M> {
+    tooltip(content, container(text(tip).size(13).color(ON_DARK)).padding([3, 8]).style(|_| container::Style {
+        background: Some(alpha(BAR_LOW, 0.95).into()), border: Border { radius: 3.0.into(), ..Border::default() }, ..container::Style::default() }),
+        tooltip::Position::Top).gap(6).into()
+}
+
 /// What a toast is about: its accent stripe's colour.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tone { Good, Bad, Busy }

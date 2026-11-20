@@ -201,7 +201,7 @@ press **I saved it**), then Settings. In a text box the first Escape only leaves
 
 **Anime pictures (since v0.1.5 (2026-11-20); under the Anime cards tick in Settings → Singleplayer, Unreleased):** it lists how many of the anime cards have a picture. **Get pictures** downloads the missing ones (about 10 MB) from ProjectIgnis' picture server when you press it, with a progress count and **Cancel**; a second press carries on. **Add pictures from a file…** adds a zip of pictures and **Save pictures to a file…** makes one. Pictures show from the next PLAY, and your own pictures are never replaced.
 
-**Since v0.1.4 (2026-11-19):** clicking the version at the bottom left also opens **About**.
+**Since v0.1.4 (2026-11-19):** clicking the version at the bottom (now in the middle of the footer, with an "About YO3 Revival" hint) also opens **About**, from Settings too.
 
 ### Screen size
 
