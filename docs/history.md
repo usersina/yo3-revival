@@ -52,6 +52,15 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
 
+## 2026-11-20 · Staff MFA and a restore rehearsal on the hosted server
+
+- #43 closed: on the hosted server staff MFA is required (no `--staff-mfa` override); behind nginx every staff API
+  answers 401 without a session, a foreign origin 403, public backup download is off (404), the security headers and
+  certificate are in place, and the owner signs in with an authenticator.
+- #47: the newest hourly backup of the live server, copied off without its private key (matching SHA-256), restored with
+  v0.1.6's `restore latest` into a scratch folder: integrity ok, the same row counts in all 9 tables, the accounts command
+  reads it, and a scratch server booted from it cleanly. The copies were deleted. Load with real clients is still open.
+
 ## 2026-11-19 — Official Events (the Stadium) and the real leaderboard (#18, #16)
 
 Built beside the other sweep tracks (branch `next/events`).

@@ -25,9 +25,6 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
 
 **Standalone management dashboard**
 
-- [ ] Final public-access security review. Staff MFA, recovery and recent-MFA steps are released (#43, v0.1.4;
-      [design](dashboard.md#staff-mfa-and-recovery)); still to do: check them on the real VPS behind nginx, then drop the
-      `optional` transition setting from any host that used it. The existing HTML panel remains private.
 - [ ] Finish hosted-server validation (#47): real Windows clients and native-engine duel load, isolated password-hash
       timing, and the DNS-based HTTPS monitor after resolver caches expire. Choose off-machine backup storage and
       alert destinations. Completed provisioning, recovery and protocol checks: [VPS record](history.md#2026-11-17--public-vps-deployment-and-recovery).
