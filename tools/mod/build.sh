@@ -27,6 +27,7 @@ PY
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-web-links-test.exe web-links-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-card-search-test.exe card-search-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-card-profile-test.exe card-profile-test.c
+"$CC" -O2 -Wall -Wextra -Werror -o build/yo3-card-profile-hook-test.exe card-profile-hook-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-signout-test.exe signout-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-survey-test.exe survey-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-auth-test.exe test.c -lws2_32 -lwininet -lwinmm -lshell32

@@ -26,6 +26,9 @@
 #define YO3_STAT_KEEP 0     /* the a word's own value */
 #define YO3_STAT_EXACT 1    /* `value` is shown */
 #define YO3_STAT_UNKNOWN 2  /* "?" (0xFFFF in the client) */
+/* The client's getters answer a 16 bit word and the sort reads it as a signed one (`movsx esi, ax`): above this a number would
+ * turn negative or collide with "?" (0xFFFF), so it is shown as this at most. No card of the anime comes near it. */
+#define YO3_STAT_MAX_SHOWN 32767
 
 typedef struct { unsigned row, cid, a, b; uint64_t genre; unsigned atk_mode, def_mode; int atk, def; } Yo3ProfileCard;
 typedef struct { unsigned row; wchar_t *text; } Yo3ProfileText;
@@ -194,7 +197,7 @@ static int yo3_profile_stat_of(const Yo3Profile *p, unsigned cid, int def, int *
     for (unsigned i = 0; i < p->ncards; ++i) {
         if (p->cards[i].cid != cid) continue;
         unsigned mode = def ? p->cards[i].def_mode : p->cards[i].atk_mode; int v = def ? p->cards[i].def : p->cards[i].atk;
-        if (mode == YO3_STAT_EXACT) { *value = v; return 1; }
+        if (mode == YO3_STAT_EXACT) { *value = v < 0 ? 0 : v > YO3_STAT_MAX_SHOWN ? YO3_STAT_MAX_SHOWN : v; return 1; }
         if (mode == YO3_STAT_UNKNOWN) { *value = 0xFFFF; return 1; }
         return 0;
     }
@@ -232,16 +235,16 @@ static __attribute__((unused)) int yo3_profile_art_path(const Yo3Profile *p, con
  * `call 0x537230` (EAX the Konami id), `shr eax, 0xE` / `0x17`, then ten times the nine bits as `lea R,[eax+eax*4];
  * add R,R` (five bytes; R is eax, ecx or edx). The first is aimed at a stub that notes the id; the five bytes become
  * a CALL to a stub that answers the profile's number when it has one (card-profile.h). */
-typedef struct { unsigned call, mul; int reg; int def; } Yo3CardMulSite;
+typedef struct { unsigned call, mul; int reg; int def; int filter; } Yo3CardMulSite;
 static const Yo3CardMulSite yo3_card_mul_sites[] = {
-    { 0x4565c6, 0x4565e9, 0, 0 }, { 0x4565f4, 0x45660d, 1, 1 },
-    { 0x4c7955, 0x4c7977, 2, 0 }, { 0x4c7982, 0x4c799f, 0, 1 },
-    { 0x4c876d, 0x4c878f, 0, 0 }, { 0x4c879a, 0x4c87b7, 1, 1 },
+    { 0x4565c6, 0x4565e9, 0, 0, 0 }, { 0x4565f4, 0x45660d, 1, 1, 0 },
+    { 0x4c7955, 0x4c7977, 2, 0, 0 }, { 0x4c7982, 0x4c799f, 0, 1, 0 },
+    { 0x4c876d, 0x4c878f, 0, 0, 0 }, { 0x4c879a, 0x4c87b7, 1, 1, 0 },
     /* The deck editor's ATK and DEF range filters (a card is kept when min <= its stat <= max; "?" is 0, taken before the
      * ten times, so these sites are reached for a number only): each stat is read twice, once for the minimum and once for the
      * maximum, so a card with 1 ATK is found by a range that starts at 1. */
-    { 0x418ab7, 0x418acf, 0, 0 }, { 0x418ade, 0x418af6, 0, 0 },
-    { 0x418cbf, 0x418cd2, 0, 1 }, { 0x418ce1, 0x418cf4, 0, 1 },
+    { 0x418ab7, 0x418acf, 0, 0, 1 }, { 0x418ade, 0x418af6, 0, 0, 1 },
+    { 0x418cbf, 0x418cd2, 0, 1, 1 }, { 0x418ce1, 0x418cf4, 0, 1, 1 },
 };
 /* `lea R,[eax+eax*4]; add R,R` for register `reg` (0 eax, 1 ecx, 2 edx). */
 static int yo3_card_mul_bytes_ok(const unsigned char *b, int reg) {
@@ -255,4 +258,46 @@ static void yo3_card_write_call(unsigned char *site, unsigned long target) {
 }
 /* What the panel would have shown for the nine bits: ten times them. */
 static int yo3_card_times_ten(unsigned nine) { return (int)(nine * 10u); }
+
+/* The deck editor's search and sort (issue #60, "Sorting and range search" in docs/client-internals.md), as the client does them,
+ * so the test can run them with crafted rows:
+ *   - the range filter (0x418930, the Attack/Defense cases) keeps a Monster whose stat is min <= stat <= max: the nine bits'
+ *     ten times, "?" (all ones) being 0, or, when the profile has the card's number, that number (a profile's own "?" is 0 too).
+ *   - the sort (0x419050) gives every card a key: Attack/Defense getter's word (0xFFFF for "?", read as signed 16 bits) minus 2
+ *     for a Monster (0x416340), times 10000, plus the card's place in the list; descending is 0xFFFF minus 2 for a Monster
+ *     minus the word. The list is then ordered by the key, so ties keep the list's order and "?" is lowest ascending (-3)
+ *     and highest descending. The getters are wrapped (card_cb_atk, card_cb_def), so the keys already hold the profile's number.
+ * The blank maximum of the search fields is 5000 (4 sites: the immediate of `mov eax, 0x1388`), which would hide a card of 5100 or
+ * 6000; a profile with such a card makes it YO3_STAT_NO_LIMIT. */
+static int yo3_card_filter_stat(const Yo3Profile *p, unsigned cid, int def, unsigned nine) {
+    int v;
+    if (nine == 0x1FF) return 0;
+    if (p && p->valid && yo3_profile_stat_of(p, cid, def, &v)) return v == 0xFFFF ? 0 : v;
+    return yo3_card_times_ten(nine);
+}
+static __attribute__((unused)) int yo3_card_in_range(int stat, int min, int max) { return stat >= min && stat <= max; }
+/* The getter's word: the profile's number, else 0xFFFF for "?" or ten times the nine bits. */
+static __attribute__((unused)) int yo3_card_getter_word(const Yo3Profile *p, unsigned cid, int def, unsigned nine) {
+    int v;
+    if (p && p->valid && yo3_profile_stat_of(p, cid, def, &v)) return v;
+    return nine == 0x1FF ? 0xFFFF : yo3_card_times_ten(nine);
+}
+static __attribute__((unused)) int yo3_card_sort_key(int word, int monster, int descending, int place) {
+    int signed_word = (int16_t)word;
+    return descending ? (0xFFFF - 2 * monster - signed_word) * 10000 + place : (signed_word - 2 * monster) * 10000 + place;
+}
+#define YO3_STAT_DEFAULT_MAX 5000
+#define YO3_STAT_NO_LIMIT 100000
+/* The blank maximum's four sites: `mov eax, imm32` (B8 88 13 00 00) before `push; push eax`. */
+static const unsigned yo3_card_default_max_sites[4] = { 0x465f73, 0x465fbc, 0x4953ac, 0x4953ed };
+static int yo3_card_default_max_ok(const unsigned char *b) { return b[0] == 0xB8 && b[1] == 0x88 && b[2] == 0x13 && !b[3] && !b[4]; }
+/* Whether any card of the profile shows more than the standard blank maximum. */
+static int yo3_profile_needs_open_max(const Yo3Profile *p) {
+    for (unsigned i = 0; i < p->ncards; ++i)
+        for (int def = 0; def < 2; ++def) {
+            int v;
+            if (yo3_profile_stat_of(p, p->cards[i].cid, def, &v) && v != 0xFFFF && v > YO3_STAT_DEFAULT_MAX) return 1;
+        }
+    return 0;
+}
 #endif

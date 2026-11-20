@@ -41,8 +41,7 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
       `anime-cards` setting on ([list](anime-cards.md)), and the game shows them through the card profile; every category of
       difference is released (`PROFILE_COVERS` in `tools/engine/anime-map.py`). Time Wizard, Thousand Dragon and Temple of the Kings
       keep the game's version on purpose. Open: Theinen the Great Sphinx (its Deck trigger through the client), Clear Vice Dragon and
-      Blackwing - Aurora the Northern Lights (the anime database's 0 for a "?" ATK), exact sorting by a stat that is not a multiple of
-      ten, the event restart flow, and the same checks on Windows. The `anime-cards` setting becomes the default only after that.
+      Blackwing - Aurora the Northern Lights (the anime database's 0 for a "?" ATK), the event restart flow, and the same checks on Windows. The `anime-cards` setting becomes the default only after that.
 - [ ] Issue #7 stays open for whatever players find next: the scripted pass catches limits, numbers and ProjectIgnis'
       known pre-errata cards, not every ruling.
 - [ ] Watched, not reproduced: a monster's switch to Defense Position at the end of the Battle Phase (Goblin Attack
