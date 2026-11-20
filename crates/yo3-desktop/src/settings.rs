@@ -208,6 +208,9 @@ impl State {
         Task::perform(async move { tokio::task::spawn_blocking(move || backend.anime_cards(&settings).map_err(|e| format!("{e:#}"))).await.unwrap_or_else(|e| Err(e.to_string())) }, Message::AnimeRead)
     }
 
+    /// Opening the Game section counts the pictures again, unless a download or zip job is changing them right now.
+    fn recounts_on(&self, section: Section) -> bool { section == Section::Game && section != self.section && self.getting.is_none() && self.busy.is_none() }
+
     fn count_pictures(&self, ctx: &Ctx) -> Task<Message> {
         let dir = yo3_launcher::art::folder_in(&ctx.root);
         Task::perform(async move { tokio::task::spawn_blocking(move || pictures::count(&dir)).await.unwrap_or((0, 0)) }, Message::PicturesCounted)
@@ -237,7 +240,12 @@ impl State {
 
     pub fn update(&mut self, message: Message, ctx: &mut Ctx, playing: bool) -> Task<Message> {
         match message {
-            Message::Section(section) => { self.section = section; self.note = None; self.confirm_reset = false; self.confirm_game_reset = false }
+            Message::Section(section) => {
+                let recount = self.recounts_on(section);
+                self.section = section; self.note = None; self.confirm_reset = false; self.confirm_game_reset = false;
+                // Pictures added or removed by hand while Settings was open show when Game is opened again.
+                if recount { return self.count_pictures(ctx) }
+            }
             Message::Change(change) => {
                 let Some(store) = ctx.store.clone() else { return Task::none() };
                 let asked = change.clone();
@@ -789,6 +797,20 @@ mod tests {
         let _ = state.update(Message::Changed(Change::Resolution("huge".into()), Err("Choose one of the screen sizes.".into())), &mut ctx, false);
         assert_eq!(ctx.settings.resolution, "1440x1080", "a refused value changes nothing");
         assert_eq!(state.note.as_ref().map(|n| (n.good, n.sentence.as_str())), Some((false, "Choose one of the screen sizes.")));
+    }
+
+    #[test]
+    fn opening_the_game_section_again_counts_the_pictures_again() {
+        // Live on Windows 11: pictures deleted by hand kept the old count while the player only switched sections.
+        let ctx = ctx();
+        let mut state = State::new(&ctx, Section::Singleplayer);
+        assert!(state.recounts_on(Section::Game));
+        assert!(!state.recounts_on(Section::Advanced), "only the section that shows the count");
+        state.section = Section::Game;
+        assert!(!state.recounts_on(Section::Game), "staying on Game is no reason to count");
+        state.section = Section::About;
+        state.getting = Some((3, 418, Arc::new(AtomicBool::new(false))));
+        assert!(!state.recounts_on(Section::Game), "a running download keeps its own count");
     }
 
     #[test]

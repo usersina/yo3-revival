@@ -594,8 +594,11 @@ impl State {
         let signed = self.signed_in.get(key).cloned();
         let token = self.vault.as_ref().and_then(|v| v.get(&mp::vault_account(&server)).ok().flatten()).or_else(|| signed.and_then(|s| s.device_token));
         self.forget(key);
-        let Some(token) = token else { return Task::none() };
-        Task::perform(async move { mp::sign_out(&server, &token, false).await }, Message::SignedOut)
+        // Signed out, the sign-in form is back: its first empty field takes the keyboard (live on Windows 11, typing went
+        // nowhere).
+        let focus = if self.selected.as_deref() == Some(key) { self.focus_sign_in() } else { Task::none() };
+        let Some(token) = token else { return focus };
+        Task::batch([focus, Task::perform(async move { mp::sign_out(&server, &token, false).await }, Message::SignedOut)])
     }
 
     /// The sign-ins on this PC, for Settings → Accounts.
