@@ -239,6 +239,8 @@ pub struct State {
     grace: u64,
     /// Cancel was asked for while a start job was still running; its result is cleaned up when it arrives.
     cancelled: bool,
+    /// A Play's start chain (server, session check, game) has a job in flight whose result has not arrived yet.
+    start_pending: bool,
     /// Restart the game was pressed: once the game is gone and the check passed, Play starts it again.
     restart_when_ready: bool,
     /// When the Play that is now waiting for the game's window was pressed.
@@ -303,6 +305,7 @@ impl State {
                 let busy = self.game.running || self.game.starting.is_some() || self.game.outside;
                 let (Some(_), Some((server, signed)), false) = (ctx.backend.clone(), self.multi.session(), busy) else { return Task::none() };
                 self.cancelled = false;
+                self.start_pending = true;
                 self.game.starting = Some((Step::Game, Instant::now()));
                 self.notice = None;
                 // The session to play on, known to play before the game starts: a device that stays signed in gets a
@@ -317,10 +320,10 @@ impl State {
                 }, Message::SessionChecked);
             }
             Message::SessionChecked(result) => {
-                if self.cancelled { return self.clean_up(ctx) }
+                if self.cancelled { self.start_pending = false; return self.clean_up(ctx) }
                 match result {
                     Ok(session) => return self.play_multiplayer(ctx, session),
-                    Err(problem) => { self.game.starting = None; self.multi.play_refused(problem); }
+                    Err(problem) => { self.start_pending = false; self.game.starting = None; self.multi.play_refused(problem); }
                 }
             }
             Message::Multi(multi::Message::Remedy(yo3_desktop::multiplayer::Remedy::Update)) => return Task::done(Message::Releases),
@@ -368,6 +371,7 @@ impl State {
                 let settings = ctx.settings.clone();
                 self.grace += 1;
                 self.cancelled = false;
+                self.start_pending = true;
                 self.game.starting = Some((Step::Server, Instant::now()));
                 self.notice = None;
                 self.allow_for = None;
@@ -375,7 +379,7 @@ impl State {
                 return job(move || backend.start_server(&settings).map(|_| ()), Message::ServerStarted);
             }
             Message::ServerStarted(result) => {
-                if self.cancelled { return self.clean_up(ctx) }
+                if self.cancelled { self.start_pending = false; return self.clean_up(ctx) }
                 match result {
                     Ok(()) => {
                         let Some(backend) = ctx.backend.clone() else { return Task::none() };
@@ -394,6 +398,7 @@ impl State {
                         }, Message::Started);
                     }
                     Err(error) => {
+                        self.start_pending = false;
                         self.game.starting = None;
                         let damaged = singleplayer::damaged_database(&error);
                         self.fail(ctx, error);
@@ -406,9 +411,13 @@ impl State {
                 }
             }
             Message::Started(result) => {
+                self.start_pending = false;
+                // A game that appears after Cancel is closed here, whatever Cancel's own clean-up found.
                 if self.cancelled { return self.clean_up(ctx) }
                 let since = self.game.launching();
                 self.game.starting = None;
+                // What the notice said about the game (it was already running, it failed) is over once a start settles.
+                self.clear_game_notice();
                 match result {
                     Ok(needs_permission) => {
                         self.game.running = true;
@@ -434,6 +443,8 @@ impl State {
                 return self.clean_up(ctx);
             }
             Message::Cancelled(result) => {
+                // The start is still in flight: its result will clean up again; until then Play stays unavailable.
+                if self.start_pending { if let Err(error) = result { self.fail(ctx, error) } return Task::none() }
                 self.game = Game { readiness: self.game.readiness.clone(), ..Game::default() };
                 self.waiting_since = None;
                 self.cancelled = false;
@@ -493,6 +504,7 @@ impl State {
                 for failure in live.extra_failures.iter().cloned() { self.fail(ctx, failure) }
                 if self.game.starting.is_some() { return Task::none() }
                 let ended = self.game.running && !live.running;
+                if live.running != self.game.running { self.clear_game_notice() }
                 self.game.running = live.running;
                 self.game.ready = live.ready;
                 self.game.stale = live.running && live.stale;
@@ -565,6 +577,11 @@ impl State {
             if backend.live(&settings).is_some() { backend.stop_server(&settings)?; }
             Ok(())
         }, Message::Cancelled)
+    }
+
+    /// A notice about the game's state goes when that state changes; the permission ask is about the folder, so it stays.
+    fn clear_game_notice(&mut self) {
+        if self.notice.as_ref().is_some_and(|n| !matches!(n.action, Some((_, Message::AllowDirect)))) { self.notice = None }
     }
 
     fn start_grace(&mut self) { self.grace += 1 }
@@ -1015,6 +1032,76 @@ mod tests {
         state.notice = Some(Notice::problem("something else", None));
         state.permission_granted();
         assert!(state.notice.is_some());
+    }
+
+    fn ctx() -> crate::app::Ctx { crate::app::Ctx { root: std::env::temp_dir(), backend: None, store: None, settings: Default::default() } }
+    fn starting() -> State { State { start_pending: true, game: Game { starting: Some((Step::Game, Instant::now())), ..game(Some(Readiness::Ready)) }, ..State::default() } }
+
+    /// Cancel, then the cancel's own clean-up finishing, then the game's start arriving: the game is still closed and
+    /// Play does not come back as a running game (the race that left "already running" on screen).
+    #[test]
+    fn a_game_that_appears_after_cancel_is_not_adopted() {
+        let mut ctx = ctx();
+        let mut state = starting();
+        let _ = state.update(Message::Cancel, &mut ctx);
+        let _ = state.update(Message::Cancelled(Ok(())), &mut ctx);
+        assert!(state.game.starting.is_some() && state.cancelled, "still settling: Play is not offered again");
+        let _ = state.update(Message::Started(Ok(false)), &mut ctx);
+        assert!(!state.game.running, "the late game is cleaned up, not adopted");
+        assert!(state.cancelled && !state.start_pending);
+        let _ = state.update(Message::Cancelled(Ok(())), &mut ctx);
+        assert!(!state.cancelled && state.game.starting.is_none() && !state.game.running);
+    }
+
+    /// Started arriving before the clean-up result: the same end.
+    #[test]
+    fn started_before_the_cancel_result_is_cleaned_up_too() {
+        let mut ctx = ctx();
+        let mut state = starting();
+        let _ = state.update(Message::Cancel, &mut ctx);
+        let _ = state.update(Message::Started(Ok(false)), &mut ctx);
+        assert!(!state.game.running);
+        let _ = state.update(Message::Cancelled(Ok(())), &mut ctx);
+        assert!(!state.game.running && !state.cancelled && state.game.starting.is_none());
+    }
+
+    /// A game that failed to start while Cancel was pending: the start's failure still settles the state.
+    #[test]
+    fn a_failed_start_after_cancel_settles() {
+        let mut ctx = ctx();
+        let mut state = starting();
+        let _ = state.update(Message::Cancel, &mut ctx);
+        let _ = state.update(Message::Cancelled(Ok(())), &mut ctx);
+        let _ = state.update(Message::Started(Err("The game could not start.".into())), &mut ctx);
+        let _ = state.update(Message::Cancelled(Ok(())), &mut ctx);
+        assert!(state.game.starting.is_none() && !state.cancelled && !state.game.running);
+    }
+
+    /// A notice about the game's state ("already running") goes when the state changes; the permission ask stays.
+    #[test]
+    fn a_game_state_notice_is_cleared_when_the_state_changes() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let _inside = runtime.enter();
+        let mut ctx = ctx();
+        let live = |running| Message::Polled(Ok(Live { running, ready: false, stale: false, outside: false, failure: None, direct: None, held: None, games: vec![], extra_failures: vec![] }));
+        let mut state = State { polling: true, ..State::default() };
+        state.notice = Some(Notice::problem("The game is already running.", None));
+        let _ = state.update(live(true), &mut ctx);
+        assert!(state.game.running && state.notice.is_none(), "running now: the old red notice goes");
+        state.notice = Some(Notice::problem("The game is already running.", None));
+        state.polling = true;
+        let _ = state.update(live(true), &mut ctx);
+        assert!(state.notice.is_some(), "no change, no clearing");
+        state.polling = true;
+        let _ = state.update(live(false), &mut ctx);
+        assert!(!state.game.running && state.notice.is_none(), "closed: gone again");
+        state.notice = Some(Notice::problem("needs permission", Some(("Allow", Message::AllowDirect))));
+        state.polling = true;
+        let _ = state.update(live(true), &mut ctx);
+        assert!(state.notice.is_some(), "the permission ask is about the folder");
+        state.notice = Some(Notice::problem("already running", None));
+        let _ = state.update(Message::Started(Ok(false)), &mut ctx);
+        assert!(state.notice.is_none(), "a settled start clears it");
     }
 
     #[test]
