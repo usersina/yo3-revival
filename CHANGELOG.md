@@ -20,6 +20,9 @@ Older entries describe their release at the time. For current setup, use the [RE
   that makes you declare several Types asks one Type at a time, "Select Type 1 of 2." and so on, without the ones you
   already named. A number the number window cannot hold is narrowed in a few steps of ranges ("1000-75000") until you
   pick the number itself. No card in the game today asks for these, so you may never see them.
+- The Stadium's Ultimate Match can be played against the computer: if no other player joins you within about half a minute
+  of pressing Ready, a computer opponent plays you instead. A win counts as a star like a win against a player. Hosts can
+  change the wait or turn it off with the `ultimate-cpu-wait` setting.
 
 ## v0.1.6 (2026-11-20)
 

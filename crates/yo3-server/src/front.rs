@@ -357,6 +357,9 @@ pub struct DuelEntry {
     pub deck: Deck,
     pub npc_id: Option<u32>,
     pub duel_id: Option<u32>,
+    /// The duel id of an Ultimate Match's computer match (#18): `npc_id` is its opponent, the duel connection plays it as an
+    /// NPC duel, and its end counts for the event's match.
+    pub cpu_match: Option<u32>,
     pub opponent: Option<u32>,
     /// The duel's starting LP, when the match set it (a hosted duel's lp_start).
     pub lp: Option<u32>,
@@ -427,6 +430,8 @@ struct Waiting {
     record: Message,
     /// The official event they entered (`0x1798`'s event_id): only entrants of the same one are matched (#18).
     event: Option<u32>,
+    /// When they began to wait (an Ultimate Match entrant's computer comes after a wait).
+    since: std::time::Instant,
 }
 
 impl Waiting {
@@ -450,6 +455,9 @@ struct Match {
     made: std::time::Instant,
     /// The official event it counts for (#18).
     event: Option<u32>,
+    /// An Ultimate Match against the computer (#18): the second "player" is an NPC id, there is no table, and no engine is
+    /// reserved and no "nobody came" timeout applies before the duel connection begins.
+    cpu: bool,
 }
 
 /// How long a match may go without either player's duel connection before it ends with neither (both match pushes
@@ -916,7 +924,7 @@ impl Hub {
     /// Whether the duels running (an engine each) and the ones matched but not started yet reach `max-duels` (#27).
     pub fn duels_busy(&self) -> bool {
         let Some(settings) = &self.settings else { return false };
-        let pending = self.matches.keys().filter(|d| !self.tables.contains_key(d)).count();
+        let pending = self.matches.iter().filter(|(d, m)| !m.cpu && !self.tables.contains_key(d)).count();
         crate::engine::running() + pending >= settings.now().max_duels
     }
 
@@ -933,6 +941,40 @@ impl Hub {
         }
     }
 
+    /// How long an Ultimate Match entrant waits for a player when no setting says (the `ultimate-cpu-wait` default).
+    const CPU_WAIT: u64 = 30;
+
+    /// The computer plays the Ultimate Match entrants nobody joined within `ultimate-cpu-wait` seconds (0: never) (#18, called
+    /// every second after [`Hub::match_waiting`]). The client calls the event "PvP or PvCPU" (text 15261) and no more: the
+    /// wait and its length are a **guess**. The opponent is a random NPC of the client's roster with a deck, pushed as a
+    /// match (`0x1978`, the NPC as `vsPlayerData`) of one duel.
+    pub fn match_computers(&mut self, world: &World) {
+        let wait = self.settings.as_ref().map_or(Self::CPU_WAIT as u32, |s| s.now().ultimate_cpu_wait);
+        let npcs: Vec<u32> = world.npcs.iter().copied().filter(|id| world.npc_decks.is_empty() || world.npc_decks.contains_key(id)).collect();
+        if wait == 0 || npcs.is_empty() {
+            return;
+        }
+        let (now, clock) = (std::time::Instant::now(), chrono::Utc::now().timestamp());
+        while !self.duels_busy() {
+            let waited = |w: &Waiting| now.saturating_duration_since(w.since) >= std::time::Duration::from_secs(u64::from(wait));
+            let Some(at) = self.waiting.iter().position(|w| {
+                waited(w) && w.event.and_then(|e| self.official.get(e)).is_some_and(|e| e.kind.computer() && e.is_open(clock))
+            }) else { return };
+            let me = self.waiting.remove(at);
+            self.last_duel += 1;
+            let duel_id = self.last_duel;
+            let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64);
+            let npc = npcs[((nanos ^ u64::from(duel_id).wrapping_mul(0x9E37_79B9_7F4A_7C15)) % npcs.len() as u64) as usize];
+            let name = world.npc_names.get(&npc).cloned().unwrap_or_else(|| "CPU".into());
+            let rule = vec![("match_type".to_string(), Value::U32(SINGLE_MODE))];
+            let data = rule.iter().fold(Message::record().with("name", Value::text("duelData")), |m, (k, v)| m.with(k, v.clone()));
+            let vs = Player::new(npc, &name).record().with("name", Value::text("vsPlayerData"));
+            let push = Message::reply(0x1978).item(vs).item(data.with("duel_id", Value::U32(duel_id)));
+            self.matches.insert(duel_id, Match { players: [me.player_id, npc], rule, times: None, watchable: false, made: std::time::Instant::now(), event: me.event, cpu: true });
+            self.push(me.player_id, &push);
+        }
+    }
+
     /// The table of `duel_id` if others may watch it: its host allowed watching (a duel without match rules, such as
     /// an Auto Duel, does). The front's 0x1838 and the duel connection's both ask here.
     pub fn watchable_table(&self, duel_id: u32) -> Option<Arc<Mutex<crate::table::Table>>> {
@@ -943,7 +985,7 @@ impl Hub {
     pub fn set_watchable(&mut self, duel_id: u32, players: [u32; 2], watchable: bool) {
         self.matches.entry(duel_id)
             .and_modify(|m| m.watchable = watchable)
-            .or_insert(Match { players, rule: vec![], times: None, watchable, made: std::time::Instant::now(), event: None });
+            .or_insert(Match { players, rule: vec![], times: None, watchable, made: std::time::Instant::now(), event: None, cpu: false });
     }
 
     pub fn enter_duel(&mut self, player_id: u32, entry: DuelEntry) {
@@ -1148,7 +1190,13 @@ impl Hub {
 
     /// A duel of an official event ended for a player: their new `event_score`, none when the duel isn't one of an event.
     fn official_score(&mut self, ended: &Ended) -> Option<u32> {
-        let event_id = self.matches.get(&ended.duel_id).and_then(|m| m.event).filter(|_| !ended.npc)?;
+        // An NPC duel counts only as an Ultimate Match's computer match of this player (#18).
+        let m = self.matches.get(&ended.duel_id);
+        let computer = m.is_some_and(|m| m.cpu && m.players[0] == ended.player_id);
+        let event_id = m.and_then(|m| m.event).filter(|_| !ended.npc || computer)?;
+        if computer {
+            self.matches.remove(&ended.duel_id);
+        }
         let name = self.online.values().find(|o| o.player_id == ended.player_id).map(|o| o.name.clone()).unwrap_or_default();
         let score = self.official.record(event_id, ended.player_id, &name, ended.result, chrono::Utc::now().timestamp())?;
         Some(score.min(crate::official::SCORE_SHOWN))
@@ -1365,7 +1413,7 @@ impl Hub {
     /// Ends the matches nobody joined within [`NO_JOIN`] (no table: neither duel connection came), with no winner.
     pub fn tick_matches(&mut self, now: std::time::Instant) {
         let stale: Vec<u32> = self.matches.iter()
-            .filter(|(d, m)| !self.tables.contains_key(d) && now.saturating_duration_since(m.made) >= NO_JOIN)
+            .filter(|(d, m)| !m.cpu && !self.tables.contains_key(d) && now.saturating_duration_since(m.made) >= NO_JOIN)
             .map(|(d, _)| *d).collect();
         for d in stale {
             tracing::info!("duel {d}: neither player joined; the match ends");
@@ -2292,7 +2340,7 @@ impl Hub {
             };
             self.push(*a, &push(&rb));
             self.push(*b, &push(&ra));
-            self.matches.insert(duel_id, Match { players: [*a, *b], rule: rule.clone(), times, watchable: event.int("duel_watch") != 0, made: std::time::Instant::now(), event: None });
+            self.matches.insert(duel_id, Match { players: [*a, *b], rule: rule.clone(), times, watchable: event.int("duel_watch") != 0, made: std::time::Instant::now(), event: None, cpu: false });
             round.push((duel_id, [*a, *b]));
         }
         self.events[at].round = round;
@@ -2655,6 +2703,7 @@ impl Hub {
     /// duel: then the new duel's id, the opponent, and both match pushes (the opponent's first).
     fn wait_for_match(&mut self, me: Waiting) -> Option<(u32, [(u32, Message); 2])> {
         self.waiting.retain(|w| w.player_id != me.player_id);
+        self.matches.retain(|_, m| !(m.cpu && m.players[0] == me.player_id));
         // The same Rule Format matches, and Both matches either (two Both players get a Single duel, **guess**), under
         // the same banlist (#63).
         let at = self.waiting.iter().position(|w| w.fits(&me));
@@ -2681,7 +2730,7 @@ impl Hub {
             Message::reply(0x1978).item(vs.clone().with("name", Value::text("vsPlayerData"))).item(data.with("duel_id", Value::U32(duel_id)))
         };
         let pushes = [(other.player_id, push(&me.record)), (me.player_id, push(&other.record))];
-        self.matches.insert(duel_id, Match { players: [other.player_id, me.player_id], rule, times: None, watchable: true, made: std::time::Instant::now(), event: other.event });
+        self.matches.insert(duel_id, Match { players: [other.player_id, me.player_id], rule, times: None, watchable: true, made: std::time::Instant::now(), event: other.event, cpu: false });
         (duel_id, pushes)
     }
 
@@ -3502,6 +3551,10 @@ impl FrontSession {
                     if let Some(rule) = self.duels.get(&id) {
                         let npc_id = rule.iter().find(|(k, _)| k == "cpu_id").and_then(|(_, v)| v.as_u32()).filter(|&id| id > 0);
                         hub.enter_duel(player_id, DuelEntry { deck, npc_id, identity: self.identity, peer: self.peer, ..DuelEntry::default() });
+                    } else if let Some(m) = hub.matches.get(&id).filter(|m| m.players.contains(&player_id) && m.cpu) {
+                        // An Ultimate Match against the computer (#18): the duel connection plays the NPC.
+                        let npc_id = Some(m.players[1]);
+                        hub.enter_duel(player_id, DuelEntry { deck, npc_id, cpu_match: Some(id), identity: self.identity, peer: self.peer, ..DuelEntry::default() });
                     } else if let Some(m) = hub.matches.get(&id).filter(|m| m.players.contains(&player_id)) {
                         let opponent = m.players.into_iter().find(|&p| p != player_id);
                         let rule = |k: &str| m.rule.iter().find(|(n, _)| n == k).and_then(|(_, v)| v.as_u32());
@@ -3602,7 +3655,7 @@ impl FrontSession {
                 if let Some(kind) = self.hub().official.get(event_id).map(|e| e.kind) {
                     (event, match_type) = (Some(event_id), if kind.is_match() { MATCH_MODE } else { SINGLE_MODE });
                 }
-                let me = Waiting { player_id, match_type, regulation, record, event };
+                let me = Waiting { player_id, match_type, regulation, record, event, since: std::time::Instant::now() };
                 let matched = self.hub().wait_for_match(me);
                 if let Some((_, [(other, to_other), (_, to_me)])) = matched {
                     self.hub().push(other, &to_other);
@@ -4023,7 +4076,7 @@ impl FrontSession {
             let setting = |k| host.setting(k).and_then(Value::as_u32).unwrap_or(0);
             let times = Some((setting("time_turn"), setting("time_total")));
             let watchable = host.setting("watch").and_then(Value::as_u32).is_none_or(|w| w == 1);
-            hub.matches.insert(duel_id, Match { players: [player_id, challenger], rule, times, watchable, made: std::time::Instant::now(), event: None });
+            hub.matches.insert(duel_id, Match { players: [player_id, challenger], rule, times, watchable, made: std::time::Instant::now(), event: None, cpu: false });
             let outboxes: Vec<(Outbox, Message)> = pushes
                 .into_iter()
                 .filter_map(|(to, m)| hub.online.values().find(|o| o.player_id == to).map(|o| (o.outbox.clone(), m)))

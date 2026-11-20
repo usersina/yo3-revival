@@ -276,7 +276,8 @@ The official event titles (TRIALIST … ULTIMATE GUNSLINGER) and the Championshi
 
 **The Stadium** (the map's Duelking Titlematch tile) lists your host's official events: Gunslinger (win streak), Duelist
 Trial and Anniversary Trial (wins), Evolution and Ultimate Match (stars, played as matches). Pick one to enter its lobby,
-press **Ready** and you are paired with another entrant; after each duel you are matched again until you press **Not Ready**.
+press **Ready** and you are paired with another entrant (in the Ultimate Match, if nobody joins you for a while, the computer
+plays you instead: one duel that counts as the match); after each duel you are matched again until you press **Not Ready**.
 Your score for the event shows in the lobby and the result screen. When an event ends your host's prize (BP) arrives as a
 D-Mail, and Tournament Points (My Profile) add up from the events you played. If an event needs a particular banlist, Ready
 tells you in the chat: use `/p Server banlist NAME` and log in again. Main Menu → Leaderboard and the team ranking open

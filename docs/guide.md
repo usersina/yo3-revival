@@ -117,6 +117,7 @@ while the server runs or stopped, and each applies at its own moment:
 | `news` | A welcome | At the game's next request | The Information list: `TITLE \| BODY` for one entry, or a JSON list of `{title, body}` (1 to 10) |
 | `address-burst`, `address-refill-seconds`, `backoff-max-seconds` | 10, 3, 900 | At once | The [throttle](authentication.md#passwords-and-throttling) on account requests |
 | `max-players` | 500 | At once | Players signed in; one more is told "The server is full" (admins and moderators still come in) |
+| `ultimate-cpu-wait` | 30 | At once | Seconds an Ultimate Match entrant waits for another player before the computer plays them (0: only players) |
 | `max-duels` | 30 | At once | Duels running (an engine each, up to about 100 MB): beyond it an NPC duel or Create Duel is refused with "Duels are busy" in the player's chat, and Auto Duel waits until one ends |
 | `max-connections` | 2048 | At once | TLS connections at once; a player's game holds several |
 | `handshake-burst`, `handshakes-per-second` | 120, 10 | At once | New TLS connections one address may open; this PC's are not counted |
@@ -177,8 +178,9 @@ log (default: host). They work on a running server; the ones that change an acco
 
 The map's Stadium lists the events you schedule. Five kinds, each with its own score: `gunslinger` (win streak),
 `duelist-trial` and `anniversary` (wins), `evolution` and `ultimate` (stars, played as matches). Players enter an event's
-lobby from the Stadium and press Ready, which pairs them with another entrant of the same event; after each duel they are
-matched again until they press Not Ready. Everyone counts as premium. The commands work while the server runs, and the
+lobby from the Stadium and press Ready, which pairs them with another entrant of the same event (an Ultimate Match entrant
+nobody joins within `ultimate-cpu-wait` seconds, 30 by default, plays the computer instead; set it to 0 to keep that event
+players-only); after each duel they are matched again until they press Not Ready. Everyone counts as premium. The commands work while the server runs, and the
 ones that change something also with it stopped; they are admin API operations like the rest (an admin's, audited), and
 the [dashboard](dashboard.md)'s Events page does the same.
 
