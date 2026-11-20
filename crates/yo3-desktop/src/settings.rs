@@ -4,7 +4,9 @@
 use iced::widget::{Space, checkbox, column, container, pick_list, row, scrollable, text, text_input};
 use iced::{Alignment::Center, Element, Length::Fill, Task};
 use yo3_desktop::options::{self, Change};
-use yo3_desktop::{Settings, direct, updates};
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use yo3_desktop::{Settings, direct, pictures, updates};
 use yo3_skin::{BODY_BOLD, DISPLAY, Kind, color, pill};
 use crate::app::{Ctx, dot, job};
 use crate::{error_presentation, home, multi};
@@ -100,6 +102,15 @@ pub enum Message {
     /// Put a file moved aside from the game folder back (#68).
     PutBack(String),
     PutBackDone(Result<Vec<String>, String>),
+    /// The anime pictures (#60): how many the folder has, Get pictures, its progress and end, Cancel, Add pictures from a file, Save pictures to a file.
+    PicturesCounted((usize, usize)),
+    GetPictures,
+    Pictures(pictures::Event),
+    CancelPictures,
+    AddPictures,
+    PicturesAdded(Result<Option<yo3_launcher::art::pack::Imported>, String>),
+    SavePictures,
+    PicturesSaved(Result<Option<yo3_launcher::art::pack::Exported>, String>),
     /// Handled by the window: open a web page or a folder.
     Open(String),
     ToggleDetails,
@@ -131,6 +142,10 @@ pub struct State {
     shortcut: bool,
     /// The other programs' files YO3 Revival moved aside in the game folder (#68), by their original names.
     moved: Vec<String>,
+    /// Anime pictures the folder has, of the cards that have one to get (`None` until counted).
+    pictures: Option<(usize, usize)>,
+    /// A download in progress: cards done, all cards, the way to cancel it.
+    getting: Option<(u32, u32, Arc<AtomicBool>)>,
 }
 
 pub const LICENCES: &str = "YO3 Revival is free software under the MIT licence. Its rules engine is built on EDOPro's core and ProjectIgnis' \
@@ -142,11 +157,16 @@ impl State {
     pub fn new(ctx: &Ctx, section: Section) -> Self {
         Self { section, note: None, busy: None, direct: Direct::Unknown, prefix: ctx.settings.wine_prefix.clone(), wine: ctx.settings.wine_binary.clone(),
             confirm_reset: false, confirm_game_reset: false, licences: false, update: None, shortcut: yo3_desktop::shortcut::exists(),
-            moved: yo3_desktop::foreign::moved_aside(std::path::Path::new(&ctx.settings.game_dir)) }
+            moved: yo3_desktop::foreign::moved_aside(std::path::Path::new(&ctx.settings.game_dir)), pictures: None, getting: None }
     }
 
-    /// The first tasks: what direct start is like now.
-    pub fn start(&self, ctx: &Ctx) -> Task<Message> { self.check_direct(ctx) }
+    /// The first tasks: what direct start is like now, and how many anime pictures there are.
+    pub fn start(&self, ctx: &Ctx) -> Task<Message> { Task::batch([self.check_direct(ctx), self.count_pictures(ctx)]) }
+
+    fn count_pictures(&self, ctx: &Ctx) -> Task<Message> {
+        let dir = yo3_launcher::art::folder_in(&ctx.root);
+        Task::perform(async move { tokio::task::spawn_blocking(move || pictures::count(&dir)).await.unwrap_or((0, 0)) }, Message::PicturesCounted)
+    }
 
     fn check_direct(&self, ctx: &Ctx) -> Task<Message> {
         let Some(backend) = ctx.backend.clone() else { return Task::none() };
@@ -313,6 +333,74 @@ impl State {
                     Err(error) => self.fail(ctx, &format!("Couldn't check for updates.\n{error}")), // → Details
                 }
             }
+            Message::PicturesCounted(counts) => self.pictures = Some(counts),
+            Message::GetPictures => {
+                if self.getting.is_some() { return Task::none() }
+                let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+                let cancel = Arc::new(AtomicBool::new(false));
+                let dir = yo3_launcher::art::folder_in(&ctx.root);
+                self.getting = Some((0, pictures::count(&dir).1 as u32, cancel.clone()));
+                self.note = None;
+                pictures::start(dir, pictures::SERVER.into(), cancel, tx);
+                return Task::run(iced::futures::stream::unfold(Some(rx), |rx| async move {
+                    let mut rx = rx?;
+                    let event = rx.recv().await?;
+                    let next = (!matches!(event, pictures::Event::Done(_))).then_some(rx);
+                    Some((event, next))
+                }), Message::Pictures);
+            }
+            Message::Pictures(pictures::Event::Progress(done, total)) => if let Some(run) = &mut self.getting { run.0 = done; run.1 = total },
+            Message::Pictures(pictures::Event::Done(result)) => {
+                self.getting = None;
+                match result {
+                    Ok(out) => {
+                        let (good, sentence) = pictures::download_sentence(&out);
+                        if let Some(backend) = &ctx.backend { backend.diagnostics.line(&format!("Anime pictures: {} saved, {} had, {} not fetched{}", out.saved.len(), out.had, out.failed.len(),
+                            out.unreachable.as_deref().map(|why| format!(" (server not reached: {why})")).unwrap_or_default())) }
+                        let mut sentence = sentence;
+                        if good || !out.saved.is_empty() { sentence.push_str(if playing { " The open game shows them after you close it and press PLAY again." } else { " They show from the next PLAY." }) }
+                        self.note = Some(Note { good, sentence, details: None, open: false });
+                    }
+                    Err(error) => self.fail(ctx, &error),
+                }
+                return self.count_pictures(ctx);
+            }
+            Message::CancelPictures => if let Some((_, _, cancel)) = &self.getting { pictures::stop(cancel) },
+            Message::AddPictures => {
+                let dir = yo3_launcher::art::folder_in(&ctx.root);
+                self.busy = Some("Adding the pictures…");
+                return Task::perform(async move {
+                    let Some(file) = rfd::AsyncFileDialog::new().set_title("Add pictures from a file").add_filter("ZIP", &["zip"]).pick_file().await else { return Ok(None) };
+                    let path = file.path().to_path_buf();
+                    tokio::task::spawn_blocking(move || yo3_launcher::art::pack::import(&dir, &path)).await.map_err(|e| e.to_string())?.map(Some)
+                }, Message::PicturesAdded);
+            }
+            Message::PicturesAdded(result) => {
+                self.busy = None;
+                match result {
+                    Ok(Some(done)) => {
+                        let (good, mut sentence) = pictures::import_sentence(&done);
+                        if done.faces + done.minis > 0 { sentence.push_str(if playing { " The open game shows them after you close it and press PLAY again." } else { " They show from the next PLAY." }) }
+                        self.note = Some(Note { good, sentence, details: None, open: false });
+                        return self.count_pictures(ctx);
+                    }
+                    Ok(None) => {}
+                    Err(error) => self.fail(ctx, &error),
+                }
+            }
+            Message::SavePictures => {
+                let dir = yo3_launcher::art::folder_in(&ctx.root);
+                self.busy = Some("Saving the pictures…");
+                return Task::perform(async move {
+                    let Some(file) = rfd::AsyncFileDialog::new().set_title("Save pictures to a file").set_file_name("yo3-anime-pictures.zip").add_filter("ZIP", &["zip"]).save_file().await else { return Ok(None) };
+                    let path = file.path().to_path_buf();
+                    tokio::task::spawn_blocking(move || yo3_launcher::art::pack::export(&dir, &path)).await.map_err(|e| e.to_string())?.map(Some)
+                }, Message::PicturesSaved);
+            }
+            Message::PicturesSaved(result) => {
+                self.busy = None;
+                match result { Ok(Some(done)) => self.good(pictures::export_sentence(&done)), Ok(None) => {}, Err(error) => self.fail(ctx, &error) }
+            }
             Message::Licences => self.licences = !self.licences,
             Message::PutBack(name) => {
                 if playing { return Task::none() }
@@ -399,12 +487,37 @@ impl State {
                 pick_list(size, chosen, |s: Size| Message::Change(Change::Resolution(s.value))).style(yo3_skin::choice).menu_style(yo3_skin::choice_menu).width(280).padding([6, 10]),
                 text("The game keeps its picture and draws it larger. From the next PLAY.").size(14).color(color::INK_SOFT),
             ].spacing(6).into()),
+            item("Anime pictures", self.pictures_view(playing)),
             item("Without the launcher", direct.into()),
             item("Desktop shortcut", row![text(if self.shortcut { "On your desktop. Make it again if it no longer opens YO3 Revival." }
                     else { "A shortcut to YO3 Revival on your desktop." }).size(14).color(color::INK_SOFT).width(Fill),
                 pill(if self.shortcut { "Make again" } else { "Add" }, self.busy.is_none().then_some(Message::Shortcut), Kind::Secondary, 120, 32)]
                 .spacing(10).align_y(Center).into()),
         ].spacing(16).into()
+    }
+
+    /// The anime card pictures (#60): how many there are and the three ways to get more.
+    fn pictures_view(&self, playing: bool) -> Element<'_, Message> {
+        let line = match (&self.getting, self.pictures) {
+            (Some((done, total, _)), _) => format!("Getting pictures: {done} of {total}…"),
+            (None, Some((have, total))) => format!("Anime pictures: {have} of {total}"),
+            (None, None) => "Counting…".to_owned(),
+        };
+        let idle = self.getting.is_none() && self.busy.is_none();
+        let all = self.pictures.is_some_and(|(have, total)| have >= total);
+        let get = match &self.getting {
+            Some(_) => pill("Cancel", Some(Message::CancelPictures), Kind::Secondary, 150, 32),
+            None => pill("Get pictures", (idle && !all && self.pictures.is_some()).then_some(Message::GetPictures), Kind::Primary, 150, 32),
+        };
+        let mut hint = format!("Cards with an anime version can show its anime artwork. Get pictures downloads {} from ProjectIgnis' picture server, one card at a time, \
+            only when you press it. A card without a picture keeps the game's artwork.", pictures::SIZE_NOTE);
+        if playing { hint.push_str(" The game is open: new pictures show after you close it and press PLAY again.") } else { hint.push_str(" New pictures show from the next PLAY.") }
+        column![
+            text(line).size(15).color(color::INK),
+            text(hint).size(14).color(color::INK_SOFT),
+            row![get, pill("Add pictures from a file…", idle.then_some(Message::AddPictures), Kind::Secondary, 240, 32),
+                pill("Save pictures to a file…", idle.then_some(Message::SavePictures), Kind::Secondary, 230, 32)].spacing(10),
+        ].spacing(6).into()
     }
 
     fn singleplayer<'a>(&'a self, ctx: &'a Ctx, home: &'a home::State, playing: bool) -> Element<'a, Message> {
@@ -529,6 +642,46 @@ mod tests {
         let _ = state.update(Message::Changed(Change::Resolution("huge".into()), Err("Choose one of the screen sizes.".into())), &mut ctx, false);
         assert_eq!(ctx.settings.resolution, "1440x1080", "a refused value changes nothing");
         assert_eq!(state.note.as_ref().map(|n| (n.good, n.sentence.as_str())), Some((false, "Choose one of the screen sizes.")));
+    }
+
+    #[test]
+    fn the_anime_pictures_line_counts_and_a_finished_download_says_when_the_pictures_show() {
+        use yo3_launcher::art::get::Outcome;
+        let mut ctx = ctx();
+        let mut state = State::new(&ctx, Section::Game);
+        let _ = state.update(Message::PicturesCounted((12, 418)), &mut ctx, false);
+        assert_eq!(state.pictures, Some((12, 418)));
+        // A download in progress shows its count; a refused second click starts nothing.
+        state.getting = Some((0, 418, Arc::new(AtomicBool::new(false))));
+        let _ = state.update(Message::Pictures(pictures::Event::Progress(40, 418)), &mut ctx, false);
+        assert_eq!(state.getting.as_ref().map(|g| (g.0, g.1)), Some((40, 418)));
+        let _ = state.update(Message::CancelPictures, &mut ctx, false);
+        assert!(state.getting.as_ref().unwrap().2.load(std::sync::atomic::Ordering::SeqCst), "Cancel stops the run at its next card");
+        let ended = |playing: bool, out: Outcome| {
+            let mut ctx = self::tests::ctx();
+            let mut state = State::new(&ctx, Section::Game);
+            state.getting = Some((1, 2, Arc::new(AtomicBool::new(false))));
+            let _ = state.update(Message::Pictures(pictures::Event::Done(Ok(out))), &mut ctx, playing);
+            assert!(state.getting.is_none());
+            state.note.unwrap()
+        };
+        let got = Outcome { saved: vec![1, 2, 3], ..Outcome::default() };
+        assert_eq!((ended(false, got.clone()).good, ended(false, got.clone()).sentence), (true, "Got 3 pictures. They show from the next PLAY.".to_owned()));
+        assert!(ended(true, got).sentence.contains("open game shows them after you close it"));
+        let down = ended(false, Outcome { unreachable: Some("x".into()), ..Outcome::default() });
+        assert!(!down.good && down.sentence.contains("Add pictures from a file") && !down.sentence.contains("next PLAY"), "{}", down.sentence);
+        assert!(yo3_desktop::words::technical(&down.sentence).is_none());
+    }
+
+    #[test]
+    fn pictures_added_from_a_file_say_what_was_added_and_a_wrong_file_is_one_plain_sentence() {
+        let mut ctx = ctx();
+        let mut state = State::new(&ctx, Section::Game);
+        let done = yo3_launcher::art::pack::Imported { faces: 2, minis: 0, kept: 1, refused: vec![], ignored: 0 };
+        let _ = state.update(Message::PicturesAdded(Ok(Some(done))), &mut ctx, false);
+        assert_eq!(state.note.as_ref().map(|n| n.sentence.as_str()), Some("Added 2 pictures. 1 of yours was kept. They show from the next PLAY."));
+        let _ = state.update(Message::PicturesAdded(Err("That file is not a zip file.".into())), &mut ctx, false);
+        assert_eq!(state.note.as_ref().map(|n| (n.good, n.sentence.as_str())), Some((false, "That file is not a zip file.")));
     }
 
     #[test]

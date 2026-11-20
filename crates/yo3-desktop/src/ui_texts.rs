@@ -5,9 +5,10 @@
 use yo3_desktop::words::technical;
 
 /// The window's code, up to its tests.
-const SCREENS: [(&str, &str); 7] = [
+const SCREENS: [(&str, &str); 8] = [
     ("app.rs", include_str!("app.rs")), ("home.rs", include_str!("home.rs")), ("multi.rs", include_str!("multi.rs")), ("setup.rs", include_str!("setup.rs")),
     ("settings.rs", include_str!("settings.rs")), ("help.rs", include_str!("help.rs")), ("host.rs", include_str!("host.rs")),
+    ("pictures.rs", include_str!("pictures.rs")),
 ];
 
 /// Library code whose error messages can reach a notice.

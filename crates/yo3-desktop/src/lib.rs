@@ -34,6 +34,7 @@ pub mod multiplayer;
 pub mod options;
 pub mod words;
 pub mod hosting;
+pub mod pictures;
 mod game_data_platform;
 mod process;
 mod github_http;

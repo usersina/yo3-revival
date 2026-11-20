@@ -115,7 +115,7 @@ pub fn have(dir: &Path, entries: &[Entry]) -> usize {
 }
 
 /// What a run did.
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Outcome {
     /// Faces written by this run.
     pub saved: Vec<u32>,

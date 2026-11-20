@@ -23,7 +23,7 @@ pub const MAX_ENTRIES: usize = 4000;
 enum Kind { Card, Mini }
 
 /// What an import did.
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Imported {
     pub faces: u32,
     pub minis: u32,
@@ -116,7 +116,7 @@ pub fn import_from(dir: &Path, source: impl Read + Seek) -> Result<Imported, Str
 }
 
 /// What an export wrote.
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Exported { pub faces: u32, pub minis: u32 }
 
 /// Writes the folder's faces and thumbnails to the zip `target` (written whole, then put in place).
