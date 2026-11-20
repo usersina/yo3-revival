@@ -74,6 +74,20 @@ pub fn password_rules(user: &str, password: &str, again: &str) -> Vec<(Rule, &'s
     ]
 }
 
+/// Whether Create account asks for an invite code: only a server that said it is open needs none; one that said
+/// invite (or closed) needs it; one that hasn't answered yet gets the box anyway, not required (#70: v0.1.5 hid it until
+/// the server's status came back, so a player who opened the form early, or came from an invite link, had no box).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InviteAsk { Hidden, Required, Optional }
+
+pub fn invite_ask(status: Option<&Status>) -> InviteAsk {
+    match status {
+        Some(Status::Online { registration, .. }) if registration == "open" => InviteAsk::Hidden,
+        Some(Status::Online { .. }) => InviteAsk::Required,
+        _ => InviteAsk::Optional,
+    }
+}
+
 /// Making an account's rules, as lines that turn green as they are met (the server checks them again).
 pub fn register_rules(user: &str, password: &str, again: &str, invite: Option<&str>) -> Vec<(Rule, &'static str)> {
     let mut rules = vec![(rule_for(user.trim(), typeable(user.trim(), 3)), "User ID: 3 to 16 letters or digits")];
@@ -869,8 +883,8 @@ impl State {
                     .into()
             }
             Form::Register => {
-                let invite = matches!(selected.and_then(|s| self.status.get(s.key())), Some(Status::Online { registration, .. }) if registration != "open");
-                let rules = register_rules(&self.user, &self.password, &self.again, invite.then_some(self.invite.as_str()));
+                let ask = invite_ask(selected.and_then(|s| self.status.get(s.key())));
+                let rules = register_rules(&self.user, &self.password, &self.again, (ask == InviteAsk::Required).then_some(self.invite.as_str()));
                 let ready = !self.busy && self.rules && rules.iter().all(|(r, _)| *r == Rule::Met);
                 let mut col = column![
                     heading("Create an account"),
@@ -878,7 +892,13 @@ impl State {
                     labelled("Password", input("", &self.password, Field::Password, true)),
                     labelled("Again", input("", &self.again, Field::Again, true)),
                 ].spacing(8);
-                if invite { col = col.push(labelled("Invite code", input("ABCD-EFGH-JKLM-NPQR", &self.invite, Field::Invite, false))) }
+                match ask {
+                    InviteAsk::Required => col = col.push(labelled("Invite code", input("ABCD-EFGH-JKLM-NPQR", &self.invite, Field::Invite, false))),
+                    // The server hasn't said yet (or couldn't be asked): the box is there, filled if the host gave a code.
+                    InviteAsk::Optional => col = col.push(column![labelled("Invite code", input("ABCD-EFGH-JKLM-NPQR", &self.invite, Field::Invite, false)),
+                        text("If the host gave you one.").size(13).color(color::INK_SOFT)].spacing(2)),
+                    InviteAsk::Hidden => {}
+                }
                 col.push(checklist(rules)).push(tick("I accept this server's rules", self.rules, Tick::Rules))
                     .push(actions(if self.busy { "Creating…" } else { "Create account" }, ready.then_some(Message::Register))).into()
             }
@@ -1233,6 +1253,17 @@ mod tests {
         assert!(matches!(state.found, Found::No(_)));
         let _ = state.update(Message::Edit(Field::Address, "not an address".into()), &ctx);
         assert!(matches!(state.found, Found::No(_)), "said at once, nothing looked up");
+    }
+
+    /// #70: the invite code box is there whenever the server hasn't said it is open, required once it says invite.
+    #[test]
+    fn create_account_shows_the_invite_box_unless_the_server_said_it_is_open() {
+        let with = |registration: &str| Status::Online { online: Some(1), max: None, registration: registration.into(), news: vec![], ping: std::time::Duration::from_millis(5), clean_game: false };
+        assert_eq!(invite_ask(None), InviteAsk::Optional, "not asked yet: the box, not required");
+        assert_eq!(invite_ask(Some(&Status::Offline)), InviteAsk::Optional);
+        assert_eq!(invite_ask(Some(&with("invite"))), InviteAsk::Required);
+        assert_eq!(invite_ask(Some(&with(""))), InviteAsk::Required, "an older server that doesn't say: as the server's default, invite");
+        assert_eq!(invite_ask(Some(&with("open"))), InviteAsk::Hidden);
     }
 
     /// An invite link made for one friend adds its server and opens making the account, the invite code filled in.
