@@ -25,7 +25,7 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
 
 **Standalone management dashboard**
 
-- [ ] Final public-access security review. Staff MFA, recovery and recent-MFA steps are implemented (#43, unreleased;
+- [ ] Final public-access security review. Staff MFA, recovery and recent-MFA steps are released (#43, v0.1.4;
       [design](dashboard.md#staff-mfa-and-recovery)); still to do: check them on the real VPS behind nginx, then drop the
       `optional` transition setting from any host that used it. The existing HTML panel remains private.
 - [ ] Finish hosted-server validation (#47): real Windows clients and native-engine duel load, isolated password-hash
@@ -53,7 +53,7 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
 - [ ] Synchro Strike (7921), found by the preset-deck coverage (#67, `task check:decks`): never offered as activatable
       after a Synchro Summon with any Synchro Monster, even Goyo's and Junk Warrior's: the core doesn't evaluate its
       condition or target at all; the cause is unknown. (The coverage's two other stops, a Tribute of a double-Tribute
-      monster and a Special Summon from the Deck, are fixed, unreleased.)
+      monster and a Special Summon from the Deck, were fixed in v0.1.5.)
 - [ ] Choosing a duel's opening track (`duel_id % 8`, `event_type` 5) is server-side and not built.
 
 **Titles**
