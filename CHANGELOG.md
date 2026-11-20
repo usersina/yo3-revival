@@ -13,7 +13,9 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.1.8 (2026-11-20)
+
+Multiplayer: update to v0.1.8 to join the hosted server after deployment.
 
 - Settings → Singleplayer → Your data has **Unlock all cards**: three of every card, in every artwork, for every player of
   your own server. Hosts have the same as `unlock-cards`.
