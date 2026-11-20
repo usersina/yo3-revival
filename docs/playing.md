@@ -128,6 +128,12 @@ attack. Brionac may return cards from either side of the field, its own included
 
 A monster that the engine lists as Special Summonable from your Deck (Familiar-Possessed - Wynn, Red-Eyes Black Metal Dragon) is on your **Deck pile**: click it and choose Special Summon (the pile doesn't light up). A monster that counts as two Tributes (Double Coston, for DARK monsters) is one pick in the Tribute list.
 
+Some choices the game's windows can't show at once come in steps, in windows you know. A monster that can be placed in three
+or four positions asks Attack or Defense (the position window), then **Face-up** or **Face-down** in a list titled the same
+way. An effect that makes you name several Types asks "Select Type 1 of 2.", then "Select Type 2 of 2." without the first.
+A number too large or too far from 1 for the number window is a list of ranges (for example "1000-75000"): pick the range
+that holds your number, and again, until the list is the numbers themselves. No card in the game today asks these.
+
 While a question such as "Activate the effect of …?" is up, click a Graveyard or banished pile to look through it; right-click
 closes the list and the question comes back.
 

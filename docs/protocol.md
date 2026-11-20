@@ -1979,11 +1979,31 @@ hundreds / else ones; `NumberSprite` to five figures) says "Declare monster leve
 (HINTMSG_LVRANK 567, Reasoning): EDOPro's Duel.AnnounceLevel is an alias of AnnounceNumberRange, and the client's
 other cards declare counts and die rolls with it (Big Eye, Ancient Telescope, Card Trooper, Sixth Sense).
 
-**What the dialogs can't do** (`dlg_selstand.swf`, `dlg_seltype.swf`, `0x4C5E50`, `0x4C5B50`): the position dialog has two
-buttons, face-up attack and face-up or face-down defense, so a prompt allowing face-down attack, or three or four
-positions, can't offer them all (none came up in 1,200 self-played duels of 600 cards); the type dialog takes one type
-(`onItemClick` stops at the first), and no card of the client's declares several; numbers beyond 255 of a unit, or with
-a minimum or step above 15, don't fit (no card of the client's asks for one).
+**What the dialogs can't do in one window, and the steps that do it** (`dlg_selstand.swf`, `dlg_seltype.swf`, `0x4C5E50`,
+`0x4C5B50`, `0x4C6430`): the position dialog has two buttons, face-up attack and face-up or face-down defense; the type
+dialog takes one type (`onItemClick` stops at the first); the number dialog holds at most 255 of a unit with a minimum
+and step of at most 15. The server asks these in several windows the client already has (#16; before, it chose for the
+player; **shape**, no original log shows how Konami's server asked, and none of the client's cards raises these asks, see
+below). The prompt stays pending (`Asking::Steps`) until the last window answers it; a stale result (a button past the
+labels, a type already declared) asks the window again.
+
+| Prompt | Windows | Answer |
+| --- | --- | --- |
+| MSG_SELECT_POSITION with three or four positions (EDOPro's POS_FACEUP and POS_FACEDOWN_DEFENSE together, or all four), or two of one side | the position dialog as before for the side (button 0 attack, 1 defense) when both sides have a position; then, for a side with both its positions, the Select dialog (kind 4, `0x4C5750`) with the server's labels "Face-up Attack Position" / "Face-down Attack Position" (or Defense) under the same 'Select position for "%s".' (327) and card, DLGResult the label's index. Two positions of one side only skip the position dialog. One position needs no window; the CPU keeps the automatic answer | the position bit |
+| MSG_ANNOUNCE_RACE {count above 1, available} | one type dialog (kind 5) per type, without the types declared before, under the server's "Select @3Type n of m@0." (through the DLL); fewer client types than the count are answered automatically | the races in the order declared |
+| MSG_ANNOUNCE_NUMBER {options} the number dialog can't show | Select dialogs of at most four labels, the options by value cut into four equal ranges ("1000-75000"), a pick narrowing to its range until each label is one number; the title is the card's hint, "Declare monster level." after the Level hint, else "Declare a number." | the option's index in the engine's order |
+
+The duel check's round trip clicks each of these windows' paths (every position, every pair of types, every option of a
+stepped number) and fails the duel when an answer the engine offers has none (`Translator::unreachable_answers`).
+Not exercised by a real card: no script the client's cards use calls `Duel.SelectPosition` with three positions, or
+`AnnounceRace` with a count above 1 (the attribute dialog already takes several picks: DNA Checkup, Earthshaker and Disciple of the Forbidden Spell declare two or more Attributes with it), and the engine cannot send
+the number steps a real option list: the core's `MSG_ANNOUNCE_NUMBER` counts its options in a byte (Wall of Revealing
+Light at 300,000 LP sent the first 44), the client shows at most 99,999 LP, and no card declares a minimum or step
+above 15 units. The windows are covered by `translate_contract.rs` (`three_or_four_positions_are_asked_in_steps`,
+`several_types_are_declared_one_dialog_each`, `numbers_beyond_the_number_dialog_are_narrowed_in_steps`) and, for the
+number dialog through the real engine, `card_scenarios.rs` (Wall of Revealing Light). Not checked live: nothing in the
+client's card set asks for them, so the Select dialog's two-line message (text and card name) is untested on the
+client.
 
 **Sums.** MSG_SELECT_SUM (cards whose Levels make a total: a Ritual Summon's tributes, Machina Fortress's discards)
 is the client's card list of `selects`, kind 1, at most `max` picks (0: no bound), under the engine's hint or else
@@ -2161,7 +2181,7 @@ Summoned.
 
 The answers carry EDOPro's terms: the type's and attributes' RACE_/ATTRIBUTE_ bits, the number's index among the
 options (the smallest at least as large as the one picked: the engine may list them largest first, Card Trooper's
-3, 2, 1), and a card by Konami id, which the engine turns into a passcode; races go to the core as one 64-bit value. Several types at once and numbers out of the dialog's range keep the automatic answer. The CPU names a card
+3, 2, 1), and a card by Konami id, which the engine turns into a passcode; races go to the core as one 64-bit value. Several types at once and numbers out of the dialog's range are asked in steps (above). The CPU names a card
 the effect's filter allows: the engine runs ANNOUNCE_CARD's `opcodes` (EDOPro's `card_data::is_declarable` stack
 program: type, race, attribute, archetype and code tests) over the card database and adds `fits`, the duel's own cards
 first; without `fits`, the duel's cards in turn (the core asks again when a name doesn't fit). The client has no other card name window
@@ -2172,8 +2192,8 @@ steps of 500 (`param3` 15 << 24 \| 5 << 20 \| 5 << 16 \| 303) and 1000 LP was pa
 
 Positions: the client's MSG_SELECT_POSITION {code, positions} opens the position dialog with 'Select position for
 "%s".' (327), any uid holding the card's id, and the flag when face-up defense is allowed; button 0 answers face-up
-attack (else face-down attack), button 1 face-up defense (else face-down). Without an attack position the first
-allowed one is taken. Live (`--duel-deck 1149,1151`): Marauding Captain's Special Summon asked for Warrior Dai
+attack (else face-down attack), button 1 face-up defense (else face-down). With more positions than the two buttons
+reach, the second window above asks the rest; one allowed position is taken without asking. Live (`--duel-deck 1149,1151`): Marauding Captain's Special Summon asked for Warrior Dai
 Grepher's position with the card upright and sideways; Defence sent `DLGResult 1` and the card moved face-up in
 defense (`0x1A` to `0xC004`).
 
