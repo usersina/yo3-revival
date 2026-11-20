@@ -191,7 +191,7 @@ once and applies at the next PLAY (or your server's next start), without restart
 | --- | --- |
 | Game | The game folder (**Change…** opens Setup), **Verify** (checks the game and YO3 Revival's own files in full, and says how to fix what isn't right), the [screen size](#screen-size), **Anime pictures** ("N of M", [**Get pictures**, **Add pictures from a file…** and **Save pictures to a file…**](anime-cards.md#artwork)), [opening the game without the launcher](#open-the-game-directly) with its state and **Fix permission** when the game folder needs it, and **Add** for a desktop shortcut |
 | Accounts | Each server you're signed in to on this PC: **Sign out**, **Sign out everywhere** (every PC signed in to the account must sign in again; asks for the password when this PC didn't stay signed in) and **Change password** (signs every PC out, this one too) |
-| Singleplayer | The [banlist](#banlist), **Back up now**, **Restore…** (a backup from a recent start), **Reset…** (starts your Singleplayer data again; the old data is kept beside it, renamed) and **Open data folder** |
+| Singleplayer | **Anime cards** (your own server's `anime-cards` setting, [see below](#anime-cards)), the [banlist](#banlist), **Back up now**, **Restore…** (a backup from a recent start), **Reset…** (starts your Singleplayer data again; the old data is kept beside it, renamed) and **Open data folder** |
 | Advanced | On Linux, the Wine prefix and the Wine program (empty for Wine's defaults; **Save** checks it); **Detailed logs** for your servers; **Export logs…** and **Open logs folder**; [Reset local game data](#reset-local-game-data) |
 | About | The version, **Check for updates**, release notes, the project, licences and credits |
 
@@ -217,6 +217,17 @@ choose **Original** to play.
 **Since v0.1.4 (2026-11-19):** opening `yo3.exe` [directly](#open-the-game-directly) draws the game at the size the last PLAY used (the
 loader sets it up before the game makes its window). Change the size in Settings, PLAY once, and the next direct start follows.
 A game this can't scale just opens at its own size.
+
+### Anime cards
+
+Settings → Singleplayer → **Anime cards** (off by default) plays some cards as they were in the anime: [the list](anime-cards.md). It
+is your own server's `anime-cards` setting, so the switch shows what the server has (asked of it while it runs, read from its
+saved settings while it is stopped) and writes it the same way. It takes effect from the next game start; with the game open,
+**RESTART THE GAME** appears on the main screen. Turning it on while some pictures are missing opens a dialog: what is about to be
+downloaded (about 10 MB from ProjectIgnis' picture server, how many of the cards still have no picture, that a card without one keeps
+the game's artwork), **Get pictures** (a progress bar, **Cancel**, then the result and **Close**) or **Not now**. The switch stays on
+whatever you choose, and Settings → Game → **Anime pictures** downloads later. A server you join never shows this switch: its host
+decides.
 
 ### Banlist
 

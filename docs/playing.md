@@ -138,8 +138,12 @@ If a protected monster disappears, a slot appears empty but remains occupied, or
 
 ## Anime card versions
 
-A host can set the server's `anime-cards` setting to `on` ([the setting](guide.md#live-settings)); it is off by default,
-and takes effect at the next duel. Then NPC duels and duels between players play **411 cards by their anime
+Playing alone, turn on **Anime cards** in Desktop's Settings → Singleplayer: it is your own server's `anime-cards` setting, off
+by default, and it shows what the server really has. Turning it on offers the anime pictures right away (a dialog: about 10 MB
+from ProjectIgnis' picture server, N of 418 cards without one, **Get pictures** or **Not now**; the switch stays on either way).
+A host of a server sets `anime-cards` to `on` ([the setting](guide.md#live-settings)) for everyone who plays there; a server you
+join is always its host's choice and has no switch for you. It is off by default, and takes effect at the next duel; a game that
+is already open shows RESTART THE GAME on the main screen, because the game fetches its cards once when it starts. Then NPC duels and duels between players play **411 cards by their anime
 effects** instead of the game's: Card of Sanctity has both players draw until they hold six cards, Mirror Force also hurts
 you by the ATK difference to each of your weaker monsters it destroys, Junk Warrior's ATK follows the Level 2 or lower
 monsters you control from moment to moment, and so on. [The list](anime-cards.md) names every card and says why 7 others

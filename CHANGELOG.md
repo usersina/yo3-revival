@@ -21,6 +21,9 @@ Older entries describe their release at the time. For current setup, use the [RE
   pictures and **Save pictures to a file…** makes one to share with a friend. It all works without any server, so Singleplayer
   gets them too. Pictures show from your next PLAY; a card without one keeps the game's own picture with the anime card's
   stats and text, and pictures you put there yourself are never replaced.
+- New **Anime cards** switch in Settings → Singleplayer (off by default): play some cards as they were in the anime. Turning
+  it on while pictures are missing opens a window offering to get them (about 10 MB), with a progress bar; the switch stays on
+  whichever you choose. It takes effect from the next game start, and an open game offers RESTART THE GAME.
 - Desktop now shows a progress bar where it waits: the picture download, an update downloading in What's new, a game starting
   or closing, the setup wizard's folder check, and Settings' longer jobs (a moving band when it can't tell how long).
 - Desktop's Settings now says "YO3 Revival's own file in the game folder needs repair. The next PLAY puts it right." when the

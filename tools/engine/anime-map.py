@@ -468,7 +468,7 @@ def doc(data):
     releases = release_report(data)
     out = ["# Anime card versions", "",
            "<!-- Made by tools/engine/anime-map.py from engine/anime/research.tsv: do not edit by hand. -->", "",
-           "With the host's `anime-cards` setting on ([playing](playing.md#anime-card-versions)), the %d cards below play by their"
+           "With the `anime-cards` setting on (a host sets it; a single player turns on **Anime cards** in Desktop's Settings → Singleplayer: [playing](playing.md#anime-card-versions)), the %d cards below play by their"
            " anime effects, ProjectIgnis' unofficial scripts (CardScripts `%s`), in NPC and player duels, and the game shows them as"
            " their anime versions: the **card profile**. The other cards, and the %d retained or held back below, play and show as they always did."
            " The reviewed table is the issue [#60](https://github.com/usersina/yo3-revival/issues/60); an unofficial script loading"

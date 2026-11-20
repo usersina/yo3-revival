@@ -586,7 +586,7 @@ impl State {
             }
             (None, Dialog::Offer) => column![
                 text("Anime cards are on. To see their anime artwork, YO3 Revival can get the pictures now.").size(15).color(color::INK),
-                text(format!("{} from ProjectIgnis' picture server, one card at a time. {} of {total} cards still have no picture. A card without a picture keeps the game's artwork. \
+                text(format!("The download is {} from ProjectIgnis' picture server, one card at a time. {} of {total} cards still have no picture. A card without a picture keeps the game's artwork. \
                     Nothing is downloaded unless you press Get pictures.", pictures::SIZE_NOTE, total.saturating_sub(have))).size(14).color(color::INK_SOFT),
                 Space::new().height(Fill),
                 row![Space::new().width(Fill), pill("Not now", Some(close.clone()), Kind::Secondary, 130, 38), pill("Get pictures", Some(Message::GetPictures), Kind::Primary, 160, 38)].spacing(10)].spacing(14).into(),
