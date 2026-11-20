@@ -101,6 +101,7 @@ Sizes: 15 px body, 14 px captions and footer, 19 px frame titles, about half the
 | Icon button | `icon_button(icon, message, tip, on_dark)` | 30 px square, a tip under the pointer, a soft face on hover; faded when disabled |
 | Menu | `menu(items, width)` of `Item { icon, label, on_press, danger }` | a light card with a shadow; rows highlight on hover; red for a removal |
 | Checklist line | `rule(Rule::.., words)` | grey ring (not typed yet), green tick (met), red cross (broken) |
+| Progress bar | `progress_bar(Bar::.., label, height)`, full width; `Bar::of(done, total)` | a silver rim, a dark well and a navy fill with a cyan edge that glides to each value, the label ("12 of 418") on it; `Bar::Starting` a band that travels to and fro (length unknown), `Bar::Done` green, `Bar::Failed(fraction)` red; it only asks for frames while it moves |
 | Dialog | `dialog(title, help, close, width, height, content)` inside `modal(screen, dialog, on_blur)` | a frame with **?** and **×** in its strip; the modal darkens the screen; a click outside or Escape closes it |
 | Backdrop | `backdrop()` | the circuit board, cropped to fill; always the bottom layer |
 | Logo | `logo(height)` | the diamond mark and YO3 REVIVAL |
