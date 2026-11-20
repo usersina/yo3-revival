@@ -28,12 +28,12 @@ Older entries describe their release at the time. For current setup, use the [RE
   software are inside it, with no Continue anyway (#69). A tidiness rule for friends' games, not anti-cheat. See
   [hosting](docs/hosting.md#clean-game).
 - Hosts can turn on anime card versions (#60): `anime-cards on` (a live setting in the admin panel and the command line, off
-  by default, at the next duel) makes NPC and player duels play 412 cards by their anime effects (Card of Sanctity, Mirror
+  by default, at the next duel) makes NPC and player duels play 415 cards by their anime effects (Card of Sanctity, Mirror
   Force, Junk Warrior and others), and the game shows them as the anime cards: type, Level, stats, text and Main or Extra Deck
   (the card profile: every kind of difference is released, from type flags, Spell/Trap kinds, monster types, Main and Extra Deck,
   Level, attribute, race, ATK and DEF to a Monster, Spell or Trap that changes class). Cards and decks stay yours, a changed class moves a card to the other list by itself, and a change of the setting needs a
   restart of the game. Anime artwork is never shipped: put 200x290 PNGs in the launcher's `anime-art` folder. The
-  [list](docs/anime-cards.md) names the cards and says why 6 others keep the game's version. When the host changes the
+  [list](docs/anime-cards.md) names the cards and says why 3 others keep the game's version (Theinen the Great Sphinx's trigger from the Deck, and the two "?" ATK cards Clear Vice Dragon and Blackwing - Aurora, play as the anime has them). When the host changes the
   setting, Desktop offers RESTART THE GAME instead of leaving you with the old cards, and the launcher places the cards of
   your own saved decks in the right lists before the game starts (the first version of a changed deck is kept beside it).
 - Two anime cards ProjectIgnis has no real script for are now our own reconstructions, played with the anime setting on and
@@ -43,7 +43,7 @@ Older entries describe their release at the time. For current setup, use the [RE
   Summoned face-up in Attack Position, by anything). Temple of the Kings, Time Wizard and Thousand Dragon keep the game's version on purpose (the list gives the reasons). Skill
   Drain now treats the three Egyptian Gods as the anime has it: the Gods already on the field are negated until that turn
   ends and then come back (Ra's ATK is 0 for the rest of that turn), and a God summoned while Skill Drain is face up is not
-  affected. See [the list](docs/anime-cards.md#reconstructions).
+  affected, nor is it affected twice (a second Skill Drain, or a God that comes back, is treated by the same rule). See [the list](docs/anime-cards.md#reconstructions).
 - The Stadium on the map now has events (#18). Your host schedules Gunslinger (win streak), Duelist Trial and Anniversary
   Trial (wins), and Evolution and Ultimate Match (stars, played as matches). Open one, press Ready and you are paired with
   another player in the same event, and matched again after every duel until you press Not Ready. Your score for the event

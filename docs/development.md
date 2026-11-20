@@ -440,7 +440,7 @@ other anime card it names mapped too. Anything else is `held` with its reasons a
 
 A card whose upstream entry is only a placeholder (Dark Strike Fighter, Fortune Lady Fire) has a corrected **record** in
 `engine/anime/records.json` (passcode, alias, type, Level, ATK, DEF, race, attribute, setcode, name, script strings, the text the
-game shows, and whether it is a reconstruction) and its own script in `engine/overrides/c<passcode>.lua`; the generator copies the
+game shows, and whether it is a reconstruction) and its own script in `engine/overrides/c<passcode>.lua` (a record with `upstream_script` keeps ProjectIgnis' script and only corrects the row: Clear Vice Dragon and Blackwing - Aurora keep the game's "?" ATK); the generator copies the
 records into `anime-cards.json` (`"records"`), the engine's `Cards::open_with` reads them over the unofficial database's row, and
 `profile::read_anime` builds the card profile from them. The real-core tests are `crates/yo3-server/tests/anime_reconstructions.rs`.
 

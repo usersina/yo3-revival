@@ -1360,6 +1360,7 @@ named it; the owner's info panel took the card too. The opponent's hand cards ha
 entry (1000, with the row) goes first. The client sees a card shown to it and its own cards shown to the opponent,
 not the opponent's cards shown to the opponent. A hand card shows at once; a card from the Deck (a search) shows when
 it reaches the hand: the server keeps its Konami id until the move to the hand, then sends the show at its new index.
+**An effect used from the Deck** (Theinen the Great Sphinx's EVENT_LEAVE_FIELD trigger, anime versions): MSG_SELECT_CHAIN lists the card at location 1, and the question is the same Yes/No dialog with its face (several copies: the card list after Yes); no new command shape. The activation (MSG_CHAINING, then CardActivate `0x22` and the speech line) names the activating card, found in the mirror's Deck by its Konami id, never the Deck's first card (before this fix it named that card to both players, a hidden-identity leak); the script's own MSG_CONFIRM_CARDS then shows it to the opponent and its move to the field carries its face. Status: **confirmed** live under Wine (2026-11-20), contract tests `a_deck_trigger_*`.
 **Hand shuffles** (MSG_SHUFFLE_HAND, 33 `{player, cards}`: EDOPro shuffles a hand after a card in it was shown, as
 after a search's confirm). `cards` is the hand's new order as bare passcodes; the engine adds `cids` beside them. The
 server reorders its mirror of the hand to match, re-sends each hand card's table entry (1000) at its new index, then

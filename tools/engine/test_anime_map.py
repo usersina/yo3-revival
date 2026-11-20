@@ -60,7 +60,15 @@ class AnimeMap(unittest.TestCase):
         # Dark Strike Fighter and Fortune Lady Fire: ProjectIgnis has only a placeholder, so the anime data record
         # (engine/anime/records.json) and the script (engine/overrides/) are ours; the game's cid and the official card stay.
         recs = {r['cid']: r for r in MAP['records']}
-        self.assertEqual(sorted(recs), [8035, 8302])
+        self.assertEqual(sorted(recs), [8035, 8302, 8538, 9093])
+        upstream = {8538: 513000096, 9093: 511002602}
+        for cid, code in upstream.items():
+            c, r = CARDS[cid], recs[cid]
+            self.assertEqual((c['status'], c['script'], c.get('upstream_record')), ('mapped', 'unofficial/c%d.lua' % code, True))
+            self.assertEqual((r['atk'], r['alias']), (-2, r['official']), 'the game\'s ? kept, the official card as alias')
+            self.assertFalse(r['reconstruction'])
+            self.assertNotIn('differs', c)
+        recs = {k: v for k, v in recs.items() if k not in upstream}
         for cid, (code, stats) in {8035: (513000079, (2600, 1800, 7)), 8302: (511247002, (-2, -2, 2))}.items():
             c, r = CARDS[cid], recs[cid]
             self.assertEqual((c['status'], c['anime'], c['script']), ('mapped', code, 'overrides/c%d.lua' % code))
@@ -92,7 +100,7 @@ class AnimeMap(unittest.TestCase):
 
     def test_every_reviewed_card_ends_with_one_of_three_dispositions(self):
         # anime enabled, the game's version retained with a reason, or held for a technical fix (#60's closing plan).
-        self.assertEqual({c['status'] for c in CARDS.values()}, {'mapped', 'default', 'held'})
+        self.assertEqual({c['status'] for c in CARDS.values()}, {'mapped', 'default'}, 'nothing is held now: every reviewed card is enabled or retained on purpose')
         for c in CARDS.values():
             if c['status'] == 'default':
                 self.assertTrue(c['reason'].startswith('Default retained'), c['name'])
@@ -165,15 +173,34 @@ class AnimeMap(unittest.TestCase):
         self.assertEqual([t for _, t in rows.values()], sorted(t for _, t in rows.values()), 'cumulative counts only grow')
         self.assertEqual([t for _, t in rows.values()][-1], 0, 'nothing is held for a category alone')
 
-    def test_a_question_mark_the_database_spells_as_zero_is_held(self):
-        # Clear Vice Dragon and Blackwing - Aurora: the game shows "?"; the anime database's 0 stands for it.
+    def test_a_question_mark_the_database_spells_as_zero_is_released_by_a_corrected_record(self):
+        # Clear Vice Dragon and Blackwing - Aurora: the game shows "?"; the anime database's 0 stands for it, so a bare 0 is a
+        # placeholder difference the profile cannot show; their records keep the "?" (engine/anime/records.json), so no difference remains.
         self.assertEqual(anime_map.differences((0x21, -2, 0, 8, 1, 1), (0x21, 0, 0, 8, 1, 1))[0][0], 'placeholder')
         for cid in (8538, 9093):
-            self.assertEqual(CARDS[cid]['status'], 'held')
-            self.assertTrue(CARDS[cid]['holds'][0].startswith('placeholder:'), CARDS[cid]['holds'])
+            self.assertEqual(CARDS[cid]['status'], 'mapped')
+            self.assertNotIn('holds', CARDS[cid])
         # A "?" the anime card has too, and the anime's "?" where the game has a number, are real profile differences.
         self.assertEqual(anime_map.differences((0x21, -2, 0, 8, 1, 1), (0x21, -2, 0, 8, 1, 1)), [])
         self.assertEqual(anime_map.differences((0x21, 1500, 1500, 6, 1, 16), (0x21, -2, -2, 6, 1, 16))[0][0], 'atk')
+
+    def test_an_effect_the_deck_triggers_is_released_one_card_and_one_code_at_a_time(self):
+        # A Special Summon procedure from the Deck is a route proven for the class (the Deck pile); an effect the Deck triggers is
+        # released only for the cards listed with their effect code, each proven end to end (tests/anime_cards.rs `theinen_*`).
+        self.assertEqual(anime_map.DECK_ROUTES, {'EFFECT_SPSUMMON_PROC'})
+        self.assertEqual(anime_map.DECK_TRIGGERS, {6089: {'EVENT_LEAVE_FIELD'}})
+        theinen = CARDS[6089]
+        self.assertEqual((theinen['status'], theinen.get('holds')), ('mapped', None))
+        self.assertEqual(CARDS[4075]['status'], 'default', 'Time Wizard stays the game card')
+        self.assertEqual(CARDS[4022]['status'], 'default', 'Thousand Dragon stays the game card')
+        # The same script text, for another card or another effect code, is not released.
+        text = (ROOT / 'engine/vendor/CardScripts/unofficial/c513000030.lua')
+        if text.exists():
+            codes = anime_map.deck_effects(text.read_text(encoding='utf-8'))
+            self.assertEqual(codes, ['EVENT_LEAVE_FIELD'])
+            for cid, code in ((6089, 'EVENT_LEAVE_FIELD'), (1, 'EVENT_LEAVE_FIELD'), (6089, 'EVENT_PHASE+PHASE_END')):
+                allowed = code in anime_map.DECK_ROUTES or code in anime_map.DECK_TRIGGERS.get(cid, ())
+                self.assertEqual(allowed, (cid, code) == (6089, 'EVENT_LEAVE_FIELD'), (cid, code))
 
     def test_every_released_category_changes_a_mapped_card(self):
         shown = {cat for c in CARDS.values() if c['status'] == 'mapped' for cat in c.get('differs', [])}

@@ -195,6 +195,12 @@ FROM_DECK = re.compile(r"SetRange\([^)\n]*LOCATION_DECK")
 # `a_summon_from_the_deck_is_offered_on_the_deck_pile` and a real-engine duel of Andro Sphinx (tests/anime_cards.rs). An effect
 # the Deck triggers (a chain window, Theinen and Thousand Dragon) is not verified.
 DECK_ROUTES = {"EFFECT_SPSUMMON_PROC"}
+# An effect the Deck triggers (a chain window offers the card in the Deck: Theinen's EVENT_LEAVE_FIELD), released one card and
+# one effect code at a time, never as a class: each entry is a card whose offer, accept and decline were proven end to end (the
+# engine offers it, the translator turns it into the client's chain list, the costs and placement are right, no hidden Deck card
+# is shown to the opponent, and the real client under Wine took both answers). Thousand Dragon and Time Wizard are default-retained.
+#   6089 Theinen the Great Sphinx: tests/anime_cards.rs `theinen_*`, tests/translate_contract.rs `a_deck_trigger_*`, docs/features.md
+DECK_TRIGGERS = {6089: {"EVENT_LEAVE_FIELD"}}
 
 
 def deck_effects(text):
@@ -269,15 +275,17 @@ def build():
                 # A corrected record replaces the placeholder's row; its script is ours.
                 arow = (rec["type"], rec["atk"], rec["def"], rec["level"] & 255, rec["race"], rec["attribute"], rec["alias"], rec["name"])
                 entry["reconstruction"] = bool(rec.get("reconstruction"))
+                if rec.get("upstream_script"):
+                    entry["upstream_record"] = True
             else:
                 arow = card(unofficial, entry["anime"])
             entry["alias"] = arow[6]
             script = None
             for folder in ["unofficial"]:
                 p = os.path.join(vendor, "CardScripts", folder, "c%d.lua" % entry["anime"])
-                if os.path.exists(p) and not rec:
+                if os.path.exists(p) and (not rec or rec.get("upstream_script")):
                     script = "unofficial/c%d.lua" % entry["anime"]
-            if rec and os.path.exists(os.path.join(ENGINE, "overrides", "c%d.lua" % entry["anime"])):
+            if rec and not rec.get("upstream_script") and os.path.exists(os.path.join(ENGINE, "overrides", "c%d.lua" % entry["anime"])):
                 script = "overrides/c%d.lua" % entry["anime"]
             entry["script"] = script
             if arow[6] not in (0, o) and arow[6] not in artworks.get(o, set()) and cid not in ALIAS_KEPT:
@@ -300,7 +308,7 @@ def build():
                 made = sorted({n for n in (name_of(int(code)) for code in TOKEN_CALL.findall(text)) if n and n.endswith("Token")})
                 if made:
                     entry["tokens"] = made
-                unverified = [c for c in deck_effects(text) if c not in DECK_ROUTES]
+                unverified = [c for c in deck_effects(text) if c not in DECK_ROUTES and c not in DECK_TRIGGERS.get(cid, ())]
                 if unverified:
                     holds.append("the script has an effect used from the Deck (%s), which the client's menus have not been shown to offer" % ", ".join(sorted(set(unverified))))
                 if COPY_TOKEN.search(text):
@@ -530,11 +538,10 @@ def doc(data):
     out += ["", "Negate Attack is the pinned database's anime card (a Quick-Play Spell that negates the attack and ends the Battle Phase), not the"
             " Counter Trap the game has; the version is the issue's open era decision, shown here so it can be checked in play.", "",
             "Every reviewed card has one disposition: anime enabled, the game's version retained as the default with a reason (Time Wizard"
-            " and Thousand Dragon, reviewed together, and Temple of the Kings), or held for a technical fix: Theinen the Great Sphinx (an effect"
-            " the Deck triggers, not a procedure: the client's menus have not been shown to offer it) and Clear Vice Dragon and Blackwing -"
-            " Aurora the Northern Lights, whose \"?\" ATK the anime database spells as 0 (the profile would show 0 where the game shows \"?\"). Power Bond (it stays Power Bond and"
-            " is treated as Polymerization), Multiply and Cloning (the copy shows as the monster itself) and the Sphinxes that summon themselves from the"
-            " Deck are released, each with a test in `tests/anime_cards.rs`.", "",
+            " and Thousand Dragon, reviewed together, and Temple of the Kings), or held for a technical fix (none now). Power Bond (it stays Power Bond and"
+            " is treated as Polymerization), Multiply and Cloning (the copy shows as the monster itself), the Sphinxes that summon themselves from the"
+            " Deck, Theinen the Great Sphinx (its trigger from the Deck: offered, accepted and declined, in tests and in the real client) and Clear Vice Dragon and"
+            " Blackwing - Aurora the Northern Lights (the game\'s \"?\" ATK kept by a corrected record, [below](#upstream-scripts-with-the-games-)) are released, each with a test in `tests/anime_cards.rs`.", "",
             "**Source of truth for effects:** EDOPro/ProjectIgnis's anime scripts at the pinned commit. Effects are not re-checked against the"
             " episodes; a disagreement is fixed upstream or with a documented override in `engine/overrides/`. Two exceptions (#60): cards for which"
             " ProjectIgnis has only a placeholder (Dark Strike Fighter and Fortune Lady Fire) are researched and get our own record and script"
@@ -553,8 +560,20 @@ def doc(data):
             " the deck placement) is as for any other mapped card; the official (standard) card, its record and its script do not change.", "",
             "| Card | Anime card | Text the game shows | Basis |", "| --- | --- | --- | --- |"]
     for r in data["records"]:
-        out.append("| %s | %d | %s | %s |" % (r["name"].replace(" (Anime)", ""), r["code"], r["text"].replace("|", "/").replace("\n", "<br>"), r["basis"].replace("|", "/")))
+        if not r.get("upstream_script"):
+            out.append("| %s | %d | %s | %s |" % (r["name"].replace(" (Anime)", ""), r["code"], r["text"].replace("|", "/").replace("\n", "<br>"), r["basis"].replace("|", "/")))
     out += ["", RECONSTRUCTION_DETAILS, "",
+            "### Upstream scripts with the game's \"?\"", "",
+            "Clear Vice Dragon and Blackwing - Aurora the Northern Lights play by ProjectIgnis' scripts, unchanged. Their pinned database rows spell the"
+            " card's \"?\" ATK as 0, where the game shows \"?\" (-2, as the official card has it), and the profile has no way to show a 0 as \"?\". So the"
+            " row is corrected to the game's \"?\" in our record and the script is the upstream one (the record's `upstream_script`): the card keeps the"
+            " game's \"?\" in every client panel, and the core plays a \"?\" base ATK as 0 on the field, exactly what the 0 would give. Neither script sets"
+            " an ATK of its own: Clear Vice Dragon doubles its target's ATK in the Damage Step, Aurora copies the Synchro Monster it banishes (base ATK included).", "",
+            "| Card | Anime card | Corrected row |", "| --- | --- | --- |"]
+    for r in data["records"]:
+        if r.get("upstream_script"):
+            out.append("| %s | %d | ATK ? (-2), DEF %d, Level %d |" % (r["name"].replace(" (Anime)", ""), r["code"], r["def"], r["level"]))
+    out += ["",
             "Temple of the Kings (5231) keeps the game's version: its anime rules would need a reconstruction of Duel Monsters episodes 87 and 89"
             " (which cards the sealed-card effect may seal, the set restrictions, how far the protection reaches, the release costs and when the card"
             " is lost). The upstream script mixes the original, later and printed rules, so it is never enabled; nothing is implemented.", "",
@@ -581,6 +600,8 @@ def doc(data):
             "Extra Deck), or when the research or the script is not settled. Each reason is kept in `engine/anime-cards.json` too.", "", "| Card | Why |", "| --- | --- |"]
     for c in sorted(held, key=lambda c: c["name"].lower()):
         out.append("| %s | %s |" % (c["name"], "<br>".join(h.replace("|", "/") for h in c["holds"])))
+    if not held:
+        out.append("| None now | Every reviewed card is enabled or retained on purpose. |")
     kept = [l.split("\t") for l in read(os.path.join(ENGINE, "anime/retained.tsv")).splitlines()[1:]]
     out += ["", "## Kept on purpose", "", "| Card | Why |", "| --- | --- |"]
     for cid, name, why, up in sorted(kept, key=lambda k: k[1].lower()):

@@ -1,7 +1,9 @@
 //! Anime card versions (#60, the `anime-cards` setting): the reviewed cards of `engine/anime-cards.json` play by their
 //! anime effects through the real core, both seats' client models checked after every step (`duelcheck::scenario`); with
 //! the setting off, or for a card the map holds back, the game's own card plays. Skipped before `engine/fetch.sh`.
+use serde_json::json;
 use yo3_server::duelcheck::scenario::{Action::*, Scenario, engine_dir};
+use yo3_server::ocg::{Response, idle, msg, pos, resp};
 
 const WARWOLF: u16 = 6960; // Gene-Warped Warwolf: Level 4, 2000 ATK, no effect
 const HEDGEHOG: u16 = 7701; // Quillbolt Hedgehog: Level 2, 800 ATK
@@ -376,5 +378,182 @@ fn type_and_deck_zombie_warrior_is_a_main_deck_normal_monster() {
     let Some(mut s) = start(true, [(&deck, &[]), (&[WARWOLF; 40], &[])]) else { return };
     s.run(&[Summon(ZOMBIE_WARRIOR)]).unwrap();
     assert!(s.monster(0, ZOMBIE_WARRIOR).is_some(), "{}", s.state());
+    clean(&s);
+}
+
+const THEINEN: u16 = 6089;
+const DARK_HOLE: u16 = 4342;
+
+/// Both Sphinxes on the field (summoned from the Deck by Pyramid of Light), then Dark Hole is activated and the duel stops at
+/// the answer to it: Theinen the Great Sphinx, in the Deck (the bottom card, never drawn), may Special Summon itself
+/// (EVENT_LEAVE_FIELD, range hand or Deck, 1000 LP).
+fn theinen_duel() -> Option<Scenario> {
+    let hand = [PYRAMID_OF_LIGHT, DARK_HOLE, WARWOLF, WARWOLF, WARWOLF];
+    let mut deck: Vec<u16> = vec![WARWOLF; 35];
+    deck.extend(hand);
+    deck[0] = THEINEN;
+    deck[1] = ANDRO_SPHINX;
+    deck[2] = SPHINX_TELEIA;
+    let mut s = start(true, [(&deck, &[]), (&[WARWOLF; 40], &[])])?;
+    s.run(&[SetSpell(PYRAMID_OF_LIGHT), EndTurn, Activate(PYRAMID_OF_LIGHT), SpSummon(ANDRO_SPHINX), SpSummon(SPHINX_TELEIA)]).unwrap();
+    let i = s.prompt()["activates"].as_array().unwrap().iter().position(|c| c["cid"] == DARK_HOLE).expect("Dark Hole is offered");
+    s.respond(json!({"type": 1, "action": idle::ACTIVATE, "index": i})).unwrap();
+    Some(s)
+}
+
+/// Passes until the planned side is asked to chain a card in the Deck (the engine's MSG_SELECT_CHAIN with a card at location 1).
+fn until_the_deck_trigger(s: &mut Scenario) -> Option<serde_json::Value> {
+    for _ in 0..40 {
+        let p = s.prompt().clone();
+        if p["type"] == msg::SELECT_CHAIN && p["player"] == 0 && p["selects"].as_array().is_some_and(|v| !v.is_empty()) {
+            return Some(p);
+        }
+        if p["type"] == msg::SELECT_IDLECMD && p["player"] == 0 {
+            return None;
+        }
+        s.pass().unwrap();
+    }
+    panic!("no end: {}", s.context());
+}
+
+/// What Theinen's trigger is asked as, in the real engine with the anime versions on: from the Deck, after both Sphinxes (Andro
+/// Sphinx and Sphinx Teleia, summoned from the Deck by Pyramid of Light) were destroyed together by Dark Hole.
+#[test]
+fn theinen_in_the_deck_is_offered_after_both_sphinxes_are_destroyed() {
+    let Some(mut s) = theinen_duel() else { return };
+    let p = until_the_deck_trigger(&mut s).expect("Theinen's trigger is offered");
+    let selects = p["selects"].as_array().unwrap();
+    assert_eq!(selects.len(), 1, "{p}");
+    assert_eq!((selects[0]["cid"].as_u64(), selects[0]["code"].as_u64(), selects[0]["location"].as_u64()), (Some(6089), Some(513000030), Some(1)), "the anime card, in the Deck: {p}");
+    assert_eq!(p["forced"], false, "an optional trigger");
+    clean(&s);
+}
+
+#[test]
+fn theinen_is_not_offered_when_only_one_sphinx_is_destroyed() {
+    let hand = [PYRAMID_OF_LIGHT, DARK_HOLE, WARWOLF, WARWOLF, WARWOLF];
+    let mut deck: Vec<u16> = vec![WARWOLF; 35];
+    deck.extend(hand);
+    deck[0] = THEINEN;
+    deck[1] = ANDRO_SPHINX;
+    let Some(mut s) = start(true, [(&deck, &[]), (&[WARWOLF; 40], &[])]) else { return };
+    s.run(&[SetSpell(PYRAMID_OF_LIGHT), EndTurn, Activate(PYRAMID_OF_LIGHT), SpSummon(ANDRO_SPHINX)]).unwrap();
+    let i = s.prompt()["activates"].as_array().unwrap().iter().position(|c| c["cid"] == DARK_HOLE).expect("Dark Hole is offered");
+    s.respond(json!({"type": 1, "action": idle::ACTIVATE, "index": i})).unwrap();
+    assert!(until_the_deck_trigger(&mut s).is_none(), "one Sphinx alone does not trigger it: {}", s.context());
+    assert_eq!(s.count(0, "grave", ANDRO_SPHINX), 1);
+    assert!(s.monster(0, THEINEN).is_none());
+    clean(&s);
+}
+
+/// Accepting: 1000 LP are paid, the engine reveals Theinen to the opponent (the script's own `ConfirmCards`), and it lands on the
+/// field face-up in the position its player picks (Attack by default, Defense when chosen), out of the Deck. The second trigger
+/// (its ATK, 1000 LP more, the Graveyard's monsters' ATK: Andro Sphinx 3000 and Sphinx Teleia 2500) is asked and takes both answers.
+fn accept_theinen(position: Option<u64>, then_atk: bool) -> Option<Scenario> {
+    let mut s = theinen_duel()?;
+    s.prefer_position(position);
+    let p = until_the_deck_trigger(&mut s).expect("offered");
+    let before = s.state()[0]["deck"].as_u64().unwrap();
+    s.respond(Response::Chain(Some(0)).json()).unwrap();
+    assert!(
+        s.messages().iter().any(|m| m["type"] == msg::CONFIRM_CARDS && m["player"] == 1 && m["cards"][0]["cid"] == 6089),
+        "the opponent is shown Theinen: {:?}\n{p}",
+        s.messages()
+    );
+    assert_eq!(s.lp(0), 7000, "1000 LP paid for the Special Summon: {}", s.context());
+    let mut asked_atk = false;
+    for _ in 0..30 {
+        let p = s.prompt().clone();
+        if p["type"] == msg::SELECT_EFFECTYN && p["player"] == 0 {
+            asked_atk = true;
+            s.respond(Response::yes(resp::EFFECTYN, then_atk).json()).unwrap();
+        } else if p["type"] == msg::SELECT_IDLECMD && p["player"] == 0 {
+            break;
+        } else {
+            s.pass().unwrap();
+        }
+    }
+    assert!(asked_atk, "the ATK trigger was asked: {}", s.context());
+    assert_eq!(s.state()[0]["deck"].as_u64().unwrap(), before - 1, "Theinen left the Deck");
+    Some(s)
+}
+
+#[test]
+fn theinen_accepted_lands_face_up_and_its_atk_trigger_follows() {
+    let Some(s) = accept_theinen(None, true) else { return };
+    assert_eq!(s.position_of(0, THEINEN), Some(pos::FACEUP_ATTACK), "{}", s.context());
+    assert_eq!(s.lp(0), 6000, "1000 for each trigger");
+    assert_eq!(s.attack_of(0, THEINEN), Some(3500 + 3000 + 2500), "the Graveyard's monsters' ATK (Dark Hole has none): {}", s.context());
+    assert_eq!(s.count(0, "grave", ANDRO_SPHINX) + s.count(0, "grave", SPHINX_TELEIA), 2);
+    clean(&s);
+}
+
+#[test]
+fn theinen_accepted_without_the_atk_trigger_pays_only_the_summon() {
+    let Some(s) = accept_theinen(None, false) else { return };
+    assert_eq!((s.lp(0), s.attack_of(0, THEINEN)), (7000, Some(3500)), "{}", s.context());
+    clean(&s);
+}
+
+#[test]
+fn theinen_can_be_summoned_in_defense_position() {
+    let Some(s) = accept_theinen(Some(pos::FACEUP_DEFENSE), false) else { return };
+    assert_eq!(s.position_of(0, THEINEN), Some(pos::FACEUP_DEFENSE), "{}", s.context());
+    clean(&s);
+}
+
+#[test]
+fn theinen_declined_stays_in_the_deck_and_costs_nothing() {
+    let Some(mut s) = theinen_duel() else { return };
+    let before = s.state()[0]["deck"].as_u64().unwrap();
+    until_the_deck_trigger(&mut s).expect("offered");
+    s.respond(Response::Chain(None).json()).unwrap();
+    assert!(until_the_deck_trigger(&mut s).is_none(), "it is not asked again: {}", s.context());
+    assert_eq!((s.lp(0), s.state()[0]["deck"].as_u64().unwrap()), (8000, before), "{}", s.context());
+    assert!(s.monster(0, THEINEN).is_none());
+    assert!(s.messages().iter().all(|m| m["type"] != msg::CONFIRM_CARDS), "nothing was revealed");
+    clean(&s);
+}
+
+const CLEAR_VICE_DRAGON: u16 = 8538;
+const BLACKWING_AURORA: u16 = 9093;
+const GALE: u16 = 8011; // Blackwing - Gale the Whirlwind: Level 3 Tuner
+const ARMOR_MASTER: u16 = 8036; // Blackwing Armor Master: Level 7 Synchro, 2500 ATK
+
+/// The "?" ATK cards keep the game's "?" (-2) in the anime record: the core reports it as the card's ATK while it is in the hand
+/// and plays it as 0 on the field (a base ATK below 0 is 0 there), so each script's own effects decide the rest.
+fn atk_in_hand(s: &Scenario, cid: u16) -> Option<i64> {
+    s.state()[0]["hand"].as_array()?.iter().find(|c| c["cid"] == cid)?["attack"].as_i64().map(|a| i64::from(a as u32 as i32))
+}
+
+/// Clear Vice Dragon (Level 8, two Tributes): the anime card's ATK is the "?" the game shows, 0 in play, and in the Damage Step it
+/// has twice the ATK of the monster it fights: it destroys a Warwolf (2000) as a 4000 ATK monster, and the opponent takes the 2000.
+#[test]
+fn clear_vice_dragon_is_a_question_mark_in_hand_and_doubles_the_monster_it_fights() {
+    let hand = [CLEAR_VICE_DRAGON, WARWOLF, WARWOLF, WARWOLF, WARWOLF];
+    let Some(mut s) = start(true, [(&[&[WARWOLF; 35][..], &hand].concat(), &[]), (&[WARWOLF; 40], &[])]) else { return };
+    assert_eq!(atk_in_hand(&s, CLEAR_VICE_DRAGON), Some(-2), "the record keeps the game's ?: {}", s.state());
+    s.run_both([&[Summon(WARWOLF), Summon(WARWOLF), Summon(CLEAR_VICE_DRAGON)], &[Summon(WARWOLF)]]).unwrap();
+    assert_eq!(s.attack_of(0, CLEAR_VICE_DRAGON), Some(0), "a ? plays as 0 on the field: {}", s.context());
+    s.run_both([&[Attack(CLEAR_VICE_DRAGON)], &[]]).unwrap();
+    assert!(s.monster(1, WARWOLF).is_none(), "the target is destroyed by 4000 ATK: {}", s.context());
+    assert_eq!((s.lp(1), s.monster(0, CLEAR_VICE_DRAGON).is_some()), (8000 - 2000, true), "{}", s.context());
+    clean(&s);
+}
+
+/// Blackwing - Aurora the Northern Lights: Special Summoned from the hand by banishing a Blackwing Tuner and a non-Tuner (Gale and a
+/// Warwolf: Level 3 + 4 = 7), it is 0 ATK in play; its effect banishes the Level 7 Blackwing Synchro Monster and its base ATK becomes
+/// that monster's (Armor Master, 2500): the record's "?" does not stand in its way.
+#[test]
+fn aurora_is_a_question_mark_in_hand_and_takes_the_banished_synchros_atk() {
+    let hand = [BLACKWING_AURORA, GALE, WARWOLF, WARWOLF, WARWOLF];
+    let Some(mut s) = start(true, [(&[&[WARWOLF; 35][..], &hand].concat(), &[ARMOR_MASTER]), (&[WARWOLF; 40], &[])]) else { return };
+    assert_eq!(atk_in_hand(&s, BLACKWING_AURORA), Some(-2), "{}", s.state());
+    s.run(&[Summon(GALE), Summon(WARWOLF), SpSummon(BLACKWING_AURORA)]).unwrap();
+    assert_eq!(s.attack_of(0, BLACKWING_AURORA), Some(0), "{}", s.context());
+    assert_eq!(s.level_of(0, BLACKWING_AURORA), Some(7), "the banished monsters' Levels: {}", s.context());
+    s.run(&[Activate(BLACKWING_AURORA)]).unwrap();
+    assert_eq!(s.attack_of(0, BLACKWING_AURORA), Some(2500), "the banished Synchro's ATK: {}", s.context());
+    assert_eq!(s.count(0, "removed", ARMOR_MASTER), 1);
     clean(&s);
 }

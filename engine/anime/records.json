@@ -1,5 +1,5 @@
 {
- "note": "Corrected anime card records (issue #60): anime cards for which ProjectIgnis has only a placeholder entry. Each replaces the unofficial database's row of its passcode (tools/engine/anime-map.py puts them in engine/anime-cards.json's \"records\"; the rules engine, the card profile and the duel check read them there) and has its own script in engine/overrides/c<code>.lua. A `reconstruction` record is our reading of a description, not verified against the episodes; its text says so.",
+ "note": "Corrected anime card records (issue #60): anime cards for which ProjectIgnis has only a placeholder entry. Each replaces the unofficial database's row of its passcode (tools/engine/anime-map.py puts them in engine/anime-cards.json's \"records\"; the rules engine, the card profile and the duel check read them there) and has its own script in engine/overrides/c<code>.lua. A record with `upstream_script` keeps ProjectIgnis' script and corrects only the row (the \"?\" ATK the pinned database spells as 0). A `reconstruction` record is our reading of a description, not verified against the episodes; its text says so.",
  "records": [
   {
    "cid": 8035,
@@ -41,6 +41,44 @@
     "Increase level",
     "Destroy and inflict damage"
    ]
+  },
+  {
+   "cid": 8538,
+   "code": 513000096,
+   "official": 97811903,
+   "alias": 97811903,
+   "setcode": 1296,
+   "type": 33,
+   "level": 8,
+   "atk": -2,
+   "def": 0,
+   "race": 8192,
+   "attribute": 32,
+   "name": "Clear Vice Dragon (Anime)",
+   "reconstruction": false,
+   "upstream_script": true,
+   "basis": "The upstream row and script are used as they are; only the ATK is corrected: the pinned database spells the card's \"?\" as 0 where the game shows \"?\" (-2, as the official card), so the card keeps the game's \"?\" and the anime script plays. The core plays a \"?\" base ATK as 0 on the field, as the 0 would.",
+   "text": "This card is not treated as a DARK monster while it is face-up on the field. If this card attacks, it gains ATK equal to twice the ATK of the monster it battles until the end of the Damage Step. If this card attacks, it is changed to Defense Position at the end of the Battle Phase. When a card or effect is activated that would destroy this card: you can discard 1 card; negate its activation, and destroy it. If this card would be destroyed by battle, you can discard 1 card instead.",
+   "strings": []
+  },
+  {
+   "cid": 9093,
+   "code": 511002602,
+   "official": 4068622,
+   "alias": 4068622,
+   "setcode": 51,
+   "type": 33554465,
+   "level": 10,
+   "atk": -2,
+   "def": 0,
+   "race": 512,
+   "attribute": 16,
+   "name": "Blackwing - Aurora the Northern Lights (Anime)",
+   "reconstruction": false,
+   "upstream_script": true,
+   "basis": "The upstream row and script are used as they are; only the ATK is corrected: the pinned database spells the card's \"?\" as 0 where the game shows \"?\" (-2, as the official card), so the card keeps the game's \"?\" and the anime script plays. The core plays a \"?\" base ATK as 0 on the field, as the 0 would.",
+   "text": "Cannot be Normal Summoned/Set. Must be Special Summoned by banishing 2 monsters you control (1 \"Blackwing\" Tuner and 1 non-Tuner), and cannot be Special Summoned by other ways. This card's Level becomes the combined Levels of the monsters banished for its Special Summon. Once per turn: you can banish 1 \"Blackwing\" Synchro Monster from your Extra Deck whose Level is equal to this card's Level. Then, until your next Standby Phase, this card's ATK and effects become the same as that monster's.",
+   "strings": []
   }
  ]
 }

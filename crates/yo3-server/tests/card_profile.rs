@@ -257,3 +257,27 @@ fn the_profile_makes_boost_warrior_a_tuner() {
     let view = CardView::over(&base, profile);
     assert!(view.tuners.contains(&BOOST_WARRIOR) && !base.tuners.contains(&BOOST_WARRIOR));
 }
+
+const CLEAR_VICE_DRAGON: u16 = 8538;
+const BLACKWING_AURORA: u16 = 9093;
+
+/// Clear Vice Dragon and Blackwing - Aurora the Northern Lights: the pinned anime database spells their "?" ATK as 0, so their records
+/// (`engine/anime/records.json`, `upstream_script`) keep the game's "?" (-2) and the upstream script plays. The client's row is
+/// then its own: the profile changes nothing and shows the "?" it always showed (5110 in the card panels' numbers).
+#[test]
+fn a_question_mark_card_keeps_the_games_question_mark() {
+    let (Some(data), Some(dir)) = (game(), engine_dir()) else { return };
+    let anime = read_anime(&dir).expect("the map and the database read");
+    let profile = anime_profile(&data, &dir);
+    for cid in [CLEAR_VICE_DRAGON, BLACKWING_AURORA] {
+        let entry = map(&dir).into_iter().find(|c| c["cid"] == cid).unwrap();
+        assert_eq!((entry["status"].as_str(), entry.get("differs").is_none(), entry["upstream_record"] == true), (Some("mapped"), true, true), "{entry}");
+        assert_eq!(anime[&cid].atk, -2, "the anime data says \"?\" like the game's card");
+        let own = data.cards.by_cid(cid).unwrap();
+        assert_eq!(own.atk, 5110, "the game shows ?");
+        for t in profile.targets.values().filter(|t| t.cid == cid) {
+            assert_eq!((t.atk, t.atk.shown()), (Stat::Unknown, 5110));
+            assert_eq!(t.words, data.cards.by_row(t.row).unwrap().words, "the row is the client's own: nothing changed");
+        }
+    }
+}

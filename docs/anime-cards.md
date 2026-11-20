@@ -2,7 +2,7 @@
 
 <!-- Made by tools/engine/anime-map.py from engine/anime/research.tsv: do not edit by hand. -->
 
-With the host's `anime-cards` setting on ([playing](playing.md#anime-card-versions)), the 412 cards below play by their anime effects, ProjectIgnis' unofficial scripts (CardScripts `915c6ff`), in NPC and player duels, and the game shows them as their anime versions: the **card profile**. The other cards, and the 6 retained or held back below, play and show as they always did. The reviewed table is the issue [#60](https://github.com/usersina/yo3-revival/issues/60); an unofficial script loading without an error is not proof of anime accuracy, only that it plays.
+With the host's `anime-cards` setting on ([playing](playing.md#anime-card-versions)), the 415 cards below play by their anime effects, ProjectIgnis' unofficial scripts (CardScripts `915c6ff`), in NPC and player duels, and the game shows them as their anime versions: the **card profile**. The other cards, and the 3 retained or held back below, play and show as they always did. The reviewed table is the issue [#60](https://github.com/usersina/yo3-revival/issues/60); an unofficial script loading without an error is not proof of anime accuracy, only that it plays.
 
 ## The card profile
 
@@ -125,6 +125,7 @@ These cards differ from the game's in what the client draws; the profile covers 
 | Supersonic Skull Flame | atk: 2600 -> 3000<br>def: 2000 -> 2300 |
 | Swordstalker | type: -Normal, +Effect |
 | The Eye of Truth | kind: the game's card is a Trap, the anime one a Spell |
+| Theinen the Great Sphinx | flags: -Special Summon only |
 | Thor, Lord of the Aesir | race: 32768 -> 2097152<br>attribute: 1 -> 64 |
 | Tragedy | kind: the game's card is a Trap, the anime one a Spell |
 | Trap Eater | type: -Tuner |
@@ -142,7 +143,7 @@ A card is released only when the client side of each difference is proven: the c
 
 | Category | What the client shows | Cards that differ | Test card and scenario |
 | --- | --- | ---: | --- |
-| flags | nothing: Flip and Special Summon only are shown nowhere, the engine plays the anime card | 18 | Wall of Ivy: its token comes when it is attacked face-up |
+| flags | nothing: Flip and Special Summon only are shown nowhere, the engine plays the anime card | 19 | Wall of Ivy: its token comes when it is attacked face-up |
 | subtype | a Spell or Trap's own kind (Continuous, Quick-Play, Equip, Field, Counter) | 16 | Fiend's Sanctuary: a Quick-Play Spell, activated on the opponent's turn |
 | type | Normal, Effect, Tuner, Ritual and the other kinds of monster | 24 | Boost Warrior: a Tuner, so it Synchro Summons |
 | deck | Main or Extra Deck: a Fusion Monster is an Extra Deck card, a Normal one a Main Deck card | 10 | Perfect Machine King: a Fusion Monster, Fusion Summoned from the Extra Deck |
@@ -155,9 +156,9 @@ A card is released only when the client side of each difference is proven: the c
 
 Negate Attack is the pinned database's anime card (a Quick-Play Spell that negates the attack and ends the Battle Phase), not the Counter Trap the game has; the version is the issue's open era decision, shown here so it can be checked in play.
 
-Every reviewed card has one disposition: anime enabled, the game's version retained as the default with a reason (Time Wizard and Thousand Dragon, reviewed together, and Temple of the Kings), or held for a technical fix: Theinen the Great Sphinx (an effect the Deck triggers, not a procedure: the client's menus have not been shown to offer it) and Clear Vice Dragon and Blackwing - Aurora the Northern Lights, whose "?" ATK the anime database spells as 0 (the profile would show 0 where the game shows "?"). Power Bond (it stays Power Bond and is treated as Polymerization), Multiply and Cloning (the copy shows as the monster itself) and the Sphinxes that summon themselves from the Deck are released, each with a test in `tests/anime_cards.rs`.
+Every reviewed card has one disposition: anime enabled, the game's version retained as the default with a reason (Time Wizard and Thousand Dragon, reviewed together, and Temple of the Kings), or held for a technical fix (none now). Power Bond (it stays Power Bond and is treated as Polymerization), Multiply and Cloning (the copy shows as the monster itself), the Sphinxes that summon themselves from the Deck, Theinen the Great Sphinx (its trigger from the Deck: offered, accepted and declined, in tests and in the real client) and Clear Vice Dragon and Blackwing - Aurora the Northern Lights (the game's "?" ATK kept by a corrected record, [below](#upstream-scripts-with-the-games-)) are released, each with a test in `tests/anime_cards.rs`.
 
-**Source of truth for effects:** EDOPro/ProjectIgnis's anime scripts at the pinned commit. Effects are not re-checked against the episodes; a disagreement is fixed upstream or with a documented override in `engine/overrides/`. Two exceptions (#60): cards for which ProjectIgnis has only a placeholder (Dark Strike Fighter and Fortune Lady Fire) are researched and get our own record and script ([below](#reconstructions)); and Skill Drain against the three Egyptian Gods was a bug, fixed by an override of Skill Drain (`engine/overrides/c82732705.lua`, which changes only how it treats the anime Gods; every other monster is as before). The Gods are unaffected by most effects, but Skill Drain, when activated, negates the effects of the Gods already on the field until the end of that turn; then they come back, though Skill Drain stays face up. Ra's ATK (the Tributes' total) is 0 for the rest of that turn and the total again from the next one. A God summoned while Skill Drain is already face up is not affected at all. Each point has a real-core test in `tests/anime_cards.rs`.
+**Source of truth for effects:** EDOPro/ProjectIgnis's anime scripts at the pinned commit. Effects are not re-checked against the episodes; a disagreement is fixed upstream or with a documented override in `engine/overrides/`. Two exceptions (#60): cards for which ProjectIgnis has only a placeholder (Dark Strike Fighter and Fortune Lady Fire) are researched and get our own record and script ([below](#reconstructions)); and Skill Drain against the three Egyptian Gods was a bug, fixed by an override of Skill Drain (`engine/overrides/c82732705.lua`, which changes only how it treats the anime Gods; every other monster is as before). The Gods are unaffected by most effects, but Skill Drain, when activated, negates the effects of the Gods already on the field until the end of that turn; then they come back, though Skill Drain stays face up. Ra's ATK (the Tributes' total) is 0 for the rest of that turn and the total again from the next one. A God summoned while Skill Drain is already face up is not affected at all. Skill Drain affects a God once, in the turn it first affects it: a second copy activated in a later turn does not negate a God the first already affected (it does one the first did not), and a God that leaves the field and comes back is a new card, unaffected by the Skill Drain already face up and affected once by the next. The end-of-turn recovery is the engine's reset of a marker on the God, not an effect, so no negation can hold it back. With the setting off, the official Gods and Skill Drain are the game's. Each point has a real-core test in `tests/anime_reconstructions.rs`.
 
 ## Reconstructions
 
@@ -196,6 +197,15 @@ as it was before it was destroyed.
 
 See above: not a reconstruction but a fix (`engine/overrides/c82732705.lua`); the three Gods are mapped, so it applies to all of them.
 
+### Upstream scripts with the game's "?"
+
+Clear Vice Dragon and Blackwing - Aurora the Northern Lights play by ProjectIgnis' scripts, unchanged. Their pinned database rows spell the card's "?" ATK as 0, where the game shows "?" (-2, as the official card has it), and the profile has no way to show a 0 as "?". So the row is corrected to the game's "?" in our record and the script is the upstream one (the record's `upstream_script`): the card keeps the game's "?" in every client panel, and the core plays a "?" base ATK as 0 on the field, exactly what the 0 would give. Neither script sets an ATK of its own: Clear Vice Dragon doubles its target's ATK in the Damage Step, Aurora copies the Synchro Monster it banishes (base ATK included).
+
+| Card | Anime card | Corrected row |
+| --- | --- | --- |
+| Clear Vice Dragon | 513000096 | ATK ? (-2), DEF 0, Level 8 |
+| Blackwing - Aurora the Northern Lights | 511002602 | ATK ? (-2), DEF 0, Level 10 |
+
 Temple of the Kings (5231) keeps the game's version: its anime rules would need a reconstruction of Duel Monsters episodes 87 and 89 (which cards the sealed-card effect may seal, the set restrictions, how far the protection reaches, the release costs and when the card is lost). The upstream script mixes the original, later and printed rules, so it is never enabled; nothing is implemented.
 
 ## Played as their anime versions
@@ -227,6 +237,7 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Black Garden | 511014000 | makes Rose Token |
 | Black-Winged Dragon | 511027112 |  |
 | Blackboost | 810000051 |  |
+| Blackwing - Aurora the Northern Lights | 511002602 |  |
 | Blackwing - Backlash | 511030014 |  |
 | Blackwing - Boreas the Sharp | 511600076 |  |
 | Blackwing - Calima the Haze | 511002623 |  |
@@ -261,6 +272,7 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Chthonian Alliance | 511002542 |  |
 | Chthonian Blast | 511002541 |  |
 | Chthonian Soldier | 511001211 |  |
+| Clear Vice Dragon | 513000096 | names other anime cards |
 | Cloning | 511600007 | makes copies of a monster |
 | Cloudian - Eye of the Typhoon | 511001786 |  |
 | Cocoon of Evolution | 511600069 | names other anime cards |
@@ -577,6 +589,7 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | The Golden Apples | 511003080 | makes Malus Token |
 | The Shallow Grave | 511002531 |  |
 | The Winged Dragon of Ra | 511600400 |  |
+| Theinen the Great Sphinx | 513000030 |  |
 | Thor, Lord of the Aesir | 511000247 |  |
 | Thunder Unicorn | 511002706 |  |
 | Time Machine | 511247012 |  |
@@ -633,9 +646,7 @@ Extra Deck), or when the research or the script is not settled. Each reason is k
 
 | Card | Why |
 | --- | --- |
-| Blackwing - Aurora the Northern Lights | placeholder: the game shows ATK ?, the anime database has 0 for the card whose script sets it |
-| Clear Vice Dragon | placeholder: the game shows ATK ?, the anime database has 0 for the card whose script sets it |
-| Theinen the Great Sphinx | the script has an effect used from the Deck (EVENT_LEAVE_FIELD), which the client's menus have not been shown to offer<br>flags: -Special Summon only |
+| None now | Every reviewed card is enabled or retained on purpose. |
 
 ## Kept on purpose
 
