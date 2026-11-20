@@ -172,7 +172,8 @@ Deck card.
   the footage.
 - **The Egyptian Gods and Skill Drain.** Skill Drain negates the Gods that are already on the field until the end of that turn
   (Ra's ATK is 0 for the rest of it), then they come back although Skill Drain stays face up. A God summoned while Skill Drain is
-  face up is not affected. Every other monster stays negated.
+  face up is not affected, until the next Skill Drain is activated: each activation negates the Gods on the field for
+  that turn. Every other monster stays negated.
 - **Cards without an anime version**, the ones kept on purpose (Temple of the Kings, Time Wizard and Thousand Dragon: their anime
   rules are not settled) and the few held for a fix play and show as the game has them ([list](anime-cards.md)).
 

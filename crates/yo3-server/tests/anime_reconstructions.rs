@@ -582,10 +582,10 @@ fn standard_skill_drain_negates_a_god_for_good() {
     clean(&s);
 }
 
-/// Two copies. Skill Drain affects a God once ("until the end of the turn in which it first affects it"): the second copy,
-/// activated a turn later, does not negate a God the first one already affected, and does negate one that the first did not.
+/// Two copies. Each activation counts on its own (the anime's Gods are affected by an activated card only until the End Phase):
+/// the second copy, activated a turn later, negates again for its turn a God the first already negated, and one that arrived after it.
 #[test]
-fn a_second_skill_drain_does_not_affect_a_god_again() {
+fn a_second_skill_drain_negates_a_god_again_for_its_turn() {
     for god in [RA, SLIFER] {
         let hand = [SKILL_DRAIN, SKILL_DRAIN, WARWOLF, WARWOLF, WARWOLF];
         let Some(mut s) = start(true, [(&deck(&hand, &[god]), &[]), (&passive(), &[])]) else { return };
@@ -596,12 +596,12 @@ fn a_second_skill_drain_does_not_affect_a_god_again() {
         assert_eq!(s.attack_of(0, god), Some(god_atk(&s, god)), "{god}: back: {}", s.context());
         activate(&mut s, SKILL_DRAIN);
         assert_eq!(s.count(0, "szone", SKILL_DRAIN), 2, "both are face-up: {}", s.context());
-        assert_eq!(s.attack_of(0, god), Some(god_atk(&s, god)), "{god}: the second copy does not affect it again: {}", s.context());
+        assert!(s.attack_of(0, god).is_some_and(|a| a <= 0), "{god}: the second activation negates it again for its turn: {}", s.context());
         next_own_turn(&mut s);
         assert_eq!(s.attack_of(0, god), Some(god_atk(&s, god)), "{god}: {}", s.context());
         clean(&s);
     }
-    // A God that arrives after the first copy is affected by the second, once.
+    // A God that arrives after the first copy is not affected by it, and is by the second activation.
     let hand = [SKILL_DRAIN, SKILL_DRAIN, WARWOLF, WARWOLF, WARWOLF];
     let Some(mut s) = start(true, [(&deck(&hand, &[RA]), &[]), (&passive(), &[])]) else { return };
     s.run(&[SetSpell(SKILL_DRAIN), SetSpell(SKILL_DRAIN), Summon(WARWOLF), Summon(WARWOLF), Summon(WARWOLF)]).unwrap();
@@ -609,7 +609,7 @@ fn a_second_skill_drain_does_not_affect_a_god_again() {
     s.run(&[Summon(RA)]).unwrap();
     assert_eq!(s.attack_of(0, RA), Some(6000), "Ra arrives under the first copy, unaffected: {}", s.context());
     activate(&mut s, SKILL_DRAIN);
-    assert_eq!(s.attack_of(0, RA), Some(0), "the second copy affects it for the first time: {}", s.context());
+    assert_eq!(s.attack_of(0, RA), Some(0), "the second activation negates it: {}", s.context());
     next_own_turn(&mut s);
     assert_eq!(s.attack_of(0, RA), Some(6000), "{}", s.context());
     clean(&s);
@@ -636,7 +636,7 @@ fn a_god_that_comes_back_is_a_new_card() {
     assert_eq!(s.attack_of(0, SLIFER), Some(god_atk(&s, SLIFER)), "a new card, Skill Drain face-up does not affect it: {}", s.context());
     assert!(s.attack_of(0, SLIFER).is_some_and(|a| a > 0), "{}", s.context());
     activate(&mut s, SKILL_DRAIN);
-    assert!(s.attack_of(0, SLIFER).is_some_and(|a| a <= 0), "the next Skill Drain affects the new card once: {}", s.context());
+    assert!(s.attack_of(0, SLIFER).is_some_and(|a| a <= 0), "the next Skill Drain activation negates the new card: {}", s.context());
     // The anime Gods Special Summoned by a Spell effect go back to where they came from at the End Phase (their own rule).
     next_own_turn(&mut s);
     assert_eq!(s.count(0, "grave", SLIFER), 1, "{}", s.context());

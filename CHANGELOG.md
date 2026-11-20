@@ -53,7 +53,7 @@ Older entries describe their release at the time. For current setup, use the [RE
   Summoned face-up in Attack Position, by anything). Temple of the Kings, Time Wizard and Thousand Dragon keep the game's version on purpose (the list gives the reasons). Skill
   Drain now treats the three Egyptian Gods as the anime has it: the Gods already on the field are negated until that turn
   ends and then come back (Ra's ATK is 0 for the rest of that turn), and a God summoned while Skill Drain is face up is not
-  affected, nor is it affected twice (a second Skill Drain, or a God that comes back, is treated by the same rule). See [the list](docs/anime-cards.md#reconstructions).
+  affected. Each activation counts on its own: a second Skill Drain negates the Gods on the field again for that turn. See [the list](docs/anime-cards.md#reconstructions).
 - The Stadium on the map now has events (#18). Your host schedules Gunslinger (win streak), Duelist Trial and Anniversary
   Trial (wins), and Evolution and Ultimate Match (stars, played as matches). Open one, press Ready and you are paired with
   another player in the same event, and matched again after every duel until you press Not Ready. Your score for the event
