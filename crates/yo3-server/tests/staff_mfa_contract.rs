@@ -9,7 +9,9 @@ use yo3_server::{accounts::Directory, api::{Api, Op}, dashboard::{self, Dashboar
 
 const PASSWORD: &str = "PreviewPassword1";
 
-struct Fixture { dir: std::path::PathBuf, api: Arc<Api>, panel: Arc<Panel>, router: Router, proxy: Router }
+struct Fixture { dir: std::path::PathBuf, api: Arc<Api>, panel: Arc<Panel>, router: Router, proxy: Router,
+    /// The time step the last enrollment's code was made for, so a test replays exactly that one.
+    enrolled_step: std::sync::atomic::AtomicU64 }
 struct Answer { status: u16, headers: String, body: Value }
 /// One signed-in browser.
 #[derive(Default, Clone)]
@@ -45,7 +47,7 @@ impl Fixture {
         let state = Dashboard { api: api.clone(), panel: panel.clone() };
         let proxy = dashboard::proxy_router(state.clone(), ProxyOrigin::parse("https://staff.example").unwrap());
         let router = dashboard::router(state);
-        Self { dir, api, panel, router, proxy }
+        Self { dir, api, panel, router, proxy, enrolled_step: Default::default() }
     }
 
     #[allow(clippy::too_many_arguments, reason = "a test helper taking each header of one request")]
@@ -91,7 +93,9 @@ impl Fixture {
         assert_eq!(start.status, 200, "{}", start.body);
         let seed = seed_of(start.body["secret"].as_str().unwrap());
         assert_eq!(seed.len(), 20);
-        let code = staff_mfa::code_at(&seed, (logins::now() / staff_mfa::STEP) as u64);
+        let step = (logins::now() / staff_mfa::STEP) as u64;
+        self.enrolled_step.store(step, std::sync::atomic::Ordering::SeqCst);
+        let code = staff_mfa::code_at(&seed, step);
         let done = self.call("POST", "/panel/api/v1/mfa/enrollment/confirm", &jar, json!({ "code": code })).await;
         assert_eq!(done.status, 200, "{}", done.body);
         let codes = done.body["recovery_codes"].as_array().unwrap().iter().map(|c| c.as_str().unwrap().to_string()).collect();
@@ -173,8 +177,10 @@ async fn password_plus_code_opens_a_session_and_a_code_works_once() {
     assert_eq!((wrong.status, wrong.body["code"].as_str()), (403, Some("invalid_code")));
     assert!(!wrong.headers.to_ascii_lowercase().contains("set-cookie"));
     // The step used at enrollment is replayed: refused, though right in itself. (Wait out the miss's 1 s backoff first.)
+    // The step is the one enrollment used, not the clock's now: a 30 s boundary in between made the release run of
+    // v0.1.7 replay a fresh step, rightly accepted.
     tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
-    let step = (logins::now() / staff_mfa::STEP) as u64;
+    let step = f.enrolled_step.load(std::sync::atomic::Ordering::SeqCst);
     let replay = f.call("POST", "/panel/api/v1/sign-in/code", &Jar::default(), json!({ "challenge": challenge, "code": staff_mfa::code_at(&seed, step) })).await;
     assert_eq!((replay.status, replay.body["code"].as_str()), (403, Some("invalid_code")), "a step is used once: enrollment used it");
     tokio::time::sleep(std::time::Duration::from_millis(2100)).await;
