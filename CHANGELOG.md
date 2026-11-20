@@ -13,6 +13,14 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- Choices the game's own windows could not show are now asked of you, in steps, instead of being picked for you. A
+  monster that can be placed in three or four positions asks Attack or Defense first, then face-up or face-down. An effect
+  that makes you declare several Types asks one Type at a time, "Select Type 1 of 2." and so on, without the ones you
+  already named. A number the number window cannot hold is narrowed in a few steps of ranges ("1000-75000") until you
+  pick the number itself. No card in the game today asks for these, so you may never see them.
+
 ## v0.1.6 (2026-11-20)
 
 Multiplayer: update to v0.1.6 to join the hosted server after deployment.

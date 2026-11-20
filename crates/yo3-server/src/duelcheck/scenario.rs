@@ -83,6 +83,10 @@ pub struct Scenario {
     prefer: Vec<(u64, u16)>,
     /// The position the planned side's position choices take when it is allowed (`pos::FACEUP_DEFENSE`...); None: the CPU's (Attack).
     position: Option<u64>,
+    /// The number the planned side declares when asked, through the client's windows (`declare_number`).
+    number: Option<u64>,
+    /// The client's dialogs shown for the planned side's numbers, one per step.
+    pub dialogs: usize,
     /// Every difference between a seat's client model and the engine, with the seat and the step.
     pub problems: Vec<String>,
 }
@@ -145,7 +149,7 @@ impl Scenario {
             })
             .collect();
         let answer = engine.new_duel(seed, lp, decks).map_err(|e| format!("engine: {e}"))?;
-        let mut s = Scenario { engine, views, answer, state: Json::Null, steps: 0, trail: vec![], attacking: false, prefer: vec![], position: None, problems: vec![] };
+        let mut s = Scenario { engine, views, answer, state: Json::Null, steps: 0, trail: vec![], attacking: false, prefer: vec![], position: None, number: None, dialogs: 0, problems: vec![] };
         s.observe()?;
         Ok(s)
     }
@@ -262,6 +266,56 @@ impl Scenario {
         self.position = position;
     }
 
+    /// Number declarations (Wall of Revealing Light's LP, Star Blast's) are answered the way a player does: through the
+    /// translator's windows for that seat, their Select dialogs narrowed step by step to this number (the label whose
+    /// range holds it) or the number dialog set to it, the client's model fed every window. `None`: the CPU's answer.
+    pub fn declare_number(&mut self, number: Option<u64>) {
+        self.number = number;
+    }
+
+    /// The answer to the number question now pending, played through the translator's windows.
+    fn number_through_windows(&mut self, target: u64) -> Result<Json, String> {
+        let p = self.prompt().clone();
+        let seat = p["player"].as_u64().unwrap_or(0) as usize & 1;
+        let texts_of = |out: &[yo3_proto::Message]| -> HashMap<u32, String> {
+            out.iter()
+                .filter(|m| m.get("duelRequestName") == Some(&yo3_proto::Value::U32(0x7A12)))
+                .filter_map(|m| Some((0x3F00 + m.get("slot")?.as_u32()?, m.get("text")?.as_str()?)))
+                .collect()
+        };
+        let (translator, model) = &mut self.views[seat];
+        let mut shown = translator.prompt(&p);
+        for _ in 0..16 {
+            let crate::translate::Prompt::Client(out) = shown else {
+                let crate::translate::Prompt::Answer(a) = shown else { unreachable!() };
+                return Ok(a);
+            };
+            self.dialogs += 1;
+            model.apply_all(&out);
+            for problem in model.check(&self.state) {
+                self.problems.push(format!("seat {seat}, step {}: {problem}", self.steps));
+            }
+            let int = |m: &yo3_proto::Message, k: &str| m.get(k).and_then(yo3_proto::Value::as_u32).unwrap_or(0);
+            let texts = texts_of(&out);
+            let dialog = out.iter().rev().find(|m| int(m, "id") == cmd::DIALOG).ok_or("no dialog in the window")?;
+            let result = if int(dialog, "param1") == crate::wire::dialog::NUMBER {
+                // The number dialog: max << 24 | step << 20 | min << 16 | format, the number in its unit.
+                let format = int(dialog, "param3") & 0xFFFF;
+                let unit = match format { 302 => 1000, 303 => 100, _ => 1 };
+                (target / unit) as u32
+            } else {
+                let ids: Vec<u32> = out.iter().filter(|m| int(m, "id") == cmd::LIST_VALUES).flat_map(|m| (1..=4).map(move |i| m.get(&format!("param{i}")).and_then(yo3_proto::Value::as_u32).unwrap_or(0))).filter(|&v| v != 0).map(|v| v & 0x7FFF).collect();
+                let holds = |label: &str| {
+                    let (lo, hi) = label.split_once('-').unwrap_or((label, label));
+                    matches!((lo.parse::<u64>(), hi.parse::<u64>()), (Ok(lo), Ok(hi)) if (lo..=hi).contains(&target))
+                };
+                ids.iter().position(|id| texts.get(id).is_some_and(|t| holds(t))).ok_or_else(|| format!("{target} is in none of the labels {texts:?}"))? as u32
+            };
+            shown = translator.dialog_result(result).ok_or("the window's result was not taken")?;
+        }
+        Err(format!("{target} took more than 16 windows"))
+    }
+
     /// The preferred cards among a card choice's options: as many as it needs, None when it offers too few of them.
     fn preferred(&self, p: &Json) -> Option<Json> {
         use crate::ocg::message::Ask;
@@ -291,6 +345,8 @@ impl Scenario {
             && q.positions & wanted != 0
         {
             Response::Position(wanted).json()
+        } else if let (Some(number), Ok(Some(crate::ocg::message::Ask::Number(_)))) = (self.number, crate::ocg::message::Ask::lenient(p)) {
+            self.number_through_windows(number)?
         } else {
             self.preferred(p).unwrap_or_else(|| bot_answer(p))
         };

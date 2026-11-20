@@ -218,6 +218,27 @@ about 20 s behind the server's (the trace's timestamps against the server log). 
 not a confirmed cause of the disconnect. Review regressions cover errors while shutting down either connection,
 retrying interrupted reads and receiving a reply after the request side closes; the warning is checked on both tabs.
 
+## 2026-11-20 — Choices the dialogs can't show, asked in steps (#16)
+
+Three prompts had the server choose for the player because one client window could not show them: a position among
+three or four (the position dialog has two buttons), several Types declared at once (the type dialog takes one) and a
+number beyond the number dialog (255 of a unit, minimum and step 15). They are now asked in steps with windows the client
+has: the position dialog for the side, then a Select dialog of face-up and face-down; one type dialog per Type with the
+declared ones removed; Select dialogs of four ranges narrowing a number's options. The state is `Asking::Steps`; a stale
+click asks the window again; the CPU's and the bot's answers are unchanged. The duel check's round trip walks every path
+(each position, each pair of types, each option of a stepped number) and fails a duel when an answer has none.
+
+What turned up looking for cards: none of the client's cards raises any of the three. `Duel.SelectPosition` is called with
+two positions at most, the core's own summon choices (Cyber Jar, Spear Cretin) are face-up attack or face-down defense, no
+script calls `AnnounceRace` with a count above 1 (DNA Checkup, Earthshaker and Disciple of the Forbidden Spell take several
+Attributes, which the attribute dialog already does), and numbers: Wall of Revealing Light at 300,000 LP sent only 44
+options, because the core counts the options of `MSG_ANNOUNCE_NUMBER` in a byte (300 mod 256), and the client shows at most
+99,999 LP. So the windows are covered by contract tests and the duel check's round trip, and the number dialog's own path by
+a scenario of Wall of Revealing Light through the translator's windows against the real engine; no live check, since no
+engine prompt can open them. The Select dialog's two-line message (position text and card name) is the position dialog's
+message on another window kind, untested on the client. Along the way a Type dialog with no type the client has, and an
+Attribute dialog asked for more picks than it has attributes, now take the automatic answer rather than hold the player.
+
 ## 2026-11-20 — Three Discord reports after v0.1.5
 
 A player on the hosted server (v0.1.5, standard cards) reported that bought packs could not be used, disconnects after

@@ -469,7 +469,7 @@ fn place_and_position_prompts_are_answered_for_the_player() {
     // MSG_SELECT_PLACE (18), where a summoned, Set or activated card goes: Konami's server chose it, centre out (all 129
     // placements in its logs: zones 2, 3, 1, 4, 0, Spell/Traps the same), so the client's game never asks (field_mask
     // bits set = unavailable: monster zones 0-4, Spell/Trap 8-12). MSG_SELECT_POSITION (19) without an attack position
-    // (the position dialog's first button is always attack): the first allowed one, here face-up defense.
+    // (the position dialog's first button is always attack): the only allowed one, here face-up defense, with no question.
     let (mut t, _) = translator();
     let place = json!({ "type": 18, "player": 0, "count": 1, "field_mask": 0xFFFF_E0FFu32 });
     let spell = json!({ "type": 10, "places": [{ "player": 0, "location": 8, "sequence": 2 }] });
@@ -481,7 +481,7 @@ fn place_and_position_prompts_are_answered_for_the_player() {
     let place = json!({ "type": 18, "player": 0, "count": 1, "field_mask": 0xFFFF_FFECu32 });
     let monster = json!({ "type": 10, "places": [{ "player": 0, "location": 4, "sequence": 1 }] });
     assert_eq!(t.prompt(&place), Prompt::Answer(monster));
-    let position = json!({ "type": 19, "player": 0, "code": 1, "positions": 12 });
+    let position = json!({ "type": 19, "player": 0, "code": 1, "positions": 4 });
     assert_eq!(t.prompt(&position), Prompt::Answer(json!({ "type": 11, "position": 4 })));
     // The CPU takes face-up attack when allowed.
     let position = json!({ "type": 19, "player": 1, "code": 1, "positions": 5 });
@@ -1030,6 +1030,160 @@ fn a_position_choice_opens_the_position_dialog() {
     let set = json!({ "type": 19, "player": 0, "code": 4101, "cid": 4101, "positions": 9 });
     assert_eq!(client_commands(t.prompt(&set))[2], (0x36, [8, 1, 2, 0]));
     assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 11, "position": 8 }))));
+}
+
+/// The Select dialog's labels of a prompt (the server's texts, in the order of the 0x3F0 values).
+fn select_labels(p: &Prompt) -> Vec<String> {
+    let texts = server_texts(p);
+    let Prompt::Client(out) = p else { panic!("expected a client prompt") };
+    let mut ids = vec![];
+    for m in out.iter().filter(|m| m.get("duelRequestName") == Some(&Value::U32(0x11))) {
+        let (id, params) = cmd(m);
+        if id == 0x3F0 {
+            ids.extend(params.iter().filter(|&&v| v != 0).map(|v| v & 0x7FFF));
+        }
+    }
+    ids.iter().map(|id| texts.iter().rev().find(|(t, _)| t == id).map(|(_, text)| text.clone()).unwrap_or_default()).collect()
+}
+
+#[test]
+fn three_or_four_positions_are_asked_in_steps() {
+    // The position dialog has two buttons: attack, and defense (face-up with the flag, else face-down). A prompt that
+    // allows more (EDOPro's POS_FACEUP | POS_FACEDOWN_DEFENSE, or all four), or two positions of one side, is asked in
+    // two steps with dialogs the client has: the position dialog's side (attack or defense), then, when that side has
+    // both its face-up and face-down positions, the Select dialog (0x4C5750) with the server's two labels under the same
+    // message ('Select position for "%s".', 327, and the card). A prompt with only one side's two positions skips the
+    // first step. DLGResult is the button, then the label's index.
+    let mut t = with_cards();
+    let three = json!({ "type": 19, "player": 0, "code": 4101, "cid": 4101, "positions": 13 });
+    let first = [(0x3EC, [2, 0, 0, 0]), (0x3ED, [1 << 28 | 327, 5 << 28 | 4101, 0, 0]), (0x36, [8, 1, 2 | 1 << 16, 0])];
+    assert_eq!(client_commands(t.prompt(&three)), first);
+    assert!(t.unreachable_answers().is_empty(), "every position of the prompt can be given: {:?}", t.unreachable_answers());
+    assert_eq!(t.dialog_result(0), Some(Prompt::Answer(json!({ "type": 11, "position": 1 }))), "attack is the only attack position");
+    // Defense: face-up or face-down, asked next.
+    assert_eq!(client_commands(t.prompt(&three)), first);
+    let Some(second) = t.dialog_result(1) else { panic!("the second question") };
+    assert_eq!(select_labels(&second), ["Face-up Defense Position", "Face-down Defense Position"]);
+    assert_eq!(server_texts(&second)[0], (0x3F00, "Face-up Defense Position".into()));
+    assert_eq!(
+        client_commands(second),
+        [
+            (0x3EF, [2, 0, 0, 0]),
+            (0x3F0, [0x8000 | 0x3F00, 0x8000 | 0x3F01, 0, 0]),
+            (0x3EC, [2, 0, 0, 0]),
+            (0x3ED, [1 << 28 | 327, 5 << 28 | 4101, 0, 0]),
+            (0x36, [4, 1, 0, 0]),
+        ]
+    );
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 11, "position": 8 }))), "face-down defense");
+    t.prompt(&three);
+    t.dialog_result(1);
+    assert_eq!(t.dialog_result(0), Some(Prompt::Answer(json!({ "type": 11, "position": 4 }))), "face-up defense");
+    // All four: either side asks its two.
+    let all = json!({ "type": 19, "player": 0, "code": 4101, "cid": 4101, "positions": 15 });
+    t.prompt(&all);
+    assert!(t.unreachable_answers().is_empty(), "{:?}", t.unreachable_answers());
+    let Some(attack) = t.dialog_result(0) else { panic!("attack's two") };
+    assert_eq!(select_labels(&attack), ["Face-up Attack Position", "Face-down Attack Position"]);
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 11, "position": 2 }))), "face-down attack");
+    // Two attack positions only, or two defense positions only: the Select dialog at once.
+    let attacks = json!({ "type": 19, "player": 0, "code": 4101, "cid": 4101, "positions": 3 });
+    let Prompt::Client(_) = t.prompt(&attacks) else { panic!("asks") };
+    assert!(t.unreachable_answers().is_empty(), "{:?}", t.unreachable_answers());
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 11, "position": 2 }))));
+    let defenses = json!({ "type": 19, "player": 0, "code": 4101, "cid": 4101, "positions": 12 });
+    let prompt = t.prompt(&defenses);
+    assert_eq!(select_labels(&prompt), ["Face-up Defense Position", "Face-down Defense Position"]);
+    assert!(t.unreachable_answers().is_empty(), "{:?}", t.unreachable_answers());
+    assert_eq!(t.dialog_result(0), Some(Prompt::Answer(json!({ "type": 11, "position": 4 }))));
+    // A button past the labels (a stale click) asks again rather than answering for the player.
+    t.prompt(&defenses);
+    assert!(matches!(t.dialog_result(3), Some(Prompt::Client(_))));
+    // The CPU's choice stays the placeholder AI's.
+    let cpu = json!({ "type": 19, "player": 1, "code": 1, "positions": 15 });
+    assert_eq!(t.prompt(&cpu), Prompt::Answer(json!({ "type": 11, "position": 1 })));
+}
+
+#[test]
+fn several_types_are_declared_one_dialog_each() {
+    // MSG_ANNOUNCE_RACE {count, available} with count above 1: the type dialog (kind 5) takes one type, so each type
+    // is its own dialog, without the types already declared, under the server's "Select Type n of m." The answer is
+    // all of them, EDOPro's RACE_ bits in the order declared. Dragon is the client's number 1, Zombie 2, Warrior 15.
+    let mut t = with_cards();
+    let race = json!({ "type": 140, "player": 0, "count": 2, "available": 0x2000 | 0x10 | 0x1 });
+    let prompt = t.prompt(&race);
+    assert_eq!(server_texts(&prompt), [(0x3F00, "Select @3Type 1 of 2@0.".into())]);
+    assert_eq!(client_commands(prompt), [(0x3EC, [1, 0, 0, 0]), (0x3ED, [1 << 28 | 0x3F00, 0, 0, 0]), (0x36, [5, 1, 1 << 1 | 1 << 2 | 1 << 15, 0])]);
+    assert!(t.unreachable_answers().is_empty(), "{:?}", t.unreachable_answers());
+    let Some(next) = t.dialog_result(15) else { panic!("the second type") };
+    assert_eq!(server_texts(&next), [(0x3F01, "Select @3Type 2 of 2@0.".into())]);
+    assert_eq!(client_commands(next).last(), Some(&(0x36, [5, 1, 1 << 1 | 1 << 2, 0])), "Warrior is not offered twice");
+    // Warrior again (a stale click) is asked again; Dragon completes the declaration.
+    assert!(matches!(t.dialog_result(15), Some(Prompt::Client(_))));
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 16, "races": [0x1, 0x2000] }))), "Warrior and Dragon");
+    // Fewer types than the effect declares: nothing could be asked, the CPU's choice.
+    let few = json!({ "type": 140, "player": 0, "count": 3, "available": 0x2000 | 0x10 });
+    assert!(matches!(t.prompt(&few), Prompt::Answer(_)));
+    // One type is the type dialog alone, as before.
+    let one = json!({ "type": 140, "player": 0, "count": 1, "available": 0x2001 });
+    assert_eq!(client_commands(t.prompt(&one)).last(), Some(&(0x36, [5, 1, 1 << 1 | 1 << 15, 0])));
+}
+
+/// Plays the stepped number question for `target`: at each step the label whose range holds it. The answer, the
+/// number of steps and the labels the first step showed.
+fn declare_number(t: &mut Translator, ask: &serde_json::Value, target: u64) -> (serde_json::Value, usize, Vec<String>) {
+    let mut prompt = t.prompt(ask);
+    let first = select_labels(&prompt);
+    for step in 1.. {
+        let labels = select_labels(&prompt);
+        assert!(!labels.is_empty() && labels.len() <= 4, "step {step}: {labels:?}");
+        let holds = |label: &String| {
+            let (lo, hi) = label.split_once('-').map_or((label.as_str(), label.as_str()), |(lo, hi)| (lo, hi));
+            (lo.parse::<u64>().unwrap()..=hi.parse::<u64>().unwrap()).contains(&target)
+        };
+        let at = labels.iter().position(holds).unwrap_or_else(|| panic!("step {step}: {target} is in none of {labels:?}"));
+        match t.dialog_result(at as u32) {
+            Some(Prompt::Answer(a)) => return (a, step, first),
+            Some(next @ Prompt::Client(_)) => prompt = next,
+            None => panic!("no result"),
+        }
+    }
+    unreachable!()
+}
+
+#[test]
+fn numbers_beyond_the_number_dialog_are_narrowed_in_steps() {
+    // The number dialog (kind 11) holds a maximum of 255 units and a minimum and step of 15. MSG_ANNOUNCE_NUMBER
+    // {options} that don't fit is asked as Select dialogs (four labels each) of ranges of the options by value, each
+    // pick narrowing the range until the number itself is a label; the answer is the option's index in the engine's
+    // order, as for the number dialog. The title is the card's hint, else the server's "Declare a number.".
+    let mut t = with_cards();
+    // Wall of Revealing Light under a 300,000 LP duel: 1000 to 300000 in thousands (the dialog stops at 255).
+    let lp: Vec<u64> = (1..=300).map(|i| i * 1000).collect();
+    let ask = json!({ "type": 143, "player": 0, "options": lp });
+    let prompt = t.prompt(&ask);
+    assert_eq!(server_texts(&prompt)[0], (0x3F00, "Declare a number.".into()));
+    assert_eq!(select_labels(&prompt), ["1000-75000", "76000-150000", "151000-225000", "226000-300000"]);
+    assert!(t.unreachable_answers().is_empty(), "{:?}", t.unreachable_answers());
+    for target in [1000, 75000, 76000, 123000, 254000, 300000] {
+        let (answer, steps, _) = declare_number(&mut t, &ask, target);
+        assert_eq!(answer, json!({ "type": 19, "value": target / 1000 - 1 }), "{target}");
+        assert!(steps <= 6, "{target} took {steps} steps");
+    }
+    // A minimum above 15 units: 1800 to 2000 LP in hundreds, three labels of their own; engine order is kept in the answer.
+    let small = json!({ "type": 143, "player": 0, "options": [2000, 1900, 1800] });
+    let prompt = t.prompt(&small);
+    assert_eq!(select_labels(&prompt), ["1800", "1900", "2000"]);
+    assert!(t.unreachable_answers().is_empty(), "{:?}", t.unreachable_answers());
+    assert_eq!(t.dialog_result(0), Some(Prompt::Answer(json!({ "type": 19, "value": 2 }))), "1800 is the third option");
+    // A Level hint titles it "Declare monster level." (280).
+    t.events(&[json!({ "type": 2, "hint_type": 3, "player": 0, "hint": 567 })]);
+    let levels = json!({ "type": 143, "player": 0, "options": (1..=300).collect::<Vec<u32>>() });
+    let out = client_commands(t.prompt(&levels));
+    assert!(out.contains(&(0x3ED, [1 << 28 | 280, 0, 0, 0])));
+    // The CPU's choice stays the first option.
+    let cpu = json!({ "type": 143, "player": 1, "options": (1..=300).collect::<Vec<u32>>() });
+    assert_eq!(t.prompt(&cpu), Prompt::Answer(json!({ "type": 19, "value": 0 })));
 }
 
 /// A translator with two token cards: row 300 the Emissary of Darkness Token (Konami id 3922), row 301 a token the

@@ -392,3 +392,21 @@ fn mist_wurm_returns_the_opponents_monster() {
     assert!(s.monster(1, WARWOLF).is_none(), "Warwolf should be back in the hand: {}", s.state());
     clean(&s);
 }
+
+const WALL_OF_REVEALING_LIGHT: u16 = 5990;
+
+/// Wall of Revealing Light (5990): "Activate by paying any multiple of 1000 Life Points." The client's cards and its
+/// windows leave no number past the number dialog (#16): the client shows at most 99,999 LP (five figures), the core's
+/// `ANNOUNCE_NUMBER` counts its options in a byte (300 options reached the server as the first 44), and no card
+/// declares a minimum or step above 15 units. So the steps `translate_contract.rs` covers have no real card; this plays
+/// the number dialog through the translator's windows against the real engine: 8 numbers of 1000, the 5000 picked is
+/// what the engine takes.
+#[test]
+fn wall_of_revealing_light_pays_the_number_picked_in_the_dialog() {
+    let Some(mut s) = start([(&deck_with(&[WALL_OF_REVEALING_LIGHT]), &[]), (&[WARWOLF; 40], &[])]) else { return };
+    s.declare_number(Some(5_000));
+    s.run(&[SetSpell(WALL_OF_REVEALING_LIGHT), Activate(WALL_OF_REVEALING_LIGHT)]).unwrap();
+    assert_eq!(s.lp(0), 8000 - 5000, "{}", s.context());
+    assert_eq!(s.dialogs, 1, "8 numbers of 1000 are one number dialog");
+    clean(&s);
+}
