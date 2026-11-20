@@ -716,7 +716,8 @@ none (`0x2778`), then reloads the shelves (`0x1B67`…). PresentWindow (`0x476DE
 name and description it takes from its own pack file. `item` is binary: big-endian u16 CARD_Prop rows
 (EasyMultiPlayDataBinary's `0x407ED0`), here the pack's cards, which the window shows one by one (marked NEW! when the
 trunk has none) with a SKIP button. The client doesn't add them to its trunk itself (the shop's `0x2777` case acts
-only on `type` 6): the server keeps them, and the next trunk request (`0x1FA4`) brings them. Live: Pack 1 opened
+only on `type` 6): the server keeps them and pushes the trunk (`9000`) after the `0x2778` that ends the presents of a purchase or
+exchange (until then Edit Deck showed the old collection: it asks for the trunk only on login and when the shop opens). Live: Pack 1 opened
 showing "Power of Kaishin" NEW!, and SKIP returned to the Shop Menu.
 
 **Structure decks.** A shop item of kind 1 or 4 goes to the STRUCTURE DECK tab: `AddStruct` (`0x48CE40`) looks up the

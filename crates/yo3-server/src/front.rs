@@ -2773,6 +2773,8 @@ pub struct FrontSession {
     directory: Option<Arc<Mutex<crate::accounts::Directory>>>,
     /// Bought packs and decks not shown yet, and the last present id given.
     presents: VecDeque<crate::shop::Present>,
+    /// A purchase or exchange put cards in the collection that the client's trunk lacks: sent after its last present.
+    trunk_due: bool,
     last_present: u32,
     rng: u64,
     /// The client's language, from its login (0x1F48 lang).
@@ -2807,6 +2809,7 @@ impl FrontSession {
             peer: None,
             directory: None,
             presents: VecDeque::new(),
+            trunk_due: false,
             last_present: 0,
             rng: seed | 1,
             lang: ENGLISH,
@@ -3105,6 +3108,7 @@ impl FrontSession {
                 add(&mut self.account.players[at]);
             }
         }
+        self.trunk_due |= bought.iter().any(|p| !p.cards().is_empty());
         self.presents.extend(bought);
         Ok(self.account.dpoint)
     }
@@ -3151,6 +3155,7 @@ impl FrontSession {
         }
         let pack = world.packs.iter().find(|p| p.tiers.iter().flatten().any(|&c| c == card)).map_or(pool.id, |p| p.id);
         self.presents.push_back(crate::shop::Present::Card { pack, card });
+        self.trunk_due = true;
         Message::reply(0x1C28)
     }
 
@@ -3755,6 +3760,9 @@ impl FrontSession {
                     self.last_present += 1;
                     present.message(self.last_present)
                 }
+                // The end of a purchase's presents: the client doesn't add the cards to its trunk itself, so Edit Deck
+                // would lack them until the shop is opened again or the next login. The trunk follows.
+                None if std::mem::take(&mut self.trunk_due) => return vec![Message::reply(0x2778), crate::trade::trunk(&self.world, self.player())],
                 None => Message::reply(0x2778),
             },
             0x2135 => self.room_list(),

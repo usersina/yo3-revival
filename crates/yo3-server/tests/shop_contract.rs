@@ -121,7 +121,7 @@ fn bought_packs_cost_bp_and_arrive_as_presents() {
         assert!([20, 21, 30].contains(&cards[4]), "one of a higher tier: {cards:?}");
         pulled.extend(cards);
     }
-    assert_eq!(one(c.send(req(0x2775))).request(), Some(0x2778));
+    assert_eq!(c.send(req(0x2775)).iter().map(Message::request).collect::<Vec<_>>(), [Some(0x2778), Some(9000)], "the trunk follows the last present");
     // The trunk counts them (cards: one byte per row at row - 1).
     let trunk = c.send(req_with(0x1FA4, &[("player_id", Value::U32(1001))]));
     let counts = trunk[0].items[0].get("cards").and_then(Value::as_bytes).unwrap().to_vec();
@@ -129,6 +129,31 @@ fn bought_packs_cost_bp_and_arrive_as_presents() {
         let n = pulled.iter().filter(|&&r| r == row).count();
         assert_eq!(counts[row as usize - 1] as usize, n, "row {row}");
     }
+}
+
+#[test]
+fn the_last_present_of_a_purchase_brings_the_trunk_so_edit_deck_has_the_cards_at_once() {
+    // The client doesn't add a present's cards to its trunk (protocol.md, "Bought packs arrive as presents"): without a
+    // new trunk (9000, the same reply as a trade's end) a player who buys a pack and opens Edit Deck sees the old
+    // collection until the shop is opened again or the next login. The trunk follows the 0x2778 that ends the presents
+    // of a purchase or an exchange, never one that ends nothing.
+    let mut c = shop().join_with_bp(1001, "Yugi", 1000);
+    let nothing = c.send(req(0x2775));
+    assert_eq!((nothing.len(), nothing[0].request()), (1, Some(0x2778)), "no purchase, no trunk");
+    let buy = req_with(0x1B68, &[("sale_id", Value::U32(1)), ("item_num", Value::U32(1)), ("end_time", Value::text("\"\""))]);
+    assert_eq!(one(c.send(buy)).request(), Some(0x1C24));
+    let present = one(c.send(req(0x2775)));
+    assert_eq!(present.request(), Some(0x2777), "the present first, with the trunk still unchanged");
+    let cards = rows(&present);
+    let end = c.send(req(0x2775));
+    assert_eq!(end.iter().map(Message::request).collect::<Vec<_>>(), [Some(0x2778), Some(9000)]);
+    let counts = end[1].items[0].get("cards").and_then(Value::as_bytes).unwrap().to_vec();
+    for row in &cards {
+        let n = cards.iter().filter(|r| *r == row).count();
+        assert_eq!(counts[*row as usize - 1] as usize, n, "row {row}");
+    }
+    let again = c.send(req(0x2775));
+    assert_eq!((again.len(), again[0].request()), (1, Some(0x2778)), "once per purchase");
 }
 
 #[test]
@@ -215,7 +240,7 @@ fn a_bought_structure_deck_arrives_whole() {
     assert_eq!(["present_id", "type"].map(|k| p.get(k).and_then(Value::as_u32)), [Some(1), Some(1)]);
     assert_eq!(rows(&p), [4]);
     assert_eq!(p.get("desc").and_then(Value::as_str).as_deref(), Some("-1"));
-    assert_eq!(one(c.send(req(0x2775))).request(), Some(0x2778));
+    assert_eq!(c.send(req(0x2775)).iter().map(Message::request).collect::<Vec<_>>(), [Some(0x2778), Some(9000)], "the trunk follows the last present");
     let trunk = c.send(req_with(0x1FA4, &[("player_id", Value::U32(1001))]));
     let counts = trunk[0].items[0].get("cards").and_then(Value::as_bytes).unwrap().to_vec();
     assert_eq!((counts[39], counts[40]), (2, 1));
@@ -420,7 +445,7 @@ fn an_exchange_gives_the_card_picked_for_the_cost_in_cards() {
     let int = |k| p.get(k).and_then(Value::as_u32);
     assert_eq!(["type", "pack_id"].map(int), [Some(0), Some(1)]);
     assert_eq!(rows(&p), [2]);
-    assert_eq!(one(c.send(req(0x2775))).request(), Some(0x2778));
+    assert_eq!(c.send(req(0x2775)).iter().map(Message::request).collect::<Vec<_>>(), [Some(0x2778), Some(9000)], "the trunk follows the last present");
     assert_eq!([2, 20, 21].map(|row| trunk_count(&mut c, row)), [1, 0, 0]);
 }
 

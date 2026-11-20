@@ -15,6 +15,8 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Cards from a pack, structure deck or exchange are in Edit Deck right away. Before, the cards you bought only showed there
+  after you opened the shop again or signed in again.
 - Desktop is calmer. Messages now float as a toast in the bottom right corner instead of pushing the screen around: good
   news goes by itself after a few seconds, a problem stays until you dismiss it, and Settings' jobs show their progress
   there too.
