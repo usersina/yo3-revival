@@ -81,6 +81,38 @@ async fn accounts_can_be_created_and_exported_while_the_tls_server_stays_online(
 /// Giving cards, an alternate artwork or a deck recipe (#19): stored in the player (CARD_Prop rows in its collection, the
 /// recipe's item among its items), audited with the count before and after, an admin's only.
 #[test]
+fn unlock_cards_tops_every_artwork_up_to_three_for_every_player_once() {
+    // Desktop's Unlock all cards (Settings → Singleplayer → Your data): every artwork of every catalogue card, topped up
+    // to three copies beyond the starting cards, for every player of every account; a letter to each; a second time
+    // adds nothing. A named player gets them alone; a moderator can't.
+    use yo3_server::gifts::{Card, Gifts};
+    let settings = std::sync::Arc::new(yo3_server::settings::Live::open(None, vec![]).unwrap());
+    let mut d = yo3_server::accounts::Directory::new(vec![]);
+    d.add_account(&["Yugi".into(), "Joey".into()]).unwrap();
+    d.add_account(&["Kaiba".into()]).unwrap();
+    let accounts = std::sync::Arc::new(std::sync::Mutex::new(d));
+    let card = |row, cid, art, name: &str| Card { row, cid, art, name: name.into(), description: String::new() };
+    let gifts = Gifts { cards: vec![card(816, 4007, 1, "Blue-Eyes White Dragon"), card(817, 4007, 2, "Blue-Eyes White Dragon"), card(1199, 5017, 1, "Command Knight")], recipes: vec![] };
+    let a = api::Api::new(accounts.clone(), settings, None, std::path::PathBuf::new(), "server").with_gifts(gifts);
+    let cards = |name: &str| { let d = accounts.lock().unwrap(); d.player(d.player_id_named(name).unwrap()).unwrap().cards.clone() };
+    // Yugi has one extra Blue-Eyes and five Command Knights already: the Blue-Eyes is topped up, the Knights kept.
+    a.apply(&Op::GiveCards { player: "Yugi".into(), card: "4007".into(), art: Some(1), count: Some(1) }, "host").unwrap();
+    a.apply(&Op::GiveCards { player: "Yugi".into(), card: "5017".into(), art: None, count: Some(5) }, "host").unwrap();
+    let one = a.apply(&Op::UnlockCards { player: Some("Joey".into()) }, "host").unwrap();
+    assert_eq!((one["players"].as_u64(), one["added"].as_u64()), (Some(1), Some(9)));
+    assert!(cards("Kaiba").is_empty(), "a named player gets them alone");
+    let all = a.apply(&Op::UnlockCards { player: None }, "host").unwrap();
+    assert_eq!((all["players"].as_u64(), all["added"].as_u64()), (Some(2), Some(2 + 3 + 9)), "Yugi's two Blue-Eyes and art 2, Kaiba's nine; Joey had them");
+    assert_eq!(cards("Yugi").into_iter().collect::<Vec<_>>(), [(816, 3), (817, 3), (1199, 5)]);
+    for name in ["Joey", "Kaiba"] { assert_eq!(cards(name).into_iter().collect::<Vec<_>>(), [(816, 3), (817, 3), (1199, 3)], "{name}") }
+    assert_eq!(a.apply(&Op::UnlockCards { player: None }, "host").unwrap()["message"], "Every card was already unlocked.");
+    assert!(a.apply(&Op::UnlockCards { player: Some("Nobody".into()) }, "host").is_err());
+    assert!(!Op::UnlockCards { player: None }.for_moderators());
+    let rows = a.audit(10).unwrap();
+    assert_eq!((rows[0].op.as_str(), rows[0].target.as_str()), ("unlock-cards", "every player"));
+}
+
+#[test]
 fn an_admin_gives_cards_artworks_and_recipes_and_a_moderator_cannot() {
     use yo3_server::gifts::{Card, Gifts, Recipe};
     let settings = std::sync::Arc::new(yo3_server::settings::Live::open(None, vec![]).unwrap());

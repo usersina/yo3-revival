@@ -80,6 +80,7 @@ fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
         Admin::Titles => Op::Titles,
         Admin::GiveBp { who, amount, .. } => Op::GiveBp { who: who.clone(), amount: *amount },
         Admin::GiveCards { player, card, art, count, .. } => Op::GiveCards { player: player.clone(), card: card.clone(), art: *art, count: *count },
+        Admin::UnlockCards { player, .. } => Op::UnlockCards { player: player.clone() },
         Admin::GiveRecipe { player, deck, cards, .. } => Op::GiveRecipe { player: player.clone(), deck: deck.clone(), cards: *cards },
         Admin::Recipes => Op::Recipes,
         Admin::AddCode { code, bp, uses, .. } => Op::AddCode { code: code.clone(), bp: *bp, uses: *uses },
@@ -188,7 +189,7 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
         | Admin::DeleteAccount { request_id, .. } | Admin::Kick { request_id, .. } | Admin::Ban { request_id, .. } | Admin::Restrict { request_id, .. } | Admin::Lift { request_id, .. }
         | Admin::Mute { request_id, .. } | Admin::Unmute { request_id, .. } | Admin::SignOut { request_id, .. }
         | Admin::Set { request_id, .. } | Admin::Reset { request_id, .. } | Admin::Maintenance { request_id, .. }
-        | Admin::GiveCards { request_id, .. } | Admin::GiveRecipe { request_id, .. } | Admin::GrantTitle { request_id, .. }
+        | Admin::GiveCards { request_id, .. } | Admin::UnlockCards { request_id, .. } | Admin::GiveRecipe { request_id, .. } | Admin::GrantTitle { request_id, .. }
         | Admin::AddAccount { request_id, .. } | Admin::Key { request_id, .. } | Admin::Profile { request_id, .. }
         | Admin::AddPlayer { request_id, .. } | Admin::Rename { request_id, .. } | Admin::SetCountry { request_id, .. } | Admin::SetRole { request_id, .. } = &command {
         let id = request_id.clone().unwrap_or_else(yo3_server::logins::new_token);

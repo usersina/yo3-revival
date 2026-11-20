@@ -181,4 +181,66 @@ impl Api {
         }
         Ok(result)
     }
+
+    /// Unlock all cards (Desktop's button for your own server): each artwork of every card in the catalogue topped up
+    /// to `UNLOCK_COPIES` copies beyond the starting cards, for one player or every player, in one commit with a letter
+    /// to each player who got cards, the audit row and the receipt; online players get their trunk at once.
+    pub(super) fn unlock_cards(&self, player: Option<&str>, id: &str, actor: Actor<'_>, origin: &str) -> Result<Value, MutationError> {
+        validate_id(id)?;
+        let op = Op::UnlockCards { player: player.map(str::to_owned) };
+        let mut hub = self.hub.as_ref().map(|h| h.locked());
+        let mut d = self.accounts.locked();
+        let identity = actor.resolve(&d, Role::Admin)?;
+        let operation = op.name(); let hash = fingerprint(&op)?;
+        if let Some(result) = self.replay::<Value>(&identity.scope, id, &operation, &hash)? { return Ok(result) }
+        let players: Vec<(u32, String)> = match player {
+            Some(name) => { let player_id = d.player_id_named(name).ok_or_else(missing)?; vec![(player_id, d.player(player_id).ok_or_else(missing)?.name.clone())] }
+            None => d.entries().flat_map(|(_, _, a)| a.players.iter().map(|p| (p.player_id, p.name.clone()))).collect(),
+        };
+        if players.is_empty() { return Err(invalid("There are no players yet: unlock the cards after the first sign-in.")) }
+        let rows: Vec<u16> = self.gifts().map_err(unavailable)?.cards.iter().map(|c| c.row).collect();
+        let mut next = (*d).clone();
+        let mut mail = if let Some(h) = &hub { h.bp_mail() } else { match &self.data_dir { Some(dir) => Mailbox::try_load(&dir.join("mail.json")).map_err(MutationError::persistence)?, None => Mailbox::default() } };
+        let (mut changed, mut added) = (vec![], 0u64);
+        for (player_id, name) in &players {
+            let mut more = 0u32;
+            next = next.prepare_player(*player_id, |p| {
+                for &row in &rows {
+                    let have = p.cards.entry(row).or_default();
+                    if *have < UNLOCK_COPIES { more += UNLOCK_COPIES - *have; *have = UNLOCK_COPIES; }
+                }
+                Ok(())
+            }).map_err(invalid)?;
+            if more > 0 {
+                mail = mail.prepare_host((*player_id, name), "All cards unlocked", "The host unlocked every card for you: at least three of each, in every artwork. \
+                    You will see them when you next come back to the map.".into()).map_err(invalid)?;
+                changed.push(*player_id);
+                added += u64::from(more);
+            }
+        }
+        let message = match (changed.len(), players.len()) {
+            (0, _) => "Every card was already unlocked.".to_owned(),
+            (1, 1) => format!("Unlocked every card for {}: {added} cards added. They show at the next map visit.", players[0].1),
+            (n, _) => format!("Unlocked every card for {n} players: {added} cards added. They show at the next map visit."),
+        };
+        let result = json!({ "players": changed.len(), "added": added, "message": message });
+        let row = AuditRow { at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true), actor: identity.by, origin: origin.into(), op: operation.clone(),
+            target: op.target(), before: None, after: Some(json!({ "players": changed.len(), "added": added })), detail: Some(json!({ "request_id": id })) };
+        let receipt = Receipt { operation, input: hash, result: result.clone() };
+        match &self.data_dir {
+            Some(dir) => store::together(dir, || { next.persist()?; mail.persist()?; store::audit(dir, &row)?; store::put_receipt(dir, &identity.scope, id, &receipt) }).map_err(MutationError::persistence)?,
+            None => { self.memory.locked().push(row); self.receipts.locked().insert((identity.scope, id.into()), receipt); }
+        }
+        *d = next;
+        if let Some(h) = hub.as_mut() {
+            for &player_id in &changed {
+                let trunk = self.world.as_ref().and_then(|w| d.player(player_id).map(|p| crate::trade::trunk(w, p)));
+                h.publish_gift(mail.clone(), player_id, trunk.as_ref(), None);
+            }
+        }
+        Ok(result)
+    }
 }
+
+/// Unlock all cards gives at least this many copies of each artwork: the most a deck may hold.
+pub const UNLOCK_COPIES: u32 = 3;

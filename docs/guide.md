@@ -281,6 +281,7 @@ accounts for the Scripts edition on your own PC. Keep each key profile private (
 ./yo3-server grant-title Alice "GAME MASTER"
 ./yo3-server give-cards Alice "Blue-Eyes White Dragon" --art 2 --count 3
 ./yo3-server give-recipe Alice "E-HERO EVOLUTION DECK" --cards
+./yo3-server unlock-cards                    # three of every card, every artwork, for every player (or: unlock-cards Alice)
 ./yo3-server add-code ABCD1234EFGH5678 2500
 ./yo3-server add-code "" 500 --uses 10       # generate a code; keep the printed request ID
 ./yo3-server remove-code ABCD1234EFGH5678
@@ -345,6 +346,9 @@ accounts for the Scripts edition on your own PC. Keep each key profile private (
 - `grant-title PLAYER TITLE` gives a player a title by its name as the game shows it (`titles` lists them), such as
   GAME MASTER or JUMP FESTA, which no duel earns. The player wears it in Avatar Settings. A rename or title reaches
   a player who is online at their next login.
+- `unlock-cards [PLAYER]` unlocks every card: each artwork of every card topped up to three copies beyond the starting
+  cards, for PLAYER or, without one, every player; each player who got cards gets a D-Mail. It is Desktop's **Unlock all
+  cards** for your own server. Accepts `--request-id ID` like the gifts.
 - `give-cards PLAYER CARD` gives a player cards that no pack or deck hands out, or another artwork of a card (#19).
   CARD is its English name or Konami id; a name two cards share (Dark Magician) needs the id. `--art N` picks the
   artwork (the card's first when omitted; Blue-Eyes White Dragon has five) and `--count N` how many copies (1 when

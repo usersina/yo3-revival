@@ -155,6 +155,12 @@ pub enum Admin {
         count: Option<u32>,
         #[arg(long)] request_id: Option<String>,
     },
+    /// Unlock every card: each artwork of every card topped up to three copies beyond the starting cards, for PLAYER or,
+    /// without one, for every player. Each player who got cards gets a letter; the trunk has them at its next request.
+    UnlockCards {
+        player: Option<String>,
+        #[arg(long)] request_id: Option<String>,
+    },
     /// Give PLAYER a deck recipe for Load Deck's Official tab (#19): DECK is its title or preset id (`recipes` lists them);
     /// --cards gives the recipe's cards too. The game shows it at their next login or after their next duel.
     GiveRecipe {

@@ -74,6 +74,9 @@ pub enum Op {
     /// `count` copies (1 when none) of one artwork of a card (#19), by its English name or Konami id; `art` its first
     /// when none. The player's trunk has them at its next request (Edit Deck, the shop).
     GiveCards { player: String, card: String, #[serde(default)] art: Option<u32>, #[serde(default)] count: Option<u32> },
+    /// Every artwork of every card, topped up to three copies beyond the starting cards, for `player` or, with none, for
+    /// every player: Desktop's Unlock all cards on your own server. Each player who got cards gets a letter.
+    UnlockCards { #[serde(default)] player: Option<String> },
     /// A deck recipe for Load Deck's Official tab (#19), by its title or preset id; `cards` gives the recipe's cards too.
     /// The game shows it at the player's next login or after their next duel.
     GiveRecipe { player: String, deck: String, #[serde(default)] cards: bool },
@@ -150,7 +153,7 @@ pub enum Op {
 
 impl Op {
     /// Operations migrated to a committed change/audit/receipt boundary.
-    fn receipted(&self) -> bool { matches!(self, Self::BackUp | Self::Shutdown { .. } | Self::DeleteAccount { .. } | Self::Kick { .. } | Self::Ban { .. } | Self::Restrict { .. } | Self::Lift { .. } | Self::Mute { .. } | Self::Unmute { .. } | Self::SignOut { .. } | Self::Set { .. } | Self::Reset { .. } | Self::Maintenance { .. } | Self::GiveCards { .. } | Self::GiveRecipe { .. } | Self::GrantTitle { .. } | Self::CreateAccount { .. } | Self::Key { .. } | Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. } | Self::AddPlayer { .. } | Self::Rename { .. } | Self::SetCountry { .. } | Self::SetRole { .. } | Self::AddUser { .. } | Self::ResetCode { .. }) }
+    fn receipted(&self) -> bool { matches!(self, Self::BackUp | Self::Shutdown { .. } | Self::DeleteAccount { .. } | Self::Kick { .. } | Self::Ban { .. } | Self::Restrict { .. } | Self::Lift { .. } | Self::Mute { .. } | Self::Unmute { .. } | Self::SignOut { .. } | Self::Set { .. } | Self::Reset { .. } | Self::Maintenance { .. } | Self::GiveCards { .. } | Self::UnlockCards { .. } | Self::GiveRecipe { .. } | Self::GrantTitle { .. } | Self::CreateAccount { .. } | Self::Key { .. } | Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. } | Self::AddPlayer { .. } | Self::Rename { .. } | Self::SetCountry { .. } | Self::SetRole { .. } | Self::AddUser { .. } | Self::ResetCode { .. }) }
     /// Its name in the API's path and the audit log.
     pub fn name(&self) -> String {
         serde_json::to_value(self).ok().and_then(|v| v["op"].as_str().map(str::to_owned)).unwrap_or_default()
@@ -190,6 +193,7 @@ impl Op {
             Op::AddPlayer { who, .. } | Op::Key { who } | Op::SetCountry { who, .. } | Op::GiveBp { who, .. } => who.clone(),
             Op::Rename { old, .. } => old.clone(),
             Op::GrantTitle { player, .. } | Op::GiveCards { player, .. } | Op::GiveRecipe { player, .. } => player.clone(),
+            Op::UnlockCards { player } => player.clone().unwrap_or_else(|| "every player".into()),
             Op::AddUser { user, .. } | Op::ResetCode { user, .. } | Op::SetRole { user, .. } | Op::StaffMfaReset { user } => user.clone(),
             Op::Kick { who } | Op::Ban { who, .. } | Op::Restrict { who, .. } | Op::Lift { who } | Op::Mute { who, .. }
             | Op::Unmute { who } | Op::SignOut { who } => who.clone(),
@@ -431,6 +435,7 @@ impl Api {
             Op::AddUser { .. } | Op::ResetCode { .. } => self.issue_named_code(op, id, actor, origin),
             Op::CreateAccount { .. } | Op::Key { .. } => self.named_key_account(op, id, actor, origin),
             Op::GiveCards { .. } | Op::GiveRecipe { .. } | Op::GrantTitle { .. } => self.named_gift(op, id, actor, origin),
+            Op::UnlockCards { player } => self.unlock_cards(player.as_deref(), id, actor, origin),
             _ => Err(MutationError::new(MutationErrorCode::InvalidRequest, "This operation has not migrated to the typed mutation boundary.")),
         }
     }
@@ -548,7 +553,7 @@ impl Api {
                 names.sort();
                 Ok((json!({ "titles": names, "message": names.join("\n") }), None, None))
             }
-            Op::GrantTitle { .. } | Op::GiveCards { .. } | Op::GiveRecipe { .. } => Err("gifts require the typed mutation boundary".into()),
+            Op::GrantTitle { .. } | Op::GiveCards { .. } | Op::GiveRecipe { .. } | Op::UnlockCards { .. } => Err("gifts require the typed mutation boundary".into()),
             Op::Recipes => {
                 let gifts = self.gifts()?;
                 let rows: Vec<Value> = gifts.recipes.iter().map(|r| json!({ "id": r.id, "title": r.title, "item": r.item, "cards": r.cards.len() })).collect();
