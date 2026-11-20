@@ -380,6 +380,16 @@ impl Backend {
         ensure!(!self.game_running(), "Close the game before changing direct-start setup");
         self.set_up_direct(settings, Target::Local, true)
     }
+    /// The tick "Open the game without the launcher" (setup and Settings): sets it up now, asking Windows for permission
+    /// when the game folder is protected. Direct start points at your server: it runs for the setup and stops after unless
+    /// it was already up. A refused permission is an error ending in "cancelled" (`was_refused`).
+    pub fn turn_on_direct(&self, settings: &Settings) -> anyhow::Result<()> {
+        let was_live = self.live(settings).is_some();
+        self.start_server(settings)?;
+        let done = self.enable_direct(settings);
+        if !was_live { let _ = self.stop_server(settings); }
+        done
+    }
     /// Multiplayer's Allow: direct start in a protected game folder for the server just played, with its saved sign-in.
     pub fn enable_direct_signed_in(&self, settings: &Settings, server: &multiplayer::Server) -> anyhow::Result<()> {
         ensure!(!self.game_running(), "Close the game before changing direct-start setup");
@@ -452,6 +462,9 @@ impl Backend {
         registry(settings, None)
     }
 }
+
+/// The player said no to Windows' permission prompt (or closed it): not a problem to report, the tick just stays off.
+pub fn was_refused(error: &str) -> bool { error.contains("installation cancelled") || error.contains("removal cancelled") }
 
 pub fn elevated_install(game: &Path, remove: bool) -> anyhow::Result<()> {
     if remove { return remove_files(game) }

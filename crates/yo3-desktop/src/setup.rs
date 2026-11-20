@@ -3,7 +3,7 @@
 use std::time::Duration;
 use iced::widget::{Space, checkbox, column, container, mouse_area, row, scrollable, text, text_input};
 use iced::{Alignment::Center, Color, Element, Length::Fill, Task};
-use yo3_desktop::Settings;
+use yo3_desktop::{Settings, direct};
 use yo3_desktop::setup_check::{self, Candidate, Check, Line, State as Outcome};
 use yo3_skin::{BODY_BOLD, DISPLAY_ITALIC, Kind, color, pill};
 use crate::app::{Ctx, dot};
@@ -27,6 +27,7 @@ pub enum Message {
     Checked(u64, Vec<Line>),
     Details(Check),
     Direct(bool),
+    DirectDone(bool, Result<(), String>),
     Shortcut(bool),
     Done,
     Saved(Result<(Box<Settings>, Option<String>), String>),
@@ -48,6 +49,10 @@ pub struct State {
     lines: Option<Vec<Line>>,
     details: Option<Check>,
     direct: bool,
+    /// The tick is being set up (Windows may be asking for permission).
+    asking: bool,
+    /// What the last press of the tick came to, when it isn't on: refused, or why it couldn't.
+    direct_note: Option<String>,
     shortcut: bool,
     picking: bool,
     saving: bool,
@@ -65,7 +70,7 @@ impl State {
     pub fn new(ctx: &Ctx, step: Step, cancellable: bool) -> Self {
         Self { step, candidates: Vec::new(), path: ctx.settings.game_dir.clone(), prefix: ctx.settings.wine_prefix.clone(),
             more_options: !ctx.settings.wine_prefix.is_empty(), revision: 0, lines: None, details: None,
-            direct: ctx.settings.direct_start || !ctx.settings.setup_complete, shortcut: !ctx.settings.setup_complete,
+            direct: ctx.settings.direct_start && ctx.settings.setup_complete, asking: false, direct_note: None, shortcut: !ctx.settings.setup_complete,
             picking: false, saving: false, error: None, error_details: None, error_open: false, cancellable }
     }
 
@@ -119,7 +124,18 @@ impl State {
                 self.lines = Some(lines);
             },
             Message::Details(check) => self.details = if self.details == Some(check) { None } else { Some(check) },
-            Message::Direct(on) => self.direct = on,
+            Message::Direct(on) => return self.set_direct(ctx, on),
+            Message::DirectDone(on, result) => {
+                self.asking = false;
+                match result {
+                    Ok(()) => { self.direct = on; self.direct_note = None }
+                    Err(error) => {
+                        if let Some(backend) = &ctx.backend { backend.diagnostics.line(&format!("Direct start in setup: {error}")) }
+                        self.direct_note = Some(if direct::was_refused(&error) { "Windows' permission wasn't given, so it stays off. You can turn it on later in Settings → Game.".into() }
+                            else { format!("It couldn't be set up, so it stays off: {}", crate::error_presentation::plain(error.lines().next().unwrap_or_default())) });
+                    }
+                }
+            }
             Message::Shortcut(on) => self.shortcut = on,
             Message::Done => return self.finish(ctx),
             Message::Saved(Err(error)) => {
@@ -173,7 +189,23 @@ impl State {
 
     fn can_continue(&self) -> bool { self.lines.as_deref().is_some_and(setup_check::passes) }
 
-    /// Saves the choices, then sets up what was ticked. Direct start itself is installed by the next Play.
+    /// The tick "Open the game without the launcher": pressing it sets it up right away, with Windows' permission prompt
+    /// when the game folder is protected (the player's request: asked once, here, never again at each Play). The folder
+    /// is saved first, so Done finds nothing to move. Unticking takes it out again.
+    fn set_direct(&mut self, ctx: &Ctx, on: bool) -> Task<Message> {
+        if self.asking { return Task::none() }
+        let Some(backend) = ctx.backend.clone() else { self.direct = on; return Task::none() };
+        let draft = self.settings(ctx);
+        self.asking = true;
+        self.direct_note = None;
+        crate::app::job(move || {
+            let saved = backend.save_preferences(yo3_desktop::preferences::Section::Game, &draft)?;
+            if on { backend.turn_on_direct(&saved) }
+            else if backend.direct_state(&saved) != direct::State::Disabled { backend.disable_direct(&saved) } else { Ok(()) }
+        }, move |result| Message::DirectDone(on, result))
+    }
+
+    /// Saves the choices, then sets up what was ticked. Direct start was set up when its tick was pressed.
     fn finish(&mut self, ctx: &Ctx) -> Task<Message> {
         if self.saving { return Task::none() }
         let (Some(backend), Some(store)) = (ctx.backend.clone(), ctx.store.clone()) else { return Task::none() };
@@ -210,7 +242,7 @@ impl State {
         buttons = buttons.push(match self.step {
             Step::Welcome => pill("Next", Some(Message::Next), Kind::Primary, 110, 38),
             Step::Game => pill("Next", self.can_continue().then_some(Message::Next), Kind::Primary, 110, 38),
-            Step::Ready => pill(if self.saving { "Saving…" } else { "Done" }, (!self.saving).then_some(Message::Done), Kind::Primary, 110, 38),
+            Step::Ready => pill(if self.saving { "Saving…" } else { "Done" }, (!self.saving && !self.asking).then_some(Message::Done), Kind::Primary, 110, 38),
         });
         let header = row![Space::new().width(Fill), self.steps()].align_y(Center);
         let panel = yo3_skin::panel(Some("Setup"), column![header, container(body).height(Fill), buttons].spacing(10));
@@ -304,15 +336,17 @@ impl State {
     fn ready(&self) -> Element<'_, Message> {
         let read_only = self.lines.as_deref().is_some_and(read_only);
         let direct = checkbox(self.direct).label("Open the game without the launcher").style(yo3_skin::tick).size(16).text_size(15);
-        let direct = if read_only { direct } else { direct.on_toggle(Message::Direct) };
+        let direct = if read_only || self.asking || self.saving { direct } else { direct.on_toggle(Message::Direct) };
         let explain = if read_only { "The game folder is read-only, so the game opens only from YO3 Revival." }
-            else { "Start yo3.exe on its own and it still signs you in. Turn it off to open the game only from here." };
+            else if self.asking { "Setting it up… Windows may ask for permission." }
+            else { "Start yo3.exe on its own and it still signs you in. Optional: ticking it may ask Windows for permission once." };
         let mut list = column![
             text("YO3 Revival is ready.").font(DISPLAY_ITALIC).size(26).color(color::NAVY),
             direct,
             text(explain).size(13).color(color::INK_SOFT),
-            checkbox(self.shortcut).label("Put a YO3 Revival shortcut on the desktop").on_toggle(Message::Shortcut).style(yo3_skin::tick).size(16).text_size(15),
         ].spacing(10).padding([10, 0]);
+        if let Some(note) = &self.direct_note { list = list.push(text(note).size(13).color(color::INK)) }
+        list = list.push(checkbox(self.shortcut).label("Put a YO3 Revival shortcut on the desktop").on_toggle(Message::Shortcut).style(yo3_skin::tick).size(16).text_size(15));
         if let Some(error) = &self.error {
             list = list.push(text(error).size(14).font(BODY_BOLD).color(color::BAD));
             if let Some(details) = &self.error_details {
@@ -335,7 +369,7 @@ mod tests {
 
     fn state() -> State {
         State { step: Step::Game, candidates: vec![], path: "/games/yo3".into(), prefix: String::new(), more_options: false, revision: 3,
-            lines: None, details: None, direct: true, shortcut: true, picking: false, saving: false, error: None, error_details: None, error_open: false, cancellable: false }
+            lines: None, details: None, direct: true, asking: false, direct_note: None, shortcut: true, picking: false, saving: false, error: None, error_details: None, error_open: false, cancellable: false }
     }
     fn line(check: Check, state: Outcome) -> Line { Line { check, state, sentence: String::new(), details: None } }
 
@@ -355,6 +389,23 @@ mod tests {
         wizard.use_candidate(&Candidate { game_dir: "/home/u/Games/yo3/drive_c/Program Files (x86)/Konami/Yu-Gi-Oh! ONLINE 3".into(), wine_prefix: Some("/home/u/Games/yo3".into()) });
         assert_eq!(wizard.prefix, "/home/u/Games/yo3");
         assert!(wizard.more_options, "the prefix is shown, not hidden");
+    }
+
+    /// The player's request (2026-11-20): the tick is asked once, in setup, off until pressed; pressing it sets it up at
+    /// once (Windows' permission prompt then); a refused prompt leaves it off with a quiet line, never an error.
+    #[test]
+    fn the_direct_start_tick_is_off_until_pressed_and_a_refused_permission_leaves_it_off() {
+        let ctx = crate::app::Ctx { root: std::env::temp_dir(), backend: None, store: None, settings: Default::default() };
+        assert!(!State::new(&ctx, Step::Welcome, false).direct, "a new player starts with it off");
+        let mut wizard = State { direct: false, ..state() };
+        let _ = wizard.update(Message::DirectDone(true, Err("Direct-start installation cancelled".into())), &ctx);
+        assert!(!wizard.direct && !wizard.asking);
+        assert!(wizard.direct_note.as_deref().is_some_and(|n| n.contains("permission wasn't given")), "{:?}", wizard.direct_note);
+        assert!(wizard.error.is_none(), "not an error");
+        let _ = wizard.update(Message::DirectDone(true, Ok(())), &ctx);
+        assert!(wizard.direct && wizard.direct_note.is_none(), "allowed: on");
+        let _ = wizard.update(Message::DirectDone(false, Ok(())), &ctx);
+        assert!(!wizard.direct, "unticked: taken out again");
     }
 
     #[test]

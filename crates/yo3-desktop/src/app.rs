@@ -423,7 +423,7 @@ impl App {
                 let playing = self.home.playing();
                 let task = state.update(message.clone(), &mut self.ctx, playing).map(Message::Settings);
                 // Fix permission set direct start up: the main screen's permission notice and Settings' row go.
-                if matches!(message, settings::Message::PermissionFixed(Ok(()))) { self.home.permission_granted() }
+                if matches!(message, settings::Message::DirectDone(true, Ok(()))) { self.home.permission_granted() }
                 // A change of what the main screen checks (the game folder, Wine) is checked again there.
                 if matches!(message, settings::Message::Changed(yo3_desktop::options::Change::WinePrefix(_) | yo3_desktop::options::Change::WineBinary(_), Ok(_))) {
                     return Task::batch([task, self.home.check(&self.ctx).map(Message::Home)]);

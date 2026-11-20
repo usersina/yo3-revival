@@ -75,7 +75,6 @@ pub enum Message {
     DirectDone(bool, Result<(), String>),
     FixPermission,
     /// Fix permission's result (the window also tells the main screen).
-    PermissionFixed(Result<(), String>),
     Shortcut,
     ShortcutDone(Result<(), String>),
     /// Handled by the window: Settings → Accounts' messages go to the Multiplayer tab.
@@ -208,8 +207,9 @@ impl State {
         Task::perform(async move { tokio::task::spawn_blocking(move || backend.anime_cards(&settings).map_err(|e| format!("{e:#}"))).await.unwrap_or_else(|e| Err(e.to_string())) }, Message::AnimeRead)
     }
 
-    /// Opening the Game section counts the pictures again, unless a download or zip job is changing them right now.
-    fn recounts_on(&self, section: Section) -> bool { section == Section::Game && section != self.section && self.getting.is_none() && self.busy.is_none() }
+    /// Opening the Singleplayer section (the pictures sit under Anime cards) counts the pictures again, unless a download
+    /// or zip job is changing them right now.
+    fn recounts_on(&self, section: Section) -> bool { section == Section::Singleplayer && section != self.section && self.getting.is_none() && self.busy.is_none() }
 
     fn count_pictures(&self, ctx: &Ctx) -> Task<Message> {
         let dir = yo3_launcher::art::folder_in(&ctx.root);
@@ -243,7 +243,7 @@ impl State {
             Message::Section(section) => {
                 let recount = self.recounts_on(section);
                 self.section = section; self.note = None; self.confirm_reset = false; self.confirm_game_reset = false;
-                // Pictures added or removed by hand while Settings was open show when Game is opened again.
+                // Pictures added or removed by hand while Settings was open show when Singleplayer is opened again.
                 if recount { return self.count_pictures(ctx) }
             }
             Message::Change(change) => {
@@ -280,31 +280,24 @@ impl State {
                 let Some(backend) = ctx.backend.clone() else { return Task::none() };
                 if playing { self.note = Some(Note { good: false, sentence: "Close the game first.".into(), details: None, open: false }); return Task::none() }
                 let settings = ctx.settings.clone();
-                self.busy = Some(if on { "Turning it on…" } else { "Taking it out of the game folder…" });
-                // On: the next Play sets it up (it needs your server running). Off: taken out of the game folder now.
-                return job(move || if on { Ok(()) } else { backend.disable_direct(&settings) }, move |result| Message::DirectDone(on, result));
+                self.busy = Some(if on { "Setting it up (Windows may ask for permission)…" } else { "Taking it out of the game folder…" });
+                // On: set up now, with Windows' permission prompt when the game folder is protected. Off: taken out now.
+                return job(move || if on { backend.turn_on_direct(&settings) } else { backend.disable_direct(&settings) }, move |result| Message::DirectDone(on, result));
             }
             Message::DirectDone(on, result) => {
                 self.busy = None;
                 match result {
-                    Ok(()) => return self.update(Message::Change(Change::DirectStart(on)), ctx, playing),
+                    Ok(()) => {
+                        let task = self.update(Message::Change(Change::DirectStart(on)), ctx, playing);
+                        if on { self.direct = Direct::On }
+                        return task;
+                    }
+                    // Windows' prompt was refused: the tick stays as it was, nothing to report.
+                    Err(error) if direct::was_refused(&error) => self.good("Not changed: Windows' permission wasn't given."),
                     Err(error) => self.fail(ctx, &error),
                 }
             }
-            Message::FixPermission => {
-                let Some(backend) = ctx.backend.clone() else { return Task::none() };
-                let settings = ctx.settings.clone();
-                self.busy = Some("Asking for permission…");
-                // Direct start points at your server: it runs for the setup and stops after unless it was already up.
-                return job(move || {
-                    let was_live = backend.live(&settings).is_some();
-                    backend.start_server(&settings)?;
-                    let done = backend.enable_direct(&settings);
-                    if !was_live { let _ = backend.stop_server(&settings); }
-                    done
-                }, Message::PermissionFixed);
-            }
-            Message::PermissionFixed(result) => return self.update(Message::DirectDone(true, result), ctx, playing),
+            Message::FixPermission => return self.update(Message::Direct(true), ctx, playing),
             Message::Shortcut => {
                 self.busy = Some("Adding the shortcut…");
                 return job(|| yo3_desktop::shortcut::create(&std::env::current_exe()?).map(|_| ()), Message::ShortcutDone);
@@ -570,8 +563,8 @@ impl State {
             text(direct_line).size(14).color(color::INK_SOFT),
         ].spacing(6);
         if needs_permission && ctx.settings.direct_start {
-            direct = direct.push(row![text("The game folder is protected: setting it up needs permission once.").size(14).color(color::INK).width(Fill),
-                pill("Fix permission", (self.busy.is_none() && !playing).then_some(Message::FixPermission), Kind::Primary, 150, 32)].spacing(10).align_y(Center));
+            direct = direct.push(row![text("Not set up yet: the game folder is protected and Windows hasn't allowed it.").size(14).color(color::INK_SOFT),
+                yo3_skin::link("Ask again", Message::FixPermission, false)].spacing(8).align_y(Center));
         }
         column![
             item("Game folder", column![
@@ -585,7 +578,6 @@ impl State {
                 pick_list(size, chosen, |s: Size| Message::Change(Change::Resolution(s.value))).style(yo3_skin::choice).menu_style(yo3_skin::choice_menu).width(280).padding([6, 10]),
                 text("The game keeps its picture and draws it larger. From the next PLAY.").size(14).color(color::INK_SOFT),
             ].spacing(6).into()),
-            item("Anime pictures", self.pictures_view(playing)),
             item("Without the launcher", direct.into()),
             item("Desktop shortcut", row![text(if self.shortcut { "On your desktop. Make it again if it no longer opens YO3 Revival." }
                     else { "A shortcut to YO3 Revival on your desktop." }).size(14).color(color::INK_SOFT).width(Fill),
@@ -628,6 +620,11 @@ impl State {
         ].spacing(6);
         if self.anime.is_none() { col = col.push(text("The setting can't be read right now.").size(14).color(color::INK_SOFT)) }
         if playing && self.anime.is_some() { col = col.push(text("With the game open, changing it makes RESTART THE GAME appear on the main screen.").size(14).color(color::INK_SOFT)) }
+        // The pictures belong to the switch: shown right under it while it is on.
+        if self.anime == Some(true) {
+            col = col.push(container(column![text("Anime pictures").size(15).font(BODY_BOLD).color(color::INK), self.pictures_view(playing)].spacing(6))
+                .padding(iced::Padding { top: 6.0, left: 26.0, ..iced::Padding::ZERO }));
+        }
         col.into()
     }
 
@@ -800,17 +797,17 @@ mod tests {
     }
 
     #[test]
-    fn opening_the_game_section_again_counts_the_pictures_again() {
+    fn opening_the_singleplayer_section_again_counts_the_pictures_again() {
         // Live on Windows 11: pictures deleted by hand kept the old count while the player only switched sections.
         let ctx = ctx();
-        let mut state = State::new(&ctx, Section::Singleplayer);
-        assert!(state.recounts_on(Section::Game));
+        let mut state = State::new(&ctx, Section::Game);
+        assert!(state.recounts_on(Section::Singleplayer));
         assert!(!state.recounts_on(Section::Advanced), "only the section that shows the count");
-        state.section = Section::Game;
-        assert!(!state.recounts_on(Section::Game), "staying on Game is no reason to count");
+        state.section = Section::Singleplayer;
+        assert!(!state.recounts_on(Section::Singleplayer), "staying there is no reason to count");
         state.section = Section::About;
         state.getting = Some((3, 418, Arc::new(AtomicBool::new(false))));
-        assert!(!state.recounts_on(Section::Game), "a running download keeps its own count");
+        assert!(!state.recounts_on(Section::Singleplayer), "a running download keeps its own count");
     }
 
     #[test]

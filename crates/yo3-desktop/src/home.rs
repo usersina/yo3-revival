@@ -175,8 +175,6 @@ pub enum Message {
     Cancel,
     Cancelled(Result<(), String>),
     /// Set up direct start in a protected game folder (asks for permission once).
-    AllowDirect,
-    DirectAllowed(Result<(), String>),
     CloseGame,
     /// Restart the game (the server changed its card profile): closes it, and plays again once it is gone.
     RestartGame,
@@ -265,14 +263,8 @@ pub struct State {
 }
 
 impl State {
-    /// Direct start is set up in the protected game folder (the notice's Allow, or Settings' Fix permission): stop asking.
-    pub fn permission_granted(&mut self) {
-        self.direct_permission = false;
-        let asks = |n: &Notice| matches!(n.action, Some((_, Message::AllowDirect)));
-        if self.notice.as_ref().is_some_and(asks) { self.notice = None }
-        self.inbox.retain(|n| !asks(n));
-        self.unread = self.unread.min(self.inbox.len());
-    }
+    /// Direct start is set up in the protected game folder (Settings' tick): Settings stops saying it needs permission.
+    pub fn permission_granted(&mut self) { self.direct_permission = false }
 
     /// A notice for the bell (one about both tabs), or for your own server's panel.
     fn tell(&mut self, notice: Notice) {
@@ -427,11 +419,9 @@ impl State {
                         self.game.ready = false;
                         // Waiting for the window keeps the Play's start time, for Cancel.
                         self.waiting_since = since;
+                        // Not said: Settings → Game shows it beside its tick, which asks for the permission (no notice
+                        // at every Play, the player's request).
                         self.direct_permission = needs_permission;
-                        if needs_permission {
-                            self.tell(Notice { everywhere: self.allow_for.is_some(), ..Notice::problem("Opening the game without the launcher needs permission once, because the game folder is protected.",
-                                Some(("Allow", Message::AllowDirect))) });
-                        }
                     }
                     Err(error) => {
                         self.fail(ctx, error);
@@ -454,17 +444,6 @@ impl State {
                 if let Err(error) = result { self.fail(ctx, error) }
                 return self.check(ctx);
             }
-            Message::AllowDirect => {
-                let Some(backend) = ctx.backend.clone() else { return Task::none() };
-                let settings = ctx.settings.clone();
-                self.notice = None;
-                let server = self.allow_for.clone();
-                return job(move || match &server {
-                    Some(server) => backend.enable_direct_signed_in(&settings, server),
-                    None => backend.enable_direct(&settings),
-                }, Message::DirectAllowed);
-            }
-            Message::DirectAllowed(result) => match result { Ok(()) => self.permission_granted(), Err(error) => self.fail(ctx, error) },
             Message::CloseGame => {
                 let Some(backend) = ctx.backend.clone() else { return Task::none() };
                 self.game.closing = Some(Instant::now());
@@ -584,10 +563,8 @@ impl State {
         }, Message::Cancelled)
     }
 
-    /// A notice about the game's state goes when that state changes; the permission ask is about the folder, so it stays.
-    fn clear_game_notice(&mut self) {
-        if self.notice.as_ref().is_some_and(|n| !matches!(n.action, Some((_, Message::AllowDirect)))) { self.notice = None }
-    }
+    /// A notice about the game's state goes when that state changes.
+    fn clear_game_notice(&mut self) { self.notice = None }
 
     fn start_grace(&mut self) { self.grace += 1 }
 
@@ -1017,36 +994,19 @@ mod tests {
     }
 
     #[test]
-    fn multiplayers_play_asks_for_permission_on_its_own_tab_too() {
-        let mut ctx = crate::app::Ctx { root: std::env::temp_dir(), backend: None, store: None, settings: Default::default() };
-        let mut state = State { allow_for: Some(yo3_desktop::multiplayer::Server { name: "Friends".into(), address: "play.example.com".into(),
-            server_name: "Friends".into(), identities: vec![], official: false, description: String::new(), saved_user: None, last_used: 0 }),
-            ..State::default() };
-        let _ = state.update(Message::Started(Ok(true)), &mut ctx);
-        assert!(state.direct_permission);
-        let notice = state.inbox.first().expect("the Allow notice, behind the bell");
-        assert!(matches!(notice.action, Some((_, Message::AllowDirect))));
-        assert!(state.notice.is_none() && state.unread == 1, "a Multiplayer Play's notice is counted on the bell, seen from either tab");
-        state.permission_granted();
-        assert!(state.inbox.is_empty() && state.unread == 0, "allowed: the notice goes");
-        // Singleplayer's stays on its own panel.
-        let mut state = State::default();
-        let _ = state.update(Message::Started(Ok(true)), &mut ctx);
-        assert!(state.notice.is_some() && state.inbox.is_empty());
-    }
-
-    #[test]
-    fn granting_permission_ends_the_permission_notice_and_row() {
-        let mut state = State { direct_permission: true, ..State::default() };
-        state.notice = Some(Notice::problem("needs permission", Some(("Allow", Message::AllowDirect))));
-        state.permission_granted();
-        assert!(!state.direct_permission);
-        assert!(state.notice.is_none(), "the Allow notice goes");
-        // Another notice (an error from something else) stays.
-        let mut state = State { direct_permission: true, ..State::default() };
-        state.notice = Some(Notice::problem("something else", None));
-        state.permission_granted();
-        assert!(state.notice.is_some());
+    fn a_play_that_needs_permission_for_direct_start_says_nothing_and_settings_shows_it() {
+        // The player's request (2026-11-20): no "needs permission… Allow" notice at every Play, on either tab. Settings →
+        // Game's tick asks for it; until then Settings shows it there.
+        let mut ctx = ctx();
+        for multiplayer in [false, true] {
+            let mut state = State { allow_for: multiplayer.then(|| yo3_desktop::multiplayer::Server { name: "Friends".into(), address: "play.example.com".into(),
+                server_name: "Friends".into(), identities: vec![], official: false, description: String::new(), saved_user: None, last_used: 0 }), ..State::default() };
+            let _ = state.update(Message::Started(Ok(true)), &mut ctx);
+            assert!(state.direct_permission, "Settings knows");
+            assert!(state.notice.is_none() && state.inbox.is_empty() && state.unread == 0, "nothing said");
+            state.permission_granted();
+            assert!(!state.direct_permission);
+        }
     }
 
     fn ctx() -> crate::app::Ctx { crate::app::Ctx { root: std::env::temp_dir(), backend: None, store: None, settings: Default::default() } }
@@ -1110,10 +1070,6 @@ mod tests {
         state.polling = true;
         let _ = state.update(live(false), &mut ctx);
         assert!(!state.game.running && state.notice.is_none(), "closed: gone again");
-        state.notice = Some(Notice::problem("needs permission", Some(("Allow", Message::AllowDirect))));
-        state.polling = true;
-        let _ = state.update(live(true), &mut ctx);
-        assert!(state.notice.is_some(), "the permission ask is about the folder");
         state.notice = Some(Notice::problem("already running", None));
         let _ = state.update(Message::Started(Ok(false)), &mut ctx);
         assert!(state.notice.is_none(), "a settled start clears it");
