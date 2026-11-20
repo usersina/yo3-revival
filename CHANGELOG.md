@@ -13,6 +13,12 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- The Stadium's Ultimate Match can be played against the computer: if no other player joins you within about half a minute
+  of pressing Ready, a computer opponent plays you instead. A win counts as a star like a win against a player. Hosts can
+  change the wait or turn it off with the `ultimate-cpu-wait` setting.
+
 ## v0.1.6 (2026-11-20)
 
 Multiplayer: update to v0.1.6 to join the hosted server after deployment.

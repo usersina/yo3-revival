@@ -52,6 +52,22 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
 
+## 2026-11-20 — The Ultimate Match against the computer (#18)
+
+- **What the client says:** one text, 15261: "PvP or PvCPU Match Duel event. Special Pack unlocked according to the number
+  of collected Stars" (the other kinds' texts say "PvP"). Nothing in the client tells when the computer plays, which NPC
+  or how many duels make a match; the scenes' code only joins the lobby and sends Participate.
+- **Built:** an Ultimate Match entrant nobody of the event pairs with within the live setting `ultimate-cpu-wait` (30 s,
+  0 turns it off) gets the match push `0x1978` with a random NPC of the client's roster (a deck from its own presets);
+  Select Deck then brings the NPC to the duel connection, which plays it with the bot like any NPC duel. The result
+  counts as the event's match (a win is a star), pays BP like an NPC duel, and touches no player record, ranking or
+  Tournament Points beyond the event's own.
+- **Live (scratch server, wait 5 s, one headless client):** Ready showed "Auto-Match Searching", then "Starting Duel / Single
+  Mode", Select Deck, the janken and a duel against Hell Kaiser with his chat lines; the bot won, the result screen showed
+  the Score row, the end push carried `score_1001` 0, and the client queued again and got the next computer by itself.
+  The opponent's picture is missing on the janken screen (the NPC's record carries no avatar).
+- **Guesses:** the wait, the random NPC and one duel for the match are ours ([roadmap](roadmap.md#open-questions-and-guesses-revisit)).
+
 ## 2026-11-19 — Official Events (the Stadium) and the real leaderboard (#18, #16)
 
 Built beside the other sweep tracks (branch `next/events`).
