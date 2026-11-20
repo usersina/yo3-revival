@@ -14,8 +14,58 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 /// Files known to break the game's connection, by SHA-256 (lowercase hex) and why. Empty until a file is known to be
-/// the cause of a report (#65's `winmm.dll`, once there is a copy of it).
+/// the cause of a report (#65's `winmm.dll` is our own loader, so it is not one).
 pub const KNOWN_BAD: &[(&str, &str)] = &[];
+
+/// Programs that read, change or pause another program's memory, by a lowercase part of their process's file name and
+/// the name shown. They are not blocked and not held for: nothing says they break the game. They are named in the
+/// helper's log, at the start and again when the game's connection fails, so a report says whether one was running (#65:
+/// a player's shop connection was cut on their PC and they later mentioned using Cheat Engine).
+pub const MEMORY_TOOLS: &[(&str, &str)] = &[("cheatengine", "Cheat Engine"), ("cheat engine", "Cheat Engine"), ("artmoney", "ArtMoney"),
+    ("x64dbg", "x64dbg"), ("x32dbg", "x32dbg"), ("ollydbg", "OllyDbg"), ("processhacker", "Process Hacker"), ("systeminformer", "System Informer"),
+    ("scanmem", "scanmem"), ("gameconqueror", "GameConqueror")];
+
+/// The memory tools among the process file names `names`, each once, in the order found.
+pub fn tools_among<I: IntoIterator<Item = S>, S: AsRef<str>>(names: I) -> Vec<&'static str> {
+    let mut found: Vec<&'static str> = Vec::new();
+    for name in names {
+        let name = name.as_ref().to_lowercase();
+        if let Some((_, product)) = MEMORY_TOOLS.iter().find(|(part, _)| name.contains(part)) && !found.contains(product) { found.push(product) }
+    }
+    found
+}
+
+/// The memory tools running on this PC now (Windows: the process list; elsewhere nothing is looked at).
+pub fn running_tools() -> Vec<&'static str> {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::{Foundation::{CloseHandle, INVALID_HANDLE_VALUE}, System::Diagnostics::ToolHelp::{CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS}};
+        let mut names = Vec::new();
+        // SAFETY: a snapshot handle used only here and closed; PROCESSENTRY32W is plain data with dwSize set as the API asks.
+        unsafe {
+            let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            if snapshot == INVALID_HANDLE_VALUE { return Vec::new() }
+            let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+            entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+            let mut more = Process32FirstW(snapshot, &mut entry) != 0;
+            while more {
+                let length = entry.szExeFile.iter().position(|c| *c == 0).unwrap_or(entry.szExeFile.len());
+                names.push(String::from_utf16_lossy(&entry.szExeFile[..length]));
+                more = Process32NextW(snapshot, &mut entry) != 0;
+            }
+            CloseHandle(snapshot);
+        }
+        tools_among(names)
+    }
+    #[cfg(not(windows))]
+    { Vec::new() }
+}
+
+/// The log line for the tools found, or None when there are none.
+pub fn tools_line(tools: &[&str]) -> Option<String> {
+    (!tools.is_empty()).then(|| format!("{} is running on this PC. Programs like it can pause the game, change its memory or hook its time functions, which \
+        can cut the game's connection. Nothing is blocked: close it and play again if the game disconnects", tools.join(", ")))
+}
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Hook { pub function: String, pub how: String, pub module: String, pub path: String, #[serde(default)] pub product: String }
@@ -152,6 +202,18 @@ pub fn describe(finding: &Finding) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cheat_engine_and_other_memory_tools_are_named_by_their_process_and_never_held_for() {
+        assert_eq!(tools_among(["explorer.exe", "cheatengine-x86_64-SSE4-AVX2.exe", "CHEATENGINE-I386.EXE", "Cheat Engine.exe", "x64dbg.exe"]),
+            ["Cheat Engine", "x64dbg"], "each once, in the order found, whatever the case or build");
+        assert!(tools_among(["yo3.exe", "chrome.exe", "cheater.exe"]).is_empty());
+        assert!(tools_line(&[]).is_none());
+        let line = tools_line(&["Cheat Engine"]).unwrap();
+        assert!(line.starts_with("Cheat Engine is running") && line.contains("Nothing is blocked"), "{line}");
+        // Findings, decisions and Continue anyway are untouched: a tool is evidence in the log only.
+        assert!(Survey::default().assessment().is_clear());
+    }
 
     const CLEAN: &str = r#"{"version":1,"hooked":[],"modules":[{"name":"overlay.dll","path":"C:\\Program Files\\Overlay\\overlay.dll","size":10,"sha256":"aa","game_folder":false,"loaded":true,"product":""}],"providers":[{"name":"MSAFD Tcpip [TCP/IP]","path":"","microsoft":true}],"providers_known":true}"#;
 
