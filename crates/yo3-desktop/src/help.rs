@@ -56,9 +56,9 @@ impl State {
         for topic in &self.topics {
             list = list.push(if topic.id == self.current {
                 Element::from(row![container(Space::new().width(4).height(18)).style(|_| container::Style { background: Some(color::NAVY.into()), ..container::Style::default() }),
-                    text(&topic.title).size(15).font(BODY_BOLD).color(color::NAVY)].spacing(8))
+                    text(&topic.title).size(15).font(BODY_BOLD).color(color::NAVY).width(Fill)].spacing(8))
             } else {
-                row![Space::new().width(12), yo3_skin::link(topic.title.clone(), Message::Topic(topic.id.clone()), false)].into()
+                row![Space::new().width(12), container(yo3_skin::link(topic.title.clone(), Message::Topic(topic.id.clone()), false)).width(Fill)].into()
             });
         }
         let topic = self.topics.iter().find(|t| t.id == self.current).unwrap_or(&self.topics[0]);
@@ -73,7 +73,8 @@ impl State {
         let buttons = row![yo3_skin::icon_link(yo3_skin::Icon::Flag, "Report a problem", Message::Report, false)];
         let content = column![
             row![
-                container(scrollable(list).height(Fill)).width(230),
+                // A long title wraps inside the column and stays clear of the scroll bar, not clipped under it.
+                container(scrollable(list.width(Fill).padding(iced::Padding { right: 16.0, ..iced::Padding::ZERO })).height(Fill)).width(230),
                 container(scrollable(body.padding([0, 12])).height(Fill)).width(Fill).padding([4, 10]).style(|_| container::Style {
                     background: Some(color::PANEL_TOP.into()), border: iced::Border { color: color::CHROME_DARK, width: 1.0, radius: 3.0.into() }, ..container::Style::default() }),
             ].spacing(12).height(Fill),
