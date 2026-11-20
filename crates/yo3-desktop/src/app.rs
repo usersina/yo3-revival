@@ -554,12 +554,14 @@ impl App {
                 let backups = self.ctx.backend.as_ref().map(|b| b.backups(&self.ctx.settings)).unwrap_or_default();
                 let mut list = column![text(if backups.is_empty() { "There is no backup yet: your server makes one each time it starts." }
                     else { "Your server keeps a backup from each of its last starts. Choose one to put back:" }).size(15).color(color::INK)].spacing(8);
+                // Tall enough for its rows only: with no backup it is the one sentence.
+                let height = 150.0 + 44.0 * backups.len().min(5) as f32;
                 for backup in backups.into_iter().take(5) {
                     let label = backup.taken.clone();
                     list = list.push(row![text(label).size(15).color(color::INK).width(Fill),
                         pill("Restore", Some(Message::Home(home::Message::RestoreBackup(backup))), Kind::Primary, 110, 34)].align_y(Center));
                 }
-                yo3_skin::dialog("Restore a backup", None, close, 470.0, 340.0, list)
+                yo3_skin::dialog("Restore a backup", None, close, 470.0, height, list)
             }
             Dialog::ConfirmClose => short("Close YO3 Revival?", None, if self.host.hosted.is_some() && self.host.activity.online > 0 {
                     "Friends are playing on your server. Closing YO3 Revival stops it, and the game too if it is open.".into()
