@@ -13,7 +13,9 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.1.7 (2026-11-20)
+
+Multiplayer: update to v0.1.7 to join the hosted server after deployment.
 
 - Choices the game's own windows could not show are now asked of you, in steps, instead of being picked for you. A
   monster that can be placed in three or four positions asks Attack or Defense first, then face-up or face-down. An effect
