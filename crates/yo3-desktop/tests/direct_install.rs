@@ -110,6 +110,25 @@ fn changing_the_game_folder_takes_direct_start_out_of_the_old_one() {
     std::fs::remove_dir_all(p).unwrap();
 }
 #[test]
+fn a_new_launcher_leaves_direct_start_it_did_not_set_up_alone() {
+    // Windows 11 (2026-11-20): a fresh launcher starts from the default install folder, which held another launcher's
+    // direct start. Choosing another folder in the setup wizard tried to take that one out, and Windows asked for an
+    // administrator because the folder is in Program Files. Only direct start this launcher set up is its to remove.
+    let p = scratch();
+    let other = p.join("default game"); std::fs::create_dir(&other).unwrap(); std::fs::write(other.join("yo3.exe"), b"game").unwrap();
+    let source = p.join("bootstrap.dll"); std::fs::write(&source, b"another launcher's loader").unwrap();
+    direct::install_files(&other, &source).unwrap();
+    let root = p.join("fresh app"); let backend = yo3_desktop::Backend::new(root.clone()).unwrap();
+    let db = yo3_desktop::LauncherDb::open(&root).unwrap();
+    db.save_settings(&yo3_desktop::Settings { game_dir: other.to_string_lossy().into(), ..Default::default() }).unwrap();
+    direct::set_registry_for_tests(Some(|_, _| panic!("another launcher's registry entry is not ours to change")));
+    let draft = yo3_desktop::Settings { game_dir: p.join("chosen game").to_string_lossy().into(), ..Default::default() };
+    let _ = backend.save_preferences(yo3_desktop::preferences::Section::Game, &draft); // the chosen folder holds no game here
+    direct::set_registry_for_tests(None);
+    assert!(other.join("winmm.dll").exists() && other.join("yo3-revival-loader.json").exists(), "the other launcher's direct start is kept");
+    std::fs::remove_dir_all(p).unwrap();
+}
+#[test]
 fn play_names_a_winmm_dll_that_yo3_revival_did_not_put_there() {
     // #65: a player's shop kept disconnecting with another winmm.dll in the game folder. Windows loads it into the game
     // beside YO3 Revival's connection DLL on every start, and only direct start's log mentioned it.

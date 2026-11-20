@@ -23,9 +23,11 @@ impl crate::Backend {
             Section::Game => {
                 if next.game_dir != saved.game_dir || next.wine_prefix != saved.wine_prefix {
                     ensure!(!self.game_running() && self.live(&saved).is_none(), "Close your game and stop your server before changing the game installation.");
-                    // Direct start goes with the old location; the next Play sets it up for the new one.
+                    // Direct start goes with the old location; the next Play sets it up for the new one. Only direct start
+                    // this launcher set up: a fresh launcher's first folder is the default install, which may hold another
+                    // launcher's (live on Windows 11, removing it asked for an administrator).
                     let old_loader = std::path::Path::new(&saved.game_dir).join("yo3-revival-loader.json");
-                    if (self.root.join("profiles/loader.ini").exists() || old_loader.exists())
+                    if (self.root.join("profiles/loader.ini").exists() || (saved.setup_complete && old_loader.exists()))
                         && let Err(error) = self.disable_direct(&saved)
                     {
                         ensure!(!self.root.join("profiles/loader.ini").exists() && !old_loader.exists(),
