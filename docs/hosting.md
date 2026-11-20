@@ -235,6 +235,42 @@ yo3 delete-account Someone --yes      # a player asked for their account to go: 
 Give BP prints a retry ID before sending. Reuse it with the same target and amount after an uncertain answer;
 changing the audit name (`--by`) does not permit a second grant. Details: [account commands](guide.md#account-commands).
 
+### Linked accounts and fair play
+
+**Unreleased.** The launcher can run several games ([Play as another account](launcher.md#several-games-at-once)), so the
+server needs a way to keep one person's accounts from earning from each other. It remembers, for each account, the devices
+and addresses it was seen on: the launcher sends a random install id with its sign-ins (the server keeps only a digest of
+it), and the address a sign-in and a game connection came from is noted too (devices for 90 days, addresses for 14). Two
+accounts that share one are **linked**, and with `linked-accounts` at `fair` (the default):
+
+- a **duel between them is played** but pays no BP and counts no record, rating or title, and both players are told in the
+  chat; duels against NPCs and against other players are unchanged;
+- they **can't trade or rent to each other**: the invitation is refused with a note in the inviter's chat. (Holding them for
+  staff review was the other option; refusing is the safer one, and there is no review queue to forget.);
+- **staff see them** on the account's page in the dashboard (**Linked accounts**, with what they share) and in the admin API's account view (`linked`).
+
+`yo3 set linked-accounts off` treats them as strangers (a household that plays together on one network may want that).
+An address that more than eight accounts were seen at is taken for a gateway or a proxy and links nobody; devices still do.
+
+`games-per-device` (default **1**) caps the games one install runs at once, counting open game connections; admins and
+moderators are exempt. With 1 nothing changes for players until a host raises it: a second game from the same PC is
+refused at its sign-in ("This server lets one PC run 1 game at once…"). Raise it (`yo3 set games-per-device 2`) to let
+friends who share a PC play together.
+
+This is fair play among friends, not anti-cheat: the install id is the launcher's to send, an address can change, and a
+player who wants two unrelated accounts to earn from each other can get around either. Players on the Scripts launcher
+send no install id, so only their address links them.
+
+### Clean game
+
+`yo3 set clean-game on` makes the launcher refuse to start the game on this server while another program's `.dll` or `.asi`
+is in the game folder, a Winsock provider isn't Microsoft's, or a network function is detoured, with no **Continue
+anyway** ([the dialog](launcher.md#other-programs-inside-the-game)). The setting is in the server's status, which the
+launcher reads before PLAY (and the helper reads again when it starts, so Scripts' `play` stops too). It is a tidiness
+policy for friends' games, **not anti-cheat**: the check runs on the player's PC, which can hide anything from it, and a
+game opened [directly](launcher.md#open-the-game-directly) isn't held. Use it when stray mods have been breaking players'
+connections, and say so to your players: they are asked to remove files from their own game folder.
+
 ### Player reports, banlists and the shop's prices
 
 - **Reports.** Players report each other in the game's chat (`/p Server report PLAYER reason`;
@@ -246,6 +282,13 @@ changing the audit name (`--by`) does not permit a second grant. Details: [accou
 - **Banlists.** `login-regulation` is the banlist everyone logs in with until they choose their own with `/p Server
   banlist NAME`. Auto Duel only pairs players on the same list. An account's page shows its list, and any staff may set
   it (`yo3 set-banlist Someone unlimited`, or `default`); it applies at the player's next login.
+- **Anime card versions.** `yo3 set anime-cards on` (a [live setting](guide.md#live-settings), off by default, at the
+  next duel) makes NPC and player duels play 314 cards by their anime effects, the others as the game has them, and the
+  game show them as the anime cards (the [card profile](anime-cards.md#the-card-profile): the server's `/web/card-profile`, which
+  each game fetches once at start, so **a change needs the players to restart their games** (Desktop offers RESTART THE GAME while a game runs the old cards); `yo3 card-profile FILE` writes the
+  file for a check). Artwork is not shipped: each player puts their own pictures in their `anime-art` folder
+  ([where](anime-cards.md#artwork)). What changes for players: [playing](playing.md#anime-card-versions); the list of cards:
+  [anime cards](anime-cards.md).
 - **Prices.** `pack-cost`, `deck-cost`, `trade-cards` and the Rental's `rental-cards`, `rental-bp` and `rental-days`
   are [live settings](guide.md#live-settings), like `yo3 set pack-cost 150`.
 

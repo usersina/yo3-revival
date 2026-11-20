@@ -344,6 +344,9 @@ impl Backend {
         };
         // The screen size the game opened directly is drawn at (#16): the loader reads it before the game makes its window.
         if let (Some(body), Some(size)) = (body.as_object_mut(), direct_resolution(settings)) { body.insert("resolution".into(), size.into()); }
+        // The anime artwork folder (#60) for the loader, which passes it on as YO3_ANIME_ART; made here so it exists to be filled.
+        let art = yo3_launcher::art::folder_in(&self.root);
+        if yo3_launcher::art::prepare(&art).is_ok() && let Some(body) = body.as_object_mut() { body.insert("anime_art".into(), art.to_string_lossy().into_owned().into()); }
         private_write(&file, body.to_string().as_bytes(), true)?;
         Ok(())
     }

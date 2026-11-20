@@ -128,7 +128,9 @@ class Editions(unittest.TestCase):
                 "engine/vendor/CardScripts/utility.lua": "", "engine/vendor/CardScripts/COPYING": "",
                 "engine/vendor/CardScripts/README.md": "", "engine/vendor/CardScripts/official/c1.lua": "upstream",
                 "engine/vendor/CardScripts/pre-errata/c2.lua": "", "engine/vendor/CardScripts/pre-release/c3.lua": "",
-                "engine/vendor/BabelCDB/cards.cdb": "", "engine/vendor/BabelCDB/README.md": "",
+                "engine/vendor/CardScripts/unofficial/c511009416.lua": "anime", "engine/vendor/CardScripts/unofficial/proc_unofficial.lua": "procs",
+                "engine/vendor/BabelCDB/cards.cdb": "", "engine/vendor/BabelCDB/cards-unofficial.cdb": "anime db", "engine/vendor/BabelCDB/README.md": "",
+                "engine/anime-cards.json": "{\"cards\":[]}",
                 "engine/vendor/cardinfo.json": "{}", "engine/vendor/ygopro-core/LICENSE": "",
             }
             for name in [p.relative_to(repo).as_posix() for p in (repo / "engine/overrides").iterdir()]:
@@ -144,6 +146,15 @@ class Editions(unittest.TestCase):
             self.assertEqual(sorted(p.name for p in (engine / "overrides").iterdir()), overrides,
                              "the engine reads engine/overrides/ beside vendor/: every override ships")
             self.assertIn("overrides/", (engine / "THIRD-PARTY.md").read_text())
+            # The anime card versions (#60): the unofficial scripts and database, and the reviewed map beside vendor/.
+            self.assertEqual((engine / "vendor/CardScripts/unofficial/c511009416.lua").read_text(), "anime")
+            self.assertEqual((engine / "vendor/CardScripts/unofficial/proc_unofficial.lua").read_text(), "procs",
+                             "utility.lua loads it: the anime cards' shared procedures")
+            self.assertEqual((engine / "vendor/BabelCDB/cards-unofficial.cdb").read_text(), "anime db")
+            self.assertEqual((engine / "anime-cards.json").read_text(), '{"cards":[]}')
+            notes = (engine / "THIRD-PARTY.md").read_text()
+            for part in ("unofficial/", "anime-cards.json", "cards-unofficial.cdb"):
+                self.assertIn(part, notes)
 
     def test_play_script_keeps_paths_and_arguments_literal(self):
         with tempfile.TemporaryDirectory(prefix="yo3 scripts ") as tmp:

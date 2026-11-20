@@ -52,8 +52,12 @@ fn committed_openapi_matches_the_router_without_starting_a_server() {
         ("/panel/api/v1/reports/handle", "post", "handleReport"),
         ("/panel/api/v1/banlists", "get", "listBanlists"),
         ("/panel/api/v1/accounts/banlist", "post", "setAccountBanlist"),
+        ("/panel/api/v1/events", "get", "listEvents"),
+        ("/panel/api/v1/events/create", "post", "createEvent"),
+        ("/panel/api/v1/events/edit", "post", "editEvent"),
+        ("/panel/api/v1/events/cancel", "post", "cancelEvent"),
     ];
-    assert_eq!(paths.len(), 35);
+    assert_eq!(paths.len(), 39);
     for (path, method, id) in expected {
         let op = &generated["paths"][path][method];
         assert_eq!(op["operationId"], id);
@@ -777,4 +781,38 @@ async fn staff_handle_player_reports_and_see_and_set_an_accounts_banlist() {
     let back = b.call("POST", "/panel/api/v1/accounts/banlist", json!({ "user_id": user, "banlist": null })).await;
     assert_eq!((back.status, back.body["chosen"].clone()), (200, json!(false)), "{}", back.body);
     assert_eq!(b.call("POST", "/panel/api/v1/accounts/banlist", json!({ "user_id": 4294967295_u32 })).await.status, 404);
+}
+
+#[tokio::test]
+async fn an_admin_schedules_edits_and_cancels_official_events_and_a_moderator_only_looks() {
+    let mut b = Browser::new("official-events").await;
+    assert_eq!(b.call("GET", "/panel/api/v1/events", json!(null)).await.status, 401, "no session, no events");
+    // Pegasus is the admin, Croquet a moderator (the fixture's staff).
+    b.sign_in("Croquet").await;
+    let (start, end) = ("2026-01-01T00:00:00Z", "2099-01-01T00:00:00Z");
+    let new = json!({ "kind": "gunslinger", "name": "Dashboard Gunslinger", "start": start, "end": end,
+        "prize": { "participation_bp": 100, "threshold": 3, "threshold_bp": 400 } });
+    assert_eq!(b.call("POST", "/panel/api/v1/events/create", new.clone()).await.status, 403, "a moderator doesn't schedule");
+    assert_eq!(b.call("GET", "/panel/api/v1/events", json!(null)).await.body["events"].as_array().unwrap().len(), 0);
+    b.sign_in("Pegasus").await;
+    let made = b.call("POST", "/panel/api/v1/events/create", new.clone()).await;
+    assert_eq!(made.status, 200, "{}", made.body);
+    let (id, event) = (made.body["event"]["event_id"].as_u64().unwrap(), &made.body["event"]);
+    assert_eq!((event["kind"].as_str(), event["phase"].as_str(), event["counts"].as_str()), (Some("gunslinger"), Some("running"), Some("win streak")));
+    assert_eq!(b.call("POST", "/panel/api/v1/events/create", new).await.body["event"]["event_id"].as_u64(), Some(id), "a retry is the same event");
+    assert_eq!(b.call("GET", "/panel/api/v1/events", json!(null)).await.body["events"].as_array().unwrap().len(), 1);
+    // Invalid: the end before the start, unknown fields, an unknown event.
+    let bad = json!({ "kind": "gunslinger", "name": "Backwards", "start": end, "end": start });
+    assert_eq!(b.call("POST", "/panel/api/v1/events/create", bad).await.status, 400);
+    assert_eq!(b.call("POST", "/panel/api/v1/events/create", json!({ "kind": "duelist-trial", "name": "x", "start": start, "end": end, "extra": 1 })).await.status, 400);
+    assert_eq!(b.call("POST", "/panel/api/v1/events/edit", json!({ "event_id": 99 })).await.status, 404);
+    let edited = b.call("POST", "/panel/api/v1/events/edit", json!({ "event_id": id, "name": "Renamed", "prize": { "participation_bp": 250 } })).await;
+    assert_eq!(edited.status, 200, "{}", edited.body);
+    assert_eq!((edited.body["event"]["name"].as_str(), edited.body["event"]["prize"]["participation_bp"].as_u64(), edited.body["event"]["prize"]["threshold"].as_u64()), (Some("Renamed"), Some(250), Some(0)));
+    let cancelled = b.call("POST", "/panel/api/v1/events/cancel", json!({ "event_id": id })).await;
+    assert_eq!((cancelled.status, cancelled.body["event"]["phase"].as_str()), (200, Some("cancelled")), "{}", cancelled.body);
+    assert_eq!(b.call("POST", "/panel/api/v1/events/cancel", json!({ "event_id": id })).await.status, 409, "already cancelled");
+    let audit = b.call("GET", "/panel/api/v1/audit", json!(null)).await;
+    let ops: Vec<&str> = audit.body["entries"].as_array().unwrap().iter().filter_map(|e| e["operation"].as_str()).filter(|o| o.ends_with("-event")).collect();
+    assert_eq!(ops, ["cancel-event", "edit-event", "create-event"], "newest first, each once: {}", audit.body);
 }

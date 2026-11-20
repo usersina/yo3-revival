@@ -50,6 +50,12 @@ tasks:
       - cargo nextest run -p yo3-server --test duel_check
       - python3 tools/engine/coverage.py {{.CLI_ARGS}}
 
+  check:decks:
+    desc: "The preset decks' cards (starter, structure and NPC decks) self-played, then their effect cards no duel exercised (tools/engine/coverage.py --decks)"
+    cmds:
+      - cargo nextest run -p yo3-server --test deck_coverage
+      - python3 tools/engine/coverage.py --decks {{.CLI_ARGS}}
+
   # Builds
   build:dev:
     desc: Release builds of the server, launchers, Desktop and engine, and the connection DLL, as dev builds

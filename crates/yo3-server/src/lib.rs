@@ -2,6 +2,7 @@
 pub mod cli;
 pub mod accounts;
 pub mod logins;
+pub mod links;
 pub mod account_ops;
 pub mod settings;
 pub mod config;
@@ -29,6 +30,7 @@ mod duellog;
 pub mod table;
 pub mod engine;
 pub mod npc;
+pub mod profile;
 pub mod banter;
 pub mod translate;
 mod card_options;
@@ -43,10 +45,12 @@ mod trade;
 mod deckcheck;
 mod rental;
 mod events;
+pub mod official;
 pub mod clock;
 mod log;
 mod net;
 mod web;
+pub mod ranking;
 pub mod titles;
 pub mod gifts;
 pub use net::IDLE_TIMEOUT;
@@ -354,7 +358,7 @@ fn card_sources(data: &yo3_data::GameData) -> Vec<sources::CardSource> {
 fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> {
     let duel_server = (cfg.advertise.clone().unwrap_or_default(), duel_port);
     let world = match yo3_data::GameData::load(&cfg.game_dir) {
-        Ok(data) => World {
+        Ok(data) => { let mut world = World {
             card_rows: data.cards.iter().map(|c| c.row as usize).max().unwrap_or(0),
             // The first deck_type 1 preset (they look like starter decks) the login regulation allows.
             starter_deck: data.starter_deck(STARTER_REGULATION).map(|d| Deck {
@@ -457,7 +461,13 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
             regulations: data.regulations.iter().map(|r| (r.id, r.clone())).collect(),
             card_sources: card_sources(&data),
             ..World::new(data.regulations.iter().map(|r| r.id as u16).collect())
-        },
+        };
+            // The card profiles (#60), over the game's own cards.
+            let base = profile::CardView { cards: world.cards.clone(), card_kinds: world.card_kinds.clone(),
+                extra_deck_rows: world.extra_deck_rows.clone(), tuners: world.tuners.clone(), ..Default::default() };
+            world.profiles = profile::Profiles::load(&base, data.cards.iter(), world.engine_dir.as_deref());
+            world
+        }
         Err(e) => {
             if !cfg.allow_missing_game_data {
                 anyhow::bail!("Cannot load the host's game data from {}: {e}. Select a complete Yu-Gi-Oh! ONLINE 3 v1.153 installation with --game-dir (Desktop: Game setup). Hosting was not started; existing accounts and decks were preserved.", cfg.game_dir.display());
@@ -572,6 +582,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         hub.keep_mail(&dir.join("mail.json"));
         hub.keep_teams(&dir.join("teams.json"));
         hub.keep_events(&dir.join("events.json"));
+        hub.keep_official(dir);
         hub.keep_rentals(&dir.join("rentals.json"));
         hub.keep_duel_logs(dir, http_addr.port());
         hub.reports = reports::Reports::at(dir);
@@ -617,6 +628,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
                     hub.tick_matches(std::time::Instant::now());
                     hub.match_waiting();
                     hub.tick_events(std::time::Instant::now());
+                    hub.tick_official(chrono::Utc::now().timestamp());
                     hub.tick_rentals(chrono::Utc::now().timestamp());
                 });
                 if let Err(e) = pass.await {

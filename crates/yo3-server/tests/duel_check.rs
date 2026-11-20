@@ -143,3 +143,88 @@ fn the_seeds_reach_the_cases_that_drifted() {
     assert!(phase_windows > 0, "no phase window with something to activate reached the client in the seeds");
     assert!(field_targets > 0, "no attack target was picked on the field in the seeds");
 }
+
+/// The same self-play with the anime card versions on (#60, the `anime-cards` setting): decks of the cards the reviewed
+/// map approves, so that their anime scripts run through every kind of prompt and the client's view must still follow the
+/// engine. `YO3_CHECK_DUELS=n` plays n duels instead of 30; `YO3_CHECK_ANIME_SEED=s` replays seed s alone.
+#[test]
+fn duels_with_the_anime_versions_on() {
+    let Some(dir) = engine_dir() else { return };
+    if yo3_server::engine::anime_problem(&dir).is_some() {
+        eprintln!("anime data not fetched; skipping");
+        return;
+    }
+    let pool = selfplay::anime_pool(&dir).expect("the approved cards");
+    assert!(pool.monsters.len() > 50 && pool.spells.len() > 30 && pool.traps.len() > 20 && !pool.extra.is_empty(), "{pool:?}");
+    let per: u64 = std::env::var("YO3_CHECK_DUELS").ok().and_then(|n| n.parse().ok()).unwrap_or(30);
+    let mut failures = vec![];
+    let mut activated = 0;
+    let only: Option<u64> = std::env::var("YO3_CHECK_ANIME_SEED").ok().and_then(|n| n.parse().ok());
+    for seed in only.map_or(500..500 + per, |s| s..s + 1) {
+        let (a, b) = (selfplay::anime_deck(&pool, seed * 2), selfplay::anime_deck(&pool, seed * 2 + 1));
+        let decks = [(&a.0[..], &a.1[..]), (&b.0[..], &b.1[..])];
+        match selfplay::play_anime(&dir, seed, decks, (seed % 2) as usize, seed.is_multiple_of(3)) {
+            Ok(played) => activated += played.activated.values().sum::<u32>(),
+            Err(e) => failures.push(e),
+        }
+    }
+    assert!(failures.is_empty(), "{} of {per} duel(s) failed:\n{}", failures.len(), failures.join("\n\n"));
+    assert!(activated > 0, "no effect of the anime cards was ever activated");
+}
+
+/// The same self-play with decks of the cards the card profile shows differently from the game's (the released categories:
+/// flags, subtypes, types, Main/Extra placement, Level, attribute, race, ATK, DEF and kind): the first face-up monster of each is
+/// held to the profile's ATK and DEF, each deck card to its Level, race and attribute in the engine's card data, and the client's
+/// view must still follow the engine through their anime effects. `YO3_CHECK_DUELS=n` plays n duels instead of 40;
+/// `YO3_CHECK_PROFILE_SEED=s` replays seed s alone.
+#[test]
+fn duels_with_the_cards_the_profile_changes() {
+    let Some(dir) = engine_dir() else { return };
+    if yo3_server::engine::anime_problem(&dir).is_some() {
+        eprintln!("anime data not fetched; skipping");
+        return;
+    }
+    let pool = selfplay::anime_pool_of_profile_cards(&dir, 12).expect("the cards the profile changes");
+    let per: u64 = std::env::var("YO3_CHECK_DUELS").ok().and_then(|n| n.parse().ok()).unwrap_or(40);
+    let mut failures = vec![];
+    let only: Option<u64> = std::env::var("YO3_CHECK_PROFILE_SEED").ok().and_then(|n| n.parse().ok());
+    for seed in only.map_or(900..900 + per, |s| s..s + 1) {
+        let (a, b) = (selfplay::anime_deck(&pool, seed * 2), selfplay::anime_deck(&pool, seed * 2 + 1));
+        let decks = [(&a.0[..], &a.1[..]), (&b.0[..], &b.1[..])];
+        if let Err(e) = selfplay::play_anime(&dir, seed, decks, (seed % 2) as usize, seed.is_multiple_of(3)) {
+            failures.push(e);
+        }
+    }
+    assert!(failures.is_empty(), "{} of {per} duel(s) failed:\n{}", failures.len(), failures.join("\n\n"));
+}
+
+/// The duel check holds the engine's monsters to the card profile (issue #60): with every anime card's ATK in the profile
+/// changed, the first face-up monster of a profile card fails the duel and the report names the profile; unchanged, the
+/// same duels pass.
+#[test]
+fn a_profile_that_differs_from_the_engine_fails_the_duel_check() {
+    let Some(dir) = engine_dir() else { return };
+    if yo3_server::engine::anime_problem(&dir).is_some() {
+        eprintln!("anime data not fetched; skipping");
+        return;
+    }
+    let pool = selfplay::anime_pool(&dir).expect("the approved cards");
+    let mut caught = 0;
+    for seed in 500..506 {
+        let (a, b) = (selfplay::anime_deck(&pool, seed * 2), selfplay::anime_deck(&pool, seed * 2 + 1));
+        let decks = [(&a.0[..], &a.1[..]), (&b.0[..], &b.1[..])];
+        let wrong = selfplay::play_anime_with(&dir, seed, decks, 0, false, |expect| {
+            for e in expect.values_mut() {
+                e.atk = yo3_server::profile::Stat::Value(7);
+                e.judge.atk = true;
+            }
+        });
+        match wrong {
+            Err(e) if e.contains("differs from the card profile") => caught += 1,
+            Err(e) => panic!("seed {seed} failed for another reason:\n{e}"),
+            Ok(_) => {}
+        }
+        selfplay::play_anime(&dir, seed, decks, 0, false).unwrap_or_else(|e| panic!("seed {seed} with the right profile:\n{e}"));
+    }
+    assert!(caught > 0, "no duel put a profile monster on the field, or the check does not look at them");
+}

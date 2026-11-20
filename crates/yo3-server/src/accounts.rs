@@ -92,6 +92,8 @@ pub struct Directory {
     /// Each account as last saved (by user id): its `Arc` and the entry's key and login. A save writes
     /// the accounts whose `Arc` or fields differ, and drops the ones that went.
     saved: HashMap<u32, Saved>,
+    /// What each account was seen on (devices, addresses), for linked accounts (#64); kept in the accounts' document.
+    links: HashMap<u32, crate::links::Seen>,
 }
 
 /// An account as last saved: compared by pointer, so an unchanged account costs nothing to check.
@@ -383,7 +385,7 @@ impl Directory {
 
     /// `player_names`: the players every new account starts with (at most four are used).
     pub fn new(player_names: Vec<String>) -> Directory {
-        Directory { player_names, accounts: Vec::new(), next_user: 1001, next_player: 1001, file: None, codes: vec![], invites: vec![], saved: HashMap::new() }
+        Directory { player_names, accounts: Vec::new(), next_user: 1001, next_player: 1001, file: None, codes: vec![], invites: vec![], saved: HashMap::new(), links: HashMap::new() }
     }
 
     /// The accounts kept in `file` (none yet if it doesn't exist); changes are written back to it.
@@ -464,6 +466,8 @@ impl Directory {
             d.accounts.push(Entry { key, login, account: Arc::new(account) });
         }
         d.saved = d.accounts.iter().map(|e| (e.account.user_id, Saved::of(e))).collect();
+        d.links = saved["links"].as_object().into_iter().flatten()
+            .filter_map(|(id, seen)| Some((id.parse().ok()?, serde_json::from_value(seen.clone()).ok()?))).collect();
         d.invites = saved["invites"].as_array().into_iter().flatten().filter_map(|i| serde_json::from_value(i.clone()).ok()).collect();
         for c in saved["bp_codes"].as_array().into_iter().flatten() {
             let (Some(code), Some(bp)) = (c["code"].as_str(), c["bp"].as_u64()) else { continue };
@@ -756,6 +760,7 @@ impl Directory {
         let mut next = self.clone();
         let at = next.accounts.iter().position(|e| e.account.user_id == user_id).ok_or_else(|| format!("no account {user_id}"))?;
         let entry = next.accounts.remove(at);
+        next.links.remove(&user_id);
         let label = entry.login.as_ref().map_or_else(|| format!("#{user_id}"), |l| l.user.clone());
         if let Some(login) = &entry.login {
             for invite in next.invites.iter_mut().filter(|i| i.issued_by.eq_ignore_ascii_case(&login.user)) { invite.issued_by = "(a deleted account)".into() }
@@ -1010,6 +1015,42 @@ impl Directory {
         all.into_iter()
     }
 
+    /// Notes what `user_id` was seen on (the launcher's device digest and the address it came from), for linked
+    /// accounts (#64). Saved only when something new was learned.
+    pub fn note_seen(&mut self, user_id: u32, device: Option<&str>, address: Option<IpAddr>, now: i64) {
+        if device.is_none() && address.is_none() || !self.accounts.iter().any(|e| e.account.user_id == user_id) { return }
+        if self.links.entry(user_id).or_default().note(device, address, now) { self.save() }
+    }
+
+    /// What `user_id` was seen on.
+    pub fn seen(&self, user_id: u32) -> Option<&crate::links::Seen> { self.links.get(&user_id) }
+
+    /// The user id of the account holding `player_id`.
+    pub fn user_of_player(&self, player_id: u32) -> Option<u32> {
+        self.accounts.iter().map(|e| &e.account).find(|a| a.players.iter().any(|p| p.player_id == player_id)).map(|a| a.user_id)
+    }
+
+    /// What two accounts share (a device, an address): empty for one account against itself and for strangers.
+    pub fn links_between(&self, a: u32, b: u32, now: i64) -> Vec<crate::links::Link> {
+        if a == b { return vec![] }
+        // An address that many accounts were seen at is a gateway, not a PC.
+        let crowded = |address: &str| self.links.values().filter(|s| s.addresses.get(address).is_some_and(|t| now - t < crate::links::ADDRESS_KEEP)).count() > crate::links::CROWD;
+        match (self.links.get(&a), self.links.get(&b)) { (Some(x), Some(y)) => x.shared(y, now, &crowded), _ => vec![] }
+    }
+
+    /// Whether two players belong to linked accounts.
+    pub fn players_linked(&self, a: u32, b: u32, now: i64) -> bool {
+        match (self.user_of_player(a), self.user_of_player(b)) { (Some(x), Some(y)) => !self.links_between(x, y, now).is_empty(), _ => false }
+    }
+
+    /// The accounts linked to `user_id`, each with what they share, by user id.
+    pub fn linked_to(&self, user_id: u32, now: i64) -> Vec<(u32, Vec<crate::links::Link>)> {
+        let mut out: Vec<(u32, Vec<crate::links::Link>)> = self.accounts.iter().map(|e| e.account.user_id)
+            .filter_map(|other| { let l = self.links_between(user_id, other, now); (!l.is_empty()).then_some((other, l)) }).collect();
+        out.sort_by_key(|(id, _)| *id);
+        out
+    }
+
     fn save(&mut self) {
         if let Err(e) = self.persist() { tracing::warn!("accounts not saved: {e}"); }
     }
@@ -1039,7 +1080,9 @@ impl Directory {
     pub(crate) fn persist(&mut self) -> io::Result<()> {
         let Some(file) = self.file.clone() else { return Ok(()) };
         let codes: Vec<Json> = self.codes.iter().map(|c| json!({ "code": c.code, "bp": c.bp, "uses": c.uses, "used_by": c.used_by, "claimed_at": c.claimed_at })).collect();
-        let mut whole = json!({ "next_user": self.next_user, "next_player": self.next_player, "bp_codes": codes, "invites": self.invites });
+        let links: serde_json::Map<String, Json> = self.links.iter().filter(|(_, s)| !s.is_empty())
+            .filter_map(|(id, seen)| Some((id.to_string(), serde_json::to_value(seen).ok()?))).collect();
+        let mut whole = json!({ "next_user": self.next_user, "next_player": self.next_player, "bp_codes": codes, "invites": self.invites, "links": links });
         if store::in_database(&file) {
             let changed: Vec<(String, Json)> = self.accounts.iter()
                 .filter(|e| !self.saved.get(&e.account.user_id).is_some_and(|s| s.same(e)))

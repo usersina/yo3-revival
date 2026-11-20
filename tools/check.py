@@ -39,6 +39,7 @@ PY = [
     'tools/containers/test_local_cargo_cache.py',
     'tools/docs/test_docs_check.py',
     'tools/engine/test_coverage.py',
+    'tools/engine/test_anime_map.py',
     'tools/vm/test_vm.py',
     'tools/dev/test_scratch_server.py',
     'tools/test_check.py',

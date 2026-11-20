@@ -197,7 +197,9 @@ pub fn invite_code(link: &str) -> Option<String> { yo3_tunnel::invite::Invite::p
 /// What a server's row shows.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Status {
-    Online { online: Option<u32>, max: Option<u32>, registration: String, news: Vec<yo3_tunnel::News>, ping: Duration },
+    Online { online: Option<u32>, max: Option<u32>, registration: String, news: Vec<yo3_tunnel::News>, ping: Duration,
+        /// The host asks for a clean game (#69): PLAY refuses a game with other programs inside.
+        clean_game: bool },
     Maintenance,
     NeedsUpdate { min: String },
     /// It answered with an identity it isn't pinned to.
@@ -215,7 +217,7 @@ pub async fn status(server: &Server) -> Status {
             if let Some(min) = &info.min_launcher && !yo3_server::logins::version_at_least(yo3_tunnel::BUILD_VERSION, min) {
                 return Status::NeedsUpdate { min: min.clone() };
             }
-            return Status::Online { online: info.online, max: info.max_online, registration: info.registration, news: info.news, ping: started.elapsed() };
+            return Status::Online { online: info.online, max: info.max_online, registration: info.registration, news: info.news, ping: started.elapsed(), clean_game: info.clean_game };
         }
     }
     // None of its identities answered: is it down, or a different key at its address?
@@ -264,6 +266,12 @@ pub enum Problem {
     PasswordsDiffer,
     RulesNotAccepted,
     RecoveryInvalid,
+    /// The host lets one PC run only `limit` games at once on this server (#64).
+    DeviceFull { limit: u32 },
+    /// Play as… for an account that already plays on the server here (#64).
+    AlreadyPlaying,
+    /// Play as… for the account this launcher is signed in as on the server: that's what PLAY is for (#64).
+    SameAccount,
     Other(String),
 }
 
@@ -294,6 +302,7 @@ impl Problem {
             "password_characters" => Problem::PasswordCharacters,
             "rules_not_accepted" => Problem::RulesNotAccepted,
             "invalid_recovery" => Problem::RecoveryInvalid,
+            "device_full" => Problem::DeviceFull { limit: reply["limit"].as_u64().unwrap_or(1) as u32 },
             other => Problem::Other(other.to_string()),
         }
     }
@@ -324,6 +333,10 @@ impl Problem {
             Problem::PasswordsDiffer => "The two passwords differ.".into(),
             Problem::RulesNotAccepted => "Accept the server's rules to make an account.".into(),
             Problem::RecoveryInvalid => "That code doesn't work: check it, or ask the server's moderators for a reset code.".into(),
+            Problem::DeviceFull { limit } => format!("This server lets one PC run {limit} game{} at once, and {} already running. Close one first.",
+                if *limit == 1 { "" } else { "s" }, if *limit == 1 { "one is" } else { "they are" }),
+            Problem::AlreadyPlaying => "That account is already playing on this server. Close its game first, or choose another account.".into(),
+            Problem::SameAccount => "That's the account you're signed in as here: use PLAY for it, or choose another account.".into(),
             Problem::Other(code) => format!("The server refused ({code})."),
         }
     }
@@ -361,10 +374,29 @@ impl std::fmt::Debug for SignedIn {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "SignedIn({})", self.user) }
 }
 
+/// This install's id, sent with sign-ins so a server can tell accounts that play from one PC (#64).
+static DEVICE_ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Reads this install's id from `root` (making it once, 32 random hex digits) and keeps it for the account requests.
+pub fn init_device_id(root: &std::path::Path) {
+    let file = root.join("device-id");
+    let known = std::fs::read_to_string(&file).ok().map(|t| t.trim().to_string()).filter(|t| t.len() == 32 && t.bytes().all(|b| b.is_ascii_hexdigit()));
+    let id = known.unwrap_or_else(|| {
+        let mut bytes = [0u8; 16];
+        let _ = getrandom::fill(&mut bytes);
+        let id: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+        let _ = std::fs::write(&file, &id);
+        id
+    });
+    let _ = DEVICE_ID.set(id);
+}
+
 /// One account request to `server`, through whichever of its identities answers.
 async fn ask(server: &Server, request: Value) -> Result<Value, Problem> {
     let mut request = request;
     request["launcher"] = json!(yo3_tunnel::BUILD_VERSION.trim_start_matches('v'));
+    // This install's id, for the server's linked-account rules (#64): the server keeps only a digest of it.
+    if let Some(id) = DEVICE_ID.get() { request["device_id"] = json!(id) }
     let mut reached = false;
     for endpoint in server.endpoints().map_err(|_| Problem::Unreachable)? {
         match endpoint.account(&request).await {

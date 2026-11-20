@@ -61,7 +61,7 @@ const sections = [
   {
     name: 'Duels',
     description: 'Rules and clocks for the next duel or sign-in.',
-    keys: ['login-regulation', 'start-lp', 'turn-seconds', 'total-seconds'],
+    keys: ['login-regulation', 'start-lp', 'anime-cards', 'turn-seconds', 'total-seconds'],
   },
   {
     name: 'Capacity & traffic',
@@ -104,6 +104,7 @@ const labels: Record<string, string> = {
   'min-launcher': 'Minimum launcher version',
   'login-regulation': 'Default banlist',
   'start-lp': 'Starting Life Points',
+  'anime-cards': 'Anime card versions',
   'turn-seconds': 'Turn clock (seconds)',
   'total-seconds': 'Total duel clock (seconds)',
   'max-players': 'Maximum players',

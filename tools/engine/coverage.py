@@ -3,6 +3,8 @@
 
     tools/engine/coverage.py                     after `cargo nextest run -p yo3-server --test duel_check`
     tools/engine/coverage.py --sweep FILE        a card sweep's card-sweep.tsv instead (every swept card)
+    tools/engine/coverage.py --decks             the preset decks' effect cards (after `cargo nextest run -p yo3-server
+                                                 --test deck_coverage`): which no duel exercised, and the decks holding them
     tools/engine/coverage.py --json OUT          also write the merged counts
 
 The duel check writes one file per test part (target/tmp/duel-coverage/part-N.json): per card (Konami id), its chain
@@ -49,6 +51,32 @@ def from_sweep(path):
                 if row.get(k, '').isdigit():
                     mine[k] += int(row[k])
     return {'duels': duels, 'pool': [int(c) for c in cards], 'cards': cards}
+
+
+def decks_report(duels, deck_pool, decks, cards, info, unanswerable=(), only='', limit=0):
+    """The preset decks' effect cards by what happened to them in the deck self-play and the duel check together, with the
+    decks that hold each (the cards players meet first): never-exercised ones first, the list to write scenarios from."""
+    held = {}
+    decks = {label: cids for label, cids in decks.items() if only.lower() in label.lower()}
+    deck_pool = [c for c in deck_pool if any(c in cids for cids in decks.values())]
+    for label, cids in decks.items():
+        for cid in cids:
+            held.setdefault(cid, []).append(label)
+    groups, plain = classify(deck_pool, cards, info)
+    effects = sum(len(g) for _, g in groups)
+    lines = [f'Preset deck coverage: {duels} duel(s), {len(decks)} deck(s), {len(deck_pool)} distinct card(s), {effects} with an '
+             f'effect ({plain} without one left out)']
+    for title, group in groups:
+        lines.append(f'\n{title}: {len(group)}')
+        for cid, name, c in sorted(group, key=lambda g: (-len(held.get(g[0], [])), g[1]))[:limit or None]:
+            owners = held.get(cid, [])
+            shown = ', '.join(owners[:3]) + (f', +{len(owners) - 3} more' if len(owners) > 3 else '')
+            counts = ', '.join(f'{k} {c[k]}' for k in KEYS if c[k])
+            lines.append(f'  {cid:5}  {name}  [{len(owners)} deck(s): {shown}]' + (f'  ({counts})' if counts else ''))
+    if unanswerable:
+        lines.append(f'\nDuels that stopped at a prompt the client can\'t answer: {len(unanswerable)}')
+        lines.extend(f'  {u}' for u in unanswerable)
+    return '\n'.join(lines)
 
 
 def card_info(engine):
@@ -110,9 +138,25 @@ def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--dir', default=str(ROOT / 'target/tmp/duel-coverage'), help='the duel check parts (default: %(default)s)')
     ap.add_argument('--sweep', help="a card sweep's card-sweep.tsv instead of the duel check's parts")
+    ap.add_argument('--decks', action='store_true', help="the preset decks' effect cards (deck_coverage's report plus the duel check's parts)")
+    ap.add_argument('--deck', default='', help='with --decks: only the decks whose label contains this (an NPC name: "Yusei")')
+    ap.add_argument('--limit', type=int, default=0, help='with --decks: at most this many cards per group')
     ap.add_argument('--engine', default=str(ROOT / 'engine'), help='the engine folder for card names (default: %(default)s)')
     ap.add_argument('--json', help='also write the merged counts here')
     args = ap.parse_args(argv)
+    if args.decks:
+        file = Path(args.dir) / 'decks.json'
+        if not file.is_file():
+            print(f'no deck coverage in {file}: run `cargo nextest run -p yo3-server --test deck_coverage` first', file=sys.stderr)
+            return 2
+        deck_part = json.loads(file.read_text())
+        parts = [deck_part] + [json.loads(f.read_text()) for f in sorted(Path(args.dir).glob('part-*.json'))]
+        duels, _, cards = merge(parts)
+        print(decks_report(duels, deck_part['pool'], deck_part['decks'], cards,
+                           card_info(Path(args.engine)), deck_part.get('unanswerable', []), args.deck, args.limit))
+        if args.json:
+            Path(args.json).write_text(json.dumps({'duels': duels, 'pool': deck_part['pool'], 'cards': {str(k): v for k, v in sorted(cards.items())}}, indent=1))
+        return 0
     if args.sweep:
         parts = [from_sweep(args.sweep)]
     else:

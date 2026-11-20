@@ -71,6 +71,12 @@ limits (Heavy Storm, Premature Burial...), so either edit them or choose `unlimi
 them) and log in again; your starter deck is fine. Auto Duel only matches players on the same banlist, so nobody
 brings a deck the other's list forbids.
 
+**Two accounts on one PC.** Your launcher can run a second game as another account
+([Play as another account](launcher.md#several-games-at-once)), for example to duel a friend who plays on the same computer.
+Accounts seen on the same PC or network are *linked*: a duel between them is played, but **pays no BP and counts no record,
+rating or title**, and they can't trade or rent to each other (the game says why in your chat). The host can turn that off
+or let a PC run more games.
+
 ## Choose or edit a deck
 
 Open **Main Menu → Edit Deck** to customise your cards, use another official character deck or make a side deck.
@@ -113,8 +119,62 @@ Summon. Its Synchro Materials are in the Graveyard by then, so they don't count:
 alone gives 2300 ATK. With another Quillbolt Hedgehog still on the field it becomes 3100. See the official
 [Junk Warrior](https://www.db.yugioh-card.com/yugiohdb/card_search.action?cid=7696&ope=2) card text.
 
+A few more rules that look like bugs and are not (each has a scenario test, `crates/yo3-server/tests/card_scenarios.rs`):
+Zero Gardna must be used when the attack is declared: used earlier in your own turn it protects only that turn.
+Mist Valley Soldier returns a monster that survived its battle without asking you. Turret Warrior gains only the ATK
+printed on the Warrior you Tribute for it, not the bonuses Command Knight gives that Warrior. Marshmallon hurts the
+attacker only when it was attacked face-down. Jinzo leaves your opponent's Set Traps on the field, unable to answer its
+attack. Brionac may return cards from either side of the field, its own included, so check the cards you choose.
+
+A monster that the engine lists as Special Summonable from your Deck (Familiar-Possessed - Wynn, Red-Eyes Black Metal Dragon) is on your **Deck pile**: click it and choose Special Summon (the pile doesn't light up). A monster that counts as two Tributes (Double Coston, for DARK monsters) is one pick in the Tribute list.
+
+While a question such as "Activate the effect of …?" is up, click a Graveyard or banished pile to look through it; right-click
+closes the list and the question comes back.
+
+A host can turn on [anime card versions](#anime-card-versions), which changes some of these.
+
 If a protected monster disappears, a slot appears empty but remains occupied, or a legal action fails, follow
 [duel bug reporting](launcher.md#logs-and-support). Include the card names and the exact steps.
+
+## Anime card versions
+
+A host can set the server's `anime-cards` setting to `on` ([the setting](guide.md#live-settings)); it is off by default,
+and takes effect at the next duel. Then NPC duels and duels between players play **411 cards by their anime
+effects** instead of the game's: Card of Sanctity has both players draw until they hold six cards, Mirror Force also hurts
+you by the ATK difference to each of your weaker monsters it destroys, Junk Warrior's ATK follows the Level 2 or lower
+monsters you control from moment to moment, and so on. [The list](anime-cards.md) names every card and says why 7 others
+keep the game's version.
+
+The game shows those cards as their anime versions too (the **card profile**, [how it works](anime-cards.md#the-card-profile)):
+the card's type, Level, ATK, DEF, attribute and race, its effect text, and whether it belongs in the Main or the Extra Deck.
+Your card keeps its place: Flame Swordsman is still the Flame Swordsman you own, and becomes the anime's Normal Monster, a Main
+Deck card.
+
+- **Restart the game after the host changes the setting.** The game reads its card table once, when it starts. While your game is
+  open and the server's cards are not the ones it loaded, the big button reads RESTART THE GAME: it closes the game and starts it
+  again by itself. A duel also tells you when your game started before the change.
+- **Your decks keep every card and every copy.** A card whose class changes moves to the other list by itself (Flame Swordsman
+  from the Extra Deck to the Main Deck); there is nothing to edit. Decks saved in your own Documents folder are the game's files: the launcher places their cards in the right
+  lists when you press Play (it keeps the first version of each changed deck beside it as `<name>.y3d.pre-profile`, never
+  deletes a deck and never touches a file it cannot read), and the server places a deck again when you pick it for a duel. A game
+  opened without the launcher gets this at its next Play from the launcher.
+- **Artwork is yours to add.** The project does not ship or download the anime pictures. Put a 200x290 PNG named after the
+  card's Konami id in `anime-art/card/` (the launcher's data folder: `%LOCALAPPDATA%\YO3 Revival\anime-art` on Windows,
+  `~/.local/share/yo3-revival/anime-art` on Linux) and that card shows it; a card with no file keeps its own picture
+  ([the folder](anime-cards.md#artwork)).
+- **Reconstructions.** Dark Strike Fighter and Fortune Lady Fire have no real anime script upstream, so ours are rebuilt from
+  descriptions of the episodes and the card's text says so ([what each does](anime-cards.md#reconstructions)): Dark Strike
+  Fighter Tributes another monster for Level x 200 damage and cannot attack that turn; Fortune Lady Fire destroys a monster and
+  burns its ATK whenever it is Special Summoned face-up in Attack Position. They are our best reading, not verified against
+  the footage.
+- **The Egyptian Gods and Skill Drain.** Skill Drain negates the Gods that are already on the field until the end of that turn
+  (Ra's ATK is 0 for the rest of it), then they come back although Skill Drain stays face up. A God summoned while Skill Drain is
+  face up is not affected. Every other monster stays negated.
+- **Cards without an anime version**, the ones kept on purpose (Temple of the Kings, Time Wizard and Thousand Dragon: their anime
+  rules are not settled) and the few held for a fix play and show as the game has them ([list](anime-cards.md)).
+
+The anime effects are ProjectIgnis' scripts. They load and play, but only a few have been checked against the episodes: if
+one looks wrong, [report it](launcher.md#logs-and-support) with the card and the steps.
 
 ## Chat commands
 
@@ -196,7 +256,15 @@ eyes, clothes, a duel disk and the BEGINNER DUELIST title.
 - **Collection and looks:** THE CARD ENTHUSIAST / COLLECTOR / HOARDER for 100, 500 and 1000 different cards from packs
   and trades, THE AFRO KAISER and THE KING OF QUIFFS for wearing that hair.
 
-The official event and Championship titles wait for those events; your host can give the special ones (GAME MASTER…).
+The official event titles (TRIALIST … ULTIMATE GUNSLINGER) and the Championship's wait; your host can give the special ones (GAME MASTER…).
+
+**The Stadium** (the map's Duelking Titlematch tile) lists your host's official events: Gunslinger (win streak), Duelist
+Trial and Anniversary Trial (wins), Evolution and Ultimate Match (stars, played as matches). Pick one to enter its lobby,
+press **Ready** and you are paired with another entrant; after each duel you are matched again until you press **Not Ready**.
+Your score for the event shows in the lobby and the result screen. When an event ends your host's prize (BP) arrives as a
+D-Mail, and Tournament Points (My Profile) add up from the events you played. If an event needs a particular banlist, Ready
+tells you in the chat: use `/p Server banlist NAME` and log in again. Main Menu → Leaderboard and the team ranking open
+your host's pages with everyone's wins and losses against other players.
 
 In the shop, Trade Card swaps cards you don't need for one you want: pick a card from Blister's list (cards from the
 first 48 booster packs), then choose 10 of your own cards (or press Auto Select) and confirm. Rented cards and cards

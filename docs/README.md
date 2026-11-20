@@ -20,6 +20,7 @@
 
 ## Build and contribute
 
+- [Anime card versions](anime-cards.md): which cards play by their anime effects with the host's setting on, and which are held back and why.
 - [Development guide](development.md): source builds, checks, duel diagnostics and release packaging.
 - [Standalone dashboard](dashboard.md): current preview, transactional admin operations and the accepted public-management/nginx plan.
 - [Code signing policy](code-signing.md): proposed signing scope, release approval, privacy and current unsigned status.

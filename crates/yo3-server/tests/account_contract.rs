@@ -298,6 +298,17 @@ async fn an_older_launcher_is_told_to_update() {
     assert_eq!(s.endpoint.info().await.unwrap().min_launcher.as_deref(), Some("0.2.0"));
 }
 
+/// The host's clean-game policy (#69) is in the server's status, which the launcher reads before PLAY.
+#[tokio::test]
+async fn the_clean_game_setting_is_in_the_servers_status() {
+    let off = serve(config("clean-off")).await;
+    assert!(!off.endpoint.info().await.unwrap().clean_game, "off unless the host asks");
+    let mut cfg = config("clean-on");
+    cfg.settings.push(("clean-game".into(), "on".into()));
+    let on = serve(cfg).await;
+    assert!(on.endpoint.info().await.unwrap().clean_game);
+}
+
 #[tokio::test]
 async fn omitting_or_forging_the_launcher_version_cannot_bypass_the_update_gate() {
     let s=server("version-required").await;

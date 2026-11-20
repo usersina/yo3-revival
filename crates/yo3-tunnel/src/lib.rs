@@ -53,6 +53,14 @@ pub struct ServerInfo {
     pub min_launcher: Option<String>,
     #[serde(default)]
     pub maintenance: bool,
+    /// The host asks for a clean game (#69): the launcher refuses to start the game with another program's files or
+    /// network software inside it. A tidiness policy, not anti-cheat.
+    #[serde(default)]
+    pub clean_game: bool,
+    /// The card profile the server pins now (#60): its hash, empty for the game's own cards. A game started under another
+    /// one is out of date, and the launcher offers to restart it.
+    #[serde(default)]
+    pub card_profile: String,
     /// The server's news (the game's Information list), shortened to fit discovery's size, for the launcher's
     /// Information panel before signing in (#30).
     #[serde(default)]
@@ -67,7 +75,7 @@ impl ServerInfo {
         Self { release: BUILD_VERSION.into(), commit: BUILD_COMMIT.into(), protocol: PROTOCOL_VERSION,
             mod_abi: MOD_ABI, game_version: "1.153".into(), ready,
             problem: (!ready).then(|| "The host's rules engine is unavailable.".into()),
-            name: String::new(), headline: String::new(), online: None, max_online: None, registration: String::new(), min_launcher: minimum_launcher(BUILD_VERSION,None).map(str::to_owned), maintenance: false, news: vec![] }
+            name: String::new(), headline: String::new(), online: None, max_online: None, registration: String::new(), min_launcher: minimum_launcher(BUILD_VERSION,None).map(str::to_owned), maintenance: false, clean_game: false, card_profile: String::new(), news: vec![] }
     }
     pub fn ensure_compatible(&self, protocol: u16, mod_abi: u16) -> anyhow::Result<()> {
         if self.protocol != protocol { bail!("Server {} requires protocol {}; this application uses {}. Install a compatible release.", self.release, self.protocol, protocol) }

@@ -12,6 +12,58 @@ use crate::core::Card;
 /// The folders a card's script (`c<passcode>.lua`) may be in, in order: a few cards' current scripts sit outside
 /// `official/` (Red-Eyes Darkness Metal Dragon's in `pre-errata/`). Any other script is at the top.
 const CARD_SCRIPT_FOLDERS: [&str; 3] = ["official", "pre-errata", "pre-release"];
+/// With the anime card versions on, the unofficial scripts (ProjectIgnis' anime cards, `unofficial/c<passcode>.lua`) too,
+/// after the others: an official script is never shadowed by an anime one.
+const ANIME_SCRIPT_FOLDERS: [&str; 4] = ["official", "pre-errata", "pre-release", "unofficial"];
+
+/// The reviewed map from the client's cards to their anime versions (`engine/anime-cards.json`, made by
+/// `tools/engine/anime-map.py`), beside `vendor/`.
+pub fn anime_map_file(vendor: &Path) -> PathBuf {
+    vendor.parent().unwrap_or(vendor).join("anime-cards.json")
+}
+
+/// A corrected anime card record (`"records"` of `engine/anime-cards.json`, from `engine/anime/records.json`): the data row, the
+/// name and the strings of an anime card whose upstream entry is a placeholder, replacing the unofficial database's row of the
+/// same passcode. Its script is ours (`engine/overrides/c<code>.lua`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Record {
+    pub code: u32,
+    pub alias: u32,
+    pub setcode: u64,
+    pub kind: i64,
+    pub level: i64,
+    pub atk: i64,
+    pub def: i64,
+    pub race: i64,
+    pub attribute: i64,
+    pub name: String,
+    /// The card's script strings (the database's str1...).
+    pub strings: Vec<String>,
+}
+
+/// The corrected records of the reviewed map file.
+pub fn read_anime_records(file: &Path) -> Result<Vec<Record>, String> {
+    let text = std::fs::read(file).map_err(|e| format!("open '{}': {e}", file.display()))?;
+    let json: Json = serde_json::from_slice(&text).map_err(|e| format!("{}: {e}", file.display()))?;
+    let mut out = vec![];
+    for r in json["records"].as_array().into_iter().flatten() {
+        let num = |key: &str| r[key].as_i64().ok_or_else(|| format!("{}: record {} lacks \"{key}\"", file.display(), r["code"]));
+        out.push(Record {
+            code: num("code")? as u32,
+            alias: num("alias")? as u32,
+            setcode: num("setcode")? as u64,
+            kind: num("type")?,
+            level: num("level")?,
+            atk: num("atk")?,
+            def: num("def")?,
+            race: num("race")?,
+            attribute: num("attribute")?,
+            name: r["name"].as_str().unwrap_or_default().to_string(),
+            strings: r["strings"].as_array().into_iter().flatten().filter_map(|s| s.as_str().map(str::to_string)).collect(),
+        });
+    }
+    Ok(out)
+}
 
 /// Our own scripts, beside `vendor/` (`engine/overrides/`, tracked in git): a script there is loaded instead of
 /// ProjectIgnis' of the same name, for a card played by the client's 2010–2012 text or an upstream script's bug.
@@ -39,6 +91,8 @@ pub struct Library {
     rows: HashMap<u32, [i64; 8]>,
     /// Scripts by file name, read once (None: not found).
     scripts: Mutex<HashMap<String, Option<Arc<Vec<u8>>>>>,
+    /// The anime card versions are on: the unofficial scripts are searched too.
+    anime: bool,
 }
 
 impl Library {
@@ -70,7 +124,13 @@ impl Library {
         if let Some(known) = self.scripts.lock().unwrap_or_else(|e| e.into_inner()).get(name) {
             return known.clone();
         }
-        let folders: &[&str] = if is_card_script(name) { &CARD_SCRIPT_FOLDERS } else { &[""] };
+        // The anime cards' shared procedures (`unofficial/proc_unofficial.lua`, which utility.lua loads) are there too.
+        let folders: &[&str] = match (is_card_script(name), self.anime) {
+            (false, false) => &[""],
+            (false, true) => &["", "unofficial"],
+            (true, false) => &CARD_SCRIPT_FOLDERS,
+            (true, true) => &ANIME_SCRIPT_FOLDERS,
+        };
         let text = std::fs::read(self.overrides.join(name))
             .ok()
             .or_else(|| folders.iter().find_map(|f| std::fs::read(self.vendor.join("CardScripts").join(f).join(name)).ok()))
@@ -89,8 +149,17 @@ pub struct Cards {
     pub vendor: PathBuf,
     pub library: Arc<Library>,
     db: Connection,
-    /// Konami id -> passcode: the database's original among the card's artworks.
+    /// The unofficial database (anime cards' names and strings), with the anime versions on.
+    anime_db: Option<Connection>,
+    /// Konami id -> passcode: the database's original among the card's artworks, or the card's anime version
+    /// (`anime_cards`) when those are on.
     passcode_of: HashMap<u32, u32>,
+    /// Konami id -> the database's original passcode, whatever the anime versions do: the name a card is declared by.
+    official_of: HashMap<u32, u32>,
+    /// The cards that play as their anime version: Konami id -> anime passcode.
+    pub anime_cards: HashMap<u32, u32>,
+    /// The corrected anime records (name and strings), by passcode.
+    records: HashMap<u32, Record>,
     /// Passcode (any artwork the database holds) -> Konami id.
     pub cid_of: HashMap<u32, u32>,
     declarables: Option<Vec<Declarable>>,
@@ -107,8 +176,29 @@ fn setcodes(setcode: u64) -> Vec<u16> {
     out
 }
 
+/// The cards the reviewed map approves (`"status": "mapped"`): Konami id -> anime passcode.
+pub fn read_anime_map(file: &Path) -> Result<Vec<(u32, u32)>, String> {
+    let text = std::fs::read(file).map_err(|e| format!("open '{}': {e}", file.display()))?;
+    let json: Json = serde_json::from_slice(&text).map_err(|e| format!("{}: {e}", file.display()))?;
+    Ok(json["cards"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|c| c["status"] == "mapped")
+        .filter_map(|c| Some((c["cid"].as_u64()? as u32, c["anime"].as_u64()? as u32)))
+        .collect())
+}
+
 impl Cards {
+    /// The cards as the client's game has them (the anime versions off).
+    #[cfg(test)]
     pub fn open(vendor: &Path) -> Result<Cards, String> {
+        Cards::open_with(vendor, false)
+    }
+
+    /// `open`, with `anime`: the cards of `engine/anime-cards.json` play as their anime versions (their data from the
+    /// unofficial database, their scripts from `unofficial/`), everything else as it is.
+    pub fn open_with(vendor: &Path, anime: bool) -> Result<Cards, String> {
         let path = vendor.join("BabelCDB/cards.cdb");
         std::fs::metadata(&path).map_err(|e| format!("open '{}': {e}", path.display()))?;
         let db = Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)
@@ -129,7 +219,33 @@ impl Cards {
                 rows.insert(id, row);
             }
         }
+        // The Konami id tables are made from the official data alone: an unofficial entry (a game exclusive with a script
+        // of the anime's) never gives a card the game keeps out of duels a passcode.
         let alias: HashMap<u32, u32> = rows.iter().map(|(id, r)| (*id, r[6] as u32)).collect();
+        let official_rows: HashSet<u32> = rows.keys().copied().collect();
+        let mut anime_db = None;
+        if anime {
+            let path = vendor.join("BabelCDB/cards-unofficial.cdb");
+            let extra = Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)
+                .map_err(|e| format!("open '{}': {e}", path.display()))?;
+            {
+                let mut q = extra.prepare("select id, type, level, atk, def, attribute, race, alias, setcode from datas").map_err(|e| format!("{}: {e}", path.display()))?;
+                let found = q
+                    .query_map([], |r| {
+                        let mut row = [0i64; 8];
+                        for (i, v) in row.iter_mut().enumerate() {
+                            *v = r.get::<_, Option<i64>>(i + 1)?.unwrap_or(0);
+                        }
+                        Ok((r.get::<_, i64>(0)? as u32, row))
+                    })
+                    .map_err(|e| e.to_string())?;
+                for (id, row) in found.flatten() {
+                    // The official data wins a passcode both hold.
+                    rows.entry(id).or_insert(row);
+                }
+            }
+            anime_db = Some(extra);
+        }
         let info = vendor.join("cardinfo.json");
         let text = std::fs::read(&info).map_err(|e| format!("open '{}': {e}", info.display()))?;
         let json: Json = serde_json::from_slice(&text).map_err(|e| format!("{}: {e}", info.display()))?;
@@ -158,12 +274,39 @@ impl Cards {
                 }
             }
         }
-        let library = Arc::new(Library { vendor: vendor.to_path_buf(), overrides: overrides_dir(vendor), rows, scripts: Mutex::default() });
-        Ok(Cards { vendor: vendor.to_path_buf(), library, db, passcode_of, cid_of, declarables: None })
+        let official_of = passcode_of.clone();
+        let mut anime_cards = HashMap::new();
+        let mut records = HashMap::new();
+        if anime {
+            let file = anime_map_file(vendor);
+            // A corrected record replaces the unofficial database's row of its passcode.
+            for r in read_anime_records(&file)? {
+                if official_rows.contains(&r.code) {
+                    return Err(format!("{}: record {} is an official card's passcode", file.display(), r.code));
+                }
+                rows.insert(r.code, [r.kind, r.level, r.atk, r.def, r.attribute, r.race, r.alias as i64, r.setcode as i64]);
+                records.insert(r.code, r);
+            }
+            for (cid, code) in read_anime_map(&file)? {
+                if !rows.contains_key(&code) || !passcode_of.contains_key(&cid) {
+                    return Err(format!("{}: card {cid} maps to {code}, which the card data lacks", file.display()));
+                }
+                passcode_of.insert(cid, code);
+                cid_of.insert(code, cid);
+                anime_cards.insert(cid, code);
+            }
+        }
+        let library = Arc::new(Library { vendor: vendor.to_path_buf(), overrides: overrides_dir(vendor), rows, scripts: Mutex::default(), anime });
+        Ok(Cards { vendor: vendor.to_path_buf(), library, db, anime_db, passcode_of, official_of, anime_cards, records, cid_of, declarables: None })
     }
 
     pub fn passcode(&self, cid: u32) -> Option<u32> {
         self.passcode_of.get(&cid).copied()
+    }
+
+    /// The database's original passcode for Konami id `cid`, the card's name for the core's name checks.
+    pub fn official(&self, cid: u32) -> Option<u32> {
+        self.official_of.get(&cid).copied()
     }
 
     pub fn alias(&self, code: u32) -> Option<u32> {
@@ -195,12 +338,20 @@ impl Cards {
         if n > 15 {
             return None;
         }
+        if let Some(r) = self.records.get(&code) {
+            return r.strings.get(n as usize).filter(|t| !t.is_empty()).cloned();
+        }
         let sql = format!("select str{} from texts where id = ?", n + 1);
-        self.db.query_row(&sql, params![code], |r| r.get::<_, Option<String>>(0)).optional().ok().flatten().flatten()
+        std::iter::once(&self.db).chain(self.anime_db.as_ref()).find_map(|db| db.query_row(&sql, params![code], |r| r.get::<_, Option<String>>(0)).optional().ok().flatten().flatten())
     }
 
     pub fn name(&self, code: u32) -> Option<String> {
-        self.db.query_row("select name from texts where id = ?", params![code], |r| r.get::<_, Option<String>>(0)).optional().ok().flatten().flatten()
+        if let Some(r) = self.records.get(&code) {
+            return Some(r.name.clone());
+        }
+        std::iter::once(&self.db).chain(self.anime_db.as_ref()).find_map(|db| {
+            db.query_row("select name from texts where id = ?", params![code], |r| r.get::<_, Option<String>>(0)).optional().ok().flatten().flatten()
+        })
     }
 
     /// The card check's view of a card's data: (type, level, attack, defense, attribute, race, alias).
@@ -273,7 +424,7 @@ impl Prints {
 
     /// The passcode the core wants for a declared card name (Konami id `cid`): the original's, not an artwork's.
     pub fn declared(&self, cards: &Cards, cid: u32) -> u32 {
-        let code = cards.passcode(cid).or_else(|| self.passcodes.get(&cid).copied()).unwrap_or(0);
+        let code = cards.official(cid).or_else(|| self.passcodes.get(&cid).copied()).unwrap_or(0);
         cards.alias(code).filter(|a| *a != 0).unwrap_or(code)
     }
 
@@ -301,7 +452,7 @@ mod tests {
             std::fs::write(dir.join(name), text).unwrap();
         }
         let vendor = engine.join("vendor");
-        let library = Library { vendor: vendor.clone(), overrides: overrides_dir(&vendor), rows: HashMap::new(), scripts: Mutex::default() };
+        let library = Library { vendor: vendor.clone(), overrides: overrides_dir(&vendor), rows: HashMap::new(), scripts: Mutex::default(), anime: false };
         let text = |name: &str| library.script(name).map(|t| String::from_utf8(t.to_vec()).unwrap());
         assert_eq!(text("c1.lua").as_deref(), Some("ours 1"));
         assert_eq!(text("c2.lua").as_deref(), Some("upstream 2"), "a card without an override plays ProjectIgnis' script");

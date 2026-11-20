@@ -16,6 +16,9 @@
 //! ocgcore-wasm 0.1.6 parsed them, decode.rs), with a Konami id (`cid`) beside every passcode. The engine directory (the
 //! one holding `vendor/`, from `engine/fetch.sh`) is the first argument, else this program's own directory's parent
 //! when it sits in `engine/bin/`, else `engine/` under the current directory.
+//!
+//! With the environment variable `YO3_ANIME=1` (the server's `anime-cards` setting) the cards `anime-cards.json` approves
+//! play as their anime versions: their data from the unofficial database, their scripts from `unofficial/` (cards.rs).
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 
@@ -65,6 +68,7 @@ fn lua_files(dir: &Path, prefix: &str, out: &mut Vec<String>) {
 /// The engine's exact dependencies, for replaying a recorded duel: this program (the core and its bindings are built
 /// into it), the card scripts (ProjectIgnis' and our overrides), the card database and the Konami ids.
 pub fn identity(vendor: &Path) -> serde_json::Value {
+    let anime = anime_on();
     let exe = std::env::current_exe().map(|e| file_sha256(&e)).unwrap_or_else(|_| sha256(b""));
     let mut scripts = ring::digest::Context::new(&ring::digest::SHA256);
     // ProjectIgnis' scripts, then ours (engine/overrides/, which take precedence) under a prefix of their own.
@@ -87,7 +91,16 @@ pub fn identity(vendor: &Path) -> serde_json::Value {
         "scripts": scripts,
         "database": file_sha256(&vendor.join("BabelCDB/cards.cdb")),
         "card_ids": file_sha256(&vendor.join("cardinfo.json")),
+        // The anime versions: whether they are on, and the map and database they read.
+        "anime": anime,
+        "anime_map": if anime { file_sha256(&cards::anime_map_file(vendor)) } else { String::new() },
+        "database_unofficial": if anime { file_sha256(&vendor.join("BabelCDB/cards-unofficial.cdb")) } else { String::new() },
     })
+}
+
+/// Whether the anime card versions are on (`YO3_ANIME=1`).
+fn anime_on() -> bool {
+    std::env::var("YO3_ANIME").is_ok_and(|v| v == "1")
 }
 
 fn main() {
@@ -100,7 +113,7 @@ fn main() {
         std::process::exit(2);
     }
     let vendor = engine_dir().join("vendor");
-    let cards = match cards::Cards::open(&vendor) {
+    let cards = match cards::Cards::open_with(&vendor, anime_on()) {
         Ok(cards) => cards,
         Err(e) => {
             eprintln!("yo3-engine: {e}");

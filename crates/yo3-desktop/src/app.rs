@@ -252,7 +252,7 @@ impl App {
             Message::Minimize => return window::latest().and_then(|id| window::minimize(id, true)),
             Message::CloseRequested => {
                 let friends = self.host.hosted.is_some() && self.host.activity.online > 0;
-                if self.home.game.running || self.home.game.starting.is_some() || friends { self.dialog = Some(Dialog::ConfirmClose) } else { return self.update(Message::Quit) }
+                if self.home.game.running || self.home.game.starting.is_some() || self.home.game.extras > 0 || friends { self.dialog = Some(Dialog::ConfirmClose) } else { return self.update(Message::Quit) }
             }
             Message::Quit => {
                 if self.quitting { return Task::none() }
@@ -262,7 +262,8 @@ impl App {
                 let settings = self.ctx.settings.clone();
                 // Your own server lives as long as the launcher (until #29 ties it to the game).
                 return job(move || {
-                    backend.stop_game()?;
+                    // Every game the launcher started closes with it, the extra ones of Play as… too (#64).
+                    backend.close_all_games(&settings)?;
                     let _ = backend.stop_hosting();
                     if backend.live(&settings).is_some() { backend.stop_server(&settings)?; }
                     Ok(())
@@ -546,6 +547,8 @@ impl App {
             }
             Dialog::ConfirmClose => short("Close YO3 Revival?", None, if self.host.hosted.is_some() && self.host.activity.online > 0 {
                     "Friends are playing on your server. Closing YO3 Revival stops it, and the game too if it is open.".into()
+                } else if self.home.game.extras > 0 {
+                    "Games are open. Closing YO3 Revival also closes all of them, and your server.".into()
                 } else { "The game is open. Closing YO3 Revival also closes the game and your server.".into() },
                 row![pill("Cancel", Some(close), Kind::Secondary, 110, 38), pill("Close", Some(Message::Quit), Kind::Danger, 120, 38)], 210.0),
         }
@@ -565,6 +568,7 @@ impl App {
         if foreign.confirm {
             body = body.push(say(format!("Move {} aside? It is renamed so that Windows doesn't load it, not deleted. Settings, Advanced can put it back.", files.join(", "))));
         } else {
+            if held.clean { body = body.push(say(yo3_desktop::foreign::CLEAN_GAME.into())) }
             if !taken.is_empty() {
                 body = body.push(say(format!("{} has taken over the game's network connection, so YO3 Revival can't keep the connection safe and won't start the game. \
                     Close that program, or move its file away, then press PLAY again.", taken.join(", "))));
@@ -615,7 +619,8 @@ impl App {
         // Only files the game didn't load: nothing is running inside the game, so the title says what was found.
         let loaded = held.loaded_files();
         let only_present = taken.is_empty() && security.is_empty() && providers.is_empty() && files.iter().all(|f| !loaded.contains(f));
-        let title = if held.blocked { "YO3 Revival can't start the game safely" }
+        let title = if held.clean { "This server asks for a clean game" }
+            else if held.blocked { "YO3 Revival can't start the game safely" }
             else if only_present { "A file in your game folder isn't part of the game" }
             else { "Another program is running in your game" };
         yo3_skin::dialog(title,

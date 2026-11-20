@@ -9,7 +9,7 @@ pub fn bot_answer(m: &Json) -> Json {
 /// [`bot_answer`], typed.
 pub fn bot_response(m: &Json) -> Response {
     match Ask::lenient(m) {
-        Ok(Some(ask)) => cpu_response(&ask),
+        Ok(Some(ask)) => cpu_response(&ask, m),
         Ok(None) => {
             tracing::warn!("rules engine: no answer for prompt {}", m["type"]);
             Response::Chain(None)
@@ -134,7 +134,7 @@ pub(super) fn cpu_answer(m: &Json) -> Json {
     bot_answer(m)
 }
 
-fn cpu_response(ask: &Ask) -> Response {
+fn cpu_response(ask: &Ask, m: &Json) -> Response {
     let first = |min: u64, max: u64, len: usize| (0..(min.max(1) as usize).min(max as usize).min(len)).collect::<Vec<_>>();
     match ask {
         Ask::IdleCmd(p) => {
@@ -153,7 +153,14 @@ fn cpu_response(ask: &Ask) -> Response {
         Ask::BattleCmd(_) => Response::BattleCmd { action: battle::TO_EP, index: None },
         Ask::Chain(p) => Response::Chain(p.forced.then_some(0)),
         Ask::Card(p) => Response::Card(Some(first(p.min, p.max, p.selects.len()))),
-        Ask::Tribute(p) => Response::Tribute(Some(first(p.min, p.max, p.selects.len()))),
+        Ask::Tribute(p) => {
+            // The cards that count most first, as many as make the Tribute (a double Tribute counts for two).
+            let params = release_params(m);
+            let mut order: Vec<usize> = (0..p.selects.len()).collect();
+            order.sort_by_key(|&i| std::cmp::Reverse(params.get(i).copied().unwrap_or(1)));
+            order.truncate((tribute_view(m, p).min.max(1) as usize).min(p.selects.len()));
+            Response::Tribute(Some(order))
+        }
         Ask::UnselectCard(p) => {
             // Finishing with nothing picked cancels: Panther Warrior's attack (a Tribute to declare it) came back
             // again and again. Pick first.

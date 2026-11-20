@@ -8,6 +8,11 @@ use yo3_launcher::survey::{Decision, Finding, Survey};
 
 /// What a file moved aside ends with.
 pub const SUFFIX: &str = ".yo3-disabled";
+/// What a server that asks for a clean game says (#69): it is the host's rule for friends' games, and other servers are
+/// not affected.
+pub const CLEAN_GAME: &str = "This server asks for a clean game: no other program's files in your game folder, nothing in Windows' network path \
+    that isn't Microsoft's, and nothing watching the game's connection. Remove what is listed below, then press PLAY again. Other servers and \
+    your own Singleplayer don't ask for this.";
 /// The command that clears a Winsock provider left by other software: the player runs it, as administrator.
 pub const WINSOCK_RESET: &str = "netsh winsock reset";
 
@@ -16,7 +21,9 @@ pub fn survey_file(ready: &Path) -> PathBuf { ready.with_extension("survey.json"
 
 /// Why a start stopped before the game ran: what was found, and whether Continue anyway is possible.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Held { pub findings: Vec<Finding>, pub blocked: bool }
+pub struct Held { pub findings: Vec<Finding>, pub blocked: bool,
+    /// The server asks for a clean game (#69): this stop is its policy, not the game's safety, and there is no Continue anyway.
+    pub clean: bool }
 
 impl Held {
     /// The helper's report in `file`, when it stopped the game for it.
@@ -25,7 +32,7 @@ impl Held {
         let blocked = match survey.decision? { Decision::Went => return None, Decision::Held => false, Decision::Blocked => true };
         let verdict = survey.assessment();
         let findings: Vec<Finding> = verdict.all().cloned().collect();
-        (!findings.is_empty()).then_some(Self { findings, blocked })
+        (!findings.is_empty()).then_some(Self { findings, blocked, clean: survey.clean_game })
     }
     /// The other programs' files the findings name, by file name: what Move it aside can rename (it only touches
     /// `.dll` and `.asi` files directly in the game folder, whatever else a finding names).
@@ -205,8 +212,24 @@ mod tests {
     }
 
     #[test]
+    fn a_clean_game_servers_refusal_is_read_with_its_policy_and_says_it_in_plain_words() {
+        let dir = folder("clean");
+        let file = dir.join("survey.json");
+        let survey = Survey { modules: vec![Module { name: "dinput8.dll".into(), path: "C:\\g\\dinput8.dll".into(), game_folder: true, ..Module::default() }], ..Survey::default() };
+        std::fs::write(&file, serde_json::to_vec(&survey).unwrap()).unwrap();
+        yo3_launcher::survey::record_decision_on(&file, Decision::Blocked, true).unwrap();
+        let held = Held::read(&file).unwrap();
+        assert!(held.blocked && held.clean, "no Continue anyway on that server");
+        assert_eq!(held.files(), ["dinput8.dll"], "Move it aside is still there");
+        yo3_launcher::survey::record_decision_on(&file, Decision::Held, false).unwrap();
+        assert!(!Held::read(&file).unwrap().clean, "another server: the usual dialog");
+        assert!(crate::words::technical(CLEAN_GAME).is_none(), "plain words");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn the_findings_are_sorted_into_what_the_player_can_act_on() {
-        let held = Held { blocked: false, findings: vec![
+        let held = Held { blocked: false, clean: false, findings: vec![
             Finding::Provider { name: "Old VPN".into(), path: String::new() },
             Finding::Hooked { function: "send".into(), how: "detour".into(), module: "aswhook.dll".into(), path: "C:\\a".into(), product: "Avast".into() },
             Finding::Hooked { function: "recv".into(), how: "detour".into(), module: "x.dll".into(), path: "C:\\x".into(), product: "Avast".into() },
@@ -220,7 +243,7 @@ mod tests {
     #[test]
     fn a_file_only_present_in_the_game_folder_is_told_apart_from_one_the_game_loaded() {
         let file = |name: &str, loaded| Finding::GameFolderFile { name: name.into(), path: String::new(), size: 1, sha256: String::new(), loaded };
-        let held = Held { blocked: false, findings: vec![file("loaded.dll", true), file("idle.dll", false)] };
+        let held = Held { blocked: false, clean: false, findings: vec![file("loaded.dll", true), file("idle.dll", false)] };
         assert_eq!((held.files(), held.loaded_files()), (vec!["idle.dll".to_string(), "loaded.dll".to_string()], vec!["loaded.dll".to_string()]));
     }
 

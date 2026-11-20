@@ -72,3 +72,235 @@ fn mirror_force_destroys_the_attacker() {
     assert_eq!((s.lp(0), s.lp(1)), (8000, 8000));
     clean(&s);
 }
+
+// The preset decks' effect cards that the self-play never exercised (`tools/engine/coverage.py --decks`): Yusei's first,
+// then the other characters'. Texts are the pinned card data's (`tools/engine/cardtext.py`), which can be worded
+// differently from the client's 2010-2012 card text; where they differ the test says which one it follows.
+const QUICKDRAW_SYNCHRON: u16 = 8439;
+const TURRET_WARRIOR: u16 = 8004;
+const ZERO_GARDNA: u16 = 8441;
+const BRIONAC: u16 = 7548;
+const MIST_VALLEY_SOLDIER: u16 = 7532;
+const EMERGENCY_TELEPORT: u16 = 7747;
+const PSYCHIC_COMMANDER: u16 = 7718;
+const ASSAULT_BEAST: u16 = 8022;
+const ASSAULT_MODE_ACTIVATE: u16 = 8058;
+const DEBRIS_DRAGON: u16 = 8005;
+const JINZO: u16 = 4758;
+const MARSHMALLON: u16 = 6000;
+const CYBER_DRAGON: u16 = 6390;
+const COMMAND_KNIGHT: u16 = 5017;
+
+/// A 40-card main deck whose opening hand is `hand` (the last five cards), the rest Gene-Warped Warwolves: the draws
+/// after the opening hand are Warwolves too.
+fn deck_with(hand: &[u16]) -> Vec<u16> {
+    let mut deck = vec![WARWOLF; 40 - hand.len()];
+    deck.extend_from_slice(hand);
+    deck
+}
+
+/// Quickdraw Synchron (8439): "You can Special Summon this card (from your hand) by sending 1 monster from your hand to
+/// the GY." Its own procedure, no Normal Summon used.
+#[test]
+fn quickdraw_synchron_special_summons_itself_for_a_discard() {
+    let Some(mut s) = start([(&deck_with(&[WARWOLF, QUICKDRAW_SYNCHRON]), &[]), (&[WARWOLF; 40], &[])]) else { return };
+    s.run(&[SpSummon(QUICKDRAW_SYNCHRON)]).unwrap();
+    assert!(s.monster(0, QUICKDRAW_SYNCHRON).is_some(), "{}", s.state());
+    assert_eq!(s.count(0, "grave", WARWOLF), 1, "one monster went to the Graveyard for it");
+    clean(&s);
+}
+
+/// Turret Warrior (8004): "You can Special Summon this card (from your hand) by Tributing 1 Warrior-Type monster, and if
+/// you do, it gains ATK equal to the Tributed monster's original ATK." Command Knight's 400 ATK bonus to Warriors goes
+/// with it, so the gain is its original 1200 only: 1200 + 1200.
+#[test]
+fn turret_warrior_gains_the_tributed_warriors_attack() {
+    let Some(mut s) = start([(&deck_with(&[COMMAND_KNIGHT, TURRET_WARRIOR]), &[]), (&[WARWOLF; 40], &[])]) else { return };
+    s.run(&[Summon(COMMAND_KNIGHT), SpSummon(TURRET_WARRIOR)]).unwrap();
+    assert_eq!(s.attack_of(0, TURRET_WARRIOR), Some(2400), "{}", s.state());
+    assert_eq!(s.count(0, "grave", COMMAND_KNIGHT), 1);
+    clean(&s);
+}
+
+/// Command Knight (5017): "All Warrior monsters you control gain 400 ATK." It is a Warrior itself: 1200 + 400.
+#[test]
+fn command_knight_gives_warriors_400_attack_itself_included() {
+    let Some(mut s) = start([(&deck_with(&[COMMAND_KNIGHT]), &[]), (&[WARWOLF; 40], &[])]) else { return };
+    s.run(&[Summon(COMMAND_KNIGHT)]).unwrap();
+    assert_eq!(s.attack_of(0, COMMAND_KNIGHT), Some(1600), "{}", s.state());
+    clean(&s);
+}
+
+/// Zero Gardna (8441): "You can Tribute this card to activate its effect. If you do, monsters you control cannot be
+/// destroyed by battle, and you take no Battle Damage during this turn. This effect can be activated during either
+/// player's turn." Chained to Gene-Warped Warwolf's attack on it, it is the Tribute and takes no damage.
+#[test]
+fn zero_gardna_saves_its_controller_from_battle_damage() {
+    let Some(mut s) = start([(&deck_with(&[ZERO_GARDNA]), &[]), (&[WARWOLF; 40], &[])]) else { return };
+    s.run_both([&[Summon(ZERO_GARDNA), ChainOnAttack(ZERO_GARDNA)], &[Summon(WARWOLF), Attack(WARWOLF)]]).unwrap();
+    assert_eq!(s.lp(0), 8000, "{}", s.state());
+    assert_eq!(s.count(0, "grave", ZERO_GARDNA), 1, "it was the Tribute");
+    clean(&s);
+}
+
+/// Mist Valley Soldier (7532): "At the end of the Damage Step, if this card battled an opponent's monster that was not
+/// destroyed: Return that opponent's monster to the hand." Spirit Reaper cannot be destroyed by battle. The effect is
+/// not optional in the card's text: it resolves without a question to the player.
+#[test]
+fn mist_valley_soldier_returns_the_monster_that_survived() {
+    let Some(mut s) = start([(&deck_with(&[MIST_VALLEY_SOLDIER]), &[]), (&deck_with(&[SPIRIT_REAPER]), &[])]) else { return };
+    s.run_both([&[Summon(MIST_VALLEY_SOLDIER), Attack(MIST_VALLEY_SOLDIER)], &[Summon(SPIRIT_REAPER)]]).unwrap();
+    assert!(s.monster(1, SPIRIT_REAPER).is_none(), "{}", s.state());
+    assert_eq!(s.count(1, "hand", SPIRIT_REAPER), 1);
+    clean(&s);
+}
+
+/// Brionac, Dragon of the Ice Barrier (7548): "You can discard any number of cards to the GY, then target the same
+/// number of cards your opponent controls; return those cards to the hand." Synchro Summoned from Junk Synchron and
+/// Zubaba Knight, it discards one card and returns Gene-Warped Warwolf.
+#[test]
+fn brionac_returns_a_card_for_each_card_discarded() {
+    let hand = [WARWOLF, ZUBABA_KNIGHT, JUNK_SYNCHRON];
+    let Some(mut s) = start([(&deck_with(&hand), &[BRIONAC]), (&[WARWOLF; 40], &[])]) else { return };
+    // The client's text lets it return any player's cards from the field, so the target is chosen: not Brionac itself.
+    s.prefer(&[(1, WARWOLF)]);
+    let plan = [Summon(ZUBABA_KNIGHT), Summon(JUNK_SYNCHRON), SpSummon(BRIONAC), Activate(BRIONAC)];
+    s.run_both([&plan, &[Summon(WARWOLF)]]).unwrap();
+    assert!(s.monster(0, BRIONAC).is_some());
+    assert!(s.monster(1, WARWOLF).is_none(), "{}", s.state());
+    assert_eq!(s.count(0, "grave", WARWOLF), 1, "the discard");
+    clean(&s);
+}
+
+/// Emergency Teleport (7747): "Special Summon 1 Level 3 or lower Psychic monster from your hand or Deck, but banish it
+/// during the End Phase of this turn." Psychic Commander comes and goes at the End Phase.
+#[test]
+fn emergency_teleport_summons_a_psychic_and_banishes_it_at_the_end_phase() {
+    let Some(mut s) = start([(&deck_with(&[EMERGENCY_TELEPORT, PSYCHIC_COMMANDER]), &[]), (&[WARWOLF; 40], &[])]) else { return };
+    s.run(&[Activate(EMERGENCY_TELEPORT)]).unwrap();
+    assert!(s.monster(0, PSYCHIC_COMMANDER).is_some(), "{}", s.state());
+    s.run(&[EndTurn]).unwrap();
+    assert!(s.monster(0, PSYCHIC_COMMANDER).is_none(), "{}", s.state());
+    assert_eq!(s.count(0, "removed", PSYCHIC_COMMANDER), 1);
+    clean(&s);
+}
+
+/// Assault Beast (8022): "You can discard this card to the GY; add 1 "Assault Mode Activate" from your Deck to your hand."
+#[test]
+fn assault_beast_fetches_assault_mode_activate() {
+    let mut deck = deck_with(&[ASSAULT_BEAST]);
+    deck[0] = ASSAULT_MODE_ACTIVATE;
+    let Some(mut s) = start([(&deck, &[]), (&[WARWOLF; 40], &[])]) else { return };
+    s.run(&[Activate(ASSAULT_BEAST)]).unwrap();
+    assert_eq!(s.count(0, "hand", ASSAULT_MODE_ACTIVATE), 1, "{}", s.state());
+    assert_eq!(s.count(0, "grave", ASSAULT_BEAST), 1);
+    clean(&s);
+}
+
+/// Jinzo (4758): "Trap Cards, and their effects on the field, cannot be activated. Negate all Trap effects on the
+/// field." The opponent's Set Mirror Force can't answer its attack, so the 2400 goes through.
+#[test]
+fn jinzo_stops_a_set_trap() {
+    let Some(mut s) = start([(&deck_with(&[WARWOLF, JINZO]), &[]), (&deck_with(&[MIRROR_FORCE]), &[])]) else { return };
+    s.run_both([&[Summon(WARWOLF), Summon(JINZO), Attack(JINZO)], &[SetSpell(MIRROR_FORCE)]]).unwrap();
+    assert_eq!(s.lp(1), 8000 - 2400, "{}", s.state());
+    assert_eq!(s.count(1, "szone", MIRROR_FORCE), 1, "Mirror Force stayed Set");
+    assert!(s.monster(0, JINZO).is_some());
+    clean(&s);
+}
+
+/// Marshmallon (6000): "Cannot be destroyed by battle. After damage calculation, if this card was attacked, and was
+/// face-down at the start of the Damage Step: The attacking player takes 1000 damage."
+#[test]
+fn marshmallon_hurts_the_attacker_of_a_face_down_card() {
+    let Some(mut s) = start([(&deck_with(&[MARSHMALLON]), &[]), (&[WARWOLF; 40], &[])]) else { return };
+    s.run_both([&[SetMonster(MARSHMALLON)], &[Summon(WARWOLF), Attack(WARWOLF)]]).unwrap();
+    assert!(s.monster(0, MARSHMALLON).is_some(), "{}", s.state());
+    assert_eq!((s.lp(0), s.lp(1)), (8000, 7000));
+    clean(&s);
+}
+
+/// Cyber Dragon (6390): "If only your opponent controls a monster, you can Special Summon this card (from your hand)."
+#[test]
+fn cyber_dragon_comes_when_only_the_opponent_has_a_monster() {
+    let Some(mut s) = start([(&deck_with(&[CYBER_DRAGON]), &[]), (&[WARWOLF; 40], &[])]) else { return };
+    s.run_both([&[SpSummon(CYBER_DRAGON)], &[Summon(WARWOLF)]]).unwrap();
+    assert_eq!(s.attack_of(0, CYBER_DRAGON), Some(2100), "{}", s.state());
+    clean(&s);
+}
+
+/// Debris Dragon (8005): "When this card is Normal Summoned: You can target 1 monster with 500 or less ATK in your GY;
+/// Special Summon that target in Attack Position, but negate its effects." Spirit Reaper (300 ATK) is in the Graveyard
+/// as Quickdraw Synchron's discard.
+#[test]
+fn debris_dragon_brings_back_a_weak_monster() {
+    let hand = [SPIRIT_REAPER, SPIRIT_REAPER, SPIRIT_REAPER, DEBRIS_DRAGON, QUICKDRAW_SYNCHRON];
+    let Some(mut s) = start([(&deck_with(&hand), &[]), (&[WARWOLF; 40], &[])]) else { return };
+    s.prefer(&[(0, SPIRIT_REAPER)]);
+    s.run(&[SpSummon(QUICKDRAW_SYNCHRON), Summon(DEBRIS_DRAGON)]).unwrap();
+    assert!(s.monster(0, SPIRIT_REAPER).is_some(), "{}", s.state());
+    assert_eq!(s.position_of(0, SPIRIT_REAPER), Some(1), "in Attack Position");
+    clean(&s);
+}
+
+const KURIBOH: u16 = 4064;
+const SCRAP_IRON_SCARECROW: u16 = 7694;
+
+/// Kuriboh (4064): "During damage calculation, if your opponent's monster attacks (Quick Effect): You can discard this
+/// card; you take no battle damage from that battle." Command Knight (1200) attacked by Gene-Warped Warwolf (2000) is
+/// destroyed, but its controller loses no Life Points.
+#[test]
+fn kuriboh_takes_the_battle_damage_away() {
+    let Some(mut s) = start([(&deck_with(&[COMMAND_KNIGHT, KURIBOH]), &[]), (&[WARWOLF; 40], &[])]) else { return };
+    s.run_both([&[Summon(COMMAND_KNIGHT), ChainOnAttack(KURIBOH)], &[Summon(WARWOLF), Attack(WARWOLF)]]).unwrap();
+    assert_eq!(s.lp(0), 8000, "{}", s.context());
+    assert_eq!(s.count(0, "grave", KURIBOH), 1, "discarded for its effect");
+    assert_eq!(s.count(0, "grave", COMMAND_KNIGHT), 1, "the battle still destroyed it");
+    clean(&s);
+}
+
+/// Scrap-Iron Scarecrow (7694): "When an opponent's monster declares an attack: Target the attacking monster; negate the
+/// attack, also, after that, Set this card face-down instead of sending it to the GY." Set, it stops Warwolf's direct
+/// attack and is Set again.
+#[test]
+fn scrap_iron_scarecrow_negates_an_attack_and_sets_itself_again() {
+    let Some(mut s) = start([(&deck_with(&[SCRAP_IRON_SCARECROW]), &[]), (&[WARWOLF; 40], &[])]) else { return };
+    s.run_both([&[SetSpell(SCRAP_IRON_SCARECROW), ChainOnAttack(SCRAP_IRON_SCARECROW)], &[Summon(WARWOLF), Attack(WARWOLF)]]).unwrap();
+    assert_eq!(s.lp(0), 8000, "{}", s.context());
+    assert_eq!(s.count(0, "szone", SCRAP_IRON_SCARECROW), 1, "Set again: {}", s.context());
+    clean(&s);
+}
+
+const DOUBLE_COSTON: u16 = 6040;
+const DARK_MAGICIAN: u16 = 4041;
+
+/// Double Coston (6040): "This card can be treated as 2 Tributes for the Tribute Summon of a DARK monster." It alone is
+/// the Tribute for Dark Magician (Level 7, DARK). The engine's Tribute prompt asks for 2 and offers one card with
+/// `release_param` 2, which the translator now reads (it stopped the duel before).
+#[test]
+fn double_coston_is_the_tribute_for_a_level_7_dark_monster() {
+    let Some(mut s) = start([(&deck_with(&[DOUBLE_COSTON, DARK_MAGICIAN]), &[]), (&[WARWOLF; 40], &[])]) else { return };
+    s.run(&[Summon(DOUBLE_COSTON), Summon(DARK_MAGICIAN)]).unwrap();
+    assert!(s.monster(0, DARK_MAGICIAN).is_some(), "{}", s.context());
+    assert_eq!(s.count(0, "grave", DOUBLE_COSTON), 1);
+    clean(&s);
+}
+
+const FAMILIAR_POSSESSED_WYNN: u16 = 6510;
+const WYNN_THE_WIND_CHARMER: u16 = 6338;
+const HUNTER_OWL: u16 = 7038;
+
+/// Familiar-Possessed - Wynn (6510): "You can Special Summon this card (from your hand or Deck) by sending 1 face-up
+/// "Wynn the Wind Charmer" and 1 face-up WIND monster from your Monster Zone to the GY." Here from the Deck (the engine
+/// lists it at location 1, which the translator now offers on the Deck pile: `translate_contract.rs`).
+#[test]
+fn familiar_possessed_wynn_comes_from_the_deck() {
+    let mut deck = deck_with(&[WYNN_THE_WIND_CHARMER, HUNTER_OWL]);
+    deck[0] = FAMILIAR_POSSESSED_WYNN;
+    let Some(mut s) = start([(&deck, &[]), (&[WARWOLF; 40], &[])]) else { return };
+    s.run(&[Summon(WYNN_THE_WIND_CHARMER), Summon(HUNTER_OWL), SpSummon(FAMILIAR_POSSESSED_WYNN)]).unwrap();
+    assert!(s.monster(0, FAMILIAR_POSSESSED_WYNN).is_some(), "{}", s.context());
+    assert_eq!(s.count(0, "grave", WYNN_THE_WIND_CHARMER), 1, "its materials were sent to the Graveyard");
+    assert_eq!(s.count(0, "hand", FAMILIAR_POSSESSED_WYNN), 0, "it was not in the hand");
+    clean(&s);
+}

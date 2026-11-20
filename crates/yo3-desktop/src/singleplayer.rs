@@ -22,7 +22,8 @@ impl std::fmt::Display for Backup {
 impl Backend {
     /// The game's processes for this game's prefix (Linux) or on this PC (Windows), apart from the one Play started.
     pub fn game_open_elsewhere(&self, settings: &Settings) -> bool {
-        !self.game_running() && !game_pids(settings).is_empty()
+        // On Windows every game is a `yo3.exe`, the launcher's extra games (#64) too: they are not "elsewhere".
+        !self.game_running() && !(cfg!(windows) && self.has_extra_games()) && !game_pids(settings).is_empty()
     }
 
     /// Stops the game Play started, by force: the helper, then every game process of this prefix.
@@ -104,7 +105,14 @@ fn backups_in(dir: &Path) -> Vec<Backup> {
 fn game_pids(settings: &Settings) -> Vec<u32> {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
     let ours = if settings.wine_prefix.is_empty() { home.join(".wine") } else { PathBuf::from(&settings.wine_prefix) };
-    let ours = ours.canonicalize().unwrap_or(ours);
+    pids_in_prefix(&ours)
+}
+
+/// The game processes (`yo3.exe`) that run in the Wine prefix `ours`.
+#[cfg(not(windows))]
+pub(crate) fn pids_in_prefix(ours: &Path) -> Vec<u32> {
+    let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
+    let ours = ours.canonicalize().unwrap_or_else(|_| ours.to_path_buf());
     std::fs::read_dir("/proc").into_iter().flatten().flatten().filter_map(|entry| {
         let pid: u32 = entry.file_name().to_str()?.parse().ok()?;
         let name = std::fs::read(entry.path().join("comm")).ok()?;
@@ -119,6 +127,10 @@ fn game_pids(settings: &Settings) -> Vec<u32> {
 
 #[cfg(not(windows))]
 fn kill(pid: u32) { let _ = std::process::Command::new("kill").args(["-KILL", &pid.to_string()]).status(); }
+
+/// Ends process `pid` by force.
+#[cfg(not(windows))]
+pub(crate) fn kill_pid(pid: u32) { kill(pid) }
 
 #[cfg(windows)]
 fn game_pids(_settings: &Settings) -> Vec<u32> {

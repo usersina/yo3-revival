@@ -2319,6 +2319,581 @@
         ]
       }
     },
+    "/panel/api/v1/events": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "operationId": "listEvents",
+        "responses": {
+          "200": {
+            "description": "The Stadium's official events with their standings, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already handled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stored data could not be read or written",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "staffSession": []
+          }
+        ]
+      }
+    },
+    "/panel/api/v1/events/cancel": {
+      "post": {
+        "tags": [
+          "Events"
+        ],
+        "operationId": "cancelEvent",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "One ID per change; the same change again is answered as done.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 16,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelEventRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The event, cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already handled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stored data could not be read or written",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "staffSession": []
+          }
+        ]
+      }
+    },
+    "/panel/api/v1/events/create": {
+      "post": {
+        "tags": [
+          "Events"
+        ],
+        "operationId": "createEvent",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "One ID per change; the same change again is answered as done.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 16,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEventRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The event, scheduled (an identical one made again is answered as done)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already handled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stored data could not be read or written",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "staffSession": []
+          }
+        ]
+      }
+    },
+    "/panel/api/v1/events/edit": {
+      "post": {
+        "tags": [
+          "Events"
+        ],
+        "operationId": "editEvent",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "One ID per change; the same change again is answered as done.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 16,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditEventRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The event, changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already handled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stored data could not be read or written",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "staffSession": []
+          }
+        ]
+      }
+    },
     "/panel/api/v1/gifts": {
       "post": {
         "tags": [
@@ -5258,7 +5833,8 @@
           "reset_pending",
           "players",
           "banlist",
-          "checked_at"
+          "checked_at",
+          "linked_accounts"
         ],
         "properties": {
           "banlist": {
@@ -5289,6 +5865,13 @@
           },
           "has_key": {
             "type": "boolean"
+          },
+          "linked_accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LinkedAccount"
+            },
+            "description": "Accounts seen on the same PC or address (#64): what a host's fair-play rules treat as one player."
           },
           "login": {
             "type": [
@@ -5998,6 +6581,21 @@
           }
         }
       },
+      "CancelEventRequest": {
+        "type": "object",
+        "required": [
+          "event_id"
+        ],
+        "properties": {
+          "event_id": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "CardChoice": {
         "type": "object",
         "required": [
@@ -6197,6 +6795,47 @@
           }
         }
       },
+      "CreateEventRequest": {
+        "type": "object",
+        "required": [
+          "kind",
+          "name",
+          "start",
+          "end"
+        ],
+        "properties": {
+          "end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/Kind"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1
+          },
+          "prize": {
+            "$ref": "#/components/schemas/Prize"
+          },
+          "regulation": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "A banlist's id (`/panel/api/v1/banlists`); omitted: any.",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
       "CreateInviteRequest": {
         "type": "object",
         "properties": {
@@ -6374,6 +7013,64 @@
           }
         }
       },
+      "EditEventRequest": {
+        "type": "object",
+        "description": "What to change in an event that hasn't finished; what is left out stays.",
+        "required": [
+          "event_id"
+        ],
+        "properties": {
+          "end": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "event_id": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 60,
+            "minLength": 1
+          },
+          "prize": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Prize"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "regulation": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "A banlist's id; 0 for any.",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "start": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
       "EffectState": {
         "type": "string",
         "enum": [
@@ -6386,6 +7083,167 @@
       "EmptyRequest": {
         "type": "object",
         "additionalProperties": false
+      },
+      "Entry": {
+        "type": "object",
+        "description": "A player's standing in one event.",
+        "required": [
+          "player_id",
+          "name",
+          "score",
+          "best",
+          "wins",
+          "losses",
+          "draws",
+          "paid"
+        ],
+        "properties": {
+          "best": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The best score reached: what the prize and the Tournament Points count (a streak ends, the best stays).",
+            "minimum": 0
+          },
+          "draws": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "losses": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "paid": {
+            "type": "boolean",
+            "description": "The prize has been paid (or there was none)."
+          },
+          "player_id": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "score": {
+            "type": "integer",
+            "format": "int32",
+            "description": "What the client shows as `event_score`: the current win streak (Gunslinger), the wins or the stars.",
+            "minimum": 0
+          },
+          "wins": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "EventList": {
+        "type": "object",
+        "required": [
+          "events",
+          "checked_at"
+        ],
+        "properties": {
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EventView"
+            }
+          }
+        }
+      },
+      "EventResult": {
+        "type": "object",
+        "required": [
+          "event",
+          "message"
+        ],
+        "properties": {
+          "event": {
+            "$ref": "#/components/schemas/EventView"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "EventView": {
+        "type": "object",
+        "required": [
+          "event_id",
+          "kind",
+          "counts",
+          "name",
+          "start",
+          "end",
+          "prize",
+          "phase",
+          "entrants",
+          "standings"
+        ],
+        "properties": {
+          "counts": {
+            "type": "string",
+            "description": "What the kind's score counts: win streak, wins or stars."
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "entrants": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The players who entered its lobby.",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "event_id": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "kind": {
+            "$ref": "#/components/schemas/Kind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/Phase"
+          },
+          "prize": {
+            "$ref": "#/components/schemas/Prize"
+          },
+          "regulation": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The banlist entrants must log in with (a regulation id); none: any.",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "standings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Entry"
+            },
+            "description": "The ten best standings."
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
       },
       "GiftChoices": {
         "type": "object",
@@ -6979,6 +7837,51 @@
           }
         }
       },
+      "Kind": {
+        "type": "string",
+        "enum": [
+          "gunslinger",
+          "duelist-trial",
+          "evolution",
+          "ultimate",
+          "anniversary"
+        ]
+      },
+      "LinkedAccount": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "players",
+          "shared"
+        ],
+        "properties": {
+          "login": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "players": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "shared": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What they share: `device`, `address` or both."
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          }
+        }
+      },
       "LogEntry": {
         "type": "object",
         "required": [
@@ -7356,6 +8259,16 @@
           }
         }
       },
+      "Phase": {
+        "type": "string",
+        "description": "Where an event is in time, for the staff (the game sees only its `status` number).",
+        "enum": [
+          "scheduled",
+          "running",
+          "finished",
+          "cancelled"
+        ]
+      },
       "PlayerDetail": {
         "type": "object",
         "required": [
@@ -7472,6 +8385,32 @@
             "minimum": 0
           }
         }
+      },
+      "Prize": {
+        "type": "object",
+        "description": "What an event pays, in BP (the original's Special Packs don't exist here): to everyone who played a duel of it, and\nbesides to everyone whose best score reached the threshold.",
+        "properties": {
+          "participation_bp": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1000000,
+            "minimum": 0
+          },
+          "threshold": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The best score that earns `threshold_bp` (0: no threshold).",
+            "maximum": 9999,
+            "minimum": 0
+          },
+          "threshold_bp": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1000000,
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       },
       "RecipeChoice": {
         "type": "object",

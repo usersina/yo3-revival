@@ -425,13 +425,16 @@ struct Waiting {
     /// list pairs (#63).
     regulation: u32,
     record: Message,
+    /// The official event they entered (`0x1798`'s event_id): only entrants of the same one are matched (#18).
+    event: Option<u32>,
 }
 
 impl Waiting {
-    /// Whether two waiting players may duel: the same Rule Format (Both fits either) and the same banlist.
+    /// Whether two waiting players may duel: the same official event (or none), the same Rule Format (Both fits either)
+    /// and the same banlist.
     fn fits(&self, other: &Waiting) -> bool {
         let (a, b) = (self.match_type, other.match_type);
-        self.regulation == other.regulation && (a == b || a == EITHER_MODE || b == EITHER_MODE)
+        self.event == other.event && self.regulation == other.regulation && (a == b || a == EITHER_MODE || b == EITHER_MODE)
     }
 }
 
@@ -445,6 +448,8 @@ struct Match {
     watchable: bool,
     /// When it was made, for [`NO_JOIN`].
     made: std::time::Instant,
+    /// The official event it counts for (#18).
+    event: Option<u32>,
 }
 
 /// How long a match may go without either player's duel connection before it ends with neither (both match pushes
@@ -587,6 +592,8 @@ pub struct World {
     pub card_names: HashMap<u16, String>,
     /// The CARD_Prop rows of Fusion and Synchro Monsters, which belong in the Extra Deck (the deck check).
     pub extra_deck_rows: std::collections::HashSet<u16>,
+    /// The card profiles the server can pin (`profile.rs`, issue #60): `card_view` is what duels and decks read.
+    pub profiles: crate::profile::Profiles,
     /// Testing aid: each player's LP at the start of every duel, over the `start-lp` setting and a hosted duel's own.
     pub test_lp: Option<u32>,
     /// Testing aid: the regulation every duel's deck is checked against, over the duel's own.
@@ -649,6 +656,11 @@ pub fn information(settings: &crate::settings::Settings, engine_problem: bool, n
 /// (InfoIcon 0x44E130 shows it with enableIcon(1); nothing calls disableIcon(1)), so it stays until the next login.
 pub const MAINTENANCE_CANCELLED: &str = "Maintenance is cancelled: the wrench clears when you next log in.";
 
+/// What a linked pair is told after a duel (#64).
+pub const LINKED_DUEL: &str = "This duel doesn't count: your accounts play from the same PC or network, so it pays no BP and adds no record or title.";
+/// What a linked pair is told when one asks the other to trade or rent (#64).
+pub const LINKED_TRADE: &str = "You can't trade or rent with an account that plays from the same PC or network.";
+
 pub fn chat_note(from: &str, text: &str) -> Message {
     let line = Message::record().with("from_id", Value::U32(0)).with("pname", Value::text(from))
         .with("chat_type", Value::U32(crate::banter::NPC_CHAT)).with("chat_str", Value::text(text));
@@ -663,6 +675,31 @@ pub const DUELS_UNAVAILABLE: (&str, &str) = (
 );
 
 impl World {
+    /// The card data duels, deck checks and deck placement use now: the game's own, or the selected profile's.
+    pub fn card_view(&self) -> crate::profile::CardView {
+        match self.profiles.selected(self.settings.now().anime_cards) {
+            Some(view) => (**view).clone(),
+            None => crate::profile::CardView {
+                profile: Default::default(), cards: self.cards.clone(), card_kinds: self.card_kinds.clone(),
+                extra_deck_rows: self.extra_deck_rows.clone(), tuners: self.tuners.clone(),
+            },
+        }
+    }
+
+    /// `deck` with its cards in the lists the selected card profile puts them in (issue #60): a card the profile makes a
+    /// Main Deck card (Flame Swordsman as the anime's Normal Monster) moves from the Extra Deck to the main, and the other
+    /// way round when the game's own cards are selected again. Cards and quantities stay, in their order; only the cards the
+    /// anime profile covers move, so a deck the client's own rules already refuse stays as it is.
+    pub fn place_deck(&self, deck: &Deck) -> Deck {
+        let Some(anime) = &self.profiles.anime else { return deck.clone() };
+        let live = self.profiles.selected(self.settings.now().anime_cards);
+        let want_extra = |row: &u16| live.map_or_else(|| self.extra_deck_rows.contains(row), |v| v.extra_deck_rows.contains(row));
+        let mut placed = deck.clone();
+        let want = |row: u16| anime.profile.targets.contains_key(&row).then(|| want_extra(&row));
+        (placed.main, placed.extra) = yo3_proto::placement::place(&deck.main, &deck.extra, want);
+        placed
+    }
+
     pub fn new(regulation_ids: Vec<u16>) -> World {
         World {
             regulation_ids,
@@ -685,6 +722,7 @@ impl World {
             titles: Default::default(),
             card_names: HashMap::new(),
             extra_deck_rows: Default::default(),
+            profiles: Default::default(),
             engine_dir: None,
             engine_problem: None,
             test_lp: None,
@@ -772,6 +810,8 @@ pub struct Hub {
     last_event: u32,
     /// Where the events are kept (none: they end with the server).
     events_file: Option<std::path::PathBuf>,
+    /// The host's official events (the Stadium, #18) with the players' scores.
+    pub official: crate::official::Official,
     /// How long the lobby waits between an event's rounds (the winners go through the result screens first).
     round_delay: std::time::Duration,
     /// Where the duel logs are kept, and the HTTP port clients download them from (none: no logs).
@@ -788,7 +828,7 @@ pub struct Hub {
 pub(crate) struct AccountCleanup {
     social: Social, mail: Mailbox, teams: Teams, rentals: crate::rental::Rentals,
     records: HashMap<(u32, u32), [u32; 3]>, events: Vec<crate::events::Event>,
-    players: Vec<u32>, notices: Vec<(Vec<u32>, Message)>,
+    players: Vec<u32>, notices: Vec<(Vec<u32>, Message)>, official: crate::official::Official,
 }
 impl AccountCleanup {
     pub(crate) fn persist(&self, hub: &Hub) -> std::io::Result<()> {
@@ -903,7 +943,7 @@ impl Hub {
     pub fn set_watchable(&mut self, duel_id: u32, players: [u32; 2], watchable: bool) {
         self.matches.entry(duel_id)
             .and_modify(|m| m.watchable = watchable)
-            .or_insert(Match { players, rule: vec![], times: None, watchable, made: std::time::Instant::now() });
+            .or_insert(Match { players, rule: vec![], times: None, watchable, made: std::time::Instant::now(), event: None });
     }
 
     pub fn enter_duel(&mut self, player_id: u32, entry: DuelEntry) {
@@ -986,9 +1026,12 @@ impl Hub {
     /// A duel's end for one player: counts the result, saves the duel's log and pushes the `0x2009` that makes the
     /// client download it. Returns the log's file name (none without a log directory).
     pub fn finish_duel(&mut self, ended: &Ended) -> Option<String> {
-        let record = self.record_result(ended.player_id, ended.opponent, ended.result);
+        // Fair play (#64): a duel between linked accounts (one device or address) is played, but pays no BP and counts
+        // no record, title or rating.
+        let linked = !ended.npc && self.linked(ended.player_id, ended.opponent);
+        let record = if linked { self.records.get(&(ended.player_id, ended.opponent)).copied().unwrap_or_default() } else { self.record_result(ended.player_id, ended.opponent, ended.result) };
         let stats = ended.stats.clone().unwrap_or_default();
-        self.award_titles(ended.player_id, Some((&stats, ended.result, ended.start_lp)));
+        if !linked { self.award_titles(ended.player_id, Some((&stats, ended.result, ended.start_lp))); }
         let me = self.online.values().find(|o| o.player_id == ended.player_id);
         let (host, name, level) = me.map(|o| (o.host.clone(), o.name.clone(), o.level)).unwrap_or_default();
         let (opponent_name, opponent_level) = match self.online.values().find(|o| !ended.npc && o.player_id == ended.opponent) {
@@ -1032,11 +1075,104 @@ impl Hub {
             None => None,
         };
         let url = file.as_ref().map(|f| format!("http://{host}:{}/duellogs/{f}", self.http_port));
-        self.push(ended.player_id, &duel_over_with_log(ended.player_id, ended.result, record, url.as_deref()));
-        if !ended.npc {
+        let mut over = duel_over_with_log(ended.player_id, ended.result, record, url.as_deref());
+        // An official event's duel carries the player's new score: the dispatcher (0x4F4C9E) copies `score_<player_id>`
+        // into `event_score`, which the lobby and the result screen's star effect show. A duel between linked accounts
+        // (#64) scores nothing, as it pays nothing.
+        if !linked && let Some(score) = self.official_score(ended) {
+            over = over.with(&format!("score_{}", ended.player_id), Value::U32(score));
+        }
+        self.push(ended.player_id, &over);
+        if linked {
+            self.push(ended.player_id, &chat_note("Server", LINKED_DUEL));
+        } else if !ended.npc {
             self.ask_to_rate(ended.player_id, ended.opponent);
         }
         file
+    }
+
+    /// Whether two players' accounts are linked (seen on one device or address) while the server's fair-play rule
+    /// (`linked-accounts`) is on (#64).
+    pub fn linked(&self, a: u32, b: u32) -> bool {
+        let fair = self.settings.as_ref().is_none_or(|s| s.now().linked_fair);
+        fair && self.directory.as_ref().is_some_and(|d| d.locked().players_linked(a, b, crate::logins::now()))
+    }
+
+    /// The Stadium's list (`0x177B`, #18): the host's official events, each with `official` 1.
+    pub fn official_list(&self) -> Message {
+        let now = chrono::Utc::now().timestamp();
+        let shown = self.official.listed(now);
+        shown.iter().fold(Message::reply(0x177B).with("result_number", Value::U32(shown.len() as u32)), |m, e| m.item(e.row(now)))
+    }
+
+    /// The official event's lobby (`0x1780`, polled every 60 s by 0x4B0B70): the row with the player's own score.
+    fn official_lobby(&self, event_id: u32, player: u32) -> Message {
+        let now = chrono::Utc::now().timestamp();
+        match self.official.get(event_id) {
+            Some(e) => Message::reply(0x1780).item(e.row(now).with("event_score", Value::U32(e.entry(player).map_or(0, |s| s.score.min(crate::official::SCORE_SHOWN))))),
+            None => Message::reply(0x1781).with("error_code", Value::U32(0)),
+        }
+    }
+
+    /// `0x1784` for an official event: the player enters its lobby (their entry is made) and gets `join_id`, a non-zero
+    /// `server_id`, their `event_score` and the event's id echoed (without it the lobby shows "This event is now
+    /// finished" after a duel). None when the id isn't an official event's. An event not open refuses (`0x1786`).
+    fn official_join(&mut self, event_id: u32, player: u32, name: &str) -> Option<Message> {
+        use crate::official::{SCORE_SHOWN, SERVER_ID};
+        self.official.get(event_id)?;
+        let Some(entry) = self.official.join(event_id, player, name, chrono::Utc::now().timestamp()) else {
+            return Some(Message::reply(0x1786).with("error_code", Value::U32(0)));
+        };
+        self.last_join += 1;
+        Some(Message::reply(0x1785)
+            .with("join_id", Value::U32(self.last_join))
+            .with("server_id", Value::U32(SERVER_ID))
+            .with("event_score", Value::U32(entry.score.min(SCORE_SHOWN)))
+            .with("event_id", Value::U32(event_id)))
+    }
+
+    /// Whether a player may start matching in official event `event_id` (`0x1798`): None when they may, or when the id
+    /// isn't an official event's (the Auto Duel queue); else the error code of `0x179A` and what to tell them in the chat.
+    fn official_participate(&self, event_id: u32, player: u32, regulation: u32, banlists: &[(u32, String)]) -> Option<(u32, String)> {
+        let event = self.official.get(event_id)?;
+        if !event.is_open(chrono::Utc::now().timestamp()) { return Some((0, "This event is not running.".into())) }
+        match event.regulation.filter(|r| *r != regulation) {
+            Some(needed) => {
+                let name = banlists.iter().find(|(id, _)| *id == needed).map_or_else(|| format!("banlist {needed}"), |(_, n)| n.clone());
+                let _ = player;
+                Some((0, format!("This event is played under the {name} banlist: type /banlist {name} in the chat, then log in again.")))
+            }
+            None => None,
+        }
+    }
+
+    /// A duel of an official event ended for a player: their new `event_score`, none when the duel isn't one of an event.
+    fn official_score(&mut self, ended: &Ended) -> Option<u32> {
+        let event_id = self.matches.get(&ended.duel_id).and_then(|m| m.event).filter(|_| !ended.npc)?;
+        let name = self.online.values().find(|o| o.player_id == ended.player_id).map(|o| o.name.clone()).unwrap_or_default();
+        let score = self.official.record(event_id, ended.player_id, &name, ended.result, chrono::Utc::now().timestamp())?;
+        Some(score.min(crate::official::SCORE_SHOWN))
+    }
+
+    /// Ends the official events whose time is up and pays their prizes (called every second): the BP into the player's
+    /// account and a D-Mail from the Host saying what for. A prize that can't be saved stays owed and is tried again.
+    pub fn tick_official(&mut self, now: i64) {
+        for p in self.official.settle(now) {
+            let paid = self.directory.as_ref().map(|d| d.locked().pay(p.player_id, p.bp));
+            let total = match paid {
+                Some(Ok(Some(total))) => Some(total),
+                Some(Ok(None)) | None => None,
+                Some(Err(e)) => { tracing::warn!("prize of player {} in event {} not paid: {e}", p.player_id, p.event_id); continue }
+            };
+            let players = self.directory.as_ref().map(|d| d.locked().account_players(p.player_id)).unwrap_or_default();
+            if let Some(total) = total { self.push_bp(&players, total) }
+            let sent = (chrono::Utc::now() + chrono::Duration::hours(9)).format("%Y-%m-%d %H:%M:%S").to_string();
+            let body = format!("{} has ended. Your best score was {}. Prize: {}.{}", p.event, p.best, p.why,
+                total.map_or(String::new(), |t| format!(" You have {t} BP now.")));
+            self.mail.post(Mail { from: (0, "Host".into()), to: (p.player_id, p.name.clone()), title: format!("{} prize", p.event), body, sent, ..Mail::default() });
+            self.push(p.player_id, &Message::reply(0x2581));
+            self.official.mark_paid(p.event_id, p.player_id);
+        }
     }
 
     /// The titles a player has earned and doesn't own yet (`crate::titles`): added to their items (Avatar Settings
@@ -1141,6 +1277,28 @@ impl Hub {
         }
     }
 
+    /// The leaderboard and the team ranking from everyone's duels against other players (`crate::ranking`, #16).
+    pub fn ranking(&self) -> crate::ranking::Ranking {
+        let directory = self.directory.as_ref().map(|d| d.locked());
+        let mut players: Vec<u32> = self.records.keys().filter(|(_, them)| *them > 256).map(|(me, _)| *me).collect();
+        players.sort_unstable();
+        players.dedup();
+        let rows = players.into_iter().filter_map(|id| {
+            let saved = directory.as_ref().and_then(|d| d.player(id));
+            let name = saved.map(|p| p.name.clone()).unwrap_or_else(|| self.social.name(id));
+            if name.is_empty() { return None }
+            let [wins, losses, draws] = self.totals(id);
+            // The country the host set, else the one the player's game logged in with (from its language; not kept).
+            let country = saved.map(|p| p.country.clone()).filter(|c| !c.is_empty())
+                .or_else(|| self.online.values().find(|o| o.player_id == id).and_then(|o| o.record.get("country").and_then(Value::as_str)))
+                .unwrap_or_default();
+            Some(crate::ranking::Row { name, country, wins, losses, draws,
+                team: self.teams.of(id).map(|t| t.name.clone()) })
+        });
+        let totals = |id: u32| self.totals(id);
+        crate::ranking::Ranking::build(rows.collect(), self.teams.all().map(|t| (t.name.clone(), t.ids().into_iter().map(totals).collect::<Vec<_>>())).collect())
+    }
+
     /// A player's wins, losses and draws against other players (NPC ids are 256 and below: practice, not counted).
     fn totals(&self, player_id: u32) -> [u32; 3] {
         let against_players = self.records.iter().filter(|((me, them), _)| *me == player_id && *them > 256);
@@ -1162,11 +1320,15 @@ impl Hub {
         let team = self.teams.of(player.player_id);
         let team = team.map(|t| (t.name.as_str(), t.authority(player.player_id).unwrap_or(MEMBER)));
         let (eval_num, eval_total) = self.ratings(player.player_id);
+        // Tournament Points (My Profile's `tp`, 0x4705D0) and their rank (`tprank`) come from the official events' results.
+        let (tp, tprank) = self.official.tp_of(player.player_id);
         player
             .record_with(self.totals(player.player_id), team)
             .with("evalnum", Value::U32(eval_num))
             .with("evaltotal", Value::U32(eval_total.max(0) as u32))
             .with("evallevel", Value::U32(manner_level(eval_num, eval_total)))
+            .with("tp", Value::U32(tp))
+            .with("tprank", Value::U32(tprank))
     }
 
     fn join(&mut self, player: &Player, outbox: Outbox, lang: u32, host: String) -> u64 {
@@ -1233,6 +1395,11 @@ impl Hub {
         self.events = kept.filter(|e| e.status == crate::events::OPEN).collect();
     }
 
+    /// Keeps the official events and their scores in `dir`'s database (read now).
+    pub fn keep_official(&mut self, dir: &std::path::Path) {
+        self.official = crate::official::Official::at(dir);
+    }
+
     fn save_events(&self) {
         if let Err(e) = self.persist_events(&self.events) { tracing::warn!("events not saved: {e}") }
     }
@@ -1286,6 +1453,10 @@ impl Hub {
                     return fail(0x2BD7, REQUEST_WAITING);
                 };
                 if busy || to == me {
+                    return fail(0x2BD7, REQUEST_WAITING);
+                }
+                if self.linked(me, to) {
+                    self.push(me, &chat_note("Server", LINKED_TRADE));
                     return fail(0x2BD7, REQUEST_WAITING);
                 }
                 self.trade_invites.insert(to, me);
@@ -1474,6 +1645,10 @@ impl Hub {
                     return fail(0x2D50, REQUEST_WAITING);
                 };
                 if busy || to == me {
+                    return fail(0x2D50, REQUEST_WAITING);
+                }
+                if self.linked(me, to) {
+                    self.push(me, &chat_note("Server", LINKED_TRADE));
                     return fail(0x2D50, REQUEST_WAITING);
                 }
                 self.rental_invites.insert(to, me);
@@ -2117,7 +2292,7 @@ impl Hub {
             };
             self.push(*a, &push(&rb));
             self.push(*b, &push(&ra));
-            self.matches.insert(duel_id, Match { players: [*a, *b], rule: rule.clone(), times, watchable: event.int("duel_watch") != 0, made: std::time::Instant::now() });
+            self.matches.insert(duel_id, Match { players: [*a, *b], rule: rule.clone(), times, watchable: event.int("duel_watch") != 0, made: std::time::Instant::now(), event: None });
             round.push((duel_id, [*a, *b]));
         }
         self.events[at].round = round;
@@ -2200,6 +2375,11 @@ impl Hub {
             }
             // Leaving (not the host) -> 0x178F; the others get 0x3399 {entry_type 2}.
             0x178E => {
+                // Leaving an official event's lobby: no longer waiting for an opponent (the score stays).
+                if self.official.get(event_id).is_some() {
+                    self.waiting.retain(|w| w.player_id != me);
+                    return Message::reply(0x178F);
+                }
                 let Some(event) = self.events.iter_mut().find(|e| e.id == event_id) else { return Message::reply(0x178F) };
                 if event.host.0 == me {
                     return fail(0x178F, 0);
@@ -2249,6 +2429,7 @@ impl Hub {
             // which a user event doesn't use.
             // The lobby's event (0x4CBD70: official 0, the host's player_id), which its Event Menu (the menu bar's duel
             // button) also shows: the list row's fields.
+            0x177F if self.official.get(event_id).is_some() => self.official_lobby(event_id, me),
             0x177F => match self.events.iter().find(|e| e.id == event_id) {
                 Some(e) => Message::reply(0x1780).item(e.row().with("official", Value::U32(0))),
                 None => fail(0x1780, 0),
@@ -2385,6 +2566,7 @@ impl Hub {
         let mut hub = Self::with_records(&dir.join("records.json"));
         hub.keep_social(&dir.join("friends.json")); hub.keep_mail(&dir.join("mail.json"));
         hub.keep_teams(&dir.join("teams.json")); hub.keep_events(&dir.join("events.json")); hub.keep_rentals(&dir.join("rentals.json"));
+        hub.keep_official(dir);
         Ok(hub)
     }
 
@@ -2407,14 +2589,15 @@ impl Hub {
             e.entrants.retain(|(p, _)| !players.contains(p)); e.alive.retain(|p| !players.contains(p));
         }
         let mut records = self.records.clone(); records.retain(|(me, _), _| !players.contains(me));
+        let mut official = self.official.clone(); official.forget_players(players);
         AccountCleanup { social: self.social.prepare_forget(players), mail: self.mail.prepare_forget(players), teams,
-            rentals: self.rentals.prepare_forget(players), records, events, players: players.to_vec(), notices }
+            rentals: self.rentals.prepare_forget(players), records, events, players: players.to_vec(), notices, official }
     }
 
     /// Install committed cleanup and notify surviving team/event members. Never called on transaction failure.
     pub(crate) fn publish_account_deletion(&mut self, next: AccountCleanup) {
         self.social = next.social; self.mail = next.mail; self.teams = next.teams; self.rentals = next.rentals;
-        self.records = next.records; self.events = next.events;
+        self.records = next.records; self.events = next.events; self.official = next.official;
         for id in &next.players { self.host_presents.remove(id); self.ratings.remove(id); }
         self.evals.retain(|_, (rater, rated)| !next.players.contains(rater) && !next.players.contains(rated));
         for (players, message) in next.notices { for player in players { self.push(player, &message); } }
@@ -2498,7 +2681,7 @@ impl Hub {
             Message::reply(0x1978).item(vs.clone().with("name", Value::text("vsPlayerData"))).item(data.with("duel_id", Value::U32(duel_id)))
         };
         let pushes = [(other.player_id, push(&me.record)), (me.player_id, push(&other.record))];
-        self.matches.insert(duel_id, Match { players: [other.player_id, me.player_id], rule, times: None, watchable: true, made: std::time::Instant::now() });
+        self.matches.insert(duel_id, Match { players: [other.player_id, me.player_id], rule, times: None, watchable: true, made: std::time::Instant::now(), event: other.event });
         (duel_id, pushes)
     }
 
@@ -3154,7 +3337,9 @@ impl FrontSession {
             0x1B69 => self.world.avatar_items.iter().map(|&(id, _)| crate::shop::shelf_avatar_item(id)).fold(Message::reply(0x1C2A), Message::item),
             // Event list {event_type, status, event_id} (TournamentScene 0x4D0BB0) and event search
             // (UserEventScene 0x4D9E37): no events are held.
-            0x177A => Message::reply(0x177B).with("result_number", Value::U32(0)),
+            // The Stadium's official events (OfficialEventScene 0x4B0110, read by 0x4B1060, which keeps the items with
+            // `official` set) and the Championship's search for its `event_type` 10 (none here).
+            0x177A => self.hub().official_list(),
             // User events (Satellite Plaza's list and Create, the lobby).
             0x339A | 0x339B | 0x3390 | 0x3397 | 0x178E | 0x3393 | 0x3395 | 0x177F | 0x32C9 | 0x32CA | 0x32CC | 0x32CD | 0x32CE | 0x32D5
             | 0x32CB | 0x1789 => {
@@ -3215,7 +3400,7 @@ impl FrontSession {
             0x1F4E => {
                 let uploaded = self.uploaded_decks();
                 let decks = self.world.starter_deck.iter().chain(uploaded.iter().filter(|u| !self.world.starter_deck.iter().any(|s| s.name == u.name)));
-                decks.take(MAX_LISTED_DECKS).fold(Message::reply(0x22C8), |m, d| m.item(d.record()))
+                decks.take(MAX_LISTED_DECKS).fold(Message::reply(0x22C8), |m, d| m.item(self.world.place_deck(d).record()))
             }
             0x17D4 => return self.duel_ready(msg),
             // Deck updated: the deck editor's save, and the deck a player picks for a duel (DuelManager
@@ -3229,7 +3414,7 @@ impl FrontSession {
                 // and no timer waits for a reply to 0x1F4F.
                 if duel_id.is_none() && msg.get("update_type").and_then(Value::as_u32) == Some(1) {
                     if let Some(item) = msg.items.first() {
-                        self.keep_deck(Deck::from_record(item));
+                        self.keep_deck(self.world.place_deck(&Deck::from_record(item)));
                     }
                     return vec![];
                 }
@@ -3261,7 +3446,7 @@ impl FrontSession {
                 let item = msg.items.first();
                 if msg.get("update_type").and_then(Value::as_u32) == Some(1)
                     && let Some(item) = item
-                    && let Err(why) = self.check_deck(duel_id, &Deck::from_record(item))
+                    && let Err(why) = self.check_deck(duel_id, &self.world.place_deck(&Deck::from_record(item)))
                 {
                     tracing::info!("player {player_id}'s deck refused for duel {duel_id:?}: {why:?}");
                     if let Some(id) = duel_id {
@@ -3274,7 +3459,7 @@ impl FrontSession {
                 // takes a deck of the same cards anyway).
                 let unchecked = msg.get("update_type").and_then(Value::as_u32) != Some(1)
                     && duel_id.is_some()
-                    && item.is_some_and(|item| self.check_deck(duel_id, &Deck::from_record(item)).is_err());
+                    && item.is_some_and(|item| self.check_deck(duel_id, &self.world.place_deck(&Deck::from_record(item))).is_err());
                 if unchecked {
                     tracing::info!("player {player_id}: a deck update for duel {duel_id:?} fails the check; ignored");
                     return vec![Message::reply(0x22CA)];
@@ -3283,10 +3468,10 @@ impl FrontSession {
                 if msg.get("update_type").and_then(Value::as_u32) == Some(1)
                     && let Some(item) = msg.items.first()
                 {
-                    self.keep_deck(Deck::from_record(item));
+                    self.keep_deck(self.world.place_deck(&Deck::from_record(item)));
                 }
                 if let (Some(id), Some(item)) = (duel_id, msg.items.first()) {
-                    let deck = Deck::from_record(item);
+                    let deck = self.world.place_deck(&Deck::from_record(item));
                     let mut hub = self.hub();
                     if let Some(rule) = self.duels.get(&id) {
                         let npc_id = rule.iter().find(|(k, _)| k == "cpu_id").and_then(|(_, v)| v.as_u32()).filter(|&id| id > 0);
@@ -3331,7 +3516,12 @@ impl FrontSession {
             // The global dispatcher (0x4F4AE7) keeps the reply's event_id, which a user event's lobby then asks with. Only
             // a user event's goes back: with Auto Duel's (2) the client queued itself again after every match (live).
             0x1784 => {
+                let player = self.player();
+                let (me, name) = (player.player_id, player.name.clone());
                 let mut hub = self.hub();
+                if let Some(reply) = hub.official_join(msg.get("event_id").and_then(Value::as_u32).unwrap_or(0), me, &name) {
+                    return vec![reply];
+                }
                 hub.last_join += 1;
                 let reply = Message::reply(0x1785).with("join_id", Value::U32(hub.last_join));
                 match msg.get("event_id").and_then(Value::as_u32).filter(|id| hub.events.iter().any(|e| e.id == *id)) {
@@ -3371,9 +3561,21 @@ impl FrontSession {
             // agent waits (0x4A1D10) for the match push 0x1978 (0x4A2D30).
             0x1798 => {
                 let player = self.player();
-                let match_type = msg.get("match_type").and_then(Value::as_u32).unwrap_or(0);
+                let mut match_type = msg.get("match_type").and_then(Value::as_u32).unwrap_or(0);
                 let (player_id, record) = (player.player_id, player.record());
-                let me = Waiting { player_id, match_type, regulation: self.login_regulation(), record };
+                // Participate in an official event (#18): no format is sent, the event's kind decides it.
+                let event_id = msg.get("event_id").and_then(Value::as_u32).unwrap_or(0);
+                let regulation = self.login_regulation();
+                let mut event = None;
+                let banlists = self.world.banlists.clone();
+                if let Some(refusal) = self.hub().official_participate(event_id, player_id, regulation, &banlists) {
+                    let _ = self.outbox.send(chat_note("Server", &refusal.1));
+                    return vec![Message::reply(0x179A).with("error_code", Value::U32(refusal.0))];
+                }
+                if let Some(kind) = self.hub().official.get(event_id).map(|e| e.kind) {
+                    (event, match_type) = (Some(event_id), if kind.is_match() { MATCH_MODE } else { SINGLE_MODE });
+                }
+                let me = Waiting { player_id, match_type, regulation, record, event };
                 let matched = self.hub().wait_for_match(me);
                 if let Some((_, [(other, to_other), (_, to_me)])) = matched {
                     self.hub().push(other, &to_other);
@@ -3788,7 +3990,7 @@ impl FrontSession {
             let setting = |k| host.setting(k).and_then(Value::as_u32).unwrap_or(0);
             let times = Some((setting("time_turn"), setting("time_total")));
             let watchable = host.setting("watch").and_then(Value::as_u32).is_none_or(|w| w == 1);
-            hub.matches.insert(duel_id, Match { players: [player_id, challenger], rule, times, watchable, made: std::time::Instant::now() });
+            hub.matches.insert(duel_id, Match { players: [player_id, challenger], rule, times, watchable, made: std::time::Instant::now(), event: None });
             let outboxes: Vec<(Outbox, Message)> = pushes
                 .into_iter()
                 .filter_map(|(to, m)| hub.online.values().find(|o| o.player_id == to).map(|o| (o.outbox.clone(), m)))

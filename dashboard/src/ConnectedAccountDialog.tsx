@@ -472,6 +472,19 @@ export function ConnectedAccountDialog({
                       <dd>{data.device_count}</dd>
                     </div>
                     <div>
+                      <dt>Linked accounts</dt>
+                      <dd>
+                        {data.linked_accounts.length === 0
+                          ? 'None seen on the same PC or address'
+                          : data.linked_accounts
+                              .map(
+                                (linked) =>
+                                  `${linked.login ?? `Account ${linked.user_id}`} (${linked.shared.join(' and ')})`,
+                              )
+                              .join(', ')}
+                      </dd>
+                    </div>
+                    <div>
                       <dt>Game key</dt>
                       <dd>
                         {data.has_key ? 'Key assigned' : 'No key assigned'}{' '}

@@ -37,6 +37,9 @@ says in a comment what it changes. These scripts are AGPL-3.0, like the ones the
 | `c80168720.lua` | Darkness Approaches | Flips the monster face-down without changing its battle position (today: face-down Defense Position). |
 | `c61740673.lua` | Imperial Order | 700 LP in your own Standby Phases only, and you may choose not to pay (today: every Standby Phase, mandatory). |
 | `c77565204.lua` | Future Fusion | The materials go to the Graveyard when it is activated (today: in your 1st Standby Phase). |
+| `c513000079.lua` | Dark Strike Fighter (anime, passcode 513000079) | Our own script for the anime card: ProjectIgnis has only a placeholder. A reconstruction (Tribute another monster, Level x 200, no attack the turn it is used); its data record is in `engine/anime/records.json`. |
+| `c511247002.lua` | Fortune Lady Fire (anime, passcode 511247002) | Our own script for the anime card: the official card's, with the destroy trigger on any face-up Attack Position Special Summon. Data record in `engine/anime/records.json`. |
+| `c82732705.lua` | Skill Drain | Only for the anime Egyptian Gods (the `anime-cards` setting): negated until the end of the turn Skill Drain is activated, not affected when summoned later. Every other monster as upstream. |
 | `c15894048.lua` | Ultimate Tyranno | Must attack first and attack every monster if it is in face-up Attack Position when your Battle Phase begins (today: may attack them all, and locks your other monsters). From ProjectIgnis' `pre-errata/c511003009.lua`. |
 | `c88264978.lua` | Red-Eyes Darkness Metal Dragon | Its Special Summon from the hand has no limit, and "Once per turn" is for each copy (today: both once per turn by name). Today's script is ProjectIgnis' `pre-errata/c88264978.lua`. |
 | `c65622692.lua` | Y-Dragon Head | The old Union rules (`aux.AddUnionProcedure(..., true)`): Special Summoned in face-up Attack Position, 1 Union per monster, protects from destruction by battle only. |

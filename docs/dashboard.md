@@ -93,6 +93,12 @@ row links both players to their account pages; **Handle** and **Dismiss** open a
 account page, **Banlist** shows the list the account logs in with (its own choice with `/banlist`, or the server's) and
 lets staff choose another or go back to the server's; it applies at the player's next login. `dashboard/e2e/reports.spec.ts` checks both.
 
+**Events** (`/events`) lists the Stadium's official events with their kind, times, status, entrants, prize and the best
+scores so far. An admin schedules one with **Schedule event** (kind, name, start and end in the browser's time zone, an
+optional banlist, BP for taking part and BP for reaching a score), edits one that has not ended, or cancels it (nothing is
+paid); a moderator only looks. Each change is audited. `dashboard/e2e/events.spec.ts` checks it, and `official_admin_contract.rs`
+the same operations from the command line ([guide](guide.md#official-events-the-stadium)).
+
 **Give a gift → Cards** searches the host's catalogue and lists each artwork separately, with keyboard-selectable
 rows and original 50×72 thumbnails. A separate **Preview** button opens the original 200×290 card and readable
 2010–2012 game text without selecting or giving anything. Escape returns to the selected gift and copy count.
@@ -189,6 +195,7 @@ Invite creation records the actual authenticated issuer. Null limits mean unlimi
 rejected. Listing distinguishes usable, exhausted and expired invites, includes remaining sign-ups and claims, and
 reports the time at which status was checked. Expiry must fit RFC 3339; invalid stored expiry is a read error, never
 an unlimited invite. Retrying a used-up or expired invite does not replenish or extend it.
+An account's page lists its **linked accounts** (seen on the same PC or address, with which of the two, read-only: `linked_accounts` in the account detail, from `Directory::linked_to`; [fair play](hosting.md#linked-accounts-and-fair-play)).
 Profile edits target numeric account/player IDs in the dashboard. The CLI and old panel use the same operations;
 name-based retries look up receipts before resolving an old name. Receipts keep only IDs and a generic result, not
 player names. Renames, new player slots and country changes take effect in the game after signing in again; no new

@@ -33,6 +33,9 @@ const ConnectedCodes = lazy(() =>
 const ConnectedReports = lazy(() =>
   import('./ConnectedReports').then((m) => ({ default: m.ConnectedReports })),
 )
+const ConnectedEvents = lazy(() =>
+  import('./ConnectedEvents').then((m) => ({ default: m.ConnectedEvents })),
+)
 const ConnectedAudit = lazy(() =>
   import('./ConnectedAudit').then((m) => ({ default: m.ConnectedAudit })),
 )
@@ -149,6 +152,7 @@ function Workspace() {
       '/invites': ['Invites & codes', 'Manage registration invites and BOOSTERPASS rewards.'],
       '/news': ['News & maintenance', 'Publish game announcements and plan maintenance.'],
       '/reports': ['Reports', 'Player reports sent with /report in the game’s chat.'],
+      '/events': ['Events', 'Schedule the Stadium’s official events and see who is winning.'],
       '/audit': ['Audit log', 'Persisted administrative changes and saved outcomes.'],
       '/logs': ['Server logs', 'Recent output from this server process.'],
       '/backups': ['Backups', 'Create snapshots and keep a private copy off the host.'],
@@ -198,6 +202,7 @@ function Workspace() {
                 </>
               )}
               {pathname === '/reports' && <ConnectedReports session={user} />}
+              {pathname === '/events' && <ConnectedEvents session={user} />}
               {pathname === '/audit' && <ConnectedAudit />}
               {pathname === '/logs' && <ConnectedLogs />}
               {pathname === '/backups' && <ConnectedBackups session={user} />}

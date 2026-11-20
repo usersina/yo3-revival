@@ -52,6 +52,24 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
 
+## 2026-11-19 — Official Events (the Stadium) and the real leaderboard (#18, #16)
+
+Built beside the other sweep tracks (branch `next/events`).
+
+- **Official Events** (#18): the Stadium's list (`0x177B`), lobby (`0x1780`), entry (`0x1785` with `join_id`, `server_id`,
+  `event_score` and the echoed `event_id`), Participate (`0x1798`, only entrants of one event are paired, the kind
+  decides single or match) and the score in the duel's end push (`score_<player_id>`), all in `official.rs`, with
+  admin operations, commands and a dashboard Events page; BP prizes by D-Mail; Tournament Points on My Profile. Details:
+  [protocol](protocol.md#official-events-the-stadium-officialeventscene-0x4b0110-18-officialrs).
+- **Found live:** `event_start` and `event_end` are text times (`0x4AB490` parses `%d-%d-%d %d:%d:%d`, then mktime and
+  localtime), not epoch numbers: the issue's reading made the Stadium crash at `0x4B0E2F` (a null from localtime).
+  After the fix the list showed the times in the player's zone, the lobby counted both participants, Ready paired them,
+  and the client queues itself again after every duel (as the original's continuous matching), so the lobby's Participate
+  is re-sent with a fresh `join_id`.
+- **Leaderboard and team ranking** (#16): the pages behind Main Menu's Leaderboard are filled from real records
+  (`ranking.rs`, `web.rs`).
+- Open: Special Pack prizes, Ultimate Match against the computer, the event titles, the original's thresholds.
+
 ## 2026-11-19 — Issue sweep: surrender, chat commands, foreign programs, staff MFA (#57, #52, #51, #63, #58, #55, #44, #68, #43, #38, #16)
 
 Built in four parallel tracks, merged, then checked together.
@@ -1730,10 +1748,10 @@ they need: anything a host's own server can do now, and what only makes sense on
 
 **Later, with a public server and enough players:**
 
-- [ ] A leaderboard and team ranking page from real wins and losses (the page from the links above, filled in).
-- [ ] Official Events (Stadium): the Duelist Trial and Gunslinger formats (wins, win streaks over a period), host
+- [x] A leaderboard and team ranking page from real wins and losses (2026-11-19, see [Official Events and the real leaderboard](#2026-11-19--official-events-the-stadium-and-the-real-leaderboard-18-16)).
+- [x] Official Events (Stadium, 2026-11-19): the Duelist Trial and Gunslinger formats (wins, win streaks over a period), host
       scheduled, much of it on the User Event code; their titles (TRIALIST … ULTIMATE GUNSLINGER, the CHAMPION ones).
-- [ ] Official Events, smallest slice first: the Stadium list and lobby (`0x177B`, `0x1785` with `server_id`, `0x1780`),
+- [x] Official Events, smallest slice first: the Stadium list and lobby (`0x177B`, `0x1785` with `server_id`, `0x1780`),
       then Trial and Gunslinger matching on the Auto Duel queue with per-player counters as `event_score`, then the
       Match formats with stars.
 - [ ] The Championship (Tournament Map): a host-scheduled `event_type` 10 event on the user-event bracket code, with the

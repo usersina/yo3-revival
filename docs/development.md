@@ -116,6 +116,7 @@ A new Python test goes in `tools/<area>/test_*.py` (unittest, standard library) 
 | `task client -- …` (`tools/client/vclient.sh`) | The headless game client on a private display |
 | `task client:scenario -- FILE` (`tools/client/ui-scenario.py`) | A scripted UI scenario on the running headless client: clicks, keys and text, then `expect text`, `expect flash` or `expect component` against the UI probe since the last action. On failure, the UI view and a screenshot. Scenarios live in `tools/client/scenarios/` |
 | `task check:cards` (`tools/engine/coverage.py`) | Which card effects the duel check's self-play exercised: per pool card, its chain links activated, resolved, resolved with a visible result, negated; `--sweep target/tmp/card-sweep.tsv` for a card sweep. A list to choose scenario tests from, not a gate |
+| `task check:decks` (`tests/deck_coverage.rs`, `coverage.py --decks`) | Every preset deck the client ships (starter, structure, character and NPC decks) self-played; the report lists their effect cards that no duel, these or the duel check's, exercised, with the decks holding each (`--deck Yusei`, `--limit N`). `tools/engine/cardtext.py ID...` prints a card's text from the engine's data |
 | `task vm -- …` (`tools/vm/vm.py`) | The Windows VMs in `tools/vm/vms.toml` (`~/.config/yo3-revival/vms.toml` overrides): `list`, power and snapshots, `shot`, `click`, `type`, `key`, `run VM -- CMD` (output and exit code back), `put`, `wait` |
 | `task build:dev` | Release builds of the server, launchers, Desktop and engine, and the connection DLL, as dev builds: it clears a stale `YO3_VERSION`, which would make the launcher refuse them |
 | `task build:mod:ci` (`tools/mod/build-ci.sh`) | The connection DLL as releases build it (Ubuntu's mingw-w64, `msvcrt.dll`), for tests on real Windows; set `YO3_BUILD_VERSION`/`YO3_BUILD_COMMIT` to a release's to swap a file into that release |
@@ -423,6 +424,46 @@ duel replays only with the same overrides. The old sidecar (`engine/duelcore.ts`
 compares like with like. After `engine/fetch.sh --update`, compare each overridden card's new upstream script with the one it was copied
 from: carry an upstream change over, or delete an override upstream has fixed.
 
+**Anime card versions (#60).** The host's `anime-cards` setting starts the engine with `YO3_ANIME=1`
+(`Engine::start_with`, `crates/yo3-engine/src/cards.rs`): the cards `engine/anime-cards.json` maps play as their
+ProjectIgnis unofficial versions (data from `cards-unofficial.cdb`, scripts from `CardScripts/unofficial/`, which also
+holds `proc_unofficial.lua`), keyed by the client's Konami id as ever. Nothing is derived from upstream aliases. The map is
+made by `tools/engine/anime-map.py` from `engine/anime/research.tsv` (issue #60's reviewed table, one line per
+client card, with a note where the research left a question) and the fetched data; it also writes
+[docs/anime-cards.md](anime-cards.md). A card is `mapped` only if the client can show what the engine plays: every difference
+in card class, Main or Extra Deck, type, Spell/Trap kind, level, ATK, DEF, attribute and race from the game's card is in a
+category the **card profile** covers (`PROFILE_COVERS` and the proof set in `anime-map.py`; `--releases` prints what each
+category would release), an alias that is 0 or the game card's own (or `ALIAS_KEPT`), a script that exists and calls only
+functions the pinned core has, tokens the client has a card of (`engine/anime/client-tokens.tsv`, kept equal to the game's;
+a copy token is the copied card), an effect from the Deck only as a Special Summon procedure (`DECK_ROUTES`), and every
+other anime card it names mapped too. Anything else is `held` with its reasons and plays as the game has it.
+
+A card whose upstream entry is only a placeholder (Dark Strike Fighter, Fortune Lady Fire) has a corrected **record** in
+`engine/anime/records.json` (passcode, alias, type, Level, ATK, DEF, race, attribute, setcode, name, script strings, the text the
+game shows, and whether it is a reconstruction) and its own script in `engine/overrides/c<passcode>.lua`; the generator copies the
+records into `anime-cards.json` (`"records"`), the engine's `Cards::open_with` reads them over the unofficial database's row, and
+`profile::read_anime` builds the card profile from them. The real-core tests are `crates/yo3-server/tests/anime_reconstructions.rs`.
+
+**The card profile (#60).** `crates/yo3-server/src/profile.rs` builds, from the client's card table (`yo3-data`) and the anime
+card's data in `cards-unofficial.cdb`, each mapped card's rewritten `CARD_Prop` row words (`kind` bits 3-7, Spell/Trap kind
+16-18, attribute 8-11, level 12-15, race 19-23; ATK and DEF 9 bits each in tens, all ones `?`), its text and its Main/Extra
+class; `CardView` (the maps duels read), `Profiles` (what each launch fetched) and `World::place_deck` (decks) use it.
+`yo3-server card-profile FILE` writes the client file (`yo3-card-profile 1`, format in the module's header) and
+`GET /web/card-profile` through the launcher serves it; the connection DLL rewrites the client's table with it
+(`tools/mod/`, [client internals](client-internals.md)). `tests/card_profile.rs` checks the mapping against all of the client's
+cards; `tests/card_profile_route.rs` the route; `card_data.rs` the engine against the profile. The anime artwork folder is the
+launcher's (`crates/yo3-launcher/src/art.rs`). The duel check judges each profile card's first face-up sighting against
+`profile::Expect` (`ClientModel::expect_profile`; `tests/duel_check.rs` `a_profile_that_differs_from_the_engine_fails_the_duel_check`
+makes the profile wrong and wants the failure). Local deck files are placed by `crates/yo3-launcher/src/decks.rs` with the same rule
+as the server (`yo3_proto::placement::place`), and the helper compares what discovery announces (`ServerInfo::card_profile`) with the
+profile its game loaded, every 20 seconds, for the Desktop's restart offer. To change a
+disposition, edit the research table or the generator's rules, run the tool and review the diff; to approve a held card
+anyway, give it an override script in `engine/overrides/` and the test for it first. Checks: `tools/engine/test_anime_map.py`
+(with `--check` for the committed files), the engine's `every_mapped_script_loads_without_a_lua_error`,
+`tests/anime_cards.rs`, `duels_with_the_anime_versions_on` in `tests/duel_check.rs`, and `card_data.rs`. A release ships the
+unofficial scripts, `cards-unofficial.cdb` and `anime-cards.json` (`tools/engine/engine-files.sh`). A bundle without them
+plays the game's cards with a warning.
+
 The card sweep (`tests/card_sweep.rs`) plays each card in a self-played duel through the duel check: three copies in
 both decks, two in the opening hand (twice in each Extra Deck for Fusion and Synchro Monsters). Every duel check also
 runs the round trip: each answer the engine offers must be reachable through the client's windows, and choices the
@@ -450,10 +491,17 @@ task check:cards                     # 240 duels, then the report; YO3_CHECK_DUE
 python3 tools/engine/coverage.py     # the report again from target/tmp/duel-coverage/
 ```
 
+The cards players meet first are the preset decks' (the starter and structure decks, each character's and each NPC's):
+`task check:decks` self-plays all 162 of them (2 duels each, `YO3_DECK_COVERAGE_SEEDS=n` for more; about 90 s with 4
+seeds) with the client's view checked after every step, merges their counts with the duel check's, and lists their effect
+cards by what happened to them, never-exercised ones first. A duel that stops where the player has no way to answer (a
+Tribute the client can't pick, a Special Summon from the Deck) is listed under the report, not failed
+(`YO3_DECK_COVERAGE_STRICT=1` fails on it); those are findings for docs/roadmap.md.
+
 A card it lists as never activated, or resolved with nothing visible, gets a scenario test: `duelcheck::scenario`
 plays a planned duel through the real core with both seats' client models checked after every step. Decks are drawn
-from their end (the last five cards are the opening hand); each team's plan runs on its own prompts, and an action not
-possible yet waits for the next own turn:
+from their end (the last five cards are the opening hand; `deck_with(&[cards])` in `card_scenarios.rs` pads with
+Warwolves); each team's plan runs on its own prompts, and an action not possible yet waits for the next own turn:
 
 ```rust
 let mut s = Scenario::start(&dir, 7, 8000, [(&deck, &[GOYO_GUARDIAN]), (&[WARWOLF; 40], &[])]).unwrap();
@@ -464,14 +512,29 @@ assert!(s.problems.is_empty(), "{:#?}", s.problems);
 ```
 
 The actions are `Summon`, `SetMonster`, `SpSummon`, `SetSpell`, `Activate`, `Attack`, `Chain` (respond at the first
-chance) and `EndTurn`; every other prompt gets the CPU's answer. `tests/card_scenarios.rs` holds one test per card,
-citing the card's text.
+chance), `ChainOnAttack` (only in answer to an attack declaration: Zero Gardna, Kuriboh, Mirror Force) and `EndTurn`;
+every other prompt gets the CPU's answer, and optional triggers are answered Yes (a plan needs no `Chain` for them: a
+mandatory trigger never asks). `s.prefer(&[(team, cid)])` makes card choices (a target, a discard, a Tribute) take those
+cards first: Brionac must return the opponent's monster, not itself. A plan that never completes fails with the cards
+of each hand, field, Graveyard and banished pile and the engine message types of the last steps (`s.context()`), and a
+Lua `error(...)` in a copy of a card script placed in a scratch engine folder's `overrides/` (`YO3_ENGINE_DIR`) is a way
+to see inside the core, since the core's errors fail the duel. Watch for the hand limit: a plan that waits many turns
+discards cards (the planned ones too) at the End Phase. `tests/card_scenarios.rs` holds one test per card, citing the
+card's text (the pinned data's, `tools/engine/cardtext.py`, which can differ from the client's 2010-2012 wording).
 
 To see a card on the game's own screen, give a scratch server the scenario's deck as CARD_Prop rows and play an NPC
 duel on the headless client; the duel check compares the engine with the client after every step and the connection
-DLL adds the native checkpoints (any drift is an `ERROR duel check` line in the server log). Junk Warrior, checked
-this way on 2026-11-19 against Joey Wheeler: 3300/1500 on screen, its 2300 + 800 from a Quillbolt Hedgehog left on the
-field + 200 from Joey's Sogen, no duel check error:
+DLL adds the native checkpoints (any drift is an `ERROR duel check` line in the server log). A card the client lacks
+(Zubaba Knight) can't be played that way. Junk Warrior, checked this way on 2026-11-19 against Joey Wheeler: 3300/1500
+on screen, its 2300 + 800 from a Quillbolt Hedgehog left on the field + 200 from Joey's Sogen, no duel check error.
+Fortress Warrior, the same day (`--duel-deck 3557,3557,3339`, Fortress Warrior 3557): summoned (600 ATK shown), it
+attacked Joey's Gene-Warped Warwolf (2000 ATK) and both Life Points stayed 8000, the card stayed on the field (no battle
+damage, destruction cancelled once); on Joey's next turn two attacks left Yugi at 8000 and the card in the Graveyard
+(the second destruction is not cancelled), and the client's card detail read "Cannot be destroyed" in between. No
+`ERROR duel check` line. The recipe on the headless client (`YO3_INSTANCE=d`, scratch server): Kaiba Corporation
+(765,275), the talk (a click at 300,200 about six times), Joey Wheeler twice (340,230 then 380,230), the talk again,
+Yes (270,277), OK (393,533), janken (350,450 twice), First to go (510,293); in the duel a left click on a hand card
+summons it, BP (645,240), the attacker twice then its "Attack" entry (617,355) and the target; EP (795,240).
 
 ```bash
 task dev:server -- --accounts 1 -- --duel-deck 3367,3367,3339 --duel-extra 3357 --duel-check --duel-time 0,0

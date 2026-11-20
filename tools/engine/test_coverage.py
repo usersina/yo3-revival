@@ -36,6 +36,16 @@ class Coverage(unittest.TestCase):
         self.assertIn('Quiet', text)
         self.assertNotIn('Normal', text)
 
+    def test_the_decks_report_names_the_decks_holding_each_card_and_can_be_filtered(self):
+        decks = {'NPC 171 Yusei': [2, 5], 'NPC 120 Yugi': [2, 1]}
+        text = coverage.decks_report(3, [1, 2, 5], decks, {}, INFO, ['deck 9: seed 1, step 2'])
+        self.assertIn('2 deck(s)', text)
+        self.assertIn('Duels that stopped', text)
+        only = coverage.decks_report(3, [1, 2, 5], decks, {}, INFO, [], only='yusei')
+        self.assertIn('NPC 171 Yusei', only)
+        self.assertNotIn('Yugi', only)
+        self.assertNotIn('Spell', only)
+
     def test_unknown_cards_are_kept(self):
         groups, plain = coverage.classify([9], {}, {})
         self.assertEqual((groups[0][1][0][0], plain), (9, 0))

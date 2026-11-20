@@ -33,6 +33,8 @@ import type {
   BackupList,
   BanlistChoices,
   BpCodeList,
+  CancelEventHeaders,
+  CancelEventRequest,
   CardImageSize,
   ChangeSettingsHeaders,
   CodeRequest,
@@ -45,6 +47,8 @@ import type {
   CreateBpCodeHeaders,
   CreateBpCodeRequest,
   CreateBpCodeResult,
+  CreateEventHeaders,
+  CreateEventRequest,
   CreateInviteHeaders,
   CreateInviteRequest,
   CreateInviteResult,
@@ -54,7 +58,11 @@ import type {
   DownloadBackupHeaders,
   DownloadBackupRequest,
   EditAccountHeaders,
+  EditEventHeaders,
+  EditEventRequest,
   EmptyRequest,
+  EventList,
+  EventResult,
   GetAuditHistoryParams,
   GetCardImageHeaders,
   GetCardImageParams,
@@ -1559,6 +1567,307 @@ export function useListCountries<TData = Awaited<ReturnType<typeof listCountries
 
 
 
+
+export const getListEventsUrl = () => {
+
+
+
+
+  return `/panel/api/v1/events`
+}
+
+export const listEvents = async ( options?: Parameters<typeof apiFetch>[1]): Promise<EventList> => {
+
+  return apiFetch<EventList>(getListEventsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListEventsQueryKey = () => {
+    return [
+    `/panel/api/v1/events`
+    ] as const;
+    }
+
+
+export const getListEventsQueryOptions = <TData = Awaited<ReturnType<typeof listEvents>>, TError = ErrorType<ApiError>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listEvents>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListEventsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listEvents>>> = ({ signal }) => listEvents({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listEvents>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListEventsQueryResult = NonNullable<Awaited<ReturnType<typeof listEvents>>>
+export type ListEventsQueryError = ErrorType<ApiError>
+
+
+export function useListEvents<TData = Awaited<ReturnType<typeof listEvents>>, TError = ErrorType<ApiError>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listEvents>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listEvents>>,
+          TError,
+          Awaited<ReturnType<typeof listEvents>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListEvents<TData = Awaited<ReturnType<typeof listEvents>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listEvents>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listEvents>>,
+          TError,
+          Awaited<ReturnType<typeof listEvents>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListEvents<TData = Awaited<ReturnType<typeof listEvents>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listEvents>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListEvents<TData = Awaited<ReturnType<typeof listEvents>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listEvents>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListEventsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCancelEventUrl = () => {
+
+
+
+
+  return `/panel/api/v1/events/cancel`
+}
+
+export const cancelEvent = async (cancelEventRequest: CancelEventRequest,
+    headers: CancelEventHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<EventResult> => {
+
+  return apiFetch<EventResult>(getCancelEventUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(cancelEventRequest)
+  }
+);}
+
+
+
+
+
+export const getCancelEventMutationKey = () => ['cancelEvent'] as const;
+
+export const getCancelEventMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelEvent>>, TError,CancelEventMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelEvent>>, TError,CancelEventMutationVariables, TContext> => {
+
+const mutationKey = getCancelEventMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelEvent>>, CancelEventMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  cancelEvent(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelEventMutationResult = NonNullable<Awaited<ReturnType<typeof cancelEvent>>>
+    export type CancelEventMutationBody = CancelEventRequest
+    export type CancelEventMutationError = ErrorType<ApiError>
+    export type CancelEventMutationVariables = {data: CancelEventRequest;headers: CancelEventHeaders}
+
+    export const useCancelEvent = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelEvent>>, TError,CancelEventMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof cancelEvent>>,
+        TError,
+        CancelEventMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCancelEventMutationOptions(options), queryClient);
+    }
+
+export const getCreateEventUrl = () => {
+
+
+
+
+  return `/panel/api/v1/events/create`
+}
+
+export const createEvent = async (createEventRequest: CreateEventRequest,
+    headers: CreateEventHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<EventResult> => {
+
+  return apiFetch<EventResult>(getCreateEventUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(createEventRequest)
+  }
+);}
+
+
+
+
+
+export const getCreateEventMutationKey = () => ['createEvent'] as const;
+
+export const getCreateEventMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEvent>>, TError,CreateEventMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createEvent>>, TError,CreateEventMutationVariables, TContext> => {
+
+const mutationKey = getCreateEventMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createEvent>>, CreateEventMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  createEvent(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateEventMutationResult = NonNullable<Awaited<ReturnType<typeof createEvent>>>
+    export type CreateEventMutationBody = CreateEventRequest
+    export type CreateEventMutationError = ErrorType<ApiError>
+    export type CreateEventMutationVariables = {data: CreateEventRequest;headers: CreateEventHeaders}
+
+    export const useCreateEvent = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEvent>>, TError,CreateEventMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof createEvent>>,
+        TError,
+        CreateEventMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateEventMutationOptions(options), queryClient);
+    }
+
+export const getEditEventUrl = () => {
+
+
+
+
+  return `/panel/api/v1/events/edit`
+}
+
+export const editEvent = async (editEventRequest: EditEventRequest,
+    headers: EditEventHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<EventResult> => {
+
+  return apiFetch<EventResult>(getEditEventUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(editEventRequest)
+  }
+);}
+
+
+
+
+
+export const getEditEventMutationKey = () => ['editEvent'] as const;
+
+export const getEditEventMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof editEvent>>, TError,EditEventMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof editEvent>>, TError,EditEventMutationVariables, TContext> => {
+
+const mutationKey = getEditEventMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof editEvent>>, EditEventMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  editEvent(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EditEventMutationResult = NonNullable<Awaited<ReturnType<typeof editEvent>>>
+    export type EditEventMutationBody = EditEventRequest
+    export type EditEventMutationError = ErrorType<ApiError>
+    export type EditEventMutationVariables = {data: EditEventRequest;headers: EditEventHeaders}
+
+    export const useEditEvent = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof editEvent>>, TError,EditEventMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof editEvent>>,
+        TError,
+        EditEventMutationVariables,
+        TContext
+      > => {
+      return useMutation(getEditEventMutationOptions(options), queryClient);
+    }
 
 export const getGivePlayerGiftUrl = () => {
 

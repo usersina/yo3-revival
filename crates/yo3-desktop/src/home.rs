@@ -33,10 +33,14 @@ pub struct Game {
     pub running: bool,
     /// The game's window is up (the connection DLL said so).
     pub ready: bool,
+    /// The server pins another card profile than the game loaded (#60): Restart the game is offered.
+    pub stale: bool,
     /// When Close game (or Cancel) was asked for; forced after `singleplayer::CLOSE_TIMEOUT`.
     pub closing: Option<Instant>,
     /// A game of this prefix opened without the launcher.
     pub outside: bool,
+    /// Games Play as… started that are running (#64), besides the one Play started.
+    pub extras: usize,
 }
 
 impl Game {
@@ -48,13 +52,13 @@ impl Game {
 
 /// The Play button's state: its label, what a click does and the line above it.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Play { Checking, SetUp, Repair, Retry, Ready, StartingServer, StartingGame, Waiting, Playing, Outside, Closing }
+pub enum Play { Checking, SetUp, Repair, Retry, Ready, StartingServer, StartingGame, Waiting, Playing, Stale, Outside, Closing }
 
 impl Play {
     pub fn of(game: &Game) -> Self {
         if game.closing.is_some() { return Play::Closing }
         if let Some((step, _)) = game.starting { return match step { Step::Server => Play::StartingServer, Step::Game => Play::StartingGame } }
-        if game.running { return if game.ready { Play::Playing } else { Play::Waiting } }
+        if game.running { return if !game.ready { Play::Waiting } else if game.stale { Play::Stale } else { Play::Playing } }
         if game.outside { return Play::Outside }
         match &game.readiness {
             None => Play::Checking,
@@ -67,7 +71,7 @@ impl Play {
     pub fn label(self) -> &'static str {
         match self {
             Play::Checking => "CHECKING…", Play::SetUp => "SET UP", Play::Repair => "REPAIR", Play::Retry => "RETRY", Play::Ready => "PLAY",
-            Play::StartingServer | Play::StartingGame | Play::Waiting => "STARTING…", Play::Playing | Play::Outside => "PLAYING",
+            Play::StartingServer | Play::StartingGame | Play::Waiting => "STARTING…", Play::Playing | Play::Stale | Play::Outside => "PLAYING",
             Play::Closing => "CLOSING…",
         }
     }
@@ -89,6 +93,7 @@ impl Play {
             Play::StartingGame => "Starting the game…",
             Play::Waiting => "Waiting for the game's window…",
             Play::Playing => "The game is running.",
+            Play::Stale => "The server changed its cards. Restart the game to see them.",
             Play::Outside => "The game is open (started without the launcher).",
             Play::Closing => "Closing the game…",
         }
@@ -104,6 +109,7 @@ impl Play {
         match self {
             _ if self.cancellable() && hung => button("CANCEL", Some(BusyAction::Cancel), "This is taking longer than usual."),
             Play::Playing | Play::Waiting => button("CLOSE GAME", Some(BusyAction::Close), self.status()),
+            Play::Stale => button("RESTART THE GAME", Some(BusyAction::Restart), self.status()),
             Play::StartingServer | Play::StartingGame | Play::Outside | Play::Closing => button(self.label(), None, self.status()),
             _ => None,
         }
@@ -112,7 +118,7 @@ impl Play {
 
 /// What the big button does while the game is busy.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum BusyAction { Close, Cancel }
+pub enum BusyAction { Close, Cancel, Restart }
 
 /// The big button while the game is busy: its label, what it does (none: disabled) and the line above it.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -150,7 +156,8 @@ pub struct Banlist { pub value: String, pub name: String }
 impl std::fmt::Display for Banlist { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str(&self.name) } }
 
 #[derive(Clone, Debug)]
-pub struct Live { running: bool, ready: bool, outside: bool, failure: Option<String>, direct: Option<DirectProblem>, held: Option<yo3_desktop::foreign::Held> }
+pub struct Live { running: bool, ready: bool, stale: bool, outside: bool, failure: Option<String>, direct: Option<DirectProblem>, held: Option<yo3_desktop::foreign::Held>,
+    games: Vec<yo3_desktop::games::GameInfo>, extra_failures: Vec<String> }
 
 #[derive(Clone, Debug)]
 pub enum Message {
@@ -166,7 +173,13 @@ pub enum Message {
     AllowDirect,
     DirectAllowed(Result<(), String>),
     CloseGame,
+    /// Restart the game (the server changed its card profile): closes it, and plays again once it is gone.
+    RestartGame,
     GameClosed(Result<(), String>),
+    /// Play as…'s game started, or why not (#64).
+    ExtraStarted(Result<(), String>),
+    /// An extra game that ignored its Close, to force (its id).
+    ForceClose(u64),
     /// The grace period after the game exited is over (its generation).
     GraceOver(u64),
     ServerStopped(Result<(), String>),
@@ -224,6 +237,8 @@ pub struct State {
     grace: u64,
     /// Cancel was asked for while a start job was still running; its result is cleaned up when it arrives.
     cancelled: bool,
+    /// Restart the game was pressed: once the game is gone and the check passed, Play starts it again.
+    restart_when_ready: bool,
     /// When the Play that is now waiting for the game's window was pressed.
     waiting_since: Option<Instant>,
     /// The Multiplayer tab (#30).
@@ -266,11 +281,13 @@ impl State {
 
     /// Multiplayer's Play, once its sign-in is known to play: the game on the selected server.
     fn play_multiplayer(&mut self, ctx: &mut Ctx, session: yo3_tunnel::Token) -> Task<Message> {
-        let (Some(backend), Some((server, _))) = (ctx.backend.clone(), self.multi.session()) else { self.game.starting = None; return Task::none() };
+        let (Some(backend), Some((server, signed))) = (ctx.backend.clone(), self.multi.session()) else { self.game.starting = None; return Task::none() };
         let settings = ctx.settings.clone();
         let played = self.multi.played(ctx).map(Message::Multi);
         self.allow_for = Some(server.clone());
-        let start = job(move || backend.play_signed_in(&settings, &server, &session), Message::Started);
+        let clean_game = self.multi.clean_game(&server);
+        let user = signed.user.clone();
+        let start = job(move || backend.play_signed_in(&settings, &server, &user, &session, clean_game), Message::Started);
         Task::batch([played, start])
     }
 
@@ -306,6 +323,33 @@ impl State {
             }
             Message::Multi(multi::Message::Remedy(yo3_desktop::multiplayer::Remedy::Update)) => return Task::done(Message::Releases),
             Message::Multi(multi::Message::CloseGame) => return self.update(Message::CloseGame, ctx),
+            Message::Multi(multi::Message::RestartGame) => return self.update(Message::RestartGame, ctx),
+            // Play as… (#64): another game as the other account, started once its sign-in is known.
+            Message::Multi(multi::Message::PlayAsStart(server, signed)) => {
+                let Some(backend) = ctx.backend.clone() else { return Task::none() };
+                let settings = ctx.settings.clone();
+                let clean_game = self.multi.clean_game(&server);
+                return job(move || {
+                    // Asked once more at the start, so a host who just turned the clean-game policy on is heard.
+                    let clean_game = match tokio::runtime::Builder::new_current_thread().enable_all().build().map(|rt| rt.block_on(yo3_desktop::multiplayer::status(&server))) {
+                        Ok(yo3_desktop::multiplayer::Status::Online { clean_game, .. }) => clean_game,
+                        _ => clean_game,
+                    };
+                    backend.play_extra(&settings, &server, &signed.user, &signed.session, clean_game)
+                }, Message::ExtraStarted);
+            }
+            Message::Multi(multi::Message::CloseGameId(id)) => {
+                let Some(backend) = ctx.backend.clone() else { return Task::none() };
+                let ask = job(move || backend.close_game(id), Message::GameClosed);
+                let force = Task::perform(tokio::time::sleep(singleplayer::CLOSE_TIMEOUT), move |()| Message::ForceClose(id));
+                return Task::batch([ask, force]);
+            }
+            Message::ForceClose(id) => {
+                let Some(backend) = ctx.backend.clone() else { return Task::none() };
+                let settings = ctx.settings.clone();
+                return job(move || { if backend.games().iter().any(|g| g.id == id) { backend.force_close_game(&settings, id)? } Ok(()) }, Message::GameClosed);
+            }
+            Message::ExtraStarted(result) => if let Err(error) = result { self.fail(ctx, error) },
             Message::Multi(multi::Message::Cancel) => return self.update(Message::Cancel, ctx),
             Message::Multi(multi::Message::Copy(text)) => {
                 let task = self.multi.update(multi::Message::Copy(text.clone()), ctx).map(Message::Multi);
@@ -407,6 +451,10 @@ impl State {
                 self.game.closing = Some(Instant::now());
                 return job(move || backend.stop_game(), Message::GameClosed);
             }
+            Message::RestartGame => {
+                self.restart_when_ready = true;
+                return self.update(Message::CloseGame, ctx);
+            }
             Message::GameClosed(result) => if let Err(error) = result { self.fail(ctx, error) },
             Message::GraceOver(generation) => {
                 if generation != self.grace || self.game.running || self.game.starting.is_some() || self.game.outside { return Task::none() }
@@ -427,16 +475,22 @@ impl State {
                 let Some(backend) = ctx.backend.clone() else { return Task::none() };
                 let settings = ctx.settings.clone();
                 self.polling = true;
-                return job(move || Ok(Live { running: backend.game_running(), ready: backend.game_ready(),
-                    outside: backend.game_open_elsewhere(&settings), failure: backend.game_failure(), direct: backend.direct_problem(), held: backend.take_held() }), Message::Polled);
+                return job(move || Ok(Live { running: backend.game_running(), ready: backend.game_ready(), stale: backend.game_profile_stale(),
+                    outside: backend.game_open_elsewhere(&settings), failure: backend.game_failure(), direct: backend.direct_problem(), held: backend.take_held(),
+                    games: backend.games(), extra_failures: backend.take_extra_failures() }), Message::Polled);
             }
             Message::Polled(result) => {
                 self.polling = false;
                 let Ok(live) = result else { return Task::none() };
+                // The games Play as… started (#64): listed, counted for the update and the window's close, and said once if one failed.
+                self.game.extras = live.games.iter().filter(|g| !g.is_main()).count();
+                let _ = self.multi.update(multi::Message::Games(live.games.clone()), ctx);
+                for failure in live.extra_failures.iter().cloned() { self.fail(ctx, failure) }
                 if self.game.starting.is_some() { return Task::none() }
                 let ended = self.game.running && !live.running;
                 self.game.running = live.running;
                 self.game.ready = live.ready;
+                self.game.stale = live.running && live.stale;
                 self.game.outside = live.outside;
                 if live.ready { self.waiting_since = None }
                 // A game opened directly that couldn't play (#33): said once, after it closed.
@@ -462,6 +516,11 @@ impl State {
             Message::Recheck => return self.check(ctx),
             Message::Checked(readiness, fingerprint) => {
                 self.game.readiness = Some(readiness);
+                // A restart (the server changed its cards): the game is gone and the check passed, so it starts again.
+                if self.restart_when_ready && !self.game.running && matches!(self.game.readiness, Some(Readiness::Ready)) {
+                    self.restart_when_ready = false;
+                    return self.play_again(ctx);
+                }
                 // The full check passed for a changed game: remember it, so the next start is quick again.
                 if let (Some(fingerprint), Some(store)) = (fingerprint, ctx.store.clone()) && fingerprint != ctx.settings.game_fingerprint {
                     ctx.settings.game_fingerprint = fingerprint.clone();
@@ -563,7 +622,7 @@ impl State {
     }
 
     /// Play started a game, or a game opened without the launcher is up.
-    pub fn playing(&self) -> bool { self.game.running || self.game.starting.is_some() || self.game.outside }
+    pub fn playing(&self) -> bool { self.game.running || self.game.starting.is_some() || self.game.outside || self.game.extras > 0 }
 
     /// The banlists to choose from (the server's default first).
     pub fn banlists(&self) -> Vec<Banlist> { banlist_choices(&self.banlists) }
@@ -606,7 +665,7 @@ impl State {
     fn singleplayer<'a>(&'a self, ctx: &'a Ctx) -> Element<'a, Message> {
         let play = Play::of(&self.game);
         let (label, action, line, kind) = match play.busy(self.launching_since()) {
-            Some(busy) => (busy.label, busy.action.map(|a| match a { BusyAction::Close => Message::CloseGame, BusyAction::Cancel => Message::Cancel }), busy.line,
+            Some(busy) => (busy.label, busy.action.map(|a| match a { BusyAction::Close => Message::CloseGame, BusyAction::Cancel => Message::Cancel, BusyAction::Restart => Message::RestartGame }), busy.line,
                 if busy.action.is_some() { Kind::Primary } else { Kind::Play }),
             None => (play.label(), play.action(), play.status(), Kind::Play),
         };
@@ -723,15 +782,15 @@ mod tests {
     use super::*;
 
     fn game(readiness: Option<Readiness>) -> Game { Game { readiness, ..Game::default() } }
-    const ALL: [Play; 11] = [Play::Checking, Play::SetUp, Play::Repair, Play::Retry, Play::Ready, Play::StartingServer, Play::StartingGame,
-        Play::Waiting, Play::Playing, Play::Outside, Play::Closing];
+    const ALL: [Play; 12] = [Play::Checking, Play::SetUp, Play::Repair, Play::Retry, Play::Ready, Play::StartingServer, Play::StartingGame,
+        Play::Waiting, Play::Playing, Play::Stale, Play::Outside, Play::Closing];
 
     /// Every Play state, from the facts that lead to it (#29's table without the Multiplayer rows, which need #30).
     #[test]
     fn every_play_state_is_reached_from_its_facts() {
         let now = Instant::now();
         let ready = || game(Some(Readiness::Ready));
-        let cases: [(Game, Play); 11] = [
+        let cases: [(Game, Play); 12] = [
             (game(None), Play::Checking),
             (game(Some(Readiness::GameProblem("no yo3.exe".into()))), Play::SetUp),
             (game(Some(Readiness::ComponentProblem("no dll".into()))), Play::Repair),
@@ -741,6 +800,7 @@ mod tests {
             (Game { starting: Some((Step::Game, now)), ..ready() }, Play::StartingGame),
             (Game { running: true, ..ready() }, Play::Waiting),
             (Game { running: true, ready: true, ..ready() }, Play::Playing),
+            (Game { running: true, ready: true, stale: true, ..ready() }, Play::Stale),
             (Game { outside: true, ..ready() }, Play::Outside),
             (Game { running: true, ready: true, closing: Some(now), ..ready() }, Play::Closing),
         ];
@@ -766,12 +826,37 @@ mod tests {
         let busy = |play: Play, since| play.busy(since).map(|b| (b.label, b.action));
         assert_eq!(busy(Play::Playing, None), Some(("CLOSE GAME", Some(BusyAction::Close))));
         assert_eq!(busy(Play::Waiting, Some(now)), Some(("CLOSE GAME", Some(BusyAction::Close))));
+        assert_eq!(busy(Play::Stale, None), Some(("RESTART THE GAME", Some(BusyAction::Restart))), "the server changed its cards");
+        assert_eq!(Play::of(&Game { running: true, ready: false, stale: true, ..game(Some(Readiness::Ready)) }), Play::Waiting, "a game still starting is not offered a restart");
         assert_eq!(busy(Play::Waiting, Some(long_ago)), Some(("CANCEL", Some(BusyAction::Cancel))));
         assert_eq!(busy(Play::StartingGame, Some(now)), Some(("STARTING…", None)));
         assert_eq!(busy(Play::StartingServer, Some(long_ago)), Some(("CANCEL", Some(BusyAction::Cancel))));
         assert_eq!(busy(Play::Outside, None), Some(("PLAYING", None)), "a game opened elsewhere isn't ours to close");
         assert_eq!(busy(Play::Closing, None), Some(("CLOSING…", None)));
         for idle in [Play::Ready, Play::Checking, Play::SetUp, Play::Repair, Play::Retry] { assert_eq!(busy(idle, None), None) }
+    }
+
+    /// Restart the game (#60): the click closes the game and remembers to play again; Play starts only once the game is gone and
+    /// the check passed, and the offer is a state of the running game only.
+    #[test]
+    fn restart_the_game_plays_again_only_after_the_game_is_gone() {
+        let mut state = State::default();
+        let mut ctx = crate::app::Ctx { root: std::env::temp_dir(), backend: None, store: None, settings: Default::default() };
+        state.game.running = true;
+        state.game.ready = true;
+        state.game.stale = true;
+        let _ = state.update(Message::RestartGame, &mut ctx);
+        assert!(state.restart_when_ready);
+        // The game is still running when a check passes: nothing starts.
+        let _ = state.update(Message::Checked(Readiness::Ready, None), &mut ctx);
+        assert!(state.restart_when_ready, "still waiting for the game to close");
+        state.game.running = false;
+        let _ = state.update(Message::Checked(Readiness::Ready, None), &mut ctx);
+        assert!(!state.restart_when_ready, "the game is gone and the check passed: it plays again");
+        // A check that found a problem does not play, and keeps waiting.
+        state.restart_when_ready = true;
+        let _ = state.update(Message::Checked(Readiness::GameProblem("no yo3.exe".into()), None), &mut ctx);
+        assert!(state.restart_when_ready);
     }
 
     #[test]
@@ -837,14 +922,35 @@ mod tests {
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap(); // the grace timer
         let _inside = runtime.enter();
         let mut ctx = crate::app::Ctx { root: std::env::temp_dir(), backend: None, store: None, settings: Default::default() };
-        let live = |failure: Option<String>, held| Message::Polled(Ok(Live { running: false, ready: false, outside: false, failure, direct: None, held }));
-        let held = yo3_desktop::foreign::Held { findings: vec![], blocked: false };
+        let live = |failure: Option<String>, held| Message::Polled(Ok(Live { running: false, ready: false, stale: false, outside: false, failure, direct: None, held, games: vec![], extra_failures: vec![] }));
+        let held = yo3_desktop::foreign::Held { findings: vec![], blocked: false, clean: false };
         let mut state = State { game: Game { running: true, ..game(Some(Readiness::Ready)) }, polling: true, ..State::default() };
         let _ = state.update(live(None, Some(held)), &mut ctx);
         assert!(!state.game.running && state.notice.is_none() && state.inbox.is_empty(), "the dialog speaks, not a notice");
         let mut state = State { game: Game { running: true, ..game(Some(Readiness::Ready)) }, polling: true, ..State::default() };
         let _ = state.update(live(Some("The game could not start.".into()), None), &mut ctx);
         assert!(state.notice.is_some(), "any other failure is still said");
+    }
+
+    /// Games from Play as… (#64) count as playing: an update waits until every game is closed, and the window asks before
+    /// it closes them; the Polled list is what says so.
+    #[test]
+    fn games_from_play_as_hold_an_update_and_are_counted_when_polled() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let _inside = runtime.enter();
+        let mut ctx = crate::app::Ctx { root: std::env::temp_dir(), backend: None, store: None, settings: Default::default() };
+        let mut state = State { polling: true, ..State::default() };
+        assert!(!state.playing());
+        let extra = yo3_desktop::games::GameInfo { id: 2, user: "Joey".into(), server: "Friends".into(), server_key: "k".into() };
+        let live = Live { running: false, ready: false, stale: false, outside: false, failure: None, direct: None, held: None, games: vec![extra], extra_failures: vec!["The game as Joey stopped unexpectedly.".into()] };
+        let _ = state.update(Message::Polled(Ok(live)), &mut ctx);
+        assert_eq!(state.game.extras, 1);
+        assert!(state.playing(), "no update while another game runs, though the main one is closed");
+        assert!(state.notice.is_some(), "a game that failed is said");
+        let none = Live { running: false, ready: false, stale: false, outside: false, failure: None, direct: None, held: None, games: vec![], extra_failures: vec![] };
+        state.polling = true;
+        let _ = state.update(Message::Polled(Ok(none)), &mut ctx);
+        assert!(!state.playing());
     }
 
     #[test]

@@ -318,3 +318,34 @@ fn the_independent_state_query_includes_the_new_oracle_fields() {
         }
     }
 }
+
+#[test]
+fn the_anime_versions_are_on_only_when_asked_for_and_the_bundle_has_them() {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../engine");
+    if !dir.join("vendor/BabelCDB/cards-unofficial.cdb").is_file() {
+        eprintln!("anime data not fetched; skipping");
+        return;
+    }
+    assert_eq!(yo3_server::engine::anime_problem(&dir), None);
+    assert!(Engine::start_with(&dir, true).unwrap().anime_on().unwrap());
+    assert!(!Engine::start_with(&dir, false).unwrap().anime_on().unwrap());
+    assert!(!Engine::start(&dir).unwrap().anime_on().unwrap(), "off unless asked for");
+    // Card of Sanctity (5479) is 42664989 and its anime version 511001126; the duel's state names both.
+    let deck = [5479u16; 40];
+    let mut on = Engine::start_with(&dir, true).unwrap();
+    let answer = on.new_duel(3, 8000, [(&deck, &[]), (&deck, &[])]).unwrap();
+    assert!(answer.errors.is_empty(), "{:?}", answer.errors);
+    let state = on.state().unwrap();
+    assert_eq!((state[0]["hand"][0]["cid"].as_u64(), state[0]["hand"][0]["code"].as_u64()), (Some(5479), Some(511001126)));
+}
+
+#[test]
+fn a_bundle_without_the_anime_files_plays_the_games_cards() {
+    // The engine directory without the map: asking for the anime versions changes nothing (a warning, not a failure).
+    let dir = std::env::temp_dir().join(format!("yo3-no-anime-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let problem = yo3_server::engine::anime_problem(&dir).expect("nothing there");
+    assert!(problem.contains("anime-cards.json"), "{problem}");
+    std::fs::remove_dir_all(&dir).unwrap();
+}

@@ -39,6 +39,20 @@ async fn main() -> anyhow::Result<()> {
             hub.reports.add((reporter.0, &reporter.1), (target.0, &target.1), reason, 100).expect("sample report");
         }
     }
+    // A sample official event with two entrants' standings (the Stadium's events, #18).
+    hub.keep_official(&dir);
+    {
+        use yo3_server::official::{Kind, NewEvent, Prize};
+        let now = chrono::Utc::now().timestamp();
+        let id = hub.official.create(NewEvent { kind: Kind::Gunslinger, name: "Seeded Gunslinger".into(), start: now - 3600, end: now + 7 * 86_400,
+            regulation: None, prize: Prize { participation_bp: 100, threshold: 3, threshold_bp: 400 } }).expect("sample event").id;
+        let d = accounts.lock().unwrap();
+        for (name, wins) in [("TestPlayer", 3), ("TestResetTarget", 1)] {
+            let (player, _, name) = d.player_named(name).expect("demo player");
+            hub.official.join(id, player, &name, now);
+            for _ in 0..wins { hub.official.record(id, player, &name, 1, now); }
+        }
+    }
     hub.set_directory(accounts.clone()); hub.keep_mail(&dir.join("mail.json"));
     hub.keep_social(&dir.join("friends.json"));hub.keep_teams(&dir.join("teams.json"));
     hub.keep_events(&dir.join("events.json"));hub.keep_rentals(&dir.join("rentals.json"));

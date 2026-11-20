@@ -206,8 +206,8 @@ with `min_launcher`.
 | op | Asks for | Replies |
 | --- | --- | --- |
 | `register` | `user`, `password`, `rules: true`, `invite` (on an invite-only server) | `recovery_code`, shown once |
-| `login` | `user`, `password`, `stay`, `device` (a label such as "Windows PC") | `session`, `user`, and `device_token` when `stay` |
-| `resume` | `device_token` | `session`, `user` |
+| `login` | `user`, `password`, `stay`, `device` (a label such as "Windows PC"), `device_id` (optional: the launcher's random install id, 8 to 128 characters) | `session`, `user`, and `device_token` when `stay` |
+| `resume` | `device_token`, `device_id` (optional) | `session`, `user` |
 | `sign_out` | `device_token`, `everywhere` | `ok`. With `everywhere`, every device and the game's session end |
 | `change_password` | `user`, `password`, `new_password` | `ok`. Every device is signed out |
 | `recover` | `user`, `code` (the recovery code or a reset code), `new_password` | `recovery_code` (a new one) after a recovery code; nothing after a reset code. Every device is signed out |
@@ -222,6 +222,7 @@ The errors:
 | `maintenance` | During maintenance, for everyone but admins and moderators; with the server's `message` |
 | `signed_out` | A device token that was revoked, expired or never existed |
 | `invalid_recovery` | A wrong, used or expired recovery or reset code |
+| `device_full` | The `games-per-device` cap: that install already runs that many games (`limit`); not for admins and moderators ([linked accounts](hosting.md#linked-accounts-and-fair-play)) |
 | `invalid_user_id`, `user_id_taken` | Sign-up |
 | `password_too_short`, `password_too_long`, `password_characters`, `password_too_common` | Sign-up, a password change or recovery |
 | `rules_not_accepted`, `invite_required`, `invite_invalid`, `registration_closed` | Sign-up |

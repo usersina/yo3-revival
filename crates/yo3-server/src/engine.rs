@@ -121,6 +121,21 @@ pub fn problem(dir: Option<&Path>, program: &Path) -> Option<String> {
     }
 }
 
+/// What a duel tells its players when it plays the anime card versions: the card panel shows the game's text.
+pub const ANIME_NOTE: &str = "Anime card versions are on: cards with one play by their anime effects, whatever their card text says.";
+
+/// What a duel tells a player whose game started before the card profile changed (or without fetching it): the game still
+/// shows the cards it started with, and reads its card table once.
+pub const RESTART_NOTE: &str = "The host changed the card versions since your game started: restart the game (Play again) to see them as they are played.";
+
+/// What the anime card versions need beside the engine's other files: the reviewed map, the unofficial card database
+/// and the unofficial scripts. None when they are all there.
+pub fn anime_problem(dir: &Path) -> Option<String> {
+    ["anime-cards.json", "vendor/BabelCDB/cards-unofficial.cdb", "vendor/CardScripts/unofficial/proc_unofficial.lua"]
+        .iter().map(|name| dir.join(name)).find(|path| !path.is_file())
+        .map(|path| format!("{} is missing (unpack the release bundle again, whole; from source, run engine/fetch.sh)", path.display()))
+}
+
 /// Konami ids of client cards EDOPro doesn't have at all (game and promotion exclusives: Ulevo, Meteo the Matchless,
 /// Xexex, Eternia, the Arcane Lords' Testament and Armament, Chimaera the Master of Beasts, Emperor of Lightning, Tyr,
 /// Lorelei, Aggiba, Skuna). No pack or preset deck holds them; the deck check refuses them, since a duel can't play
@@ -137,6 +152,8 @@ pub struct Engine {
     recording: Option<(u64, u32)>,
     /// Counted in [`running`] (an engine `start` made, not a test's stand-in).
     counted: bool,
+    /// Started with the anime card versions (and they were available).
+    anime: bool,
 }
 static RECORDING_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
@@ -147,14 +164,29 @@ impl Engine {
         dir_from(std::env::var_os("YO3_ENGINE_DIR"), std::env::current_exe().ok().as_deref())
     }
 
+    /// A duel's engine with the game's cards as the client has them.
     pub fn start(dir: &Path) -> io::Result<Engine> {
+        Engine::start_with(dir, false)
+    }
+
+    /// `start`, with `anime`: the cards `engine/anime-cards.json` approves play as their anime versions (issue #60, the
+    /// `anime-cards` setting), the others as they are. A bundle without the map or the anime data plays as the game
+    /// does, with a warning: a host's setting never stops duels.
+    pub fn start_with(dir: &Path, anime: bool) -> io::Result<Engine> {
         if RUNNING.load(std::sync::atomic::Ordering::Relaxed) >= HARD_CAP { return Err(io::Error::other("too many rules engines running")) }
+        let anime = anime && match anime_problem(dir) {
+            None => true,
+            Some(problem) => { tracing::warn!("anime card versions are on but not available, duels play the game's cards: {problem}"); false }
+        };
         let mut command = Command::new(program(dir));
         command.arg(dir);
+        // Always set: a variable of the server's own environment must not turn the versions on by itself.
+        if anime { command.env("YO3_ANIME", "1"); } else { command.env_remove("YO3_ANIME"); }
         #[cfg(windows)] {use std::os::windows::process::CommandExt;command.creation_flags(0x08000000);}
         let mut engine = Engine::spawn(command, CALL_TIMEOUT)?;
         engine.identity_timeout = IDENTITY_TIMEOUT;
         engine.counted = true;
+        engine.anime = anime;
         RUNNING.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Ok(engine)
     }
@@ -178,7 +210,7 @@ impl Engine {
                 }
             }
         });
-        Ok(Engine { child, stdin, lines, timeout, identity_timeout: timeout, recording: None, counted: false })
+        Ok(Engine { child, stdin, lines, timeout, identity_timeout: timeout, recording: None, counted: false, anime: false })
     }
 
     pub fn identity(&mut self) -> io::Result<Json> {
@@ -243,6 +275,16 @@ impl Engine {
             Some("cards") => Ok(v.get_mut("cards").map(Json::take).and_then(|c| serde_json::from_value(c).ok()).unwrap_or_default()),
             _ => Err(io::Error::other(format!("engine: no card check ({})", v.get("error").and_then(Json::as_str).unwrap_or("unknown")))),
         }
+    }
+
+    /// Whether this engine was started with the anime card versions (and their files were there).
+    pub fn plays_anime(&self) -> bool {
+        self.anime
+    }
+
+    /// Whether this engine says it plays the anime card versions (it was started with them and had the map).
+    pub fn anime_on(&mut self) -> io::Result<bool> {
+        Ok(self.line(json!({ "op": "cards", "cards": [] }))?["anime"] == true)
     }
 
     /// Answers the core's prompt (an OcgResponse object).

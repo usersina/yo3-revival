@@ -96,9 +96,9 @@ async fn check_password(user: &str, password: &str, ctx: &Context<'_>) -> Result
 }
 
 /// A session for `user_id` (ending its older one) and the reply around it.
-fn start_session(user_id: u32, verified: &Login, ctx: &Context<'_>) -> Result<Json, Json> {
+fn start_session(user_id: u32, verified: &Login, request: &Json, ctx: &Context<'_>) -> Result<Json, Json> {
     // Password hashing runs without this lock. Recheck its snapshot and hold account -> session through issuance.
-    let accounts = ctx.accounts.locked();
+    let mut accounts = ctx.accounts.locked();
     let login = accounts.login_by_id(user_id).ok_or_else(|| error("invalid_credentials"))?;
     if let Some(refused) = login.refusal(logins::now()) { return Err(refused) }
     if login.staff_epoch != verified.staff_epoch || login.password != verified.password { return Err(error("invalid_credentials")) }
@@ -110,14 +110,24 @@ fn start_session(user_id: u32, verified: &Login, ctx: &Context<'_>) -> Result<Js
     // A full server says so (#27): the staff still comes in, and signing in again doesn't take another place.
     let full = { let s = ctx.sessions.locked(); !s.signed_in(user_id) && s.users() >= ctx.settings.max_players };
     if full && !login.staff() { return Err(error("server_full")) }
-    let session = ctx.sessions.locked().login(user_id, Instant::now()).ok_or_else(|| error("server_full"))?;
-    Ok(json!({ "ok": true, "session": hex(&session), "user": login.user }))
+    // Linked accounts (#64): what this account was seen on, and the games already running on this device (the
+    // `games-per-device` setting; the staff is exempt). The launcher's device id is kept only as a digest.
+    let device = Some(text(request, "device_id")).filter(|d| (8..=128).contains(&d.len())).map(|d| logins::digest(&format!("device {d}")));
+    let (staff, user_name) = (login.staff(), login.user.clone());
+    let mut sessions = ctx.sessions.locked();
+    if let Some(device) = &device && !staff && sessions.games_on(device, user_id) >= ctx.settings.games_per_device as usize {
+        return Err(json!({ "ok": false, "error": "device_full", "limit": ctx.settings.games_per_device }));
+    }
+    let session = sessions.login_from(user_id, device.as_deref(), Instant::now()).ok_or_else(|| error("server_full"))?;
+    drop(sessions);
+    accounts.note_seen(user_id, device.as_deref(), Some(ctx.peer), logins::now());
+    Ok(json!({ "ok": true, "session": hex(&session), "user": user_name }))
 }
 
 async fn login(request: &Json, ctx: &Context<'_>) -> Json {
     let (user, password) = (text(request, "user").trim(), text(request, "password"));
     let (user_id, login) = match check_password(user, password, ctx).await { Ok(found) => found, Err(reply) => return reply };
-    let mut reply = match start_session(user_id, &login, ctx) { Ok(reply) => reply, Err(reply) => return reply };
+    let mut reply = match start_session(user_id, &login, request, ctx) { Ok(reply) => reply, Err(reply) => return reply };
     if request["stay"].as_bool() == Some(true) {
         let token = logins::new_token();
         let now = logins::now();
@@ -138,7 +148,7 @@ fn resume(request: &Json, ctx: &Context<'_>) -> Json {
     let Some(login) = accounts.login_by_id(user_id).cloned() else { return error("signed_out") };
     if login.refusal(now).is_none() && accounts.touch_device(user_id, &digest, now).is_err() { return error("server_error") }
     drop(accounts);
-    start_session(user_id, &login, ctx).unwrap_or_else(|reply| reply)
+    start_session(user_id, &login, request, ctx).unwrap_or_else(|reply| reply)
 }
 
 fn sign_out(request: &Json, ctx: &Context<'_>) -> Json {
@@ -210,7 +220,7 @@ mod tests {
             let accounts=Mutex::new(d); let sessions=Mutex::new(Sessions::default()); let throttle=Mutex::new(Throttle::default());
             let live=crate::settings::Live::open(None,vec![]).unwrap(); let settings=live.now();
             let ctx=Context {accounts:&accounts,sessions:&sessions,throttle:&throttle,settings:&settings,peer:"127.0.0.1".parse().unwrap()};
-            assert!(start_session(user,&verified,&ctx).is_err(),"stale password snapshot bypassed moderation");
+            assert!(start_session(user,&verified,&serde_json::json!({}),&ctx).is_err(),"stale password snapshot bypassed moderation");
             assert!(!sessions.locked().signed_in(user));
         }
     }

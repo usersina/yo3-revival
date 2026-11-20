@@ -316,7 +316,18 @@ async fn legacy_http(
             Ok(Ok(Some(b))) => (StatusCode::OK, b), _ => (StatusCode::NOT_FOUND, vec![]),
         }
     } else if path.starts_with("/app/") { (StatusCode::OK, vec![]) }
-    else if let Some(old) = path.strip_prefix("/web") { (StatusCode::OK, crate::web::page(old).into_bytes()) }
+    else if let Some(old) = path.strip_prefix("/web") {
+        // The leaderboard and the team ranking come from the running server's results (#16).
+        let old = match parts.uri.query() { Some(q) => format!("{old}?{q}"), None => old.to_string() };
+        let ranking = match (&api.hub, crate::web::needs_ranking(&old)) {
+            (Some(hub), true) => {
+                let hub = hub.clone();
+                tokio::task::spawn_blocking(move || crate::lock::Locked::locked(&*hub).ranking()).await.ok()
+            }
+            _ => None,
+        };
+        (StatusCode::OK, crate::web::page(&old, ranking.as_ref()).into_bytes())
+    }
     else { (StatusCode::NOT_FOUND, vec![]) };
     tracing::info!("[http] GET {} -> {status} ({} B)", if path.ends_with("/yo3.idx") { "/yo3/yo3.idx" } else { path }, body.len());
     let mut response = axum::response::Response::new(Body::from(body));

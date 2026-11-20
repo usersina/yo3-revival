@@ -138,6 +138,11 @@ impl Teams {
         self.teams.values().find(|t| t.member(player_id).is_some())
     }
 
+    /// Every team, by id.
+    pub fn all(&self) -> impl Iterator<Item = &Team> {
+        self.teams.values()
+    }
+
     pub fn get(&self, team_id: u32) -> Option<&Team> {
         self.teams.get(&team_id)
     }

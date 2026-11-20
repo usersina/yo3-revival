@@ -1,0 +1,46 @@
+{
+ "note": "Corrected anime card records (issue #60): anime cards for which ProjectIgnis has only a placeholder entry. Each replaces the unofficial database's row of its passcode (tools/engine/anime-map.py puts them in engine/anime-cards.json's \"records\"; the rules engine, the card profile and the duel check read them there) and has its own script in engine/overrides/c<code>.lua. A `reconstruction` record is our reading of a description, not verified against the episodes; its text says so.",
+ "records": [
+  {
+   "cid": 8035,
+   "code": 513000079,
+   "official": 32646477,
+   "alias": 32646477,
+   "setcode": 0,
+   "type": 8225,
+   "level": 7,
+   "atk": 2600,
+   "def": 1800,
+   "race": 32,
+   "attribute": 32,
+   "name": "Dark Strike Fighter (Anime)",
+   "reconstruction": true,
+   "basis": "The placeholder row has 2700 ATK and no script. Stats: 2600/1800, Level 7, DARK Machine Synchro Effect. The effect is a community reconstruction of 5D's episodes 21 and 134, unverified.",
+   "text": "[Anime card, a reconstruction of episodes 21 and 134: not verified] 1 Tuner + 1 or more non-Tuner monsters\nDuring either Main Phase, once per turn for each copy of this card: You can Tribute 1 other monster you control; inflict damage to your opponent equal to the Tributed monster's Level (as it was when Tributed) x 200. This card cannot attack during the turn you activate this effect.",
+   "strings": [
+    "Inflict damage"
+   ]
+  },
+  {
+   "cid": 8302,
+   "code": 511247002,
+   "official": 71870152,
+   "alias": 71870152,
+   "setcode": 49,
+   "type": 33,
+   "level": 2,
+   "atk": -2,
+   "def": -2,
+   "race": 2,
+   "attribute": 4,
+   "name": "Fortune Lady Fire (Anime)",
+   "reconstruction": true,
+   "basis": "The placeholder row only says 'same as OCG'. The official card with one change: the destroy trigger works when this card is Special Summoned face-up in Attack Position by any means, with no Fortune Lady source required. The target (1 face-up monster the opponent controls) is the official card's, the rule the anime card's text gives too.",
+   "text": "[Anime card, a reconstruction] This card's ATK/DEF become its Level x 200. Once per turn, during your Standby Phase: Increase this card's Level by 1 (max. 12). When this card is Special Summoned face-up in Attack Position, by any card or procedure (no \"Fortune Lady\" card needed): Target 1 face-up monster your opponent controls; destroy that target, and if you do, inflict damage to your opponent equal to the destroyed monster's ATK as it was before it was destroyed.",
+   "strings": [
+    "Increase level",
+    "Destroy and inflict damage"
+   ]
+  }
+ ]
+}

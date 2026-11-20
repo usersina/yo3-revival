@@ -187,7 +187,7 @@ impl Table {
         let (mut m0, e0, mut m1, e1) = (cids(&lead.main), cids(&lead.extra), cids(&other.main), cids(&other.extra));
         shuffle(&mut self.rng, &mut m0);
         shuffle(&mut self.rng, &mut m1);
-        let mut engine = match Engine::start(&dir) {
+        let mut engine = match Engine::start_with(&dir, self.world.settings.now().anime_cards) {
             Ok(engine) => engine,
             Err(e) => {
                 tracing::warn!("duel {}: rules engine not started: {e}", self.duel_id);
@@ -202,6 +202,8 @@ impl Table {
         let lp = self.world.test_lp.or(hosted).unwrap_or(settings.start_lp);
         self.start_lp = lp;
         let answer = engine.new_duel_named(crate::duel::next(&mut self.rng), lp, [(&m0, &e0), (&m1, &e1)], &self.world.card_names);
+        let anime = engine.plays_anime();
+        let view = self.world.card_view();
         self.engine = Some(engine);
         // A hosted duel's time_turn and time_total, else the `turn-seconds` and `total-seconds` settings, unless a test
         // set every duel's.
@@ -218,8 +220,9 @@ impl Table {
             let order = if s == first { CLIENT } else { CPU };
             if self.world.duel_check {
                 // The opponent's hidden cards' rows, from a translator that hides nothing (the same uids in the same order).
-                let mut model = crate::duelcheck::ClientModel::new(order, self.world.cards.clone());
-                let (mut full, mut known) = Translator::new(order, [&mine.main, &theirs.main], self.world.cards.clone());
+                let mut model = crate::duelcheck::ClientModel::new(order, view.cards.clone());
+                model.expect_profile(view.expectations());
+                let (mut full, mut known) = Translator::new(order, [&mine.main, &theirs.main], view.cards.clone());
                 known.extend(full.extra_decks([&mine.extra, &theirs.extra]));
                 for m in &known {
                     let int = |k: &str| m.get(k).and_then(yo3_proto::Value::as_u32).unwrap_or(0);
@@ -227,12 +230,17 @@ impl Table {
                 }
                 self.checks.push(model);
             }
-            let (mut translator, mut table) = Translator::against_player(order, [&mine.main, &theirs.main], self.world.cards.clone());
+            let (mut translator, mut table) = Translator::against_player(order, [&mine.main, &theirs.main], view.cards.clone());
             translator.tokens(self.world.token_rows.clone());
-            translator.tuners(self.world.tuners.clone());
+            if anime { translator.note(crate::engine::ANIME_NOTE); }
+            if let Some(user) = self.seats[s].entry.identity.map(|i| i.user_id).filter(|u| !self.world.profiles.current_for(*u, anime)) {
+                tracing::info!("user {user}'s game runs another card profile than the server's now");
+                translator.note(crate::engine::RESTART_NOTE);
+            }
+            translator.tuners(view.tuners.clone());
             translator.auto_place(!self.seats[s].entry.manual_place);
             translator.allow_surrender(!self.seats[s].entry.no_surrender);
-            translator.card_kinds(self.world.card_kinds.clone());
+            translator.card_kinds(view.card_kinds.clone());
             table.extend(translator.extra_decks([&mine.extra, &theirs.extra]));
             self.translators.push(translator);
             part.push(setup(order, mine, theirs));
@@ -267,9 +275,9 @@ impl Table {
     fn spectator_opening(&self) -> (Translator, Vec<Message>) {
         let (mine, theirs) = (&self.seats[0].entry.deck, &self.seats[1].entry.deck);
         let order = if self.first == 0 { CLIENT } else { CPU };
-        let (mut translator, mut table) = Translator::spectating(order, [&mine.main, &theirs.main], self.world.cards.clone());
+        let (mut translator, mut table) = Translator::spectating(order, [&mine.main, &theirs.main], self.world.card_view().cards);
         translator.tokens(self.world.token_rows.clone());
-        translator.tuners(self.world.tuners.clone());
+        translator.tuners(self.world.card_view().tuners);
         table.extend(translator.extra_decks([&mine.extra, &theirs.extra]));
         let [result, their_hand, my_hand] = self.janken;
         let mut out = vec![

@@ -23,8 +23,10 @@ fn sizes_fit(deck: &Deck) -> bool {
 /// the rules engine moves such a card to the Extra Deck by itself, which would split the client's view from the duel.
 /// Without the game's data (no kinds known) every deck passes.
 fn in_their_decks(world: &World, deck: &Deck) -> bool {
-    let extra = |row: &u16| world.extra_deck_rows.contains(row);
-    world.extra_deck_rows.is_empty() || (!deck.main.iter().any(extra) && deck.extra.iter().all(extra))
+    // The selected card profile's placement (#60): a card the profile makes a Main Deck card is not an Extra Deck one.
+    let rows = world.card_view().extra_deck_rows;
+    let extra = |row: &u16| rows.contains(row);
+    rows.is_empty() || (!deck.main.iter().any(extra) && deck.extra.iter().all(extra))
 }
 
 /// Whether `owned` (copies by CARD_Prop row) covers the deck. Copies are counted per Konami id, so a card's other

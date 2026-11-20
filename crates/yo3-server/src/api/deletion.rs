@@ -68,7 +68,7 @@ impl Api {
         match &self.data_dir {
             Some(dir)=>store::together(dir,|| {
                 next.persist()?;if let (Some(cleanup),Some(hub))=(&cleanup,&hub){cleanup.persist(hub)?;}
-                store::delete_duel_logs_of(dir,&ids)?;crate::reports::forget(dir,&ids)?;store::forget_in_audit(dir,&names)?;store::audit(dir,&row)?;
+                store::delete_duel_logs_of(dir,&ids)?;crate::reports::forget(dir,&ids)?;crate::official::forget(dir,&ids)?;store::forget_in_audit(dir,&names)?;store::audit(dir,&row)?;
                 store::put_receipt(dir,&identity.scope,id,&receipt)?;
                 if disconnect {store::put_effect(dir,&identity.scope,id,user)?;}Ok(())
             }).map_err(MutationError::persistence)?,

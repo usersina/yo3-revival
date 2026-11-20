@@ -116,6 +116,36 @@ pub const CHAIN_WINDOWS: [(u64, &str, ChainWindow); 15] = [
     (45, "damage calculation, again", ChainWindow::Step),
 ];
 
+/// What each card of a MSG_SELECT_TRIBUTE counts for (`release_param`, 1 unless a card counts as two Tributes: Double
+/// Coston, Kaiba's Blue-Eyes deck's Lord of D. peers).
+pub(crate) fn release_params(m: &Json) -> Vec<u64> {
+    m["selects"].as_array().map_or(vec![], |cards| cards.iter().map(|c| c["release_param"].as_u64().unwrap_or(1).max(1)).collect())
+}
+
+/// A Tribute prompt in cards: the engine's `min` and `max` count Tributes, and a card may count as two, so the player
+/// needs only as many cards as the biggest Tributes make `min` (one Double Coston for a Tribute of 2). The client's
+/// list takes picks by card; whether the picks make enough is [`tribute_enough`].
+pub(crate) fn tribute_view(m: &Json, c: &SelectCard) -> SelectCard {
+    let mut params = release_params(m);
+    params.sort_unstable_by(|a, b| b.cmp(a));
+    let (mut sum, mut cards) = (0, 0);
+    for p in &params {
+        if sum >= c.min {
+            break;
+        }
+        sum += p;
+        cards += 1;
+    }
+    SelectCard { min: cards, max: c.max.min(c.selects.len() as u64), ..c.clone() }
+}
+
+/// Whether the picks (card indices) make a Tribute the engine takes: their `release_param`s add up to `min..=max`.
+pub(crate) fn tribute_enough(m: &Json, c: &SelectCard, picks: &[usize]) -> bool {
+    let params = release_params(m);
+    let sum: u64 = picks.iter().map(|&i| params.get(i).copied().unwrap_or(1)).sum();
+    (c.min..=c.max).contains(&sum)
+}
+
 /// The kind of window a HINT_EVENT value marks; none for a value [`CHAIN_WINDOWS`] doesn't know.
 pub fn chain_window(hint: u64) -> Option<ChainWindow> {
     CHAIN_WINDOWS.iter().find(|(h, _, _)| *h == hint).map(|&(_, _, w)| w)
@@ -126,6 +156,11 @@ const ALL_ZONES_USABLE: u32 = 0x3FF_03FF;
 /// the client names none of its eight markers.
 const MARK_EQUIP: u32 = 2;
 const MARK_TARGET: u32 = 8;
+/// Swords of Revealing Light (Konami id 4354): the engine gives it no target, so while it lies face up each of the
+/// opponent's monsters is marked from it with the red circled cross (type 4), the nearest the client has to "cannot
+/// attack". A guess, like the others.
+const MARK_LOCKED: u32 = 4;
+const SWORDS_OF_REVEALING_LIGHT: u16 = 4354;
 /// EDOPro's counter ids (strings.conf, less COUNTER_NEED_ENABLE) by the client's counter kinds of the same name:
 /// Spell, Wedge, Bushido, Psychic, Shine, Crystal, Morph, Venom, Genex, A-, Worm, Black Feather, Hyper-Venom,
 /// Spellstone ("Magical Stone", **guess**), Flower, Fog, Clock, D, Junk, Gate, Plant, Guard, Dragonic, Ocean,
@@ -691,6 +726,11 @@ impl Translator {
         Some(self.text(out, words))
     }
 
+    /// A line for the player's chat window with the next choice (`take_notes`).
+    pub fn note(&mut self, text: impl Into<String>) {
+        self.notes.push(text.into());
+    }
+
     pub fn take_notes(&mut self) -> Vec<String> {
         std::mem::take(&mut self.notes)
     }
@@ -766,8 +806,9 @@ mod tests {
     fn the_round_trip_names_an_option_no_menu_reaches() {
         let (mut t, _) = Translator::new(CLIENT, [&[], &[]], HashMap::new());
         let mut idle = idle_with_activations(1);
-        // A card in the Deck: the client has no menu there.
-        idle["activates"][0]["location"] = json!(1);
+        // A card where the client has no menu (an Xyz material, location 0x80; the Deck has the pile's menu since the
+        // Special Summons from the Deck were offered there).
+        idle["activates"][0]["location"] = json!(0x80);
         assert!(matches!(t.prompt(&idle), Prompt::Client(_)));
         let missing = t.unreachable_answers();
         assert!(missing.len() == 1 && missing[0].starts_with("activates[0]"), "{missing:?}");

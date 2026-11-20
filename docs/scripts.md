@@ -108,6 +108,12 @@ its own login form: type your User ID and password there, and tick **Save Passwo
 gave you an address instead of a link also gives you the identity: `--sign-in ADDRESS USER --identity HEX`.
 
 Use absolute paths. Linux users can add `--wine-prefix "/absolute/path/private-prefix"`.
+**A second game on the same PC** (**Unreleased**): run `play` again with another account's profile. Give it
+`--data-key NAME` (the account's User ID) so its saved settings, decks and duel logs have a folder of their own, and on
+Linux its own copy of the Wine prefix (`--wine-prefix`; Wine allows one X display per prefix). Desktop's
+[Play as another account](launcher.md#several-games-at-once) does both for you. The server may cap games per PC and
+treats accounts on one PC or network as [linked](hosting.md#linked-accounts-and-fair-play); a Scripts game sends no install
+id, so only its address links it.
 Do not edit `yo3.ini` or the game executable; the connection DLL supplies the private endpoints. A key profile from an
 older host (`client.json` with `server.crt`) still plays the same way.
 

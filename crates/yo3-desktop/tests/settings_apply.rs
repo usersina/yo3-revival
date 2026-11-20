@@ -36,6 +36,12 @@ fn the_next_play_takes_the_screen_size_and_wine_program_saved_since_the_launcher
     assert!(!a.contains(&"--accept-foreign".to_string()));
     backend.accept_foreign_once();
     assert!(args(&backend.launch_command(&after, Path::new("p.json"), Path::new("ready")).unwrap()).contains(&"--accept-foreign".to_string()));
+    // A server that asks for a clean game (#69): the helper is told, Continue anyway or not.
+    assert!(!args(&backend.launch_command(&after, Path::new("p.json"), Path::new("ready")).unwrap()).contains(&"--clean-game".to_string()));
+    backend.require_clean_game(true);
+    assert!(args(&backend.launch_command(&after, Path::new("p.json"), Path::new("ready")).unwrap()).contains(&"--clean-game".to_string()));
+    backend.require_clean_game(false);
+    assert!(!args(&backend.launch_command(&after, Path::new("p.json"), Path::new("ready")).unwrap()).contains(&"--clean-game".to_string()));
     drop(backend);
     std::fs::remove_dir_all(root).unwrap();
 }

@@ -136,7 +136,13 @@ pub struct Sessions {
     next_id: u64,
 }
 
-struct Session { identity: Identity, expires: Instant, revoked: tokio::sync::watch::Sender<bool> }
+struct Session {
+    identity: Identity, expires: Instant, revoked: tokio::sync::watch::Sender<bool>,
+    /// The launcher's device (a digest of its install id), when it sent one (#64).
+    device: Option<String>,
+    /// A game's front connection is open on this session.
+    playing: bool,
+}
 struct Ticket { session: Token, role: Role, expires: Instant }
 
 fn random_token() -> Token {
@@ -171,6 +177,26 @@ impl Sessions {
         for token in theirs { self.logout(&token) }
     }
 
+    /// The device `identity`'s session was started from.
+    pub fn device_of(&self, identity: Identity) -> Option<String> {
+        self.sessions.values().find(|s| s.identity == identity).and_then(|s| s.device.clone())
+    }
+
+    /// Games running on `device` now (open front connections), not counting `except`'s user (signing in again for the
+    /// account that already plays takes no second place).
+    pub fn games_on(&self, device: &str, except: u32) -> usize {
+        self.sessions.values().filter(|s| s.playing && s.identity.user_id != except && s.device.as_deref() == Some(device)).count()
+    }
+
+    /// A game's front connection opened (`true`) or closed on `identity`'s session. Opening is refused (false) when
+    /// `cap` games run on its device already, other accounts' (#64: the `games-per-device` setting).
+    pub fn set_playing(&mut self, identity: Identity, playing: bool, cap: usize) -> bool {
+        let device = self.device_of(identity);
+        if playing && let Some(device) = &device && self.games_on(device, identity.user_id) >= cap { return false }
+        if let Some(s) = self.sessions.values_mut().find(|s| s.identity == identity) { s.playing = playing }
+        true
+    }
+
     pub fn lease(&self, identity: Identity) -> Option<tokio::sync::watch::Receiver<bool>> {
         self.sessions.values().find(|s| s.identity == identity).map(|s| s.revoked.subscribe())
     }
@@ -181,7 +207,10 @@ impl Sessions {
 
     /// A new session for `user_id`. The newest login wins (D12): the account's older sessions end now, which closes
     /// their connections (the game shows its own disconnect dialog), so a crashed client never locks its owner out.
-    pub fn login(&mut self, user_id: u32, now: Instant) -> Option<Token> {
+    pub fn login(&mut self, user_id: u32, now: Instant) -> Option<Token> { self.login_from(user_id, None, now) }
+
+    /// [`Sessions::login`] from a launcher's device (#64), which says how many games are running on it.
+    pub fn login_from(&mut self, user_id: u32, device: Option<&str>, now: Instant) -> Option<Token> {
         self.prune(now);
         self.logout_user(user_id);
         // A hard ceiling only: the `max-players` setting refuses well before it (#27).
@@ -189,7 +218,7 @@ impl Sessions {
         self.next_id = self.next_id.checked_add(1)?;
         let token = random_token();
         let (revoked, _) = tokio::sync::watch::channel(false);
-        self.sessions.insert(token, Session { identity: Identity { user_id, session_id: self.next_id }, expires: now + SESSION_TTL, revoked });
+        self.sessions.insert(token, Session { identity: Identity { user_id, session_id: self.next_id }, expires: now + SESSION_TTL, revoked, device: device.map(str::to_owned), playing: false });
         Some(token)
     }
 

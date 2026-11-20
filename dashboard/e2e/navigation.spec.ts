@@ -15,6 +15,7 @@ const pages = [
   ['News & maintenance', '/news'],
   ['Moderation', '/moderation'],
   ['Reports', '/reports'],
+  ['Events', '/events'],
   ['Audit log', '/audit'],
   ['Server logs', '/logs'],
   ['Backups', '/backups'],

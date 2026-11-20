@@ -37,6 +37,7 @@ impl Gate {
         info.registration = settings.registration.as_str().into();
         info.min_launcher = yo3_tunnel::minimum_launcher(&info.release,settings.min_launcher.as_deref()).map(str::to_owned);
         info.maintenance = settings.in_maintenance(crate::logins::now());
+        info.clean_game = settings.clean_game;
         info.max_online = u32::try_from(settings.max_players).ok();
         // The news, each body shortened, and as many entries as fit in discovery's answer.
         let short = |text: &str, n: usize| if text.chars().count() > n { text.chars().take(n - 1).collect::<String>() + "…" } else { text.to_owned() };
@@ -45,6 +46,10 @@ impl Gate {
         info
     }
 }
+
+/// A game's front connection ending: its place on the device is free again (#64).
+struct GameClosed { sessions: Arc<Mutex<crate::auth::Sessions>>, identity: crate::auth::Identity }
+impl Drop for GameClosed { fn drop(&mut self) { self.sessions.locked().set_playing(self.identity, false, usize::MAX); } }
 
 async fn handshake(mut tls: TlsStream<TcpStream>, gate: &Gate, info: &yo3_tunnel::ServerInfo, peer: std::net::IpAddr)
     -> anyhow::Result<Option<(TlsStream<TcpStream>, Identity, Instant, Role, u16)>>
@@ -188,7 +193,11 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
                 let tls = acceptor.accept(tcp).await.context("TLS handshake")?;
                 stage = "transport handshake";
                 let online = u32::try_from(hub.locked().online()).ok();
-                handshake(tls, &gate, &gate.info(world.engine_problem.is_none(), online), peer.ip()).await
+                handshake(tls, &gate, &{
+                    let mut info = gate.info(world.engine_problem.is_none(), online);
+                    info.card_profile = world.profiles.current_hash(world.settings.now().anime_cards);
+                    info
+                }, peer.ip()).await
             }).await;
             let (mut tls, identity, expires, role, port)=match hello {
                 Ok(Ok(Some(connection)))=>connection,
@@ -203,6 +212,15 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
                 match role {
                     Role::Front => {
                         let Some(account) = accounts.locked().account_of(identity.user_id) else { return Ok(()) };
+                        // Linked accounts (#64): where this account plays from, and the cap of games per device. A game
+                        // over the cap (it was started before the launcher's check, or by another route) is closed.
+                        accounts.locked().note_seen(identity.user_id, None, Some(peer.ip()), crate::logins::now());
+                        let cap = gate.settings.now().games_per_device as usize;
+                        if !gate.sessions.locked().set_playing(identity, true, cap) {
+                            tracing::warn!("[tls] {peer} user {}: more than {cap} game(s) on one device; closed", identity.user_id);
+                            return Ok(());
+                        }
+                        let _closed = GameClosed { sessions: gate.sessions.clone(), identity };
                         Box::pin(net::secured(tls, "front", log, idle, pace, move |outbox| {
                             let mut front = FrontSession::new(account, world, hub, outbox);
                             front.set_identity(identity);
@@ -226,6 +244,18 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
                         let path = request.split_whitespace().nth(1).unwrap_or_default();
                         if !request.starts_with("GET ") || !public_http(path) {
                             tls.write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await?;
+                            return tls.shutdown().await;
+                        }
+                        // The card profile (#60): what the connection DLL rewrites the client's card table with at start. The
+                        // server notes which one this account's game loaded; a duel tells a game that runs another to restart.
+                        if path.split('?').next() == Some(CARD_PROFILE_PATH) {
+                            let body = world.profiles.file(world.settings.now().anime_cards);
+                            let loaded = crate::profile::Profile::identify(&body).unwrap_or_default();
+                            tracing::info!("[tls] {peer} user {} fetched the card profile {} {}", identity.user_id, loaded.0, loaded.1);
+                            world.profiles.note_launch(identity.user_id, loaded);
+                            let head = format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+                            tls.write_all(head.as_bytes()).await?;
+                            tls.write_all(body.as_bytes()).await?;
                             return tls.shutdown().await;
                         }
                         let mut local = TcpStream::connect(http).await?;
@@ -303,6 +333,9 @@ mod handshake_tests {
         assert!(super::handshake_allowed(&mut buckets, [203, 0, 113, 10].into(), now, 5, 2), "another address has its own");
     }
 }
+
+/// The path of the card profile (`profile.rs`), under the pages the connection DLL may ask for (`/web/`).
+pub const CARD_PROFILE_PATH: &str = "/web/card-profile";
 
 /// The local server's HTTP paths an authenticated launcher may reach: the game's patch and data downloads, duel logs, and
 /// the pages behind its old website links (`/web/`, crate::web); never the admin API (`/api/admin/v1/`, api.rs).

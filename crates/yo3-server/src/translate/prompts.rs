@@ -69,7 +69,7 @@ impl Translator {
                     },
                 };
                 // A card's own question (its string as the description) under the client's line, through the DLL.
-                let mut out = vec![];
+                let mut out = self.pile_views_under_question();
                 let mut entries = entries;
                 if let Some(question) = description_text.as_deref().filter(|t| !t.is_empty() && entries.len() <= 2) {
                     let id = self.text(&mut out, question);
@@ -89,7 +89,9 @@ impl Translator {
                 }
                 let mut out = vec![];
                 let text = self.hint_message(&mut out, hint);
-                let list = CardList { selects: choice.selects.clone(), min: choice.min, max: choice.max, cancelable: choice.can_cancel };
+                // A Tribute counts in Tributes, and a card may be two (Double Coston): the list takes picks by card.
+                let view = if matches!(ask, Ask::Tribute(_)) { tribute_view(m, choice) } else { choice.clone() };
+                let list = CardList { selects: view.selects.clone(), min: view.min, max: view.max, cancelable: view.can_cancel };
                 out.extend(self.card_list(&list, text));
                 self.pending = Some(m.clone());
                 self.picks.clear();
@@ -191,6 +193,18 @@ impl Translator {
             // Where a summoned, Set or activated card goes: chosen for the player, centre out, as Konami's server did.
             _ => Prompt::Answer(cpu_answer(m)),
         }
+    }
+
+    /// The piles' Confirm entries as a command map with the input wait, sent before a question's dialog ("Activate X?"):
+    /// the field takes clicks only in a command wait, so without it the Graveyards and banished piles could only be
+    /// hovered while the question was up (#16). A pile's click opens its view (`pile_view`), whose closing brings the
+    /// question back. Empty when no pile has a card.
+    pub(super) fn pile_views_under_question(&self) -> Vec<Message> {
+        let mut map = vec![];
+        self.add_pile_views(&mut map);
+        // The Extra Deck's "See Details" has nothing to do with a question.
+        map.retain(|(place, _)| place >> 8 & 0xFF != zone::EXTRA);
+        if map.is_empty() { vec![] } else { vec![command_data(&map, &[]), command(cmd::INPUT, [mode::MAIN, CLIENT, 0, 0])] }
     }
 
     /// A zone prompt (MSG_SELECT_DISFIELD, or MSG_SELECT_PLACE with auto card placing off): the client's own prompt in
@@ -347,7 +361,8 @@ impl Translator {
             return Prompt::Client(self.card_list(&CardList::chain(m), Some(text::SELECT_EFFECT)));
         }
         let rows: Vec<u32> = selects.iter().map(|e| self.row_of(&e.loc) as u32).collect();
-        let mut out = vec![command(cmd::LIST_BEGIN, [rows.len() as u32, 0, dialog::WITH_CARDS, 0])];
+        let mut out = self.pile_views_under_question();
+        out.push(command(cmd::LIST_BEGIN, [rows.len() as u32, 0, dialog::WITH_CARDS, 0]));
         out.extend(fours(cmd::LIST_ROWS, &rows));
         let entries = match &self.chaining {
             Some(link) => {
@@ -643,7 +658,9 @@ impl Translator {
         }
         let mut seen = vec![];
         let fits = picks.iter().all(|&i| i < len && !seen.contains(&i) && { seen.push(i); true });
-        if fits && (min..=max).contains(&picks.len()) {
+        // A Tribute's picks count by their `release_param`s, not one each.
+        let enough = if tribute { tribute_enough(m, c, &picks) } else { (min..=max).contains(&picks.len()) };
+        if fits && enough {
             return Response::cards(response, Some(picks)).json();
         }
         tracing::warn!("card list: picks {picks:?} don't fit min {min} max {max} of {len}");
@@ -655,7 +672,7 @@ impl Translator {
         let mut bits: Vec<(u32, u32)> = vec![];
         for &(list, bit, _) in command_lists(ask).0 {
             for (loc, _) in command_list(ask, list) {
-                let Some(place) = self.place(loc) else { continue };
+                let Some(place) = self.command_place(loc) else { continue };
                 if list == "pos_changes" && bit != self.position_change(place) {
                     continue;
                 }
@@ -678,6 +695,16 @@ impl Translator {
             Some((true, true)) => 8,
             _ => 9,
         }
+    }
+
+    /// Where a listed card's command goes in the command map: its [`place`](Self::place), and for a card in the Deck (a
+    /// Special Summon from the Deck: Red-Eyes Black Metal Dragon, Familiar-Possessed - Wynn) the Deck pile, index 0, as for
+    /// the other piles: the client has no place for a card in the Deck, and the pile is clickable (Surrender's menu is on it).
+    pub(super) fn command_place(&self, loc: &Loc) -> Option<u32> {
+        if loc.location == loc::DECK {
+            return Some(table_place(self.side(loc.controller), zone::DECK, 0));
+        }
+        self.place(loc)
     }
 
     /// The card-table place of an engine card location: hand (0xB, index), monster zone (0, slot), Spell/Trap

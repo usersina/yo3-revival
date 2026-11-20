@@ -5,6 +5,7 @@
 import type { AccountBanlist } from './accountBanlist';
 import type { AccountMute } from './accountMute';
 import type { AccountStanding } from './accountStanding';
+import type { LinkedAccount } from './linkedAccount';
 import type { PlayerDetail } from './playerDetail';
 import type { Role } from './role';
 
@@ -25,6 +26,8 @@ export interface AccountDetail {
      */
   device_count: number;
   has_key: boolean;
+  /** Accounts seen on the same PC or address (#64): what a host's fair-play rules treat as one player. */
+  linked_accounts: LinkedAccount[];
   /** @nullable */
   login?: string | null;
   muted?: AccountMute | null;

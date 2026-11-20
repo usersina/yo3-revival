@@ -118,6 +118,33 @@ The **Multiplayer** tab signs in to servers with a User ID and password ([accoun
 
 Settings → Accounts lists every server you're signed in to on this PC, with Sign out everywhere and Change password.
 
+### Several games at once
+
+**Unreleased.** There is still one launcher per user (a second start brings the open window to the front). Signed in on a
+server, **Play as another account…** under your User ID starts another game on that server signed in to a *different*
+account: type its User ID and password and press **Play**. The password is used once and not kept, and the other account
+doesn't "stay signed in".
+
+- **Games running** lists every game with its account and server and a **Close** for each. Closing the launcher asks first,
+  then closes every game it started. Singleplayer stays at one game, against your own server.
+- **The same account twice is refused**, with a message, before anything is asked of the server (the server ends an
+  account's older sign-in when it signs in again, so the first game would be cut off). That includes the account this
+  launcher is signed in as: PLAY is for that one.
+- **Each game is its own.** It has its own local ports and its own connection to the server, its own game data folder (the
+  game's `options.y3o`, `users` and `players` folders: for an extra game they are in
+  `Documents\YO3 Revival\servers\<a number made from the server and the account>`, so each account keeps its own saved
+  settings, decks and duel logs next time), and on Linux its own Wine prefix (Wine allows one X display per prefix): a copy
+  of the main prefix made when the game starts and removed when it closes. On a file system that can share data between
+  files (btrfs, XFS) the copy is nearly free; elsewhere the copy shares the main prefix's `C:` drive instead of copying it.
+  The main game keeps the data folder it always had. On Linux that folder is in the prefix's Documents: where Wine links
+  it to your own Documents (its default) it is kept after the copy is removed, and in a prefix whose user folders are
+  real folders (a sandboxed one) it goes with the copy.
+- **Updates and Repair.** An update downloaded in the background installs on **Restart to install**, which waits until
+  every game is closed; settings that change the game folder wait the same way.
+- **A host can cap the games one PC runs** (`games-per-device`, **default 1**, which changes nothing until a host raises it):
+  a second game on the same PC is then refused with "This server lets one PC run 1 game at once…". Hosts can also keep
+  accounts on one PC or network from earning together: see [linked accounts](hosting.md#linked-accounts-and-fair-play).
+
 ## Host friends
 
 **Host for friends**, on the Multiplayer tab, runs a server on this PC that your friends join, like a game's "Open to
@@ -375,8 +402,16 @@ If something is found, a dialog says so in plain words, with the technical text 
 PLAY refuses to start the game in two cases only, with no Continue anyway: another program has *redirected* one of the game's
 network functions (it sits between the game and the connection YO3 Revival guards), or a file is known to break the game's
 connection (a list that ships empty). **Move it aside** is offered when the culprit is a file in the game folder.
-Everything else stays a warning. The same check runs for Scripts' `play` (it prints what it found and stops; `--accept-foreign`
+Everything else stays a warning, unless the host asks for a clean game (next paragraph). The same check runs for Scripts' `play` (it prints what it found and stops; `--accept-foreign`
 goes on past a warning). A game opened [directly](#open-the-game-directly) is not held: what was found goes in the logs.
+
+**A server that asks for a clean game** (**Unreleased**, the host's `clean-game` setting, off by default): on that server PLAY
+stops for anything the check lists, with no **Continue anyway**: another program's `.dll` or `.asi` in the game folder, a
+Winsock provider that isn't Microsoft's, or a detour on the game's network functions. The dialog is titled "This server asks
+for a clean game" and says so; **Move it aside** is still offered for files, and the other advice (the Winsock command,
+security software) applies as above. It asks only on that server: other servers and your own Singleplayer are unchanged.
+It is the host's tidiness rule for friends' games, not protection against cheating: anything on your PC can be hidden from
+a check.
 
 ## Troubleshooting
 

@@ -32,6 +32,12 @@ struct Args {
     #[arg(long)] trace_dll: Option<PathBuf>,
     /// Draw the game larger, sharp and in 4:3: WIDTHxHEIGHT for a window, auto for the largest the screen holds, or off
     #[arg(long)] resolution: Option<yo3_launcher::resolution::Resolution>,
+    /// The anime artwork folder (#60): the connection DLL shows `card/<Konami id>.png` for a card the host's card profile
+    /// shows as its anime version; thumbnails are made from the faces that lack one. Created if missing.
+    #[arg(long, value_name = "DIR")] anime_art: Option<PathBuf>,
+    /// The game's original `Yu-Gi-Oh! ONLINE 3` Documents folder: before the game is released, the player's local decks are
+    /// placed as the server's card profile says (decks.rs, issue #60).
+    #[arg(long, value_name = "DIR")] client_data: Option<PathBuf>,
     #[arg(long)] wine_prefix: Option<PathBuf>,
     /// Desktop lifecycle pipe. Closing stdin or sending `stop` closes the game and revokes its session.
     #[arg(long)] control_stdin: bool,
@@ -42,6 +48,12 @@ struct Args {
     /// Start the game although another program's file or provider was found (the player's Continue anyway). A redirected
     /// network function still stops it.
     #[arg(long)] accept_foreign: bool,
+    /// The server asks for a clean game (#69): other programs' files or network software found in the game stop the
+    /// start, and --accept-foreign does not go past them.
+    #[arg(long)] clean_game: bool,
+    /// An extra game from the Desktop's Play as… (#64): its game data folder is the server's and this key's own
+    /// (the account), so the games' options, decks and duel logs stay apart.
+    #[arg(long)] data_key: Option<String>,
     #[arg(long)] diagnostic_parent: Option<String>,
     /// A game-local bootstrap attaches to this existing game after proving mod readiness through private files.
     #[arg(long, requires = "proxy_only")] attach_game: Option<u32>,
@@ -126,15 +138,19 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
     let loaded = Profile::read(&profile).context("read the private launcher profile and host certificate")?;
     let (endpoint, key, vault) = (loaded.endpoint.clone(), loaded.credential.clone(), loaded.vault.clone());
     log.secret(&key.secret());
+    // The server's own word on a clean game (#69), besides the flag the Desktop gives: Scripts plays by this too.
+    let mut clean_game = args.clean_game;
     // Direct start checks the server after the game is released: a refusal is the game's own login dialog (#33).
     if args.attach_game.is_none() {
         log.line("Checking server identity and compatibility");
         let info=initializing!(endpoint.info())?;
         info.ensure_compatible(yo3_tunnel::PROTOCOL_VERSION, yo3_tunnel::MOD_ABI)?;
         info.ensure_launcher(yo3_tunnel::BUILD_VERSION)?;
+        clean_game |= info.clean_game;
     }
-    let proxy = initializing!(Proxy::prepare(endpoint.clone(), Ports { gate: args.gate_port, front: args.front_port, duel: args.duel_port, http: args.http_port }))?;
+    let mut proxy = initializing!(Proxy::prepare(endpoint.clone(), Ports { gate: args.gate_port, front: args.front_port, duel: args.duel_port, http: args.http_port }))?;
     log.secret(&hex(&proxy.cookie));
+    if let Some(key) = &args.data_key { proxy.server_id = yo3_launcher::game_data_id(&proxy.server_id, key); log.line("This game keeps its own game data folder") }
     // The game's patch check gets the game's own index on every Play, never a server's (security review, #39).
     if let Some(dir) = &args.game_dir { proxy.local_index_from(dir) }
     if let Some(pid) = args.attach_game {
@@ -162,6 +178,18 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
         cmd
     };
     if let Some(resolution) = args.resolution { cmd.env(yo3_launcher::resolution::ENV, resolution.to_string()); }
+    // The anime artwork folder (#60): created, its thumbnails made, and told to the DLL. A folder that can't be made leaves the
+    // game with its own artwork.
+    if let Some(dir) = &args.anime_art {
+        match yo3_launcher::art::prepare(dir) {
+            Ok(done) => {
+                log.line(&format!("Anime artwork: {} card face(s) in {}, {} thumbnail(s) made", done.faces.len(), dir.display(), done.made.len()));
+                for (file, why) in &done.skipped { log.line(&format!("Anime artwork skipped: {} ({why})", file.display())); }
+                cmd.env(yo3_launcher::art::ENV, dir);
+            }
+            Err(e) => log.line(&format!("Anime artwork folder {} is not usable: {e}", dir.display())),
+        }
+    }
     // What else runs inside the game (#68): the DLL writes its report here before the game is released.
     let survey_given = args.survey_file.is_some();
     let survey_file = args.survey_file.clone().unwrap_or_else(|| args.diagnostics_dir.clone()
@@ -208,13 +236,16 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
     match yo3_launcher::survey::Survey::read(&survey_file) {
         Some(report) => {
             let verdict = report.assessment();
-            let decision = verdict.decision(args.accept_foreign);
+            let decision = verdict.decision_on(args.accept_foreign, clean_game);
             for finding in verdict.all() { log.line(&format!("Survey: {}", yo3_launcher::survey::describe(finding))); }
             log.line(&format!("Survey: decision {decision:?}"));
-            let _ = yo3_launcher::survey::record_decision(&survey_file, decision);
+            let _ = yo3_launcher::survey::record_decision_on(&survey_file, decision, clean_game);
             if decision != yo3_launcher::survey::Decision::Went {
                 let _ = child.kill().await;
                 let what = verdict.all().map(yo3_launcher::survey::describe).collect::<Vec<_>>().join("; ");
+                if decision == yo3_launcher::survey::Decision::Blocked && clean_game && verdict.blocked.is_empty() {
+                    anyhow::bail!("The game was not started: this server asks for a clean game, and {what}. Remove it, then try again.");
+                }
                 if decision == yo3_launcher::survey::Decision::Blocked {
                     anyhow::bail!("The game was not started: {what}. It would break the game's connection. Close that program or remove its file, then try again.");
                 }
@@ -247,6 +278,24 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
         _ => Some(initializing!(key.sign_in(&endpoint)).context("Authentication failed; game was not resumed. Check the profile and that the server is running, or export logs for help")?),
     };
     if let Some(session) = session { log.secret(&hex(&session)); proxy.activate(session); }
+    // The card profile the game loads (what discovery announces for it), kept to notice when the server pins another one.
+    let mut loaded_profile: Option<String> = None;
+    // The local decks follow the card profile the game is about to load (#60); nothing here can stop the game from starting.
+    if let (Some(_), Some(original)) = (session, &args.client_data) {
+        let folder = yo3_launcher::decks::folder_for(original, &proxy.server_id);
+        match yo3_launcher::decks::fetch(proxy.ports.http, &hex(&proxy.cookie)).await {
+            Ok(file) => {
+                let wanted = yo3_launcher::decks::Wanted::parse(&file);
+                loaded_profile = Some(wanted.announced());
+                match yo3_launcher::decks::adapt(&folder, &wanted) {
+                    Ok(done) if done.adapted > 0 || !done.skipped.is_empty() => log.line(&format!("Local decks and the card profile {}: {} deck(s) changed, {} card(s) moved, {} file(s) left alone", wanted.hash, done.adapted, done.moved, done.skipped.len())),
+                    Ok(_) => {}
+                    Err(error) => log.line(&format!("Local decks were not adapted to the card profile: {error}")),
+                }
+            }
+            Err(error) => log.line(&format!("Local decks were not adapted: the card profile could not be fetched: {error:#}")),
+        }
+    }
     let game_log = log.clone();
     let output = tokio::spawn(async move { capture(stdout, game_log, true).await; });
     let result = async {
@@ -266,8 +315,18 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
         };
         let mut typed = proxy.typed_logins().context("the login form's channel is gone")?;
         let mut launcher_gone = false;
+        // The server's card profile is asked of discovery now and then: a host who changes it makes the running game
+        // out of date, which the Desktop shows as an offer to restart (decks.rs, #60).
+        let mut profile_tick = tokio::time::interval(std::time::Duration::from_secs(20));
+        profile_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         let status = loop {
             tokio::select! {
+                _ = profile_tick.tick(), if loaded_profile.is_some() && args.ready_file.is_some() => {
+                    if let (Some(loaded), Some(ready)) = (&loaded_profile, &args.ready_file)
+                        && let Ok(Ok(info)) = tokio::time::timeout(std::time::Duration::from_secs(10), endpoint.info()).await
+                        && yo3_launcher::decks::note_staleness(ready, loaded, &info.card_profile)
+                    { log.line("The server pins another card profile than this game loaded: restart the game to see it") }
+                }
                 status = child.wait() => break Some(status?),
                 result = &mut interrupt => { result?; child.kill().await?; break None }
                 _ = sign_outs.notified() => forget().await,

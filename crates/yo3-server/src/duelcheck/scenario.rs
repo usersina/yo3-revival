@@ -25,6 +25,13 @@ use crate::ocg::{Response, battle, idle, msg};
 use crate::translate::{CardStats, Translator, bot_answer};
 use crate::wire::cmd;
 
+/// A prompt without its long card lists, for an error.
+fn short(p: &Json) -> String {
+    let mut text = p.to_string();
+    text.truncate(300);
+    text
+}
+
 /// One step of the planned side's play, by Konami id.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
@@ -42,6 +49,9 @@ pub enum Action {
     Attack(u16),
     /// Chain this card's effect at the first chance its team gets to (Mirror Force at an attack).
     Chain(u16),
+    /// Chain this card's effect only in answer to an attack declaration (Zero Gardna, Mirror Force): a chance of
+    /// the declaring step, not one at a summon or a phase.
+    ChainOnAttack(u16),
     /// End the turn: the plan goes on in the next own turn.
     EndTurn,
 }
@@ -65,6 +75,14 @@ pub struct Scenario {
     answer: Answer,
     state: Json,
     steps: usize,
+    /// The engine message types of the last steps (newest last), for an error to say what happened before it.
+    trail: Vec<String>,
+    /// An attack was declared and its battle has not been calculated yet (the chances to chain to the attack).
+    attacking: bool,
+    /// Cards the planned side picks first when an effect asks it to select cards (a target, a discard): (controller, Konami id).
+    prefer: Vec<(u64, u16)>,
+    /// The position the planned side's position choices take when it is allowed (`pos::FACEUP_DEFENSE`...); None: the CPU's (Attack).
+    position: Option<u64>,
     /// Every difference between a seat's client model and the engine, with the seat and the step.
     pub problems: Vec<String>,
 }
@@ -76,7 +94,19 @@ const MAX_WAIT_TURNS: u32 = 8;
 impl Scenario {
     /// Starts the duel: `decks` by engine team, (main deck, extra deck) in Konami ids, team 0 planned.
     pub fn start(dir: &Path, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2]) -> Result<Scenario, String> {
-        let mut engine = Engine::start(dir).map_err(|e| format!("engine: {e}"))?;
+        Scenario::start_with(dir, false, seed, lp, decks)
+    }
+
+    /// `start` with the anime card versions on (the `anime-cards` setting): the reviewed cards play by their anime effects.
+    pub fn start_anime(dir: &Path, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2]) -> Result<Scenario, String> {
+        Scenario::start_with(dir, true, seed, lp, decks)
+    }
+
+    fn start_with(dir: &Path, anime: bool, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2]) -> Result<Scenario, String> {
+        let mut engine = Engine::start_with(dir, anime).map_err(|e| format!("engine: {e}"))?;
+        if anime && !engine.anime_on().map_err(|e| format!("engine: {e}"))? {
+            return Err("the anime card versions are not available: engine/fetch.sh and engine/anime-cards.json".into());
+        }
         let all: Vec<u16> = {
             let mut v: Vec<u16> = decks.iter().flat_map(|(m, e)| m.iter().chain(e.iter())).copied().collect();
             v.sort_unstable();
@@ -88,11 +118,20 @@ impl Scenario {
         const TYPE_TUNER: u64 = 0x1000;
         let tuners: HashSet<u16> =
             all.iter().zip(&data).filter(|(_, d)| d["data"]["type"].as_u64().is_some_and(|t| t & TYPE_TUNER != 0)).map(|(c, _)| *c).collect();
-        let cards: HashMap<u16, CardStats> = all.iter().map(|&c| (c, CardStats { cid: c, ..CardStats::default() })).collect();
+        let mut cards: HashMap<u16, CardStats> = all.iter().map(|&c| (c, CardStats { cid: c, ..CardStats::default() })).collect();
+        // The anime cards' tokens are the client's token cards, found by name.
+        let tokens = if anime {
+            let (rows, names) = super::selfplay::client_tokens(dir)?;
+            cards.extend(rows);
+            names
+        } else {
+            HashMap::new()
+        };
         let views = (0..2)
             .map(|seat| {
                 let (mine, theirs) = (decks[seat], decks[1 - seat]);
                 let (mut translator, mut table) = Translator::against_player(seat as u32, [mine.0, theirs.0], cards.clone());
+                translator.tokens(tokens.clone());
                 translator.tuners(tuners.clone());
                 table.extend(translator.extra_decks([mine.1, theirs.1]));
                 let mut model = ClientModel::new(seat as u32, cards.clone());
@@ -106,7 +145,7 @@ impl Scenario {
             })
             .collect();
         let answer = engine.new_duel(seed, lp, decks).map_err(|e| format!("engine: {e}"))?;
-        let mut s = Scenario { engine, views, answer, state: Json::Null, steps: 0, problems: vec![] };
+        let mut s = Scenario { engine, views, answer, state: Json::Null, steps: 0, trail: vec![], attacking: false, prefer: vec![], position: None, problems: vec![] };
         s.observe()?;
         Ok(s)
     }
@@ -115,6 +154,18 @@ impl Scenario {
     fn observe(&mut self) -> Result<(), String> {
         if !self.answer.errors.is_empty() {
             return Err(format!("step {}: the engine reported {:?}", self.steps, self.answer.errors));
+        }
+        for m in &self.answer.messages {
+            match m["type"].as_u64() {
+                Some(msg::ATTACK) => self.attacking = true,
+                Some(msg::BATTLE) | Some(msg::ATTACK_DISABLED) | Some(msg::DAMAGE_STEP_END) | Some(msg::NEW_PHASE) => self.attacking = false,
+                _ => {}
+            }
+        }
+        let kinds: Vec<String> = self.answer.messages.iter().map(|m| m["type"].to_string()).collect();
+        self.trail.push(format!("{}: {}", self.steps, kinds.join(" ")));
+        if self.trail.len() > 12 {
+            self.trail.remove(0);
         }
         self.state = self.engine.state().map_err(|e| format!("engine state: {e}"))?;
         for (seat, (translator, model)) in self.views.iter_mut().enumerate() {
@@ -138,6 +189,20 @@ impl Scenario {
         }
         self.answer = self.engine.respond(response).map_err(|e| format!("engine: {e}"))?;
         self.observe()
+    }
+
+    /// A line for an error: the cards in each team's hand and the engine message types of the last steps.
+    pub fn context(&self) -> String {
+        let cids = |t: usize, place: &str| -> Vec<u64> {
+            self.state[t][place].as_array().map_or(vec![], |h| h.iter().filter_map(|c| c["cid"].as_u64()).collect())
+        };
+        let teams: Vec<String> = (0..2)
+            .map(|t| {
+                let [h, m, st, g, r] = ["hand", "mzone", "szone", "grave", "removed"].map(|p| cids(t, p));
+                format!("team {t}: LP {}, hand {h:?}, monsters {m:?}, spells {st:?}, grave {g:?}, banished {r:?}", self.lp(t))
+            })
+            .collect();
+        format!("{}\nmessage types of the last steps: [{}]", teams.join("\n"), self.trail.join(" | "))
     }
 
     /// The engine's last message: the prompt waiting for an answer.
@@ -185,6 +250,35 @@ impl Scenario {
         self.monster(team, cid)?["level"].as_u64()
     }
 
+    /// Card choices (targets, discards, Tributes) take these cards first, (controller, Konami id), when they are on offer:
+    /// "Brionac returns the opponent's monster, not itself". Either team's choices; the default answer fills the rest.
+    pub fn prefer(&mut self, picks: &[(usize, u16)]) {
+        self.prefer = picks.iter().map(|&(team, cid)| (team as u64, cid)).collect();
+    }
+
+    /// Position choices (a Special Summon that lets its player pick) take this position when it is allowed, for every
+    /// player; `None` goes back to the CPU's choice (face-up Attack).
+    pub fn prefer_position(&mut self, position: Option<u64>) {
+        self.position = position;
+    }
+
+    /// The preferred cards among a card choice's options: as many as it needs, None when it offers too few of them.
+    fn preferred(&self, p: &Json) -> Option<Json> {
+        use crate::ocg::message::Ask;
+        let Ok(Some(Ask::Card(c) | Ask::Tribute(c))) = Ask::lenient(p) else { return None };
+        let tribute = p["type"] == msg::SELECT_TRIBUTE;
+        let want = c.min.max(1) as usize;
+        let mut picks: Vec<usize> = vec![];
+        for &(team, cid) in &self.prefer {
+            for (i, s) in c.selects.iter().enumerate() {
+                if s.controller == team && s.cid == Some(cid as u64) && !picks.contains(&i) && picks.len() < want {
+                    picks.push(i);
+                }
+            }
+        }
+        (picks.len() == want).then(|| Response::cards(if tribute { crate::ocg::resp::TRIBUTE } else { crate::ocg::resp::CARD }, Some(picks)).json())
+    }
+
     /// The default answer: the opponent and the planned side between actions pass (end the turn from the Main Phase,
     /// leave the Battle Phase), every other prompt gets the CPU's answer.
     pub fn pass(&mut self) -> Result<(), String> {
@@ -193,8 +287,12 @@ impl Scenario {
             json!({"type": 1, "action": idle::TO_EP, "index": null})
         } else if p["type"] == msg::SELECT_BATTLECMD {
             json!({"type": 1, "action": battle::TO_EP, "index": null})
+        } else if let (Some(wanted), Ok(Some(crate::ocg::message::Ask::Position(q)))) = (self.position, crate::ocg::message::Ask::lenient(p))
+            && q.positions & wanted != 0
+        {
+            Response::Position(wanted).json()
         } else {
-            bot_answer(p)
+            self.preferred(p).unwrap_or_else(|| bot_answer(p))
         };
         self.respond(response)
     }
@@ -248,7 +346,7 @@ impl Scenario {
                     (None, Some(action)) => {
                         waited[team] += 1;
                         if waited[team] > MAX_WAIT_TURNS {
-                            return Err(format!("team {team}: {action:?} never became possible: {p}"));
+                            return Err(format!("team {team}: {action:?} never became possible: {}\n{}", short(&p), self.context()));
                         }
                         self.pass()?;
                     }
@@ -258,12 +356,18 @@ impl Scenario {
                 match action {
                     Some(Action::Attack(c)) => {
                         let i = p["attacks"].as_array().and_then(|v| v.iter().position(|a| a["cid"] == c));
-                        let Some(i) = i else { return Err(format!("team {team}: {c} can't attack: {p}")) };
+                        let Some(i) = i else { return Err(format!("team {team}: {c} can't attack: {}\n{}", short(&p), self.context())) };
                         next[team] += 1;
                         self.respond(json!({"type": 1, "action": battle::ATTACK, "index": i}))?;
                     }
                     _ => self.respond(json!({"type": 1, "action": battle::TO_M2, "index": null}))?,
                 }
+            } else if let (true, Some(Action::ChainOnAttack(c))) = (kind == msg::SELECT_CHAIN, action)
+                && self.attacking
+                && let Some(i) = found("selects", c)
+            {
+                next[team] += 1;
+                self.respond(Response::Chain(Some(i)).json())?;
             } else if let (true, Some(Action::Chain(c))) = (kind == msg::SELECT_CHAIN, action)
                 && let Some(i) = found("selects", c)
             {

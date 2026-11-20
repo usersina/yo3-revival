@@ -222,6 +222,10 @@ pub enum Admin {
     Restore { which: String },
     /// List the backups, newest first: one at each start, every hour while running, and at each stop.
     Backups,
+    /// Write a card profile's client file (issue #60): what the connection DLL reads to show the cards the way the
+    /// server plays them (`anime`: the reviewed anime card versions; `official`: an empty file). Needs the game's files
+    /// and the engine folder (engine/fetch.sh). Works on the files; the running server serves the same at /card-profile.
+    CardProfile { output: PathBuf, #[arg(long, default_value = "anime")] profile: String },
     /// Create a checked backup now. Reuse the printed ID after a lost response.
     Backup { #[arg(long)] request_id: Option<String> },
     /// List the live settings: each one's value, whether it is the default, and when a change applies. Works while
@@ -266,6 +270,35 @@ pub enum Admin {
     SetBanlist { who: String, banlist: String },
     /// List the game's banlists and the one a player without a choice logs in with.
     Banlists,
+    /// List the Stadium's official events with their kind, time and how many players entered. Works while the server runs.
+    Events,
+    /// Schedule an official event in the Stadium (#18): KIND is gunslinger (win streak), duelist-trial (wins), evolution
+    /// (stars, matches), ultimate (stars, matches) or anniversary (wins). NAME is what the host calls it. --start and --end:
+    /// `2026-12-01 18:00` (UTC), an RFC 3339 time, `+2h` or `now`. Prizes are BP: --participation-bp to everyone who plays a
+    /// duel of it, and --threshold-bp more to everyone whose best score reaches --threshold. --regulation: a banlist by id or
+    /// name (`banlists` lists them); entrants must log in with it. Paid by D-Mail when the event ends.
+    CreateEvent {
+        kind: String, name: String,
+        #[arg(long, default_value = "now")] start: String,
+        #[arg(long)] end: String,
+        #[arg(long)] regulation: Option<String>,
+        #[arg(long, default_value_t = 0)] participation_bp: u32,
+        #[arg(long, default_value_t = 0)] threshold: u32,
+        #[arg(long, default_value_t = 0)] threshold_bp: u32,
+    },
+    /// Change an official event that has not ended (what is left out stays); `--regulation any` clears its banlist.
+    EditEvent {
+        id: u32,
+        #[arg(long)] name: Option<String>,
+        #[arg(long)] start: Option<String>,
+        #[arg(long)] end: Option<String>,
+        #[arg(long)] regulation: Option<String>,
+        #[arg(long)] participation_bp: Option<u32>,
+        #[arg(long)] threshold: Option<u32>,
+        #[arg(long)] threshold_bp: Option<u32>,
+    },
+    /// Cancel official event ID: the game stops listing it, nothing is paid.
+    CancelEvent { id: u32 },
     /// Sign WHO out of every device and disconnect their game.
     SignOut { who: String, #[arg(long)] request_id: Option<String> },
     /// Delete WHO's account for good (an admin's): its players with their cards, decks, mail, friends, team, records and

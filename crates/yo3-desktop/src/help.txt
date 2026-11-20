@@ -25,6 +25,7 @@ Save your recovery code when you make an account (Copy, or Save as a text file):
 Stay signed in keeps a sign-in token in your system's password store, never your password.
 The ⋯ beside the server list adds a server (by its address, or an invite link a host sent you), hosts one, or removes one.
 Settings, Accounts signs you out, signs you out everywhere, or changes your password.
+Signed in, Play as another account starts a second game signed in to a different account, for example to duel a friend on the same PC. The list Games running shows each game with a Close. Duels between accounts that play from the same PC or network pay no BP and count no record.
 
 # host | Host for friends
 Host for friends (Multiplayer, the ⋯ beside the server list) runs a server on this computer that your friends can join.
@@ -66,6 +67,7 @@ Each time the game starts, YO3 Revival checks what else runs inside it. Another 
 - Security software: add an exception for the game folder in its settings, or switch off its web protection while you play.
 - Continue anyway starts the game as it is.
 YO3 Revival refuses to start the game in one case only: another program has taken over the game's network connection, which YO3 Revival can't keep safe then. Close that program or move its file away.
+A server can also ask for a clean game. On that server Play stops for anything listed, and there is no Continue anyway: remove what is listed, then press Play again. Other servers and Singleplayer don't ask for this.
 
 # repair | YO3 Revival needs repair
 Some of YO3 Revival's own files are missing or changed, often after an antivirus scan.

@@ -1,7 +1,7 @@
 //! The map's event facilities: Official Event (MenuSelect 21), Championship (20) and User event
-//! (22). Official Event opens TournamentScene, which asks for the event list first (0x177A, sent at
+//! (22). The Championship opens TournamentScene, which asks for the event list first (0x177A, sent at
 //! 0x4D0BB0) and scans it for an event with event_type 10 and status 12; with none it takes its
-//! no-event path (event_id 0). 0x177C would be the error reply (dialog 0x4F7940). User event opens
+//! no-event path (event_id 0). Official Event is OfficialEventScene (official_contract.rs). 0x177C would be the error reply (dialog 0x4F7940). User event opens
 //! UserEventScene, which first asks for the player's own event (0x339A, sent at 0x4D9BB0).
 mod common;
 

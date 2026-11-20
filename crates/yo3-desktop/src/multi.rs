@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use iced::widget::{Space, checkbox, column, container, pick_list, row, text, text_input};
 use iced::{Alignment::Center, Element, Length::Fill, Task};
+use yo3_desktop::games::GameInfo;
 use yo3_desktop::multiplayer::{self as mp, Problem, Remedy, Server, SignedIn, Status, Vault};
 use yo3_skin::{BODY_BOLD, Icon, Item, Kind, Rule, color, pill};
 use crate::app::{Ctx, dot};
@@ -21,6 +22,8 @@ pub enum Form {
     Trust(Box<Server>),
     /// A recovery code to save, shown once.
     Code(String),
+    /// Another game signed in to a different account on this server (#64).
+    PlayAs,
 }
 
 /// The address typed under Add a server, as checked so far.
@@ -68,7 +71,7 @@ pub fn register_rules(user: &str, password: &str, again: &str, invite: Option<&s
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Field { User, Password, Again, Invite, Code, Address }
+pub enum Field { User, Password, Again, Invite, Code, Address, Other }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tick { SaveUser, Stay, Rules }
@@ -116,6 +119,14 @@ pub enum Message {
     Play,
     /// Handled by the main screen: close the game Play started.
     CloseGame,
+    RestartGame,
+    /// Play as…: sign in to the other account the form names (#64), and the game it opens, handled by the main screen.
+    PlayAsGo,
+    PlayAsSignedIn(String, Result<SignedIn, Problem>),
+    PlayAsStart(Box<Server>, SignedIn),
+    /// The games running now (from the main screen), and one's Close (handled by the main screen).
+    Games(Vec<GameInfo>),
+    CloseGameId(u64),
     Remedy(Remedy),
     /// The trust form's identity, behind Details.
     ShowIdentity,
@@ -153,6 +164,10 @@ pub struct State {
     selected: Option<String>,
     form: Form,
     user: String,
+    /// Play as…'s User ID (#64); its password is typed in `password`.
+    other_user: String,
+    /// The games running now, for the list.
+    games: Vec<GameInfo>,
     password: String,
     again: String,
     invite: String,
@@ -213,6 +228,11 @@ impl State {
     fn selected(&self) -> Option<&Server> { self.selected.as_ref().and_then(|k| self.servers.iter().find(|s| s.key() == k)) }
 
     /// The session for Play on the selected server, if signed in.
+    /// Whether the selected server's last status says it asks for a clean game (#69).
+    pub fn clean_game(&self, server: &Server) -> bool {
+        matches!(self.status.get(server.key()), Some(Status::Online { clean_game: true, .. }))
+    }
+
     pub fn session(&self) -> Option<(Server, SignedIn)> {
         let server = self.selected()?.clone();
         let signed = self.signed_in.get(server.key())?.clone();
@@ -267,7 +287,7 @@ impl State {
             Message::Edit(field, value) => {
                 let value = value.chars().filter(|c| !c.is_control()).take(200).collect();
                 match field { Field::User => self.user = value, Field::Password => self.password = value, Field::Again => self.again = value,
-                    Field::Invite => self.invite = value, Field::Code => self.code = value, Field::Address => { self.address = value; return self.look_up() } }
+                    Field::Invite => self.invite = value, Field::Code => self.code = value, Field::Other => self.other_user = value, Field::Address => { self.address = value; return self.look_up() } }
             }
             Message::Menu(open) => self.menu = open,
             Message::CheckAddress(check) => {
@@ -316,7 +336,8 @@ impl State {
                 self.menu = false;
                 if form == Form::Add { self.address.clear(); self.found = Found::Nothing }
                 // The form's first field takes the typing.
-                let first = match form { Form::Add => Some(Field::Address), Form::Register | Form::Recover => Some(Field::User), _ => None };
+                if form == Form::PlayAs { self.other_user.clear() }
+                let first = match form { Form::Add => Some(Field::Address), Form::Register | Form::Recover => Some(Field::User), Form::PlayAs => Some(Field::Other), _ => None };
                 self.form = form; self.problem = None; self.note = None; self.code_note = None; self.password.clear(); self.again.clear();
                 if let Some(field) = first { return iced::widget::operation::focus(field_id(field)) }
             }
@@ -355,6 +376,34 @@ impl State {
                     }
                 }
             }
+            Message::PlayAsGo => {
+                let Some((server, signed)) = self.session() else { return Task::none() };
+                let user = self.other_user.trim().to_string();
+                if self.busy || user.is_empty() || self.password.is_empty() { return Task::none() }
+                // The same account twice is refused before anything is asked of the server (#64).
+                if yo3_desktop::games::same_account(&user, &signed.user) { self.problem = Some(Problem::SameAccount); return Task::none() }
+                if self.games.iter().any(|g| g.server_key == server.key() && yo3_desktop::games::same_account(&g.user, &user)) { self.problem = Some(Problem::AlreadyPlaying); return Task::none() }
+                self.busy = true;
+                self.problem = None;
+                let (password, key) = (std::mem::take(&mut self.password), server.key().to_string());
+                // A plain sign-in: no device token is kept for an extra account.
+                return Task::perform(async move { mp::sign_in(&server, &user, &password, false).await }, move |r| Message::PlayAsSignedIn(key.clone(), r));
+            }
+            Message::PlayAsSignedIn(key, result) => {
+                self.busy = false;
+                match result {
+                    Ok(signed) => {
+                        let Some(server) = self.servers.iter().find(|s| s.key() == key).cloned() else { return Task::none() };
+                        self.form = Form::SignIn;
+                        self.other_user.clear();
+                        self.note = Some(format!("Starting a game as {}…", signed.user));
+                        return Task::done(Message::PlayAsStart(Box::new(server), signed));
+                    }
+                    Err(problem) => self.problem = Some(problem),
+                }
+            }
+            Message::Games(list) => self.games = list,
+            Message::PlayAsStart(..) | Message::CloseGameId(_) => {}
             Message::SignOut => if let Some(key) = self.selected.clone() { return self.sign_out(&key) },
             Message::SignedOut(result) => if let Err(problem) = result && problem != Problem::Unreachable { self.problem = Some(problem) },
             Message::Register => {
@@ -432,7 +481,7 @@ impl State {
             Message::Remedy(Remedy::Retry) => return self.update(Message::Retry, ctx),
             Message::Remedy(Remedy::SignInAgain) => { self.problem = None; self.form = Form::SignIn }
             Message::Remedy(Remedy::RemoveServer) => return self.update(Message::Remove, ctx),
-            Message::Remedy(Remedy::Update) | Message::Play | Message::CloseGame => {}
+            Message::Remedy(Remedy::Update) | Message::Play | Message::CloseGame | Message::RestartGame => {}
             Message::ShowIdentity => self.show_identity = !self.show_identity,
             Message::Host => self.menu = false,
             Message::Recheck(key) => {
@@ -691,12 +740,12 @@ impl State {
             None => column![top, text("Add a server by its address, or with an invite link a host sent you.").size(14).color(color::INK),
                 pill("Add a server", Some(Message::Show(Form::Add)), Kind::Primary, 160, 34)].spacing(12),
         };
-        let mut panel = column![body, self.messages(), Space::new().height(Fill)].spacing(10);
+        let mut panel = column![body, self.messages(), self.games_list(), Space::new().height(Fill)].spacing(10);
         // The forms with their own button (making an account, recovering, adding a server) hide the big one, and so
         // does an empty list: its way forward is Add a server.
         if matches!(self.form, Form::SignIn) && self.selected.is_some() {
             let (label, action, line, kind) = match busy {
-                Some(busy) => (busy.label, busy.action.map(|a| match a { crate::home::BusyAction::Close => Message::CloseGame, crate::home::BusyAction::Cancel => Message::Cancel }),
+                Some(busy) => (busy.label, busy.action.map(|a| match a { crate::home::BusyAction::Close => Message::CloseGame, crate::home::BusyAction::Cancel => Message::Cancel, crate::home::BusyAction::Restart => Message::RestartGame }),
                     busy.line.to_owned(), if busy.action.is_some() { Kind::Primary } else { Kind::Play }),
                 None => { let (label, action, line) = self.play(); (label, action, line, Kind::Play) }
             };
@@ -715,6 +764,17 @@ impl State {
                 .push(column![Space::new().height(36), row![Space::new().width(Fill), yo3_skin::menu(items, 210.0)]]);
         }
         yo3_skin::panel(Some("Server"), layers)
+    }
+
+    /// The games running now, each with its account and server and a way to close it (#64). Nothing while none runs.
+    fn games_list(&self) -> Element<'_, Message> {
+        if self.games.is_empty() { return Space::new().height(0).into() }
+        let mut col = column![text("Games running").size(13).font(BODY_BOLD).color(color::INK_SOFT)].spacing(4);
+        for game in &self.games {
+            col = col.push(row![text(format!("{} on {}", game.user, game.server)).size(14).color(color::INK).width(Fill),
+                yo3_skin::link("Close", if game.is_main() { Message::CloseGame } else { Message::CloseGameId(game.id) }, false)].spacing(8).align_y(Center));
+        }
+        col.into()
     }
 
     fn messages(&self) -> Element<'_, Message> {
@@ -739,7 +799,7 @@ impl State {
             let mut field_input = text_input(placeholder, value).id(field_id(field)).on_input(move |v| Message::Edit(field, v)).style(yo3_skin::field).padding(8).size(15);
             if secret { field_input = field_input.secure(true) }
             if !self.busy { field_input = field_input.on_submit(match field { Field::Address => Message::Add, _ => match self.form {
-                Form::Register => Message::Register, Form::Recover => Message::Recover, _ => Message::SignIn } }) }
+                Form::Register => Message::Register, Form::Recover => Message::Recover, Form::PlayAs => Message::PlayAsGo, _ => Message::SignIn } }) }
             field_input
         };
         let labelled = |label: &'static str, input: iced::widget::TextInput<'static, Message>| row![text(label).font(BODY_BOLD).size(14).color(color::INK).width(92), input].align_y(Center);
@@ -752,13 +812,14 @@ impl State {
         let selected = self.selected();
         let signed = selected.and_then(|s| self.signed_in.get(s.key()));
         match &self.form {
-            Form::SignIn if signed.is_some() => container(row![
+            Form::SignIn if signed.is_some() => column![container(row![
                 yo3_skin::icon(Icon::User, 18.0, color::NAVY),
                 column![text("Signed in as").size(12).color(color::INK_SOFT), text(signed.map_or("", |s| s.user.as_str())).size(16).font(BODY_BOLD).color(color::INK)],
                 Space::new().width(Fill),
                 pill("Sign out", Some(Message::SignOut), Kind::Danger, 96, 30),
             ].spacing(10).align_y(Center)).padding([8, 10]).width(Fill).style(|_| container::Style { background: Some(color::ROW.into()),
-                border: iced::Border { color: color::CHROME_DARK, width: 1.0, radius: 4.0.into() }, ..container::Style::default() }).into(),
+                border: iced::Border { color: color::CHROME_DARK, width: 1.0, radius: 4.0.into() }, ..container::Style::default() }),
+                row![Space::new().width(Fill), yo3_skin::link("Play as another account…", Message::Show(Form::PlayAs), false)]].spacing(6).into(),
             Form::SignIn => {
                 let mut stay = tick("Stay signed in", self.stay, Tick::Stay);
                 if self.vault.is_none() { stay = checkbox(false).label("Stay signed in").style(yo3_skin::tick).size(16).text_size(14) }
@@ -831,6 +892,16 @@ impl State {
                 }
                 col.push(actions("Add server", Some(Message::Trust))).into()
             }
+            Form::PlayAs => {
+                let ready = !self.busy && !self.other_user.trim().is_empty() && !self.password.is_empty();
+                column![
+                    heading("Play as another account"),
+                    text("Starts another game on this server, signed in as a different account. Each game keeps its own settings and decks.").size(13).color(color::INK_SOFT),
+                    labelled("User ID", input("", &self.other_user, Field::Other, false)),
+                    labelled("Password", input("", &self.password, Field::Password, true)),
+                    actions(if self.busy { "Signing in…" } else { "Play" }, ready.then_some(Message::PlayAsGo)),
+                ].spacing(8).into()
+            }
             Form::Code(code) => {
                 let mut col = column![
                     heading("Save your recovery code"),
@@ -850,7 +921,7 @@ impl State {
 
 /// A form field's id, to give it the typing.
 fn field_id(field: Field) -> iced::widget::Id { iced::widget::Id::new(match field { Field::User => "user", Field::Password => "password", Field::Again => "again",
-    Field::Invite => "invite", Field::Code => "code", Field::Address => "address" }) }
+    Field::Invite => "invite", Field::Code => "code", Field::Address => "address", Field::Other => "other-user" }) }
 
 /// The text file a recovery code is saved in: the server, the User ID and the code, a line each (Windows line ends).
 fn recovery_file(server: &str, user: &str, code: &str) -> String {
@@ -892,7 +963,7 @@ mod tests {
         let _ = state.update(Message::Probed(key, status), &ctx);
         state
     }
-    fn online() -> Status { Status::Online { online: Some(3), max: None, registration: "invite".into(), news: vec![], ping: std::time::Duration::from_millis(40) } }
+    fn online() -> Status { Status::Online { online: Some(3), max: None, registration: "invite".into(), news: vec![], ping: std::time::Duration::from_millis(40), clean_game: false } }
     fn signed(user: &str, token: Option<&str>) -> SignedIn { SignedIn { user: user.into(), session: [7; 32], device_token: token.map(str::to_owned) } }
 
     #[test]
@@ -947,6 +1018,56 @@ mod tests {
         let _ = state.update(Message::SignedIn(key, Ok(signed("Yugi", Some("device-token")))), &ctx);
         state.play_refused(Problem::SignInAgain);
         assert_eq!(vault.get(&account).unwrap(), None);
+    }
+
+    /// Play as… (#64): another account on the server this launcher is signed in to. The same account twice is refused
+    /// with a clear sentence and nothing is asked of the server; a different one signs in and a game starts.
+    #[test]
+    fn play_as_refuses_the_same_account_twice_and_signs_in_a_different_one() {
+        let ctx = ctx();
+        let mut state = tab(online(), None);
+        let key = state.servers[0].key().to_string();
+        let _ = state.update(Message::SignedIn(key.clone(), Ok(signed("Yugi", None))), &ctx);
+        let _ = state.update(Message::Show(Form::PlayAs), &ctx);
+        let _ = state.update(Message::Edit(Field::Password, "LongPassphrase1".into()), &ctx);
+        // The account this launcher is signed in as on the server: PLAY is for that.
+        let _ = state.update(Message::Edit(Field::Other, " yugi ".into()), &ctx);
+        let _ = state.update(Message::PlayAsGo, &ctx);
+        assert_eq!((state.problem.clone(), state.busy), (Some(Problem::SameAccount), false), "nothing was asked of the server");
+        assert!(Problem::SameAccount.sentence().contains("PLAY") && yo3_desktop::words::technical(&Problem::SameAccount.sentence()).is_none());
+        // An account already in a running game on this server.
+        let game = GameInfo { id: 1, user: "Kaiba".into(), server: "Friends".into(), server_key: key.clone() };
+        let _ = state.update(Message::Games(vec![game]), &ctx);
+        let _ = state.update(Message::Edit(Field::Other, "KAIBA".into()), &ctx);
+        let _ = state.update(Message::PlayAsGo, &ctx);
+        assert_eq!((state.problem.clone(), state.busy), (Some(Problem::AlreadyPlaying), false));
+        // The same User ID on another server is a different account.
+        let other_server = GameInfo { id: 2, user: "Joey".into(), server: "Elsewhere".into(), server_key: "another".into() };
+        let _ = state.update(Message::Games(vec![other_server]), &ctx);
+        let _ = state.update(Message::Edit(Field::Other, "Joey".into()), &ctx);
+        let _ = state.update(Message::PlayAsGo, &ctx);
+        assert!(state.busy && state.problem.is_none(), "a different account signs in");
+        assert!(state.password.is_empty(), "the password is not kept");
+        // Its sign-in worked: the game starts, handled by the main screen, and the form closes.
+        let _ = state.update(Message::PlayAsSignedIn(key.clone(), Ok(signed("Joey", None))), &ctx);
+        assert!(!state.busy && state.form == Form::SignIn && state.note.as_deref().is_some_and(|n| n.contains("Joey")));
+        // The server's own refusal (the host's cap of games per PC) is a plain sentence.
+        let _ = state.update(Message::PlayAsSignedIn(key, Err(Problem::DeviceFull { limit: 1 })), &ctx);
+        assert!(state.problem.as_ref().unwrap().sentence().contains("1 game"), "{:?}", state.problem);
+    }
+
+    #[test]
+    fn the_running_games_are_listed_with_their_account_and_server_and_the_main_ones_close_is_the_usual() {
+        let ctx = ctx();
+        let mut state = tab(online(), None);
+        let key = state.servers[0].key().to_string();
+        let _ = state.update(Message::SignedIn(key.clone(), Ok(signed("Yugi", None))), &ctx);
+        assert!(state.games.is_empty());
+        let games = vec![GameInfo { id: 0, user: "Yugi".into(), server: "Friends".into(), server_key: key.clone() }, GameInfo { id: 3, user: "Joey".into(), server: "Friends".into(), server_key: key }];
+        let _ = state.update(Message::Games(games), &ctx);
+        assert_eq!(state.games.iter().map(|g| (g.user.as_str(), g.is_main())).collect::<Vec<_>>(), [("Yugi", true), ("Joey", false)]);
+        // Rendered without panicking, with the list in it.
+        let _ = state.view(None);
     }
 
     #[test]
@@ -1055,7 +1176,7 @@ mod tests {
     #[test]
     fn the_information_panel_shows_the_selected_servers_news() {
         let news = vec![yo3_tunnel::News { title: "Maintenance".into(), body: "Sunday".into() }];
-        let state = tab(Status::Online { online: Some(3), max: None, registration: "invite".into(), news, ping: std::time::Duration::from_millis(40) }, None);
+        let state = tab(Status::Online { online: Some(3), max: None, registration: "invite".into(), news, ping: std::time::Duration::from_millis(40), clean_game: false }, None);
         assert_eq!(state.news(), [("Maintenance".to_string(), "Sunday".to_string())]);
         assert_eq!(tab(Status::Offline, None).news()[0].1, "Choose a server to see its news.");
     }

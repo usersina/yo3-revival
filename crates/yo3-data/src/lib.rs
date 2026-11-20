@@ -143,6 +143,11 @@ pub struct Card {
     /// Which artwork of the card this row is, bits 27-29 of the second word (0x537420; the image is
     /// `data/card/<cid>_<art>.png`, 0x4FB090): each artwork is its own row with the same Konami id.
     pub art: u32,
+    /// The row's two words as the file has them (`a`: id, ATK, DEF; `b`: kind, attribute, level, race, artwork, ...): a
+    /// card profile rewrites some of their bits and keeps the rest (`yo3-server`'s `profile.rs`).
+    pub words: [u32; 2],
+    /// The row's CARD_Genre bitmap (the effect categories Edit Deck's Genre search filters by; 0 where the file has none).
+    pub genre: u64,
     pub name: String,
     /// The card's text (CARD_Desc_E.bin): what the client shows, the 2010–2012 wording.
     pub desc: String,
@@ -196,6 +201,8 @@ impl CardDb {
                 race: (b >> 19) & 0x1F,
                 kind: (b >> 3) & 0x1F,
                 art: (b >> 27) & 7,
+                words: [a, b],
+                genre: 0,
                 name: text(0, names),
                 desc: text(4, descs),
             };
@@ -204,6 +211,15 @@ impl CardDb {
             db.cards.push(card);
         }
         db
+    }
+
+    /// Reads CARD_Genre.bin (8 bytes per row, as CARD_Prop's rows) into each card's `genre`.
+    pub fn set_genre(&mut self, genre: &[u8]) {
+        for card in &mut self.cards {
+            if let Some(g) = genre.get(card.row as usize * 8..card.row as usize * 8 + 8) {
+                card.genre = u64::from_le_bytes(g.try_into().unwrap());
+            }
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -345,12 +361,15 @@ pub struct GameData {
 impl GameData {
     pub fn load(game_dir: &Path) -> Result<GameData> {
         let ypk = Ypk::open(game_dir.join("package/data002.ypk"))?;
-        let cards = CardDb::parse(
+        let mut cards = CardDb::parse(
             &ypk.read_required("data/bin#/CARD_Prop.bin")?,
             &ypk.read_required("data/bin#/CARD_Indx_E.bin")?,
             &ypk.read_required("data/bin#/CARD_Name_E.bin")?,
             &ypk.read_required("data/bin#/CARD_Desc_E.bin")?,
         );
+        if let Ok(genre) = ypk.read_required("data/bin#/CARD_Genre.bin") {
+            cards.set_genre(&genre);
+        }
         let mut regulations: Vec<Regulation> = ypk
             .records("data/regulation/", &[".y3r"])?
             .into_iter()

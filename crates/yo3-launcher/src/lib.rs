@@ -12,6 +12,8 @@ use subtle::ConstantTimeEq;
 pub mod components;
 pub mod attach;
 pub mod runtime;
+pub mod art;
+pub mod decks;
 pub mod resolution;
 pub mod direct;
 pub mod vault;
@@ -106,6 +108,12 @@ impl Default for Liveness {
 /// How the game's sign-in ended: a session for its connections, or a refusal its login dialog shows (#33).
 #[derive(Clone, Copy, Debug)]
 pub enum Outcome { Session(Token), Refused(direct::Refusal) }
+
+/// The game data id (`YO3_SERVER_ID`, 16 hex digits) of one account's extra game on a server (#64): derived from the
+/// server's id and the account's key, so it is stable (the account's decks are there next time) and differs per account.
+pub fn game_data_id(server_id: &str, key: &str) -> String {
+    components::hash(format!("{server_id}:{}", key.trim().to_ascii_lowercase()).as_bytes()).to_ascii_lowercase().chars().take(16).collect()
+}
 
 pub struct Proxy { pub ports: Ports, pub cookie: Token, pub server_id: String, tasks: Vec<JoinHandle<()>>,
     session: tokio::sync::watch::Sender<Option<Outcome>>, sign_outs: std::sync::Arc<tokio::sync::Notify>,
@@ -489,6 +497,16 @@ async fn relay_http(mut local: TcpStream, endpoint: &Endpoint, mut active: tokio
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn an_extra_games_data_id_is_16_hex_digits_stable_per_account_and_not_the_servers() {
+        let (server, id) = ("35b82924973c0938", game_data_id("35b82924973c0938", "Alice"));
+        assert_eq!(id.len(), 16);
+        assert!(id.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)), "the connection DLL takes lower-case hex only: {id}");
+        assert_ne!(id, server, "its own folder, not the main game's");
+        assert_eq!(id, game_data_id(server, " alice "), "the same account, however it is typed");
+        assert_ne!(id, game_data_id(server, "bob"));
+        assert_ne!(id, game_data_id("0000000000000001", "alice"), "per server");
+    }
 
     /// A connection that fails reading or writing with `kind` (as Windows' 10053, "aborted by the software in your host
     /// machine"), and otherwise takes everything written to it.

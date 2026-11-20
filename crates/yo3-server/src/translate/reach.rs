@@ -129,9 +129,19 @@ impl Translator {
         match ask {
             Ask::Card(c) | Ask::Tribute(c) => {
                 let response = if matches!(ask, Ask::Tribute(_)) { resp::TRIBUTE } else { resp::CARD };
-                let (min, max) = (c.min, c.max);
+                let view = match (ask, self.pending.as_ref()) {
+                    (Ask::Tribute(_), Some(m)) => tribute_view(m, c),
+                    _ => c.clone(),
+                };
+                let (min, max) = (view.min, view.max);
                 if min <= 1 && max >= 1 {
                     for i in 0..c.selects.len() as u32 {
+                        // A Tribute's card that counts for less than the Tribute needs isn't a whole answer by itself.
+                        if let (Ask::Tribute(_), Some(m)) = (ask, self.pending.as_ref())
+                            && !tribute_enough(m, c, &[i as usize])
+                        {
+                            continue;
+                        }
                         cases.push((format!("selects[{i}]"), vec![(vec![i], 1)], Response::cards(response, Some(vec![i as usize])).json()));
                     }
                 } else {

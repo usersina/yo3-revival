@@ -156,6 +156,7 @@ static int WSAAPI hooked_close(SOCKET socket) {
 #include "rental-return.h"
 #include "web-links.h"
 #include "card-search.h"
+#include "card-profile.h"
 #include "signout.h"
 #include "teardown.h"
 
@@ -210,6 +211,7 @@ BOOL WINAPI DllMain(HINSTANCE dll, DWORD reason, LPVOID reserved) {
     if (!duel_observer_install()) return mod_failure("stage=mod-duel-hook: Game duel code is unsupported. Validate the original v1.153 executable.\r\n");
     if (!deck_upload_install()) return mod_failure("stage=mod-deck-hook: Game deck editor code is unsupported. Validate the original v1.153 executable.\r\n");
     if (!card_search_install()) return mod_failure("stage=mod-card-search: Game card search code is unsupported. Validate the original v1.153 executable.\r\n");
+    if (!card_profile_install()) return mod_failure("stage=mod-card-profile: Game card data code is unsupported. Validate the original v1.153 executable.\r\n");
     if (!netlog_install()) return mod_failure("stage=mod-netlog: Game network code is unsupported. Validate the original v1.153 executable.\r\n");
     const char *resolution_error = resolution_install(); /* opt in (YO3_RESOLUTION): nothing installed when off */
     if (resolution_error) return mod_failure(resolution_error);

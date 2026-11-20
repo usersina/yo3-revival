@@ -70,7 +70,7 @@ impl Translator {
             self.asking = Asking::PileView;
             return Some(Prompt::Client(out));
         }
-        if cmd.zone >= zone::EXTRA && cmd.zone != zone::DECK {
+        if cmd.zone >= zone::EXTRA {
             return self.pile_command(&m, cmd);
         }
         // A card that offers this command more than once (two effects it can activate now): the card list asks which,
@@ -180,7 +180,7 @@ impl Translator {
             .into_iter()
             .map(|(loc, _)| loc)
             .enumerate()
-            .filter(|(_, loc)| self.place(loc).is_some_and(|p| p & 0xFFFF == pile))
+            .filter(|(_, loc)| self.command_place(loc).is_some_and(|p| p & 0xFFFF == pile))
             .collect();
         match candidates[..] {
             [] => None,
@@ -324,7 +324,7 @@ impl Translator {
             if bit != cmd.command {
                 continue;
             }
-            let at: Vec<usize> = command_list(&ask, list).iter().enumerate().filter(|(_, (loc, _))| self.place(loc) == Some(place)).map(|(i, _)| i).collect();
+            let at: Vec<usize> = command_list(&ask, list).iter().enumerate().filter(|(_, (loc, _))| self.command_place(loc) == Some(place)).map(|(i, _)| i).collect();
             if !at.is_empty() {
                 return Some((list, kind, action, at));
             }

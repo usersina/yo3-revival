@@ -13,6 +13,48 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- Several games from one launcher (#64): signed in on a server, **Play as another account…** starts another game signed in
+  to a different account (the same account twice is refused). Running games are listed with their account and server and
+  can be closed one by one; closing the launcher asks, then closes them all. Each extra game has its own ports and
+  connection, its own saved settings, decks and duel logs, and on Linux its own Wine prefix, removed when it closes.
+  An update waits until every game is closed. Singleplayer stays at one game.
+- Hosts: accounts seen on the same PC or network are linked (#64). A duel between them is played but pays no BP and counts no
+  record, rating or title, they can't trade or rent to each other, and the dashboard shows an account's linked accounts.
+  `linked-accounts off` turns that off, and `games-per-device` (default 1, which changes nothing until you raise it) caps
+  the games one PC runs. See [hosting](docs/hosting.md#linked-accounts-and-fair-play).
+- Hosts: `clean-game on` makes the launcher refuse to start the game on your server while another program's files or network
+  software are inside it, with no Continue anyway (#69). A tidiness rule for friends' games, not anti-cheat. See
+  [hosting](docs/hosting.md#clean-game).
+- Hosts can turn on anime card versions (#60): `anime-cards on` (a live setting in the admin panel and the command line, off
+  by default, at the next duel) makes NPC and player duels play 412 cards by their anime effects (Card of Sanctity, Mirror
+  Force, Junk Warrior and others), and the game shows them as the anime cards: type, Level, stats, text and Main or Extra Deck
+  (the card profile: every kind of difference is released, from type flags, Spell/Trap kinds, monster types, Main and Extra Deck,
+  Level, attribute, race, ATK and DEF to a Monster, Spell or Trap that changes class). Cards and decks stay yours, a changed class moves a card to the other list by itself, and a change of the setting needs a
+  restart of the game. Anime artwork is never shipped: put 200x290 PNGs in the launcher's `anime-art` folder. The
+  [list](docs/anime-cards.md) names the cards and says why 6 others keep the game's version. When the host changes the
+  setting, Desktop offers RESTART THE GAME instead of leaving you with the old cards, and the launcher places the cards of
+  your own saved decks in the right lists before the game starts (the first version of a changed deck is kept beside it).
+- Two anime cards ProjectIgnis has no real script for are now our own reconstructions, played with the anime setting on and
+  marked as reconstructions in the card's text: **Dark Strike Fighter** (Level 7, 2600/1800; once per turn for each copy,
+  in either Main Phase, Tribute another monster you control to inflict its Level x 200 damage, and it cannot attack the turn
+  you do) and **Fortune Lady Fire** (the official card, but it destroys a monster and burns its ATK whenever it is Special
+  Summoned face-up in Attack Position, by anything). Temple of the Kings, Time Wizard and Thousand Dragon keep the game's version on purpose (the list gives the reasons). Skill
+  Drain now treats the three Egyptian Gods as the anime has it: the Gods already on the field are negated until that turn
+  ends and then come back (Ra's ATK is 0 for the rest of that turn), and a God summoned while Skill Drain is face up is not
+  affected. See [the list](docs/anime-cards.md#reconstructions).
+- The Stadium on the map now has events (#18). Your host schedules Gunslinger (win streak), Duelist Trial and Anniversary
+  Trial (wins), and Evolution and Ultimate Match (stars, played as matches). Open one, press Ready and you are paired with
+  another player in the same event, and matched again after every duel until you press Not Ready. Your score for the event
+  shows in the lobby and on the result screen, the prize (BP) arrives by D-Mail when the event ends, and Tournament Points
+  on My Profile add up from the events you played. Everyone counts as premium here.
+- Main Menu's Leaderboard and the team ranking now show everyone's real wins and losses against other players, best first
+  (#16). The Leaderboard shows your own country's players when the game opens it with one.
+- Hosts: `create-event`, `events`, `edit-event` and `cancel-event` (and a new Events page in the staff dashboard) schedule
+  the official events with BP prizes for taking part and for reaching a score, optionally under one banlist. See the
+  [hosting guide](docs/guide.md#official-events-the-stadium).
+
 ## v0.1.4 (2026-11-19)
 
 Multiplayer: update to v0.1.4 to join the hosted server after deployment.

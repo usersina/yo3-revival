@@ -271,6 +271,32 @@ fn a_card_sent_to_the_graveyard_lies_face_up() {
 }
 
 #[test]
+fn the_piles_can_be_looked_through_while_a_question_is_up() {
+    // "Activate the effect of X?" (and a chain chance) is a dialog only, and the field takes clicks only in a command wait:
+    // the Graveyard could be hovered, not opened, with the question up (#16, from #15: a player deciding on a Trap wants
+    // to see the Graveyard). So the question's commands are led by the piles' Confirm map and the input wait, as an idle
+    // prompt's are; a pile's click opens its view over the question, and closing it brings the question back.
+    // Live 2026-11-19 (headless client, Junk Synchron's question with Fortress Warrior in the Graveyard): "Your
+    // Graveyard" opened, a right-click closed it, the question was there again, and Yes carried on.
+    let mut t = with_cards();
+    t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 2, 0, 10), "to": loc(0, 16, 0, 1) })]);
+    let question = json!({ "type": 16, "player": 0, "forced": false, "hint_timing": 0, "hint_timing_other": 0, "spe_count": 1,
+        "selects": [{ "cid": 4100, "code": 4100, "controller": 0, "location": 16, "sequence": 0, "description": 0 }] });
+    let Prompt::Client(out) = t.prompt(&question) else { panic!("the client chooses") };
+    let bits = command_bits(&out);
+    assert_eq!(bits, [(0xE << 8, 1 << 11)], "{bits:?}");
+    let cmds = client_commands(Prompt::Client(out));
+    assert!(cmds.contains(&(4, [2, 0, 0, 0])), "the input wait (4, main) is sent: {cmds:?}");
+    assert_eq!(cmds.last().map(|c| c.0), Some(0x36), "the dialog comes last: {cmds:?}");
+    // The Graveyard's click opens its list; closing it asks the question again.
+    let Some(Prompt::Client(list)) = t.command(CardCommand { command: 11, player: 0, zone: 0xE, index: 0 }) else { panic!("the list") };
+    assert!(list.iter().map(cmd).any(|c| c == (0x3ED, [1 << 28 | 586, 0, 0, 0])), "{list:?}");
+    let Some(Prompt::Client(again)) = t.dialog_result(0) else { panic!("the question again") };
+    assert_eq!(again.last().map(cmd).map(|c| c.0), Some(0x36));
+    assert_eq!(command_bits(&again), bits);
+}
+
+#[test]
 fn the_graveyards_top_card_shows_on_its_pile() {
     // A pile whose count changes (0x4FE4D0) draws its top card's face when that card's table entry has the flag that
     // command 1000's uid top byte sets (0x521DF0 keeps `top byte != 0`; 0x523DA0 reads it), else a card back; the
@@ -764,6 +790,41 @@ fn tributes_use_the_card_list_too() {
     t.pick(1);
     t.pick(0);
     assert_eq!(t.dialog_result(2), Some(Prompt::Answer(json!({ "type": 12, "indicies": [1, 0] }))));
+}
+
+#[test]
+fn a_card_that_counts_as_two_tributes_is_one_pick() {
+    // MSG_SELECT_TRIBUTE (20) counts in Tributes: each select has a `release_param` (2 for Double Coston and Lord of D.-like
+    // cards), and `min`/`max` are sums of them. The list asked for `min` cards, so a Level 7 over one Double Coston asked
+    // for 2 picks from 1 card and the duel stopped (found by the preset-deck coverage: Double Coston, Kaiba's Blue-Eyes
+    // deck). Now the list needs as few cards as the biggest Tributes make `min`, and an answer counts by `release_param`.
+    let mut t = with_cards();
+    let double = |at: u32, cid: u32| {
+        let mut card = card_at(0, 2, at, cid);
+        card["release_param"] = json!(2);
+        card
+    };
+    let one = json!({ "type": 20, "player": 0, "can_cancel": true, "min": 2, "max": 2, "selects": [double(0, 4100)] });
+    let out = client_commands(t.prompt(&one));
+    assert_eq!(out[0], (0x3EF, [1, 1, 0, 0]), "one card, at most one pick: {out:x?}");
+    assert!(!out.iter().any(|c| c.1[3] == 8 << 28 | 2), "no \"Select 2 cards\" line: {out:x?}");
+    t.pick(0);
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 12, "indicies": [0] }))));
+    // Among ordinary cards (not cancelable): the double one alone, or two ordinary ones; one ordinary card is not enough.
+    let mixed = json!({ "type": 20, "player": 0, "can_cancel": false, "min": 2, "max": 2,
+        "selects": [card_at(0, 2, 0, 4100), double(1, 4101), card_at(0, 2, 2, 4100)] });
+    let out = client_commands(t.prompt(&mixed));
+    assert_eq!(out[0], (0x3EF, [3, 2, 0, 0]), "{out:x?}");
+    t.pick(1);
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 12, "indicies": [1] }))));
+    t.prompt(&mixed);
+    t.pick(0);
+    t.pick(2);
+    assert_eq!(t.dialog_result(2), Some(Prompt::Answer(json!({ "type": 12, "indicies": [0, 2] }))));
+    // The CPU takes the card that counts most.
+    let cpu = json!({ "type": 20, "player": 1, "can_cancel": false, "min": 2, "max": 2,
+        "selects": [card_at(1, 4, 0, 4200), { "controller": 1, "location": 4, "sequence": 1, "code": 4201, "cid": 4201, "release_param": 2 }] });
+    assert_eq!(t.prompt(&cpu), Prompt::Answer(json!({ "type": 12, "indicies": [1] })));
 }
 
 #[test]
@@ -1818,6 +1879,31 @@ fn an_extra_deck_summon_is_offered_on_the_extra_deck_pile() {
 }
 
 #[test]
+fn a_summon_from_the_deck_is_offered_on_the_deck_pile() {
+    // Red-Eyes Black Metal Dragon (Special Summoned from the Deck by Metalmorph's procedure) and Familiar-Possessed - Wynn
+    // (from the hand or the Deck) are listed by the engine at location 1 (Deck). The client has no place for a card in
+    // the Deck, so the command was never offered and the duel stopped there (the preset-deck coverage). Like the other
+    // piles', the command goes on the Deck pile (zone 0xD, index 0), which is clickable (Surrender's menu is on it):
+    // one card answers at once, several open the card list. The pile isn't highlighted (0x50A690 lights 0x808 only);
+    // that the original offered Deck summons on the pile is a guess (its logs hold only the server's side).
+    let mut t = with_cards();
+    let deck = |cid: u32| json!({ "controller": 0, "location": 1, "sequence": 3, "cid": cid, "code": cid });
+    let idle = |summons: Vec<serde_json::Value>| json!({ "type": 11, "player": 0, "summons": [], "special_summons": summons,
+        "pos_changes": [], "monster_sets": [], "spell_sets": [], "activates": [], "to_bp": false, "to_ep": true });
+    let Prompt::Client(out) = t.prompt(&idle(vec![deck(4101)])) else { panic!("the client chooses") };
+    let bits = command_bits(&out);
+    assert!(bits.iter().any(|&(p, b)| p == 0xD << 8 && b & 1 << 2 != 0), "the Deck pile offers Special Summon: {bits:?}");
+    let summon = CardCommand { command: 2, player: 0, zone: 0xD, index: 0 };
+    assert_eq!(t.command(summon), Some(Prompt::Answer(json!({ "type": 1, "action": 1, "index": 0 }))));
+    // Two cards in the Deck: the list asks which, and the pick answers with its entry.
+    let Prompt::Client(_) = t.prompt(&idle(vec![deck(4101), deck(4102)])) else { panic!("the client chooses") };
+    let Some(Prompt::Client(list)) = t.command(summon) else { panic!("the card list") };
+    assert!(list.iter().map(cmd).any(|c| c.0 == 0x37), "{list:?}");
+    t.pick(1);
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 1, "action": 1, "index": 1 }))));
+}
+
+#[test]
 fn with_several_cards_able_a_piles_command_asks_which() {
     // Two extra deck monsters can be Special Summoned: the pile's Special Summon opens a card list of them with the
     // original's "Select the monster(s) to Special Summon from your Extra Deck." (26), one pick or none (back out).
@@ -2200,6 +2286,37 @@ fn equips_and_targets_show_as_hover_markers_between_the_cards() {
     // The equip goes to the Graveyard: its links go.
     let out = ids(&t.events(&[json!({ "type": 50, "cid": 4101, "from": loc(0, 8, 1, 1), "to": loc(0, 0x10, 0, 1) })]));
     assert_eq!(out, [(0x3F9, [equip, monster, 2, 0]), (0x3F9, [monster, equip, 2, 0]), (0x26, [0; 4])]);
+}
+
+#[test]
+fn swords_of_revealing_light_marks_every_monster_it_holds_back() {
+    // The engine gives Swords of Revealing Light (4354) no target (it keeps every monster the opponent controls from
+    // attacking), so while it lies face up each of the opponent's monsters is marked from it with type 4 (the red circled
+    // cross, a guess), both ways, and a monster that arrives later gets its marker too; the markers go with the Swords.
+    // Set (face down), it marks nothing.
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 10 * r as u32, def: 1000, level: 4, attribute: 2, race: 12 };
+    let cards = (100..110).chain(200..210).chain([354]).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
+    let client: Vec<u16> = (100..109).chain([354]).collect();
+    let cpu: Vec<u16> = (200..210).collect();
+    let (mut t, _) = Translator::new(0, [&client, &cpu], cards);
+    let marks = |out: &[Message]| out.iter().map(cmd).filter(|(id, _)| [0x3F9, 0x26].contains(id)).collect::<Vec<_>>();
+    t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4354 }] })]);
+    t.events(&[json!({ "type": 90, "player": 1, "drawn": [{ "cid": 4200 }, { "cid": 4201 }] })]);
+    t.events(&[json!({ "type": 50, "cid": 4200, "from": loc(1, 2, 0, 10), "to": loc(1, 4, 1, 1) })]);
+    // Set: nothing yet.
+    let set = t.events(&[json!({ "type": 50, "cid": 4354, "from": loc(0, 2, 0, 10), "to": loc(0, 8, 1, 8) })]);
+    assert!(marks(&set).is_empty(), "{:?}", marks(&set));
+    let (swords, first, second) = (6 << 8, 1 | 1 << 8, 1 | 2 << 8);
+    // Activated (flipped face up): the monster is marked both ways.
+    let up = t.events(&[json!({ "type": 70, "code": 4354, "cid": 4354, "controller": 0, "location": 8, "sequence": 1, "chain_size": 1 })]);
+    assert_eq!(marks(&up), [(0x3F9, [swords, first, 4, 1]), (0x3F9, [first, swords, 4, 1]), (0x26, [0; 4])], "{:?}", marks(&up));
+    // A monster that arrives later is held back too.
+    let arrives = t.events(&[json!({ "type": 50, "cid": 4201, "from": loc(1, 2, 0, 10), "to": loc(1, 4, 2, 1) })]);
+    assert_eq!(marks(&arrives), [(0x3F9, [swords, second, 4, 1]), (0x3F9, [second, swords, 4, 1]), (0x26, [0; 4])], "{:?}", marks(&arrives));
+    // The Swords go: both markers go.
+    let gone = t.events(&[json!({ "type": 50, "cid": 4354, "from": loc(0, 8, 1, 1), "to": loc(0, 0x10, 0, 1) })]);
+    assert_eq!(marks(&gone).len(), 5, "{:?}", marks(&gone));
+    assert!(marks(&gone).iter().filter(|(id, _)| *id == 0x3F9).all(|(_, p)| p[3] == 0), "{:?}", marks(&gone));
 }
 
 #[test]

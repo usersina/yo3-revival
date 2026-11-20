@@ -39,6 +39,7 @@ host removes it.
 | Country | The server's database | Set from your game's language, or by a moderator. It is not looked up from your IP address. |
 | Signed-in devices ("Stay signed in") | A digest of each device's token, labelled only "Windows PC" or "Linux PC" | 90 days after the device was last used, at most 10 devices. A password change, a recovery or "sign out everywhere" ends them all. |
 | Game sessions | Server memory | 12 hours at most. A restart forgets them. |
+| **Linked accounts** (**Unreleased**) | The server's database, with your account: a digest of your launcher's random install id, and the addresses you signed in or played from, each with when it was last seen | The install id's digest 90 days after it was last seen, an address 14 days, at most 16 of each. Used to tell that two accounts play from one PC or network (a duel between them pays nothing, [hosting](hosting.md#linked-accounts-and-fair-play)); staff see which accounts are linked, not the addresses. Deleted with the account. |
 | **IP addresses** | The server's session logs: each connection and account request, with your account number | 14 days, or less once the logs pass 100 MB. Not in the database. The address limits in memory forget an address within minutes of its last request. |
 | **IP addresses on a VPS** | The service's output in the machine's system journal (systemd) | **Open:** the machine's journal settings decide, not this server |
 | **Chat** (rooms, whispers, team) | Not kept: delivered to whoever is meant to get it | A hosted server (`packet_log = false`, Host for friends) writes no chat anywhere. With packet logging on (development, Scripts edition), lines are in the packet files and session logs. |
@@ -70,7 +71,7 @@ it). An admin deletes it with `delete-account` or the admin panel's **Delete acc
 
 What goes, at once:
 
-- your account: User ID, password hash, recovery code digest, role, standing, mute and every signed-in device;
+- your account: User ID, password hash, recovery code digest, role, standing, mute, every signed-in device and what it was seen on (the linked-accounts record);
 - your players, with their cards, decks, BP, items, titles and wins and losses;
 - your friends and ignore lists, and your place in other players' lists;
 - invitations from or to you (friend, trade, rental, team), your rentals, and a team you lead (it is disbanded) or

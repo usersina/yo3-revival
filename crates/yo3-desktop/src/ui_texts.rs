@@ -11,10 +11,10 @@ const SCREENS: [(&str, &str); 7] = [
 ];
 
 /// Library code whose error messages can reach a notice.
-const LIBRARY: [(&str, &str); 8] = [
+const LIBRARY: [(&str, &str); 9] = [
     ("lib.rs", include_str!("lib.rs")), ("singleplayer.rs", include_str!("singleplayer.rs")), ("direct.rs", include_str!("direct.rs")),
     ("game_data.rs", include_str!("game_data.rs")), ("options.rs", include_str!("options.rs")), ("hosting.rs", include_str!("hosting.rs")),
-    ("reports.rs", include_str!("reports.rs")), ("external.rs", include_str!("external.rs")),
+    ("reports.rs", include_str!("reports.rs")), ("external.rs", include_str!("external.rs")), ("games.rs", include_str!("games.rs")),
 ];
 
 /// The string literals of `source` before its tests, with their line numbers.
@@ -122,10 +122,11 @@ mod tests {
             Problem::NeedsUpdate { min: "0.2.0".into() }, Problem::IdentityChanged, Problem::Unreachable, Problem::SignInAgain, Problem::SessionEnded,
             Problem::InviteNeeded, Problem::InviteInvalid, Problem::RegistrationClosed, Problem::UserIdTaken, Problem::UserIdInvalid, Problem::PasswordTooShort,
             Problem::PasswordTooLong, Problem::PasswordTooCommon, Problem::PasswordCharacters, Problem::PasswordsDiffer, Problem::RulesNotAccepted, Problem::RecoveryInvalid,
+            Problem::DeviceFull { limit: 1 }, Problem::DeviceFull { limit: 3 }, Problem::AlreadyPlaying, Problem::SameAccount,
             Problem::Other("server_error".into())] {
             assert_eq!(technical(&problem.sentence()), None, "{problem:?}");
         }
-        for play in [crate::home::Play::Checking, crate::home::Play::SetUp, crate::home::Play::Repair, crate::home::Play::Retry, crate::home::Play::Waiting] {
+        for play in [crate::home::Play::Checking, crate::home::Play::SetUp, crate::home::Play::Repair, crate::home::Play::Retry, crate::home::Play::Waiting, crate::home::Play::Stale] {
             assert_eq!(technical(play.status()), None);
         }
     }

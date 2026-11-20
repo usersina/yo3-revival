@@ -105,11 +105,15 @@ while the server runs or stopped, and each applies at its own moment:
 | `min-launcher` | Server release | At once | Raise the minimum launcher version; it cannot be lower than the server release. Older launchers are told to update |
 | `login-regulation` | Season 16 | At each player's next login | The banlist for Auto Duel and NPC duels, by id or name, for players who haven't chosen their own with `/banlist` in the chat ([playing](playing.md#chat-commands); `set-banlist` overrides one account). Players already online keep theirs; Auto Duel pairs only the same banlist |
 | `start-lp` | 8000 | At the next duel | LP at the start of an Auto Duel or NPC duel; a hosted duel has its own |
+| `anime-cards` | `off` | At the next duel | `on`: cards with a reviewed anime version play by their anime effects in NPC and player duels and show as the anime cards (the card profile, fetched when a game starts: restart the game after a change); the others, and every card the profile does not cover yet, keep the game's ([playing](playing.md#anime-card-versions)) |
 | `turn-seconds`, `total-seconds` | 180, 600 | At the next duel | The clocks of duels between players that set none (0: off) |
 | `pack-cost`, `deck-cost` | 100, 500 | At the game's next request | BP a booster pack and a structure deck cost in Blister's shop |
 | `trade-cards` | 10 | At the game's next request | Cards of their own a player gives for one card in Blister's Trade Card |
 | `rental-cards`, `rental-bp`, `rental-days` | 5, 100, 7 | At the game's next request | The shop Rental's offer: how many cards, for how many BP, for how many days |
 | `report-limit` | 5 | At the game's next request | Reports (`/report` in the chat) one player may send in an hour; 0 turns them off |
+| `games-per-device` | 1 | At once | Games one PC may run at once (the launcher's Play as another account): a launcher sends a random install id with its sign-ins, and a second game from the same one is refused past this number (admins and moderators are exempt). The default changes nothing until a host raises it ([linked accounts](hosting.md#linked-accounts-and-fair-play)) |
+| `linked-accounts` | `fair` | At once | `fair`: accounts seen on one PC or address are linked, and a duel between them pays no BP and counts no record, rating or title, and they can't trade or rent to each other. `off`: they are strangers |
+| `clean-game` | `off` | At once | `on`: the launcher refuses to start the game here while another program's file or network software is inside it ([hosting](hosting.md#clean-game)) |
 | `news` | A welcome | At the game's next request | The Information list: `TITLE \| BODY` for one entry, or a JSON list of `{title, body}` (1 to 10) |
 | `address-burst`, `address-refill-seconds`, `backoff-max-seconds` | 10, 3, 900 | At once | The [throttle](authentication.md#passwords-and-throttling) on account requests |
 | `max-players` | 500 | At once | Players signed in; one more is told "The server is full" (admins and moderators still come in) |
@@ -124,6 +128,10 @@ while the server runs or stopped, and each applies at its own moment:
 A value that doesn't pass its check is refused and changes nothing. Desktop writes its Banlist choice as
 `login-regulation` before it starts its server. The testing aids (`--duel-lp`, `--duel-time`, `--duel-deck` and the
 like) stay flags and win over the settings.
+
+`yo3-server card-profile FILE [--profile anime]` writes the card profile's client file (what `anime-cards on` makes each game
+fetch at start, [how it works](anime-cards.md#the-card-profile)); it needs the game's files and the engine folder, and works on
+the files, so a running server is not touched.
 
 ## Moderation and maintenance
 
@@ -164,6 +172,30 @@ log (default: host). They work on a running server; the ones that change an acco
   `--request-id` after a lost response; this never deletes a replacement account with the same name. The last admin
   cannot be deleted until another admin exists. In the React preview, type the numeric account number instead of
   the User ID. An unknown disconnect outcome is reported separately from the committed deletion.
+
+## Official events (the Stadium)
+
+The map's Stadium lists the events you schedule. Five kinds, each with its own score: `gunslinger` (win streak),
+`duelist-trial` and `anniversary` (wins), `evolution` and `ultimate` (stars, played as matches). Players enter an event's
+lobby from the Stadium and press Ready, which pairs them with another entrant of the same event; after each duel they are
+matched again until they press Not Ready. Everyone counts as premium. The commands work while the server runs, and the
+ones that change something also with it stopped; they are admin API operations like the rest (an admin's, audited), and
+the [dashboard](dashboard.md)'s Events page does the same.
+
+```bash
+./yo3-server create-event duelist-trial "Winter Trial" --start "2026-12-01 18:00" --end "2026-12-08 18:00" \
+    --participation-bp 100 --threshold 5 --threshold-bp 500    # UTC; or +2h, now, an RFC 3339 time
+./yo3-server events                                           # each event, its kind, time, status and entrants
+./yo3-server edit-event 10000 --end +3d --regulation unlimited # what is left out stays; `--regulation any` clears the banlist
+./yo3-server cancel-event 10000                               # it leaves the list; nothing is paid
+```
+
+`--regulation` makes entrants log in with that banlist (`banlists` lists them; players choose theirs with `/banlist`):
+Ready tells them so in the chat instead of matching. Prizes are BP, paid by D-Mail from "Host" when the event ends:
+`--participation-bp` to everyone who played a duel of it, and `--threshold-bp` more to everyone whose best score reached
+`--threshold`. A win adds one to the score; a Gunslinger's streak ends with a loss or a draw, but the best streak is what
+counts. Scores are kept in `server.db` and go with a deleted account. Tournament Points on My Profile are 5 for each
+event a player played plus their best score in it. The Stadium shows times in each player's time zone.
 
 ## Player reports and banlists
 

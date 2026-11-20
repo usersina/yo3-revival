@@ -69,6 +69,21 @@ export const AccountCodeResponse = zod.object({
 export type AccountCodeResponse = zod.input<typeof AccountCodeResponse>;
 export type AccountCodeResponseOutput = zod.output<typeof AccountCodeResponse>;
 
+export const linkedAccountUserIdMin = 0;
+export const linkedAccountUserIdMax = 4294967295;
+
+
+
+export const LinkedAccount = zod.object({
+  "login": zod.string().nullish(),
+  "players": zod.array(zod.string()),
+  "shared": zod.array(zod.string()).describe('What they share: `device`, `address` or both.'),
+  "user_id": zod.int().min(linkedAccountUserIdMin).max(linkedAccountUserIdMax)
+});
+
+export type LinkedAccount = zod.input<typeof LinkedAccount>;
+export type LinkedAccountOutput = zod.output<typeof LinkedAccount>;
+
 export const AccountMute = zod.object({
   "reason": zod.string(),
   "until": zod.iso.datetime({"offset":true}).nullish()
@@ -182,6 +197,7 @@ export const AccountDetail = zod.object({
   "country": zod.string().nullish(),
   "device_count": zod.int().min(accountDetailDeviceCountMin).max(accountDetailDeviceCountMax),
   "has_key": zod.boolean(),
+  "linked_accounts": zod.array(LinkedAccount).describe('Accounts seen on the same PC or address (#64): what a host\'s fair-play rules treat as one player.'),
   "login": zod.string().nullish(),
   "muted": zod.union([AccountMute,zod.null()]).optional(),
   "password_ready": zod.boolean().nullish(),
@@ -438,6 +454,18 @@ export const BpCodeList = zod.object({
 export type BpCodeList = zod.input<typeof BpCodeList>;
 export type BpCodeListOutput = zod.output<typeof BpCodeList>;
 
+export const cancelEventRequestEventIdMin = 0;
+export const cancelEventRequestEventIdMax = 4294967295;
+
+
+
+export const CancelEventRequest = zod.object({
+  "event_id": zod.int().min(cancelEventRequestEventIdMin).max(cancelEventRequestEventIdMax)
+});
+
+export type CancelEventRequest = zod.input<typeof CancelEventRequest>;
+export type CancelEventRequestOutput = zod.output<typeof CancelEventRequest>;
+
 export const cardChoiceArtMin = 0;
 export const cardChoiceArtMax = 4294967295;
 
@@ -558,6 +586,50 @@ export const CreateBpCodeResult = zod.object({
 export type CreateBpCodeResult = zod.input<typeof CreateBpCodeResult>;
 export type CreateBpCodeResultOutput = zod.output<typeof CreateBpCodeResult>;
 
+export const Kind = zod.enum(['gunslinger', 'duelist-trial', 'evolution', 'ultimate', 'anniversary']);
+
+export type Kind = zod.input<typeof Kind>;
+export type KindOutput = zod.output<typeof Kind>;
+
+export const prizeParticipationBpMin = 0;
+export const prizeParticipationBpMax = 1000000;
+
+export const prizeThresholdMin = 0;
+export const prizeThresholdMax = 9999;
+
+export const prizeThresholdBpMin = 0;
+export const prizeThresholdBpMax = 1000000;
+
+
+
+export const Prize = zod.object({
+  "participation_bp": zod.int().min(prizeParticipationBpMin).max(prizeParticipationBpMax).optional(),
+  "threshold": zod.int().min(prizeThresholdMin).max(prizeThresholdMax).optional().describe('The best score that earns `threshold_bp` (0: no threshold).'),
+  "threshold_bp": zod.int().min(prizeThresholdBpMin).max(prizeThresholdBpMax).optional()
+}).describe('What an event pays, in BP (the original\'s Special Packs don\'t exist here): to everyone who played a duel of it, and\nbesides to everyone whose best score reached the threshold.');
+
+export type Prize = zod.input<typeof Prize>;
+export type PrizeOutput = zod.output<typeof Prize>;
+
+export const createEventRequestNameMax = 60;
+
+export const createEventRequestRegulationMin = 0;
+export const createEventRequestRegulationMax = 4294967295;
+
+
+
+export const CreateEventRequest = zod.object({
+  "end": zod.iso.datetime({"offset":true}),
+  "kind": Kind,
+  "name": zod.string().min(1).max(createEventRequestNameMax),
+  "prize": Prize.optional(),
+  "regulation": zod.int().min(createEventRequestRegulationMin).max(createEventRequestRegulationMax).nullish().describe('A banlist\'s id (`/panel/api/v1/banlists`); omitted: any.'),
+  "start": zod.iso.datetime({"offset":true})
+});
+
+export type CreateEventRequest = zod.input<typeof CreateEventRequest>;
+export type CreateEventRequestOutput = zod.output<typeof CreateEventRequest>;
+
 export const createInviteRequestDaysMax = 4294967295;
 
 export const createInviteRequestUsesMax = 4294967295;
@@ -643,12 +715,112 @@ export const DownloadBackupRequest = zod.object({
 export type DownloadBackupRequest = zod.input<typeof DownloadBackupRequest>;
 export type DownloadBackupRequestOutput = zod.output<typeof DownloadBackupRequest>;
 
+export const editEventRequestEventIdMin = 0;
+export const editEventRequestEventIdMax = 4294967295;
+
+export const editEventRequestNameMax = 60;
+
+export const editEventRequestRegulationMin = 0;
+export const editEventRequestRegulationMax = 4294967295;
+
+
+
+export const EditEventRequest = zod.object({
+  "end": zod.iso.datetime({"offset":true}).nullish(),
+  "event_id": zod.int().min(editEventRequestEventIdMin).max(editEventRequestEventIdMax),
+  "name": zod.string().min(1).max(editEventRequestNameMax).nullish(),
+  "prize": zod.union([Prize,zod.null()]).optional(),
+  "regulation": zod.int().min(editEventRequestRegulationMin).max(editEventRequestRegulationMax).nullish().describe('A banlist\'s id; 0 for any.'),
+  "start": zod.iso.datetime({"offset":true}).nullish()
+}).describe('What to change in an event that hasn\'t finished; what is left out stays.');
+
+export type EditEventRequest = zod.input<typeof EditEventRequest>;
+export type EditEventRequestOutput = zod.output<typeof EditEventRequest>;
+
 export const EmptyRequest = zod.object({
 
 });
 
 export type EmptyRequest = zod.input<typeof EmptyRequest>;
 export type EmptyRequestOutput = zod.output<typeof EmptyRequest>;
+
+export const entryBestMin = 0;
+
+export const entryDrawsMin = 0;
+
+export const entryLossesMin = 0;
+
+export const entryPlayerIdMin = 0;
+export const entryPlayerIdMax = 4294967295;
+
+export const entryScoreMin = 0;
+
+export const entryWinsMin = 0;
+
+
+
+export const Entry = zod.object({
+  "best": zod.int().min(entryBestMin).describe('The best score reached: what the prize and the Tournament Points count (a streak ends, the best stays).'),
+  "draws": zod.int().min(entryDrawsMin),
+  "losses": zod.int().min(entryLossesMin),
+  "name": zod.string(),
+  "paid": zod.boolean().describe('The prize has been paid (or there was none).'),
+  "player_id": zod.int().min(entryPlayerIdMin).max(entryPlayerIdMax),
+  "score": zod.int().min(entryScoreMin).describe('What the client shows as `event_score`: the current win streak (Gunslinger), the wins or the stars.'),
+  "wins": zod.int().min(entryWinsMin)
+}).describe('A player\'s standing in one event.');
+
+export type Entry = zod.input<typeof Entry>;
+export type EntryOutput = zod.output<typeof Entry>;
+
+export const Phase = zod.enum(['scheduled', 'running', 'finished', 'cancelled']).describe('Where an event is in time, for the staff (the game sees only its `status` number).');
+
+export type Phase = zod.input<typeof Phase>;
+export type PhaseOutput = zod.output<typeof Phase>;
+
+export const eventViewEntrantsMin = 0;
+export const eventViewEntrantsMax = 4294967295;
+
+export const eventViewEventIdMin = 0;
+export const eventViewEventIdMax = 4294967295;
+
+export const eventViewRegulationMin = 0;
+export const eventViewRegulationMax = 4294967295;
+
+
+
+export const EventView = zod.object({
+  "counts": zod.string().describe('What the kind\'s score counts: win streak, wins or stars.'),
+  "end": zod.iso.datetime({"offset":true}),
+  "entrants": zod.int().min(eventViewEntrantsMin).max(eventViewEntrantsMax).describe('The players who entered its lobby.'),
+  "event_id": zod.int().min(eventViewEventIdMin).max(eventViewEventIdMax),
+  "kind": Kind,
+  "name": zod.string(),
+  "phase": Phase,
+  "prize": Prize,
+  "regulation": zod.int().min(eventViewRegulationMin).max(eventViewRegulationMax).nullish().describe('The banlist entrants must log in with (a regulation id); none: any.'),
+  "standings": zod.array(Entry).describe('The ten best standings.'),
+  "start": zod.iso.datetime({"offset":true})
+});
+
+export type EventView = zod.input<typeof EventView>;
+export type EventViewOutput = zod.output<typeof EventView>;
+
+export const EventList = zod.object({
+  "checked_at": zod.iso.datetime({"offset":true}),
+  "events": zod.array(EventView)
+});
+
+export type EventList = zod.input<typeof EventList>;
+export type EventListOutput = zod.output<typeof EventList>;
+
+export const EventResult = zod.object({
+  "event": EventView,
+  "message": zod.string()
+});
+
+export type EventResult = zod.input<typeof EventResult>;
+export type EventResultOutput = zod.output<typeof EventResult>;
 
 export const recipeChoiceCardCountMin = 0;
 export const recipeChoiceCardCountMax = 4294967295;
@@ -1982,6 +2154,137 @@ export const ListCountries415Response = ApiError
 export const ListCountries500Response = ApiError
 
 export const ListCountries503Response = ApiError
+
+
+export const ListEvents200Response = EventList
+
+export const ListEvents400Response = ApiError
+
+export const ListEvents401Response = ApiError
+
+export const ListEvents403Response = ApiError
+
+export const ListEvents404Response = ApiError
+
+export const ListEvents405Response = ApiError
+
+export const ListEvents409Response = ApiError
+
+export const ListEvents413Response = ApiError
+
+export const ListEvents415Response = ApiError
+
+export const ListEvents500Response = ApiError
+
+export const ListEvents503Response = ApiError
+
+
+export const cancelEventHeaderIdempotencyKeyMin = 16;
+export const cancelEventHeaderIdempotencyKeyMax = 128;
+
+
+export const cancelEventHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const CancelEventHeader = zod.object({
+  "Idempotency-Key": zod.string().min(cancelEventHeaderIdempotencyKeyMin).max(cancelEventHeaderIdempotencyKeyMax).regex(cancelEventHeaderIdempotencyKeyRegExp).describe('One ID per change; the same change again is answered as done.')
+})
+
+export const CancelEventBody = CancelEventRequest
+
+export const CancelEvent200Response = EventResult
+
+export const CancelEvent400Response = ApiError
+
+export const CancelEvent401Response = ApiError
+
+export const CancelEvent403Response = ApiError
+
+export const CancelEvent404Response = ApiError
+
+export const CancelEvent405Response = ApiError
+
+export const CancelEvent409Response = ApiError
+
+export const CancelEvent413Response = ApiError
+
+export const CancelEvent415Response = ApiError
+
+export const CancelEvent500Response = ApiError
+
+export const CancelEvent503Response = ApiError
+
+
+export const createEventHeaderIdempotencyKeyMin = 16;
+export const createEventHeaderIdempotencyKeyMax = 128;
+
+
+export const createEventHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const CreateEventHeader = zod.object({
+  "Idempotency-Key": zod.string().min(createEventHeaderIdempotencyKeyMin).max(createEventHeaderIdempotencyKeyMax).regex(createEventHeaderIdempotencyKeyRegExp).describe('One ID per change; the same change again is answered as done.')
+})
+
+export const CreateEventBody = CreateEventRequest
+
+export const CreateEvent200Response = EventResult
+
+export const CreateEvent400Response = ApiError
+
+export const CreateEvent401Response = ApiError
+
+export const CreateEvent403Response = ApiError
+
+export const CreateEvent404Response = ApiError
+
+export const CreateEvent405Response = ApiError
+
+export const CreateEvent409Response = ApiError
+
+export const CreateEvent413Response = ApiError
+
+export const CreateEvent415Response = ApiError
+
+export const CreateEvent500Response = ApiError
+
+export const CreateEvent503Response = ApiError
+
+
+export const editEventHeaderIdempotencyKeyMin = 16;
+export const editEventHeaderIdempotencyKeyMax = 128;
+
+
+export const editEventHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const EditEventHeader = zod.object({
+  "Idempotency-Key": zod.string().min(editEventHeaderIdempotencyKeyMin).max(editEventHeaderIdempotencyKeyMax).regex(editEventHeaderIdempotencyKeyRegExp).describe('One ID per change; the same change again is answered as done.')
+})
+
+export const EditEventBody = EditEventRequest
+
+export const EditEvent200Response = EventResult
+
+export const EditEvent400Response = ApiError
+
+export const EditEvent401Response = ApiError
+
+export const EditEvent403Response = ApiError
+
+export const EditEvent404Response = ApiError
+
+export const EditEvent405Response = ApiError
+
+export const EditEvent409Response = ApiError
+
+export const EditEvent413Response = ApiError
+
+export const EditEvent415Response = ApiError
+
+export const EditEvent500Response = ApiError
+
+export const EditEvent503Response = ApiError
 
 
 export const givePlayerGiftHeaderIdempotencyKeyMin = 16;

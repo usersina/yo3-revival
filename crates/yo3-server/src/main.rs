@@ -68,7 +68,7 @@ fn apply_file(a: &mut Args, matches: &clap::ArgMatches) -> anyhow::Result<Option
 /// The API operation a subcommand is (None for the ones that work on the files themselves).
 fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
     Ok(Some(match command {
-        Admin::InitAuth { .. } | Admin::Restore { .. } | Admin::Backups | Admin::BootstrapAdmin { .. } => return Ok(None),
+        Admin::InitAuth { .. } | Admin::Restore { .. } | Admin::Backups | Admin::CardProfile { .. } | Admin::BootstrapAdmin { .. } => return Ok(None),
         Admin::Profile { who, .. } | Admin::Key { who, .. } => Op::Key { who: who.clone() },
         Admin::Accounts => Op::Accounts,
         Admin::AddAccount { name, also, .. } => Op::CreateAccount { names: name.iter().cloned().chain(also.iter().cloned()).collect() },
@@ -109,6 +109,14 @@ fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
         Admin::HandleReport { id, dismiss, note } => Op::HandleReport { id: *id, status: if *dismiss { "dismissed" } else { "handled" }.into(), note: note.clone() },
         Admin::SetBanlist { who, banlist } => Op::SetBanlist { who: who.clone(), banlist: banlist.clone() },
         Admin::Banlists => Op::Banlists,
+        Admin::Events => Op::Events,
+        Admin::CreateEvent { kind, name, start, end, regulation, participation_bp, threshold, threshold_bp } => Op::CreateEvent {
+            kind: kind.clone(), name: name.clone(), start: start.clone(), end: end.clone(), regulation: regulation.clone(),
+            participation_bp: *participation_bp, threshold: *threshold, threshold_bp: *threshold_bp },
+        Admin::EditEvent { id, name, start, end, regulation, participation_bp, threshold, threshold_bp } => Op::EditEvent {
+            id: *id, name: name.clone(), start: start.clone(), end: end.clone(), regulation: regulation.clone(),
+            participation_bp: *participation_bp, threshold: *threshold, threshold_bp: *threshold_bp },
+        Admin::CancelEvent { id } => Op::CancelEvent { id: *id },
         Admin::DeleteAccount { who, yes, .. } => {
             anyhow::ensure!(*yes, "delete-account deletes {who:?} and everything kept for it for good: add --yes to go on");
             Op::DeleteAccount { who: who.clone() }
@@ -131,6 +139,14 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
             let _lock = yo3_server::store::lock(&a.data_dir)?;
             let from = yo3_server::store::restore(&a.data_dir, which)?;
             println!("Restored the backup from {}.", from.file_name().unwrap_or_default().to_string_lossy());
+            return Ok(());
+        }
+        Admin::CardProfile { output, profile } => {
+            let data = yo3_data::GameData::load(&game_dir)?;
+            let dir = yo3_server::engine::Engine::dir().ok_or_else(|| anyhow::anyhow!("the engine folder is missing: run engine/fetch.sh (or set YO3_ENGINE_DIR)"))?;
+            let loaded = yo3_server::profile::Profile::load(profile, data.cards.iter(), &dir).map_err(|e| anyhow::anyhow!(e))?;
+            std::fs::write(output, loaded.render())?;
+            println!("Wrote the {} profile ({} cards, hash {}) to {}.", loaded.name, loaded.targets.len(), loaded.hash(), output.display());
             return Ok(());
         }
         Admin::Backups => {

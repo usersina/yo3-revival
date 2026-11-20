@@ -1,0 +1,23 @@
+# CARD_Prop / CARD_Genre: how the client encodes a card's kind and type flags (issue #60), measured on all 4,834 rows
+# against the official database's types (tools/mod/card-profile notes in docs/client-internals.md "Card profiles").
+# Row = 8 bytes: word a (low u32) and word b (high u32).
+#   a: cid = a & 0x3FFF; ATK = (a>>14 & 0x1FF) * 10 (0x1FF shows "?"); DEF = (a>>23 & 0x1FF) * 10 (0x1FF = "?")
+#   b: kind = b>>3 & 0x1F; attribute = b>>8 & 0xF; level = b>>12 & 0xF; subclass = b>>16 & 7; race = b>>19 & 0x1F;
+#      art = b>>27 & 7. b & 7 and b>>24 & 7 are unknown (leave them as the row has them).
+# Monster "kind" (b>>3 & 0x1F) carries Normal/Effect and the Extra Deck / special families:
+#   0 Normal           1 Effect              2 Fusion (no effect)    3 Fusion+Effect
+#   4 Ritual (Normal)  5 Ritual+Effect       6 Toon+Effect           7 Spirit+Effect
+#   8 Union+Effect     9 Gemini+Effect      10 Token (Normal)
+#  15 Tuner (Normal)  16 Tuner+Effect       17 Synchro (no effect)  18 Synchro+Effect    19 Tuner+Synchro+Effect
+#  13 Spell, 14 Trap.  Extra Deck = kinds 2, 3, 17, 18, 19 (yo3-data Card::extra_deck also lists 17..=19).
+# Spell/Trap subtype is b>>16 & 7 (monsters: 0):
+#   Spell: 0 Normal, 2 Field, 3 Equip, 4 Continuous, 5 Quick-Play, 6 Ritual
+#   Trap : 0 Normal, 1 Counter, 4 Continuous
+#   Spells have attribute 8 and race 23, Traps attribute 9 and race 24, level 0, ATK/DEF 0.
+# "Special Summon only" is not encoded anywhere (129 Effect + 5 Toon + 1 Spirit + 4 Tuner cards have it, with the
+#   same kind as their siblings): it cannot be shown, so it is not a presentation difference.
+# Flip: the client has no Flip kind; CARD_Genre bit 22 (set for 111 of 111 Flip monsters, 19 others): see 0x5372A0.
+# CARD_Genre (the +0x3C table, 64-bit bitmap per row) is NOT a type bitmap but effect categories (search, destroy,
+#   special summon...: bits 0-45 each set on 13..921 cards, no bit tracks Normal/Effect/Continuous/Equip). Only
+#   bit 22 (Flip) and 24 (Spirit), 25 (Union), 26 (Gemini) track a type flag, and they duplicate the kind.
+#   A profile's genre word is therefore copied from the row unless a card's effect categories are decided.

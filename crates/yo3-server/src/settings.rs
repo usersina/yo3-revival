@@ -87,6 +87,9 @@ pub const REGISTRY: &[Setting] = &[
         kind: Kind::Number { min: 0, max: 3600 }, applies: Applies::NextDuel, default: || json!(crate::clock::DEFAULT_TURN) },
     Setting { name: "total-seconds", help: "Each player's total clock in duels between players, when the duel sets none (0: off)",
         kind: Kind::Number { min: 0, max: 36_000 }, applies: Applies::NextDuel, default: || json!(crate::clock::DEFAULT_TOTAL) },
+    Setting { name: "anime-cards", help: "Duels play the cards with a reviewed anime version by their anime effects (off: the game's own; the cards \
+        the client could not show right keep theirs: docs/playing.md)", kind: Kind::Choice(&["off", "on"]), applies: Applies::NextDuel,
+        default: || json!("off") },
     Setting { name: "pack-cost", help: "BP a booster pack costs in Blister's shop (the game shows it when you pick the pack)",
         kind: Kind::Number { min: 1, max: 100_000 }, applies: Applies::NextRequest, default: || json!(crate::shop::PACK_COST) },
     Setting { name: "deck-cost", help: "BP a structure deck costs in Blister's shop",
@@ -101,6 +104,15 @@ pub const REGISTRY: &[Setting] = &[
         kind: Kind::Number { min: 1, max: 365 }, applies: Applies::NextRequest, default: || json!(crate::shop::RENTAL_DAYS) },
     Setting { name: "report-limit", help: "Player reports (`/report` in the chat) one player may send in an hour (0: reports are off)",
         kind: Kind::Number { min: 0, max: 1000 }, applies: Applies::NextRequest, default: || json!(5) },
+    Setting { name: "games-per-device", help: "Games one PC may run at once on this server (the launcher's Play as another account; staff is exempt). \
+        1 keeps one game per PC: raise it to let friends sharing a PC play together", kind: Kind::Number { min: 1, max: 16 },
+        applies: Applies::AtOnce, default: || json!(1) },
+    Setting { name: "linked-accounts", help: "Accounts seen on one PC or address: fair (a duel between them pays no BP and counts no record or title, \
+        and they can't trade or rent to each other) or off (they are treated as strangers)",
+        kind: Kind::Choice(&["fair", "off"]), applies: Applies::AtOnce, default: || json!("fair") },
+    Setting { name: "clean-game", help: "on: the launcher refuses to start the game here while another program's .dll or .asi is in the game folder, \
+        a Winsock provider isn't Microsoft's or a network function is detoured (a tidiness policy, not anti-cheat: the launcher reports it)",
+        kind: Kind::Choice(&["off", "on"]), applies: Applies::AtOnce, default: || json!("off") },
     Setting { name: "news", help: "The game's Information list: \"TITLE | BODY\" for one entry, or a JSON list of {title, body}",
         kind: Kind::News, applies: Applies::NextRequest, default: default_news },
     Setting { name: "maintenance-at", help: "When maintenance starts, in Unix seconds (0: none); `maintenance --in MINUTES` sets it. \
@@ -164,6 +176,8 @@ pub struct Settings {
     /// The login banlist's id.
     pub login_regulation: u32,
     pub start_lp: u32,
+    /// Duels play the reviewed anime card versions (issue #60).
+    pub anime_cards: bool,
     pub turn_seconds: u32,
     pub total_seconds: u32,
     pub news: Vec<(String, String)>,
@@ -184,6 +198,11 @@ pub struct Settings {
     /// The shop's prices (#16) and the reports a player may send in an hour.
     pub shop: Shop,
     pub report_limit: u32,
+    /// Games one PC may run at once, and whether accounts seen together are treated as linked (#64).
+    pub games_per_device: u32,
+    pub linked_fair: bool,
+    /// The launcher refuses a game with other programs inside (#69).
+    pub clean_game: bool,
     /// Every setting's value by name, defaults included.
     values: Map<String, Json>,
 }
@@ -211,6 +230,7 @@ impl Settings {
             min_launcher: Some(text("min-launcher")).filter(|v| !v.is_empty()),
             login_regulation: regulation(&text("login-regulation"), banlists)?,
             start_lp: number("start-lp"),
+            anime_cards: text("anime-cards") == "on",
             turn_seconds: number("turn-seconds"),
             total_seconds: number("total-seconds"),
             news,
@@ -225,6 +245,9 @@ impl Settings {
             shop: Shop { pack_cost: number("pack-cost"), deck_cost: number("deck-cost"), trade_cards: number("trade-cards"),
                 rental_cards: number("rental-cards"), rental_bp: number("rental-bp"), rental_days: number("rental-days") },
             report_limit: number("report-limit"),
+            games_per_device: number("games-per-device"),
+            linked_fair: text("linked-accounts") != "off",
+            clean_game: text("clean-game") == "on",
             pace: crate::net::Pace { burst: number("request-burst"), per_second: number("requests-per-second"), outbox_max: number("outbox-max") as usize },
             limits: Limits { burst: number("address-burst"), refill_seconds: number("address-refill-seconds"), max_backoff_seconds: number("backoff-max-seconds") },
             values,
@@ -429,6 +452,7 @@ mod tests {
         assert_eq!((now.registration, now.login_regulation, now.start_lp), (Registration::Invite, crate::front::LOGIN_REGULATION, 8000));
         assert_eq!((now.turn_seconds, now.total_seconds), (crate::clock::DEFAULT_TURN, crate::clock::DEFAULT_TOTAL));
         assert_eq!(now.limits, Limits::default());
+        assert!(!now.anime_cards, "the anime card versions are off until a host turns them on");
         for s in REGISTRY {
             let input = match (s.default)() { Json::String(v) => v, other => other.to_string() };
             parse(s, &input, &banlists()).unwrap_or_else(|e| panic!("{}: {e}", s.name));
@@ -447,6 +471,11 @@ mod tests {
         assert!(live.set("news", "| no title").is_err());
         assert!(live.set("news", "[]").is_err(), "the game's list needs an entry");
         assert!(live.set("nothing", "1").unwrap_err().contains("no setting"));
+        assert!(live.set("anime-cards", "sometimes").unwrap_err().contains("off, on"));
+        assert_eq!(live.set("anime-cards", "ON").unwrap(), "anime-cards is now on (applies at the next duel)");
+        assert!(live.now().anime_cards);
+        live.reset("anime-cards").unwrap();
+        assert!(!live.now().anime_cards);
         assert_eq!(live.set("Registration", "OPEN").unwrap(), "registration is now open (applies at once)");
         assert_eq!(live.set("login-regulation", "season 16").unwrap(), "login-regulation is now season 16 (applies at each player's next login)");
         assert_eq!(live.now().login_regulation, 20);

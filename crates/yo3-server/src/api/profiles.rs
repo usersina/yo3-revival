@@ -40,6 +40,14 @@ pub struct AccountDetail {
     #[schema(maximum = 4294967295_u32)] pub device_count: u32, pub reset_pending: bool, pub players: Vec<PlayerDetail>,
     /// The banlist the account's game logs in with (its own choice with `/banlist`, a staff override, or the server's).
     pub banlist: super::banlist::AccountBanlist, pub checked_at: DateTime<Utc>,
+    /// Accounts seen on the same PC or address (#64): what a host's fair-play rules treat as one player.
+    pub linked_accounts: Vec<LinkedAccount>,
+}
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct LinkedAccount {
+    #[schema(maximum = 4294967295_u32)] pub user_id: u32, pub login: Option<String>, pub players: Vec<String>,
+    /// What they share: `device`, `address` or both.
+    pub shared: Vec<String>,
 }
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -132,7 +140,12 @@ impl Api {
                 additional_cards: p.cards.values().map(|&n| u64::from(n)).sum(), card_kinds: p.cards.len() as u32, purchased_decks: p.decks.len() as u32,
                 uploaded_decks: p.uploaded.len() as u32, owned_items: p.items.len() as u32, online: hub.as_ref().map(|h| h.is_online(p.player_id)),
                 record: hub.as_ref().map(|h| { let [wins, losses, draws] = h.record_totals(p.player_id); DuelRecord { wins, losses, draws } }),
-            }).collect(), checked_at: Utc::now() })
+            }).collect(), checked_at: Utc::now(),
+            linked_accounts: d.linked_to(user, now).into_iter().filter_map(|(other, shared)| {
+                let account = d.account_of(other)?;
+                Some(LinkedAccount { user_id: other, login: d.login_by_id(other).map(|l| l.user.clone()),
+                    players: account.players.iter().map(|p| p.name.clone()).collect(), shared: shared.into_iter().map(|l| l.word().to_string()).collect() })
+            }).collect() })
     }
 
     pub fn account_countries(&self, actor: Actor<'_>) -> Result<CountryList, MutationError> {

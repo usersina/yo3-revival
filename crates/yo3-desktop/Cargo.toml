@@ -13,6 +13,7 @@ name = "yo3-revival"
 path = "src/main.rs"
 
 [dependencies]
+getrandom.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
 if-addrs.workspace = true

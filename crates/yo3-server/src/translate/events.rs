@@ -94,6 +94,12 @@ impl Translator {
                             _ => {}
                         }
                     }
+                    // A Set Spell or Trap that activates is face up from here on (the core says nothing else about the flip).
+                    if c.loc.location == loc::SZONE
+                        && let Some(place) = self.engine_place(&c.loc).filter(|p| (5..=zone::FIELD_SPELL).contains(&p.zone))
+                    {
+                        self.positions.insert((place.player, place.zone), (true, false));
+                    }
                     out.extend(self.activation(&c));
                     let link = self.chain_link(&c);
                     let param = |k: &str| link.get(k).and_then(Value::as_u32).unwrap_or(0);
@@ -290,6 +296,23 @@ impl Translator {
                 }
             }
         };
+        // Swords of Revealing Light keeps every monster the opponent controls from attacking, with no target to follow:
+        // while it lies face up, each of them is marked (rows by Konami id from the card data).
+        for p in 0..2u32 {
+            for z in 5..=9u32 {
+                let swords = self.sides[p as usize].zones.get(&z).and_then(|c| c.first()).is_some_and(|c| {
+                    self.cards.get(&c.row).is_some_and(|d| d.cid == SWORDS_OF_REVEALING_LIGHT) && self.positions.get(&(p, z)).is_some_and(|&(up, _)| up)
+                });
+                if !swords {
+                    continue;
+                }
+                for m in 0..=4u32 {
+                    if self.sides[1 - p as usize].zones.get(&m).is_some_and(|c| !c.is_empty()) {
+                        want(&mut wanted, (p | z << 8, (1 - p) | m << 8, MARK_LOCKED));
+                    }
+                }
+            }
+        }
         let mut kept = vec![];
         for &link in &self.links {
             let (Some(a), Some(b)) = (place_of(self, link.0), place_of(self, link.1)) else { continue };
@@ -916,7 +939,12 @@ impl Translator {
             Some((uid, row)) if rows.contains(&row) => (uid, row),
             _ => self.next_token_card(&rows),
         };
-        self.tokens.push(uid);
+        // The client's own token cards (Konami ids 3900-3999) shatter when they leave the field. A copy token (Multiply,
+        // Cloning: a token with another card's code) is that card to the engine, which keeps it in the Graveyard like any
+        // card, so it moves like one (issue #60).
+        if self.cards.get(&row).is_none_or(|s| s.cid == 0 || (3900..4000).contains(&s.cid)) {
+            self.tokens.push(uid);
+        }
         let zone = self.sides[to.player as usize].zone(to.zone);
         zone.clear();
         zone.push(Card { uid, row });

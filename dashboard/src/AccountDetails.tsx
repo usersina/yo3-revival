@@ -303,6 +303,24 @@ export function AccountDetails({
                     </p>
                   </div>
                 </div>
+                <div>
+                  <div>
+                    <strong>Linked accounts</strong>
+                    {data.linked_accounts.length === 0 ? (
+                      <p>None seen on the same PC or address</p>
+                    ) : (
+                      <ul className="linked-accounts">
+                        {data.linked_accounts.map((linked) => (
+                          <li key={linked.user_id}>
+                            {linked.login ?? `Account ${linked.user_id}`}
+                            {linked.players.length > 0 && ` (${linked.players.join(', ')})`}
+                            <span className="muted"> shares {linked.shared.join(' and ')}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
               </div>
             </Panel>
           </section>

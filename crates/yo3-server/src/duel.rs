@@ -231,9 +231,10 @@ pub fn lead_janken([result, theirs, mine]: [u32; 3], lead_saw_it: bool) -> [u32;
 /// (Konami's replays hide no card: no card table entry with row 0 in 227 original logs, so both hands show). `history`
 /// is every engine message of the duel.
 pub fn replay_commands(world: &World, decks: [&Deck; 2], janken: [u32; 3], lp: u32, history: &[serde_json::Value]) -> Vec<[u32; 6]> {
-    let (mut translator, table) = Translator::new(CLIENT, [&decks[0].main, &decks[1].main], world.cards.clone());
+    let view = world.card_view();
+    let (mut translator, table) = Translator::new(CLIENT, [&decks[0].main, &decks[1].main], view.cards.clone());
     translator.tokens(world.token_rows.clone());
-    translator.tuners(world.tuners.clone());
+    translator.tuners(view.tuners.clone());
     let [result, theirs, mine] = janken;
     let mut messages = vec![
         command(cmd::JANKEN_BEGIN, [0; 4]),
@@ -563,7 +564,7 @@ impl DuelSession {
     /// engine does up to the client's first choice (its draws, turns and phases). None if the engine won't start.
     fn engine_opening(&mut self, first: u32, dir: &std::path::Path) -> Option<Vec<Message>> {
         let entry = self.entry.clone()?;
-        let npc = entry.npc_id.and_then(|id| self.world.npc_decks.get(&id)).cloned()?;
+        let npc = entry.npc_id.and_then(|id| self.world.npc_decks.get(&id)).map(|d| self.world.place_deck(d))?;
         let decks = [&entry.deck, &npc];
         let cids = |rows: &[u16]| rows.iter().filter_map(|r| self.world.cards.get(r).map(|c| c.cid)).collect::<Vec<u16>>();
         // Engine team 0 goes first.
@@ -573,7 +574,8 @@ impl DuelSession {
         // with the same hand), so the decks are shuffled here.
         self.shuffle(&mut m0);
         self.shuffle(&mut m1);
-        let mut engine = Engine::start(dir).map_err(|e| tracing::warn!("rules engine not started: {e}")).ok()?;
+        let anime = self.world.settings.now().anime_cards;
+        let mut engine = Engine::start_with(dir, anime).map_err(|e| tracing::warn!("rules engine not started: {e}")).ok()?;
         if self.world.duel_check { engine.record(); }
         let seed = self.next();
         // The LP at this duel's start (the `start-lp` setting now, #24), kept for the whole duel.
@@ -589,11 +591,13 @@ impl DuelSession {
         let skills: Vec<(u32, String)> = style.and_then(|s| s["skills"].as_array()).into_iter().flatten()
             .filter_map(|s| s.as_str()).map(|s| (npc_team, s.to_string())).collect();
         let answer = engine.new_duel_with(seed, lp, [(&m0, &e0), (&m1, &e1)], &self.world.card_names, &skills);
-        let (mut translator, mut table) = npc_translator(first, [&entry.deck.main, &npc.main], self.world.cards.clone());
+        let view = self.world.card_view();
+        let (mut translator, mut table) = npc_translator(first, [&entry.deck.main, &npc.main], view.cards.clone());
         if self.world.duel_check {
             // The NPC's hidden cards' rows, from a translator that hides nothing (the same uids in the same order).
-            let mut model = crate::duelcheck::ClientModel::new(first, self.world.cards.clone());
-            let (mut full, mut known) = Translator::new(first, [&entry.deck.main, &npc.main], self.world.cards.clone());
+            let mut model = crate::duelcheck::ClientModel::new(first, view.cards.clone());
+            model.expect_profile(view.expectations());
+            let (mut full, mut known) = Translator::new(first, [&entry.deck.main, &npc.main], view.cards.clone());
             known.extend(full.extra_decks([&entry.deck.extra, &npc.extra]));
             for m in &known {
                 let int = |k: &str| m.get(k).and_then(Value::as_u32).unwrap_or(0);
@@ -602,10 +606,15 @@ impl DuelSession {
             self.check = Some(model);
         }
         translator.tokens(self.world.token_rows.clone());
-        translator.tuners(self.world.tuners.clone());
+        if engine.plays_anime() { translator.note(crate::engine::ANIME_NOTE); }
+        if let Some(id) = self.identity.filter(|i| !self.world.profiles.current_for(i.user_id, anime)) {
+            tracing::info!("user {}'s game runs another card profile than the server's now", id.user_id);
+            translator.note(crate::engine::RESTART_NOTE);
+        }
+        translator.tuners(view.tuners.clone());
         translator.auto_place(!entry.manual_place);
         translator.allow_surrender(!entry.no_surrender);
-        translator.card_kinds(self.world.card_kinds.clone());
+        translator.card_kinds(view.card_kinds.clone());
         table.extend(translator.extra_decks([&entry.deck.extra, &npc.extra]));
         self.engine = Some((engine, translator));
         self.first = Some(first);
@@ -806,7 +815,7 @@ impl DuelSession {
     /// without the player's deck and an NPC to play.
     fn opening(&mut self, first: u32) -> Vec<Message> {
         let Some(entry) = self.entry.clone() else { return vec![] };
-        let Some(npc) = entry.npc_id.and_then(|id| self.world.npc_decks.get(&id)).cloned() else { return vec![] };
+        let Some(npc) = entry.npc_id.and_then(|id| self.world.npc_decks.get(&id)).map(|d| self.world.place_deck(d)) else { return vec![] };
         let mut out = vec![setup(first, &entry.deck, &npc)];
         // uids 1.. in table order: the client's deck, then the CPU's.
         let mut decks = [entry.deck.main.clone(), npc.main.clone()];

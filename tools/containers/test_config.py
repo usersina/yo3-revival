@@ -33,6 +33,19 @@ class DeploymentConfig(unittest.TestCase):
         cfg=self.config('deploy/compose.acme.yaml');acme=cfg['services']['acme']
         self.assertFalse(acme.get('depends_on'));self.assertEqual(acme['profiles'],['certificate'])
         self.assertFalse(any(v['target']=='/etc/yo3/tls' for v in acme['volumes']))
+    def test_nginx_allows_every_staff_api_route(self):
+        """Each path of the generated OpenAPI document reaches the server through nginx's allowlist, unless nginx blocks
+        it on purpose: a route added to the Rust router but not to the allowlist would 404 only behind nginx."""
+        import json, re
+        paths = json.loads((ROOT / 'dashboard/api/openapi.json').read_text())['paths']
+        conf = (ROOT / 'deploy/nginx/dashboard.conf.template').read_text()
+        allowed = [re.compile(m) for m in re.findall(r'location ~ (\^/panel/api/v1/\S+\$) \{', conf)]
+        blocked = set(re.findall(r'location = (/panel/api/v1/\S+) \{ return 404; \}', conf))
+        self.assertTrue(allowed)
+        sample = lambda p: re.sub(r'\{[a-z_]+\}', '7', p.replace('{size}', 'mini'))
+        missing = [p for p in paths if p not in blocked and not any(r.match(sample(p)) for r in allowed)]
+        self.assertEqual(missing, [], 'add these routes to deploy/nginx/dashboard.conf.template')
+
     def test_host_scripts_parse(self):
         for name in ['server-entrypoint.sh','nginx/entrypoint.sh','install-certificate.sh','check-https.sh']:
             subprocess.run(['sh','-n',str(ROOT/'deploy'/name)],check=True)

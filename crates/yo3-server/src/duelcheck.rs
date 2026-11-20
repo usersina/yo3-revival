@@ -87,6 +87,9 @@ pub struct ClientModel {
     surrendered: Option<usize>,
     record: [u32; 9],
     records: HashMap<(usize, u32), [u32; 9]>,
+    /// What the selected card profile says of its cards (by CARD_Prop row), and the cards already judged against it.
+    expect: HashMap<u16, crate::profile::Expect>,
+    profile_seen: std::sync::Mutex<HashSet<u32>>,
     counters: HashMap<(u32, u32), i64>,
     turn: (usize, u32),
     phase: Option<(usize, u32)>,
@@ -121,6 +124,8 @@ impl ClientModel {
             surrendered: None,
             record: [0; 9],
             records: HashMap::new(),
+            expect: HashMap::new(),
+            profile_seen: Default::default(),
             counters: HashMap::new(),
             turn: (first as usize, 1), phase: None,
             engine_turn: (first as usize, 0), engine_phase: None,
@@ -132,6 +137,13 @@ impl ClientModel {
             recent: VecDeque::new(),
             summon: summon::SummonOrder::default(),
         }
+    }
+
+    /// What the selected card profile says of its cards, by CARD_Prop row (`CardView::expectations`): the first time a
+    /// face-up monster of one is seen on the field, its engine level, base ATK/DEF, race and attribute must be the
+    /// profile's, so a profile that says what the engine does not play fails the check (issue #60).
+    pub fn expect_profile(&mut self, expect: HashMap<u16, crate::profile::Expect>) {
+        self.expect = expect;
     }
 
     /// Seeds a card's row that the client is not given (an opponent's hidden card), so its place can be checked.
@@ -189,8 +201,10 @@ impl ClientModel {
                 let rows = std::mem::take(&mut self.rows);
                 let gaps = std::mem::take(&mut self.coverage_gaps);
                 let oracle = (self.engine_turn, self.engine_phase);
+                let expect = std::mem::take(&mut self.expect);
                 *self = ClientModel::new(self.first as u32, std::mem::take(&mut self.cards));
                 self.rows = rows;
+                self.expect = expect;
                 self.coverage_gaps = gaps;
                 (self.engine_turn, self.engine_phase) = oracle;
                 self.counts = [
@@ -565,6 +579,14 @@ impl ClientModel {
                             if place.face_up { "face-up" } else { "face-down" },
                             if place.defense { "defense" } else { "attack" },
                         ));
+                    }
+                    if zone < 5 && face_up
+                        && let Some(want) = self.rows.get(&uid).and_then(|row| self.expect.get(row))
+                        && self.profile_seen.lock().unwrap_or_else(|e| e.into_inner()).insert(uid)
+                    {
+                        for problem in want.problems(&engine) {
+                            out.push(format!("player {p}'s zone {zone}: {} differs from the card profile: {problem}", self.describe(uid)));
+                        }
                     }
                     if zone < 5 && face_up {
                         for (key, index) in [("level", 4), ("attack", 5), ("defense", 6), ("base_attack", 7), ("base_defense", 8)] {
@@ -946,6 +968,92 @@ pub mod selfplay {
         pub names: HashMap<u16, String>,
         /// The Tuners' Konami ids.
         pub tuners: std::collections::HashSet<u16>,
+        /// The engine plays the anime card versions (the `anime-cards` setting, #60).
+        pub anime: bool,
+        /// What the card profile says of its cards, by row (the duel check judges the engine's cards against it).
+        pub expect: HashMap<u16, crate::profile::Expect>,
+    }
+
+    /// The cards the reviewed anime map approves, by what a deck keeps them in (Konami ids), for self-play with the
+    /// `anime-cards` setting on.
+    #[derive(Clone, Debug, Default)]
+    pub struct AnimePool {
+        pub monsters: Vec<u16>,
+        pub spells: Vec<u16>,
+        pub traps: Vec<u16>,
+        /// Fusion and Synchro Monsters.
+        pub extra: Vec<u16>,
+    }
+
+    /// The approved cards of `engine/anime-cards.json`, sorted by Konami id into an [`AnimePool`] by the type the engine
+    /// (with the anime versions on) gives each.
+    pub fn anime_pool(dir: &Path) -> Result<AnimePool, String> {
+        anime_pool_where(dir, |_| true)
+    }
+
+    /// The [`anime_pool`] of the cards the card profile shows differently from the game's (the released categories: the map's
+    /// `profile` entries), each class topped up with the ordinary pool's cards to `at_least` so a deck can be made: duels
+    /// where nearly every card is one whose client row the profile rewrites.
+    pub fn anime_pool_of_profile_cards(dir: &Path, at_least: usize) -> Result<AnimePool, String> {
+        let mut pool = anime_pool_where(dir, |c| c["profile"].is_array())?;
+        let base = anime_pool(dir)?;
+        for (mine, all) in [(&mut pool.monsters, &base.monsters), (&mut pool.spells, &base.spells), (&mut pool.traps, &base.traps), (&mut pool.extra, &base.extra)] {
+            for card in all {
+                if mine.len() >= at_least {
+                    break;
+                }
+                if !mine.contains(card) {
+                    mine.push(*card);
+                }
+            }
+        }
+        Ok(pool)
+    }
+
+    /// [`anime_pool`] of the mapped cards whose map entry `keep` accepts.
+    fn anime_pool_where(dir: &Path, keep: impl Fn(&Json) -> bool) -> Result<AnimePool, String> {
+        let text = std::fs::read(dir.join("anime-cards.json")).map_err(|e| format!("anime-cards.json: {e}"))?;
+        let map: Json = serde_json::from_slice(&text).map_err(|e| format!("anime-cards.json: {e}"))?;
+        let mapped: Vec<u16> = map["cards"].as_array().into_iter().flatten().filter(|c| c["status"] == "mapped" && keep(c)).filter_map(|c| c["cid"].as_u64()).map(|c| c as u16).collect();
+        let mut engine = Engine::start_with(dir, true).map_err(|e| format!("engine: {e}"))?;
+        let list: Vec<(u16, &str)> = mapped.iter().map(|&c| (c, "")).collect();
+        let mut pool = AnimePool::default();
+        for chunk in list.chunks(100) {
+            for a in engine.cards(chunk).map_err(|e| format!("engine: {e}"))? {
+                let (cid, kind) = (a["cid"].as_u64().unwrap_or(0) as u16, a["data"]["type"].as_u64().unwrap_or(0));
+                match kind {
+                    k if k & 0x4000 != 0 => {}
+                    k if k & 0x2040 != 0 => pool.extra.push(cid),
+                    k if k & 1 != 0 => pool.monsters.push(cid),
+                    k if k & 2 != 0 => pool.spells.push(cid),
+                    k if k & 4 != 0 => pool.traps.push(cid),
+                    _ => {}
+                }
+            }
+        }
+        Ok(pool)
+    }
+
+    /// [`deck`] from an anime pool: 40 cards (about half monsters, at most three of a card) and up to six Extra Deck cards.
+    pub fn anime_deck(pool: &AnimePool, seed: u64) -> (Vec<u16>, Vec<u16>) {
+        let mut rng = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+        let mut counts: HashMap<u16, u32> = HashMap::new();
+        let mut main = vec![];
+        let (monsters, spells) = (18 + next(&mut rng) as usize % 5, 10 + next(&mut rng) as usize % 5);
+        for (cards, n) in [(&pool.monsters, monsters), (&pool.spells, spells), (&pool.traps, 40 - monsters - spells)] {
+            let mut added = 0;
+            while added < n {
+                let card = cards[next(&mut rng) as usize % cards.len()];
+                let c = counts.entry(card).or_default();
+                if *c < 3 {
+                    *c += 1;
+                    main.push(card);
+                    added += 1;
+                }
+            }
+        }
+        let extra = (0..6).map(|_| pool.extra[next(&mut rng) as usize % pool.extra.len()]).collect();
+        (main, extra)
     }
 
     /// Plays a duel between two seeded random players (`decks` by engine team: main and extra deck, Konami ids), the
@@ -957,22 +1065,119 @@ pub mod selfplay {
             cards: card_data(&decks),
             tokens: token_rows(),
             names: HashMap::new(),
-            tuners: tuners(dir, &decks)?,
+            tuners: tuners(dir, &decks, false)?,
+            anime: false,
+            expect: HashMap::new(),
         };
         play_with(dir, seed, decks, &data, [&[], &[]], client_team, hidden)
     }
 
-    /// The Tuners among the decks' cards (Konami ids), as the rules engine's card data has them (TYPE_TUNER), asked once
-    /// per card for all duels: a Synchro's tuning tells them from the others, as the server does from the client's data.
-    fn tuners(dir: &Path, decks: &[(&[u16], &[u16]); 2]) -> Result<std::collections::HashSet<u16>, String> {
-        static KNOWN: std::sync::Mutex<BTreeMap<u16, bool>> = std::sync::Mutex::new(BTreeMap::new());
-        const TYPE_TUNER: u64 = 0x1000;
+    pub type TokenCards = (HashMap<u16, CardStats>, HashMap<String, Vec<u16>>);
+
+    /// The client's token cards (`engine/anime/client-tokens.tsv`) as rows of their own (60100 and up), for the anime
+    /// cards' tokens: the rows and the rows by name.
+    pub fn client_tokens(dir: &Path) -> Result<TokenCards, String> {
+        let text = std::fs::read_to_string(dir.join("anime/client-tokens.tsv")).map_err(|e| format!("client-tokens.tsv: {e}"))?;
+        let (mut cards, mut names): (HashMap<u16, CardStats>, HashMap<String, Vec<u16>>) = Default::default();
+        for (i, line) in text.lines().enumerate() {
+            let Some((cid, name)) = line.split_once('\t') else { continue };
+            let row = 60100 + i as u16;
+            cards.insert(row, CardStats { cid: cid.parse().map_err(|_| format!("client-tokens.tsv: {line}"))?, atk: 0, def: 0, level: 1, attribute: 1, race: 1 });
+            names.entry(name.to_string()).or_default().push(row);
+        }
+        Ok((cards, names))
+    }
+
+    /// [`play`] with the anime card versions on (the `anime-cards` setting): the decks come from [`anime_deck`], and the
+    /// client has every token card it has.
+    pub fn play_anime(dir: &Path, seed: u64, decks: [(&[u16], &[u16]); 2], client_team: usize, hidden: bool) -> Result<Played, String> {
+        play_anime_with(dir, seed, decks, client_team, hidden, |_| {})
+    }
+
+    /// [`play_anime`] with `tweak` run over the profile's expectations first: a test makes the profile say what the engine
+    /// does not play, which the duel check must report.
+    pub fn play_anime_with(
+        dir: &Path,
+        seed: u64,
+        decks: [(&[u16], &[u16]); 2],
+        client_team: usize,
+        hidden: bool,
+        tweak: impl FnOnce(&mut HashMap<u16, crate::profile::Expect>),
+    ) -> Result<Played, String> {
+        let (token_cards, tokens) = client_tokens(dir)?;
+        let mut cards = card_data(&decks);
+        cards.extend(token_cards);
+        let data = CardData {
+            cards,
+            tokens,
+            names: HashMap::new(),
+            tuners: tuners(dir, &decks, true)?,
+            anime: true,
+            expect: {
+                let mut expect = anime_expectations(dir, &decks)?;
+                anime_card_problems(dir, &decks, &expect)?;
+                tweak(&mut expect);
+                expect
+            },
+        };
+        play_with(dir, seed, decks, &data, [&[], &[]], client_team, hidden)
+    }
+
+    /// The decks' cards as the rules engine plays them with the anime versions on: its card data (Level, race, attribute...),
+    /// asked once per card for all duels.
+    fn anime_card_data(dir: &Path, decks: &[(&[u16], &[u16]); 2]) -> Result<BTreeMap<u16, Json>, String> {
+        static KNOWN: std::sync::Mutex<BTreeMap<u16, Json>> = std::sync::Mutex::new(BTreeMap::new());
         let mut known = KNOWN.lock().unwrap_or_else(|e| e.into_inner());
         let mut ask: Vec<u16> = decks.iter().flat_map(|(m, e)| m.iter().chain(e.iter())).copied().filter(|c| !known.contains_key(c)).collect();
         ask.sort_unstable();
         ask.dedup();
         if !ask.is_empty() {
-            let mut engine = Engine::start(dir).map_err(|e| format!("engine: {e}"))?;
+            let mut engine = Engine::start_with(dir, true).map_err(|e| format!("engine: {e}"))?;
+            let list: Vec<(u16, &str)> = ask.iter().map(|&c| (c, "")).collect();
+            for (cid, a) in ask.iter().zip(engine.cards(&list).map_err(|e| format!("engine: {e}"))?) {
+                known.insert(*cid, a);
+            }
+        }
+        Ok(decks.iter().flat_map(|(m, e)| m.iter().chain(e.iter())).filter_map(|c| known.get(c).map(|a| (*c, a.clone()))).collect())
+    }
+
+    /// The decks' cards the profile changes the Level, race or attribute of, against the engine's card data: the engine plays what
+    /// the profile shows. (On the field those are the effects' as much as the card's, so the duel check judges only ATK and DEF
+    /// there.)
+    fn anime_card_problems(dir: &Path, decks: &[(&[u16], &[u16]); 2], expect: &HashMap<u16, crate::profile::Expect>) -> Result<(), String> {
+        let data = anime_card_data(dir, decks)?;
+        let mut problems = vec![];
+        for (cid, answer) in &data {
+            if let Some(want) = expect.get(cid) {
+                for problem in want.card_problems(&answer["data"]) {
+                    problems.push(format!("card {cid} differs from the card profile: {problem}"));
+                }
+            }
+        }
+        if problems.is_empty() { Ok(()) } else { Err(problems.join("\n")) }
+    }
+
+    /// What the anime profile says of the decks' cards (the self-play's rows are the Konami ids): the engine database's
+    /// level, ATK, DEF, race and attribute of the approved cards, which the duel check holds the engine's monsters to.
+    pub fn anime_expectations(dir: &Path, decks: &[(&[u16], &[u16]); 2]) -> Result<HashMap<u16, crate::profile::Expect>, String> {
+        let anime = crate::profile::read_anime(dir)?;
+        Ok(decks.iter().flat_map(|(m, e)| m.iter().chain(e.iter())).filter_map(|c| anime.get(c).map(|d| (*c, crate::profile::Expect::of_anime(d)))).collect())
+    }
+
+    /// The Tuners among the decks' cards (Konami ids), as the rules engine's card data has them (TYPE_TUNER), asked once
+    /// per card for all duels: a Synchro's tuning tells them from the others, as the server does from the client's data.
+    /// With `anime`, the anime versions' types (Boost Warrior is a Tuner in the anime, not in the game): the engine that plays
+    /// them is the one asked.
+    fn tuners(dir: &Path, decks: &[(&[u16], &[u16]); 2], anime: bool) -> Result<std::collections::HashSet<u16>, String> {
+        static GAME: std::sync::Mutex<BTreeMap<u16, bool>> = std::sync::Mutex::new(BTreeMap::new());
+        static ANIME: std::sync::Mutex<BTreeMap<u16, bool>> = std::sync::Mutex::new(BTreeMap::new());
+        const TYPE_TUNER: u64 = 0x1000;
+        let mut known = if anime { &ANIME } else { &GAME }.lock().unwrap_or_else(|e| e.into_inner());
+        let mut ask: Vec<u16> = decks.iter().flat_map(|(m, e)| m.iter().chain(e.iter())).copied().filter(|c| !known.contains_key(c)).collect();
+        ask.sort_unstable();
+        ask.dedup();
+        if !ask.is_empty() {
+            let mut engine = Engine::start_with(dir, anime).map_err(|e| format!("engine: {e}"))?;
             let list: Vec<(u16, &str)> = ask.iter().map(|&c| (c, "")).collect();
             let answers = engine.cards(&list).map_err(|e| format!("engine: {e}"))?;
             for (cid, a) in ask.iter().zip(&answers) {
@@ -1006,6 +1211,7 @@ pub mod selfplay {
         t.tuners(data.tuners.clone());
         table.extend(t.extra_decks([mine.1, theirs.1]));
         let mut model = ClientModel::new(first, cards.clone());
+        model.expect_profile(data.expect.clone());
         // The rows the client isn't given: the same uids in the same order from a translator that hides nothing.
         let (mut full, mut known) = Translator::new(first, [mine.0, theirs.0], cards.clone());
         known.extend(full.extra_decks([mine.1, theirs.1]));
@@ -1022,7 +1228,7 @@ pub mod selfplay {
         opening.extend(piles());
         model.apply_all(&opening);
 
-        let mut engine = Engine::start(dir).map_err(|e| format!("engine: {e}"))?;
+        let mut engine = Engine::start_with(dir, data.anime).map_err(|e| format!("engine: {e}"))?;
         let mut shuffled = [decks[0].0.to_vec(), decks[1].0.to_vec()];
         for (d, top) in shuffled.iter_mut().zip(top) {
             shuffle(&mut rng, d);
@@ -1055,6 +1261,11 @@ pub mod selfplay {
                 return Err(format!("seed {seed}, step {}: the engine reported {:?}", played.steps, a.errors));
             }
             model.observe_engine(&a.messages);
+            if std::env::var_os("YO3_CHECK_TRACE").is_some() {
+                for m in &a.messages {
+                    eprintln!("step {}: {m}", played.steps);
+                }
+            }
             for m in &a.messages {
                 effects.message(m, &mut played);
             }

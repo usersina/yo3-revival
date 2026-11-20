@@ -148,7 +148,10 @@ impl Session {
                 let answer = self.run()?;
                 Ok(self.with_cids_answer(answer))
             }
-            Some("cards") => Ok(with_bare(json!({ "status": "cards", "cards": self.check_cards(req)? }))),
+            Some("cards") => {
+                let cards = self.check_cards(req)?;
+                Ok(with_bare(json!({ "status": "cards", "cards": cards, "anime": !self.cards.borrow().anime_cards.is_empty() })))
+            }
             Some("state") => self.state(),
             Some("think") => self.think(req),
             other => Err(format!("Error: unknown op {}", other.map_or_else(|| req["op"].to_string(), String::from))),
@@ -315,7 +318,9 @@ impl Session {
         for m in batch.iter_mut().filter(|m| m["type"] == msg::ANNOUNCE_CARD) {
             let Some(opcodes) = m["opcodes"].as_array() else { continue };
             let opcodes: Vec<u64> = opcodes.iter().map(|o| o.as_u64().unwrap_or(0)).collect();
-            let own = self.prints.own();
+            // This duel's cards by the name the filter knows them by: an anime version carries its game card's.
+            let mut own = self.prints.own();
+            own.extend(own.clone().into_iter().filter_map(|c| self.cards.borrow().alias(c)).filter(|a| *a != 0));
             let mut cards = self.cards.borrow_mut();
             let all = cards.declarables();
             let fit = |c: &&Declarable| declarable(c, &opcodes);
@@ -396,7 +401,8 @@ impl Session {
                     let counters: Map<String, Json> = counter_counts(&c.counters).into_iter().map(|(k, v)| (k.to_string(), v.into())).collect();
                     json!({ "code": get(decode::QUERY_CODE), "position": get(decode::QUERY_POSITION), "level": get(decode::QUERY_LEVEL),
                         "attack": get(decode::QUERY_ATTACK), "defense": get(decode::QUERY_DEFENSE), "base_attack": get(decode::QUERY_BASE_ATTACK),
-                        "base_defense": get(decode::QUERY_BASE_DEFENSE), "counters": counters })
+                        "base_defense": get(decode::QUERY_BASE_DEFENSE), "attribute": get(decode::QUERY_ATTRIBUTE),
+                        "race": get(decode::QUERY_RACE), "counters": counters })
                 })).collect())
             };
             let list = |v: Vec<Json>| -> Vec<Json> { v.into_iter().filter(|c| !c.is_null()).collect() };
@@ -445,7 +451,7 @@ impl Session {
             });
             let mut log = log.borrow_mut();
             out.push(json!({ "cid": cid, "passcode": code, "data": data, "missing_scripts": log.missing.take().unwrap_or_default(),
-                "errors": std::mem::take(&mut log.lines) }));
+                "errors": std::mem::take(&mut log.lines), "anime": cards.anime_cards.get(&cid) == Some(&code) }));
         }
         drop(scratch);
         Ok(Json::Array(out))
@@ -763,5 +769,116 @@ mod tests {
         let (idle, log) = within_a_minute(cards).unwrap();
         assert_eq!(log, Vec::<String>::new());
         assert!(can_activate(&idle), "Dian Keto can be used: {idle}");
+    }
+
+    fn fetched_vendor() -> Option<std::path::PathBuf> {
+        let vendor = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../engine/vendor");
+        (vendor.join("BabelCDB/cards-unofficial.cdb").is_file() && vendor.join("CardScripts/unofficial").is_dir()).then_some(vendor)
+    }
+
+    /// The `cards` op's answer for each of `cids` in a session with the anime versions `anime`.
+    fn check(vendor: &std::path::Path, anime: bool, cids: &[u32]) -> Vec<Json> {
+        let mut session = Session::new(Cards::open_with(vendor, anime).expect("the card data"));
+        let cards: Vec<Json> = cids.iter().map(|c| json!({ "cid": c, "name": "" })).collect();
+        let line = session.handle(&json!({ "op": "cards", "cards": cards }).to_string());
+        serde_json::from_str::<Json>(&line).unwrap()["cards"].as_array().unwrap().clone()
+    }
+
+    #[test]
+    fn a_mapped_card_plays_as_its_anime_version_only_with_the_setting_on() {
+        let Some(vendor) = fetched_vendor() else { return };
+        const JUNK_WARRIOR: u32 = 7696;
+        let off = &check(&vendor, false, &[JUNK_WARRIOR])[0];
+        assert_eq!((off["passcode"].as_u64(), off["anime"].as_bool()), (Some(60800381), Some(false)));
+        let on = &check(&vendor, true, &[JUNK_WARRIOR])[0];
+        assert_eq!((on["passcode"].as_u64(), on["anime"].as_bool()), (Some(511009416), Some(true)));
+        assert_eq!(on["data"]["name"], "Junk Warrior (Anime)");
+        assert_eq!(on["data"]["alias"], 60800381, "its name is the game card's");
+        assert_eq!((on["errors"].as_array().unwrap().len(), on["missing_scripts"].as_array().unwrap().len()), (0, 0), "{on}");
+    }
+
+    #[test]
+    fn a_held_card_keeps_its_current_behaviour_with_the_setting_on() {
+        let Some(vendor) = fetched_vendor() else { return };
+        // Thousand Dragon (a Fusion Monster in the client, a Main Deck Effect Monster in the anime, whose effect the Deck triggers)
+        // and Clear Vice Dragon (the game shows "?" for the ATK that the anime database spells as 0).
+        let held = [4075, 8538];
+        let off = check(&vendor, false, &held);
+        let on = check(&vendor, true, &held);
+        for (a, b) in off.iter().zip(&on) {
+            assert_eq!(a["passcode"], b["passcode"], "{b}");
+            assert_eq!(b["anime"], false);
+        }
+        assert_eq!(on[0]["passcode"], 41462083, "Thousand Dragon's own passcode");
+        assert_eq!(on[1]["passcode"], 97811903, "Clear Vice Dragon's own passcode");
+    }
+
+    #[test]
+    fn every_mapped_script_loads_without_a_lua_error() {
+        let Some(vendor) = fetched_vendor() else { return };
+        let mapped = crate::cards::read_anime_map(&crate::cards::anime_map_file(&vendor)).expect("the reviewed map");
+        assert!(mapped.len() > 250, "{} mapped cards", mapped.len());
+        let cids: Vec<u32> = mapped.iter().map(|(cid, _)| *cid).collect();
+        let answers: Vec<Json> = cids.chunks(100).flat_map(|chunk| check(&vendor, true, chunk)).collect();
+        let mut problems = vec![];
+        for ((cid, code), a) in mapped.iter().zip(&answers) {
+            if a["passcode"].as_u64() != Some(*code as u64) {
+                problems.push(format!("{cid}: plays as {} instead of {code}", a["passcode"]));
+            }
+            if !a["errors"].as_array().unwrap().is_empty() {
+                problems.push(format!("{cid} ({code}): {}", a["errors"]));
+            }
+            // A script is missing only for a Normal Monster (and c0.lua is asked for by every duel).
+            let kind = a["data"]["type"].as_i64().unwrap_or(0);
+            let missing: Vec<&str> = a["missing_scripts"].as_array().unwrap().iter().filter_map(Json::as_str).filter(|s| *s != "c0.lua").collect();
+            if !missing.is_empty() && !(kind & 0x10 != 0 && kind & 0x20 == 0) {
+                problems.push(format!("{cid} ({code}): no script {missing:?}"));
+            }
+        }
+        assert!(problems.is_empty(), "{} mapped card(s) that don't load:\n{}", problems.len(), problems.join("\n"));
+    }
+
+    #[test]
+    fn an_anime_code_answers_to_its_game_cards_konami_id_and_strings() {
+        let Some(vendor) = fetched_vendor() else { return };
+        let cards = Cards::open_with(&vendor, true).expect("the card data");
+        let mut prints = Prints::default();
+        assert_eq!(prints.resolve(&cards, 7696, None), Some(511009416));
+        assert_eq!(prints.cid(&cards, 511009416), Some(7696));
+        // A description naming the anime card (code << 20 | n) names the game card and has the anime card's string.
+        let ask = with_cids(json!({ "type": 13, "description": 511009416u64 << 20 }), &cards, &prints);
+        assert_eq!(ask["description_cid"], 7696);
+        assert!(cards.name(511009416).is_some_and(|n| n.contains("Anime")));
+        // The name a card is declared by is the game's card's, whichever version plays.
+        assert_eq!(prints.declared(&cards, 7696), 60800381);
+        // With the setting off the anime codes are unknown.
+        let plain = Cards::open(&vendor).expect("the card data");
+        assert!(plain.name(511009416).is_none() && plain.library.card(511009416).is_none());
+    }
+
+    #[test]
+    fn the_bots_look_ahead_copies_play_the_anime_versions_too() {
+        let Some(vendor) = fetched_vendor() else { return };
+        // Anime Card of Sanctity (5479), Mirror Force (4887) and Junk Warrior's Level 2 friends: both sides think and
+        // answer for a while; the copies the bot makes of the duel are built from the same passcodes, so they load the
+        // same scripts and never report a missing card.
+        let mut session = Session::new(Cards::open_with(&vendor, true).expect("the card data"));
+        let deck: Vec<u32> = [5479u32, 4887, 7701, 6960].iter().copied().cycle().take(40).collect();
+        let new = json!({ "op": "new", "seed": 5, "lp": 8000, "decks": [{ "main": deck, "extra": [] }, { "main": deck, "extra": [] }], "names": {} });
+        let mut answer: Json = serde_json::from_str(&session.handle(&new.to_string())).unwrap();
+        for _ in 0..60 {
+            assert_eq!(answer["errors"], json!([]), "{answer}");
+            if answer["status"] != "await" {
+                break;
+            }
+            let thought: Json = serde_json::from_str(&session.handle(&json!({ "op": "think" }).to_string())).unwrap();
+            assert_eq!(thought["status"], "thought", "{thought}");
+            answer = serde_json::from_str(&session.handle(&json!({ "op": "respond", "response": thought["response"] }).to_string())).unwrap();
+        }
+        let state: Json = serde_json::from_str(&session.handle(&json!({ "op": "state" }).to_string())).unwrap();
+        let codes: Vec<u64> = state["teams"].as_array().unwrap().iter().flat_map(|t| ["hand", "mzone", "szone", "grave"].map(|k| t[k].clone()))
+            .flat_map(|l| l.as_array().cloned().unwrap_or_default()).filter_map(|c| c["code"].as_u64()).collect();
+        assert!(codes.contains(&511001126) || codes.contains(&513000001), "anime cards in play: {codes:?}");
+        assert!(!codes.contains(&42664989) && !codes.contains(&44095762), "the game's versions are not: {codes:?}");
     }
 }

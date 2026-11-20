@@ -4,6 +4,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   ArrowUpRight,
+  CalendarDays,
   DatabaseBackup,
   ExternalLink,
   Flag,
@@ -31,6 +32,7 @@ const navigation = [
   { label: 'News & maintenance', path: '/news', icon: Megaphone, group: 'Workspace' },
   { label: 'Moderation', path: '/moderation', icon: ShieldCheck, group: 'Manage' },
   { label: 'Reports', path: '/reports', icon: Flag, group: 'Manage' },
+  { label: 'Events', path: '/events', icon: CalendarDays, group: 'Manage' },
   { label: 'Audit log', path: '/audit', icon: ListChecks, group: 'Manage' },
   { label: 'Server logs', path: '/logs', icon: Terminal, group: 'Manage' },
   { label: 'Backups', path: '/backups', icon: DatabaseBackup, group: 'Manage' },

@@ -247,7 +247,9 @@ first server played on keeps the original folder (`revival-server.txt`); every o
 servers\<id>\Yu-Gi-Oh! ONLINE 3`, starting with `options.y3o` copied. **D13: yes.** Live (2026-11-16, a fresh
 Documents, two scratch servers each with a player "Duelist"): server A claimed the original folder; with a second deck
 "Only On A" in it, A's Select Deck listed both decks and B's only its own Starter Deck, kept under
-`YO3 Revival/servers/35b82924973c0938/`; A's folder was unchanged.
+`YO3 Revival/servers/35b82924973c0938/`; A's folder was unchanged. An extra game of the Desktop's Play as… (#64) is given a
+derived id the same way (`yo3_launcher::game_data_id`: the server's id and the account, 16 hex digits, via the helper's `--data-key`),
+so each account's game has a data folder of its own without any change to the DLL; the main game keeps the server's.
 
 ### Direct start (#33)
 
@@ -326,6 +328,66 @@ The comparisons are msvcrt's `wcsstr`, loaded into `edi` at `0x416D40` and `0x41
 pointing at `yo3_wcsistr` (case-blind, `card-search-logic.h`); `0x416C10` has no other caller. An unexpected byte refuses
 DLL readiness (`stage=mod-card-search`); a contract fixture's small image is left alone, as `deck-upload.h` does. The
 narrowing is kept: it is how the original searched.
+
+### Card profiles (issue #60)
+
+The client draws a card's kind, type, level, attribute, race, ATK, DEF, text and picture from its own files; a *card profile*
+(the server's `profile.rs`, served at `/web/card-profile`, or a file in `YO3_CARD_PROFILE`)
+tells `tools/mod/card-profile.h` what to show instead. The format (`card-profile-logic.h`, v1) is `yo3-card-profile 1`, then
+`profile NAME`, `hash 16-hex`, `card ROW CID A_HEX B_HEX GENRE_HEX64 ATK DEF` (ATK/DEF a number, `?` or `-`), `text ROW "json"`
+and `art CID`; unknown lines are skipped, every list is bounded, a line whose row does not hold that CID is refused.
+
+- **The table.** The game loads `CARD_Prop`, `CARD_Genre`, `CARD_Indx`... into one object, `env+8` with `env = 0x406680()`,
+  in `0x40DEE0` (fastcall, ECX env), called only from `0x4AC30E` (`E8 CD 1B F6 FF`, the load state of `0x4AC2C0`). The DLL redirects that
+  CALL to `card_profile_load`, which runs the load and then patches the profile's rows in place: `CARD_Prop` rows are 8 bytes at
+  `DB+0x24` (begin) / `DB+0x28` (end), `CARD_Genre` rows 8 bytes at `DB+0x3C` / `DB+0x40`. Every reader (`0x537230` row by Konami id,
+  `0x537B30` row by index, the inlined `shr eax, 0xE` ATK and `shr eax, 0x17` DEF readers at `0x4565CB`, `0x4C795A`, `0x4C8772`...) then sees the
+  patched row, so the deck editor's Main/Extra rule, the Edit Deck and trunk lists, the card panels and the card search follow the profile
+  with no further hook. The load is once per process: **a different profile needs a client restart.**
+- **What the bits mean** (measured on all 4,834 rows against the official database, `tools/mod/genre-bits.txt`): word `a` is the Konami
+  id (bits 0-13), ATK/10 (14-22) and DEF/10 (23-31); `0x1FF` shows `?` (`0xFFFF` in the getters `0x5373C0`/`0x5373F0`, 0 in the deck
+  editor's ATK/DEF filter). Word `b`: kind (bits 3-7), attribute (8-11), level (12-15), spell/trap subtype (16-18), race (19-23), artwork
+  (27-29). Monster kinds carry Normal/Effect and the families (0 Normal, 1 Effect, 2/3 Fusion, 4/5 Ritual, 6 Toon, 7 Spirit, 8 Union, 9 Gemini,
+  10 Token, 15/16 Tuner, 17/18 Synchro, 19 Tuner Synchro); 13 is a Spell and 14 a Trap, with attribute 8/9 and race 23/24. Subtype: Spell 0 Normal,
+  2 Field, 3 Equip, 4 Continuous, 5 Quick-Play, 6 Ritual; Trap 0 Normal, 1 Counter, 4 Continuous. "Special Summon only" and Flip are not
+  kinds (Flip is genre bit 22): the client cannot show Special Summon only. `CARD_Genre` is **not** a type bitmap: it holds the effect categories
+  the card panel names (`0x4529F0`, `0x417A10` test one bit per category through `0x5372A0`).
+- **Exact ATK/DEF.** An `a` word holds tens (0-5100) and `?`; the profile's number is only exact when it is such a value. The getters
+  `0x5373C0`/`0x5373F0` (prologue `sub esp, 0xC; call 0x537230`) and the trunk list's `0x418600`/`0x418660` (a stub on their `CALL 0x537230`
+  notes the id) are also wrapped. The card panels that do the math themselves (each `call 0x537230`, `shr eax, 0xE`/`0x17`, then `lea R, [eax+eax*4]; add R, R`)
+  are patched at six sites, and the deck editor's range filters at four more (`card-profile-logic.h` `yo3_card_mul_sites`: ATK `0x4565C6`, `0x4C7955`, `0x4C876D`, DEF `0x4565F4`, `0x4C7982`, `0x4C879A`, the register R being eax,
+  ecx or edx): the CALL becomes a stub that notes the id, the five bytes of `ten times` become a CALL to a stub that answers the profile's number (any integer, so
+  1) or, with none, ten times the nine bits. The deck editor's four ATK/DEF range-filter reads (`0x418AB7` and `0x418ADE` the ATK minimum and maximum, `0x418CBF` and `0x418CE1` the DEF ones: a card is kept
+  when min <= stat <= max, "?" is 0 and is taken before the multiplication) are the same pattern with R = eax, so they are the last four rows of that table (`call`, then the `lea; add` at the jump target of the "?" test),
+  and a card with 1 ATK is found by a range that starts at 1. (The "sort keys" of the Edit Deck's follow-up list are these filters: no other reader of the nine bits exists in the editor.) All ten are checked before any is written (a game whose bytes differ refuses readiness).
+- **Effect text.** `0x537510` (EAX the Konami id, ESI the table, answers the text's address) is wrapped (prologue `push ecx; mov ecx, [esi+0xD0]`); the
+  card panel, the card search (Card Text) and the lists read the profile's text. The card name and reading are the game's.
+- **Artwork.** Faces (`data/card/<cid>_<art>.png`) and thumbnails (`data/mini/...`) are opened, in the Flash screens and as the duel's Irrlicht textures,
+  by the file system's `createAndOpenFile` `0x5505E0` (thiscall, ECX the file system, one `char *` argument, prologue `push ebp; mov ebp, esp; and
+  esp, -8; sub esp, 0x24`): it asks its archives (the `.ypk` files) first and opens a name they do not hold as a file on disk, so a loose file at
+  `data/card/` is ignored (live: it was) while an absolute path works. The DLL wraps it: for a card the profile lists with `art`, whose
+  `card/<cid>.png` (200x290) or `mini/<cid>.png` (50x72) is in the art folder (`YO3_ANIME_ART`, else `<game folder>\anime-art`; one picture per Konami
+  id for all its artworks), the name becomes that file's path. A missing file leaves the original picture (a missing thumbnail keeps the original thumbnail, so
+  the launcher makes a `mini/` from each face). No image is shipped or fetched.
+- **Where the profile comes from.** `YO3_CARD_PROFILE` (an absolute path, for checks), else `GET /session/<cookie>/web/card-profile` on the launcher's local relay (as
+  `web-links.h`; the launcher forwards `/web/` to the server's `/web/card-profile`), else none. A game whose bytes differ at a hook refuses readiness
+  (`stage=mod-card-profile`); a contract fixture is left alone; a bad profile changes nothing (`not a profile`, logged with its first bytes).
+- **Live (2026-11-19, headless client, private prefix and game copy, scratch server).** A hand-made profile (`tools/mod/make-test-profile.py`):
+  Mystical Elf showed `[Spellcaster/Effect]`, the profile's text, an orange (Effect) trunk bar and `1/?` in the trunk list; Flame Swordsman
+  showed `[Warrior]` with a yellow (Normal) bar, counted as a Normal monster in the deck editor's Main row after it was added (the Extra row stayed 0);
+  Negate Attack showed `[SPELL/Quick-Play]`, the Spell colours and icon. The text search found each by the profile's text. With generated placeholder
+  pictures (`tools/mod/make-placeholder-art.py`) the face and the thumbnail of each listed card were the placeholder, the card without one the original. With the
+  server's own `anime` profile (320 cards, 319 texts) over the launcher's relay: `card profile anime (hash): 320 cards patched, 0 refused`, and Flame Swordsman
+  read `[Warrior]` with the anime Normal Monster text. Not proven here: a duel's field cards (the engine sends their stats), Windows, saved decks.
+- **Live, round 2 (2026-11-19, private prefix, scratch server, the server's real `anime` profile over the relay, a copy of the user's image pack in `YO3_ANIME_ART`).**
+  With a hand profile giving Earthbound Immortal Wiraqocha Rasca 1/1 and Mystical Elf 37/1: the trunk list, Edit Deck's card panel (`ATK 1/DEF 1`), the present
+  dialog's panel and the duel's hand-card panel all read 1/1 (the picture's printed `ATK/ 100 DEF/ 100` is the card face, the pack replaces it). With the real profile
+  and pack: Flame Swordsman (anime Normal Monster face, `[Warrior]`, the anime text, Main Deck), Mystical Elf (`ATK 800/DEF 2000`, anime text) and Card of Sanctity
+  (`[SPELL/Normal]`, "Each player draws until they have 6 cards in their hand.") read the anime data and art in Edit Deck, the trunk list, the present dialog and the duel's hand
+  panel and hover. Negate Attack read the anime art and text, but its type line said `[TRAP/Quick-Play]`: the server's profile row had kind Spell and subtype Quick-Play
+  but kept the Trap's attribute (9) and race (24), which the line prints; a Spell row needs attribute 8 and race 23 (the hand profile did and read `[SPELL/Quick-Play]`).
+- **Saved decks.** The DLL does not move cards between a deck's lists (the lists are the game's `std::vector`s). A local deck file (`.y3d`) is best adapted by the
+  launcher before the game starts (the same rule as the server's: a card whose profile kind is Fusion or Synchro goes to the Extra Deck, any other to the Main Deck).
 
 ### Server texts and NPC duel logs (issues #10 and #12)
 

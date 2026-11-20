@@ -20,6 +20,9 @@
 #   tools/client/vclient.sh stop            close this instance's client (wineserver -k on its prefix)
 #   tools/client/vclient.sh prefix          create this instance's Wine prefix (reflinked copy of ~/.wine)
 #
+# Several games on one display (the Desktop's Play as…): `xdotool search --name '^Yu-Gi-Oh! ONLINE 3'` lists their windows;
+# YO3_WINDOW=ID makes shot, click, key, type, pixel and login act on one of them (key and type go to that window).
+#
 # More clients: YO3_INSTANCE=b (or c, d) uses display :78 (:79, :80), logs/b/ and its own Wine
 # prefix .wine-b/ (git-ignored). Wine assumes one X display per prefix: two clients in one
 # prefix on two displays die with X BadWindow errors. Run `xvfb` and `prefix` once per instance.
@@ -37,7 +40,8 @@ mkdir -p "$LOGS/shots" "$LOGS/ui"
 # The connection DLL's UI probe answers `vclient.sh ui` through this folder (tools/mod/ui-probe.h); players never set it.
 ui_probe() { YO3_UI_PROBE="$(winepath -w "$LOGS/ui" 2>/dev/null || true)"; export YO3_UI_PROBE; }
 
-win() { xdotool search --name '^Yu-Gi-Oh! ONLINE 3' 2>/dev/null | head -1; }
+# YO3_WINDOW names one of several game windows on a display (two games of one launcher): its commands then act on it.
+win() { if [ -n "${YO3_WINDOW:-}" ]; then echo "$YO3_WINDOW"; else xdotool search --name '^Yu-Gi-Oh! ONLINE 3' 2>/dev/null | head -1; fi; }
 
 # The window, or fail (an empty id makes `import` wait for a click and hang).
 need_win() {
@@ -154,6 +158,8 @@ case "${1:-}" in
     W="$(need_win)"; import -window "$W" "$LOGS/shots/${2:-shot}.png" && echo "$LOGS/shots/${2:-shot}.png" ;;
   click)
     W="$(need_win)"; xy="$(window_xy "$W" "$2" "$3")"
+    # Raised first: with several games on one display (no window manager) the pointer reaches the top one.
+    xdotool windowraise "$W" 2>/dev/null || true
     xdotool mousemove --window "$W" "${xy% *}" "${xy#* }"; sleep 0.15; xdotool click --delay 120 1 ;;
   prefix)
     [ -n "${WINEPREFIX:-}" ] || { echo "the default instance uses ~/.wine itself" >&2; exit 2; }
@@ -162,9 +168,9 @@ case "${1:-}" in
     fi
     echo "$WINEPREFIX" ;;
   key)
-    shift; xdotool key --delay 80 "$@" ;;
+    shift; xdotool key --delay 80 ${YO3_WINDOW:+--window "$YO3_WINDOW"} "$@" ;;
   type)
-    xdotool type --delay 60 "$2" ;;
+    xdotool type --delay 60 ${YO3_WINDOW:+--window "$YO3_WINDOW"} "$2" ;;
   pixel)
     pixel "$2" "$3" ;;
   ui)

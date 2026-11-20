@@ -12,6 +12,8 @@
 //!
 //! The client's `.y3d/.y3a/.y3r` data files use the same frame and message layout.
 
+pub mod placement;
+
 use blowfish::BlowfishLE;
 use blowfish::cipher::{Block, BlockCipherDecrypt, BlockCipherEncrypt, KeyInit};
 

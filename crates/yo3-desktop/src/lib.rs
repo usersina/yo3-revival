@@ -28,6 +28,7 @@ pub mod instance;
 pub mod store;
 pub mod setup_check;
 pub mod singleplayer;
+pub mod games;
 pub mod shortcut;
 pub mod multiplayer;
 pub mod options;
@@ -272,6 +273,11 @@ pub struct Backend { pub root: PathBuf, pub runtime: Runtime, pub diagnostics: y
     held: Mutex<Option<foreign::Held>>,
     /// The player chose Continue anyway: the next start goes past what it found (#68).
     accept_foreign: std::sync::atomic::AtomicBool,
+    /// The server of the next start asks for a clean game (#69): the helper stops it for anything found inside the game.
+    clean_game: std::sync::atomic::AtomicBool,
+    /// More games from this launcher (#64): the extra ones running, who the main one is for, the counter of their ids and
+    /// why one ended badly (said once).
+    extras: Mutex<Vec<games::Extra>>, main_label: Mutex<Option<games::GameInfo>>, next_game: std::sync::atomic::AtomicU64, extra_failures: Mutex<Vec<String>>,
     /// Where Singleplayer's account key is kept (#23): the system's credential store.
     vault: Arc<dyn multiplayer::Vault> }
 impl Backend {
@@ -281,7 +287,11 @@ impl Backend {
         yo3_tunnel::diagnostics::private_dir(&root.join("profiles"))?;
         std::fs::create_dir_all(root.join("logs"))?;
         let diagnostics = yo3_tunnel::diagnostics::Session::start(&root.join("logs/sessions"), "app", None)?;
-        Ok(Arc::new(Self { root, runtime: Runtime::discover()?, diagnostics, server_session: Mutex::new(None), game: Mutex::new(None), game_errors: Mutex::new(None), game_ready: Mutex::new(None), server: Mutex::new(None), server_owner: Mutex::new(None), hosted: Mutex::new(None), hosted_owner: Mutex::new(None), held: Mutex::new(None), accept_foreign: Default::default(), vault }))
+        // This install's id for the servers' linked-account rules (#64), and the Wine prefixes a crash left behind.
+        multiplayer::init_device_id(&root);
+        Self::clean_stale_prefixes(&root);
+        Ok(Arc::new(Self { root, runtime: Runtime::discover()?, diagnostics, server_session: Mutex::new(None), game: Mutex::new(None), game_errors: Mutex::new(None), game_ready: Mutex::new(None), server: Mutex::new(None), server_owner: Mutex::new(None), hosted: Mutex::new(None), hosted_owner: Mutex::new(None), held: Mutex::new(None), accept_foreign: Default::default(), clean_game: Default::default(),
+            extras: Default::default(), main_label: Default::default(), next_game: Default::default(), extra_failures: Default::default(), vault }))
     }
     /// The store Singleplayer's key is kept in.
     pub fn vault(&self) -> &dyn multiplayer::Vault { self.vault.as_ref() }
@@ -458,9 +468,16 @@ impl Backend {
         self.game.lock().unwrap().as_mut().is_some_and(|child| child.try_wait().ok().flatten().is_none())
     }
     pub fn game_ready(&self) -> bool { self.game_ready.lock().unwrap().as_ref().is_some_and(|p| std::fs::symlink_metadata(p).is_ok_and(|m| m.is_file() && !m.file_type().is_symlink() && m.len() <= 65536)) }
-    fn clear_game_ready(&self) {
-        if let Some(path) = self.game_ready.lock().unwrap().take() { let _ = std::fs::remove_file(foreign::survey_file(&path)); let _ = std::fs::remove_file(path); }
+    /// The server pins another card profile than the running game loaded (the helper's marker beside the ready file,
+    /// `yo3_launcher::decks`): the game shows the old cards until it is restarted.
+    pub fn game_profile_stale(&self) -> bool {
+        self.game_ready.lock().unwrap().as_ref().is_some_and(|p| std::fs::symlink_metadata(yo3_launcher::decks::stale_file(p)).is_ok_and(|m| m.is_file() && !m.file_type().is_symlink()))
     }
+    fn clear_game_ready(&self) {
+        if let Some(path) = self.game_ready.lock().unwrap().take() { let _ = std::fs::remove_file(yo3_launcher::decks::stale_file(&path)); let _ = std::fs::remove_file(foreign::survey_file(&path)); let _ = std::fs::remove_file(path); }
+    }
+    /// Whether the next start is on a server that asks for a clean game (#69).
+    pub fn require_clean_game(&self, on: bool) { self.clean_game.store(on, std::sync::atomic::Ordering::SeqCst) }
     /// The next start goes past another program's file or provider (the player's Continue anyway, #68).
     pub fn accept_foreign_once(&self) { self.accept_foreign.store(true, std::sync::atomic::Ordering::SeqCst) }
     /// Why the last start stopped before the game ran, if another program's file or provider (or a redirected network
@@ -609,10 +626,12 @@ impl Backend {
     /// Singleplayer's Play: starts your own server if it isn't running and plays on it with your local account's key.
     pub fn play(&self, settings: &Settings, who: &str) -> anyhow::Result<()> {
         let mut game = self.game.lock().unwrap();
+        self.clean_game.store(false, std::sync::atomic::Ordering::SeqCst);
         ensure!(game.as_mut().is_none_or(|p| p.try_wait().ok().flatten().is_some()), "The game is already running.");
         self.check_game(settings)?;
         self.start_server(settings)?;
         let server = self.local_connection(settings, who)?;
+        self.note_main(if who.is_empty() { "Singleplayer" } else { who }, "Singleplayer", "singleplayer");
         server.validate()?;
         self.sync_direct_target(settings, direct::Target::Local)?;
         let profile = self.write_profile(&server)?;
@@ -621,8 +640,16 @@ impl Backend {
     /// Plays on a Multiplayer server with a session the launcher signed in for (#30): the helper uses it for the game's
     /// connections, through the server's pinned identity. The private profile holds the session, never a password.
     /// Whether direct start needs permission once (a protected game folder), as Singleplayer's Play says.
-    pub fn play_signed_in(&self, settings: &Settings, server: &multiplayer::Server, session: &yo3_tunnel::Token) -> anyhow::Result<bool> {
+    /// `clean_game`: what the server's status last said (#69); it is asked once more here, so a host who just turned
+    /// the policy on is heard.
+    pub fn play_signed_in(&self, settings: &Settings, server: &multiplayer::Server, user: &str, session: &yo3_tunnel::Token, clean_game: bool) -> anyhow::Result<bool> {
         let game = self.game.lock().unwrap();
+        self.note_main(user, &server.name, server.key());
+        let clean_game = match tokio::runtime::Builder::new_current_thread().enable_all().build().map(|rt| rt.block_on(multiplayer::status(server))) {
+            Ok(multiplayer::Status::Online { clean_game, .. }) => clean_game,
+            _ => clean_game,
+        };
+        self.clean_game.store(clean_game, std::sync::atomic::Ordering::SeqCst);
         self.check_game(settings)?;
         let file = self.root.join("profiles").join("multiplayer.json");
         let session: String = session.iter().map(|b| format!("{b:02x}")).collect();
@@ -648,6 +675,7 @@ impl Backend {
         ensure!(self.runtime.launcher.is_file() && self.runtime.dll.is_file() && self.runtime.injector.is_file(), "Connection files are missing. Extract the complete application bundle.");
         let ready = self.root.join("profiles").join(format!("game-ready-{}-{}.json", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos()));
         let mut cmd = self.launch_command(settings, &profile, &ready)?;
+        self.add_client_data(&mut cmd, settings);
         let _ = std::fs::remove_file(foreign::survey_file(&ready));
         let (child,errors)=process::spawn(&mut cmd,&self.diagnostics,"Game helper")?;
         self.accept_foreign.store(false, std::sync::atomic::Ordering::SeqCst);
@@ -656,20 +684,42 @@ impl Backend {
         *game = Some(child);
         Ok(())
     }
+    /// Tells the helper where the game's Documents folder is, so it can place the player's local decks as the server's card
+    /// profile says before the game is released (`yo3_launcher::decks`, issue #60). A folder that can't be found leaves the
+    /// decks as they are (the server places them again for every duel). Asked on a thread of its own: under Wine it runs a
+    /// small Wine program, and the caller may be inside the async runtime.
+    pub(crate) fn add_client_data(&self, cmd: &mut Command, settings: &Settings) {
+        match std::thread::scope(|scope| scope.spawn(|| game_data_platform::data_directory(self, settings)).join()) {
+            Ok(Ok(folder)) => { cmd.arg("--client-data").arg(folder); }
+            Ok(Err(error)) => self.diagnostics.line(&format!("Local decks are not adapted to the card profile: {error}")),
+            Err(_) => {}
+        }
+    }
     /// The helper's command for a Play: the settings it reads (screen size, Wine) are taken at each Play.
     pub fn launch_command(&self, settings: &Settings, profile: &Path, ready: &Path) -> anyhow::Result<Command> {
+        self.launch_command_with(settings, profile, ready, None)
+    }
+    /// [`Backend::launch_command`] for an extra game (#64): its own Wine prefix and game data folder.
+    pub fn launch_command_with(&self, settings: &Settings, profile: &Path, ready: &Path, extra: Option<&games::ExtraRun>) -> anyhow::Result<Command> {
         let mut cmd = Command::new(&self.runtime.launcher);
         cmd.arg("--control-stdin").arg("--profile").arg(profile).arg("--game-dir").arg(&settings.game_dir).arg("--injector").arg(&self.runtime.injector).arg("--dll").arg(&self.runtime.dll);
-        if !settings.wine_prefix.is_empty() { cmd.arg("--wine-prefix").arg(&settings.wine_prefix); }
+        match extra.and_then(|e| e.prefix.as_ref()) {
+            Some(prefix) => { cmd.arg("--wine-prefix").arg(prefix); }
+            None if !settings.wine_prefix.is_empty() => { cmd.arg("--wine-prefix").arg(&settings.wine_prefix); }
+            None => {}
+        }
+        if let Some(extra) = extra { cmd.arg("--data-key").arg(&extra.data_key); }
         if !settings.wine_binary.is_empty() { cmd.env(yo3_launcher::runtime::WINE_ENV, &settings.wine_binary); }
         let resolution = settings.resolution.parse::<yo3_launcher::resolution::Resolution>().map_err(anyhow::Error::msg)?;
         if resolution != yo3_launcher::resolution::Resolution::Off { cmd.arg("--resolution").arg(resolution.to_string()); }
+        cmd.arg("--anime-art").arg(yo3_launcher::art::folder_in(&self.root));
         cmd.arg("--diagnostics-dir").arg(self.root.join("logs/sessions")).arg("--diagnostic-parent").arg(self.diagnostics.id());
         cmd.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null());
         cmd.arg("--ready-file").arg(ready);
         // What else runs inside the game (#68): the helper's report of it is read when a start stops.
         cmd.arg("--survey-file").arg(foreign::survey_file(ready));
-        if self.accept_foreign.load(std::sync::atomic::Ordering::SeqCst) { cmd.arg("--accept-foreign"); }
+        if extra.is_none() && self.accept_foreign.load(std::sync::atomic::Ordering::SeqCst) { cmd.arg("--accept-foreign"); }
+        if extra.map_or_else(|| self.clean_game.load(std::sync::atomic::Ordering::SeqCst), |e| e.clean_game) { cmd.arg("--clean-game"); }
         hide_console(&mut cmd);
         Ok(cmd)
     }
@@ -983,6 +1033,27 @@ mod tests {
         *backend.game.lock().unwrap() = Some(failed);
         assert!(backend.game_failure().unwrap().contains("export logs"));
         assert!(backend.game_failure().is_none(), "report an unsuccessful launch only once");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    /// The helper marks a running game out of date when the server pins another card profile (#60); the marker is the Desktop's
+    /// to see only beside the ready file of the game it started, and goes with the game.
+    #[test]
+    fn a_game_that_loaded_another_card_profile_than_the_servers_is_marked_stale_until_it_closes() {
+        let root = std::env::temp_dir().join(format!("yo3-stale-profile-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let backend = Backend::new(root.clone()).unwrap();
+        assert!(!backend.game_profile_stale(), "no game, nothing stale");
+        let ready = root.join("profiles/game-ready-1.json");
+        std::fs::write(&ready, "{}").unwrap();
+        *backend.game_ready.lock().unwrap() = Some(ready.clone());
+        assert!(!backend.game_profile_stale());
+        std::fs::write(yo3_launcher::decks::stale_file(&ready), "anime1").unwrap();
+        assert!(backend.game_profile_stale(), "the helper saw the server pin another profile");
+        std::fs::remove_file(yo3_launcher::decks::stale_file(&ready)).unwrap();
+        assert!(!backend.game_profile_stale(), "the game is current again");
+        std::fs::write(yo3_launcher::decks::stale_file(&ready), "anime2").unwrap();
+        backend.clear_game_ready();
+        assert!(!yo3_launcher::decks::stale_file(&ready).exists() && !backend.game_profile_stale(), "the marker goes with the game");
         std::fs::remove_dir_all(root).unwrap();
     }
     /// Another program's file stopped the start (#68): the helper exits with a failure and has written its decision into the

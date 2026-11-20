@@ -46,6 +46,7 @@ pub mod observability;
 pub mod backups;
 pub mod reports;
 pub mod banlist;
+pub mod official;
 pub use give_bp::{GiveBpRequest, GiveBpResult};
 pub use mutation::{Actor, MutationError, MutationErrorCode};
 
@@ -130,6 +131,19 @@ pub enum Op {
     SetBanlist { who: String, banlist: String },
     /// The game's banlists and the one an account without a choice logs in with.
     Banlists,
+    /// The Stadium's official events (#18) with their standings, newest first.
+    Events,
+    /// Schedules an official event: KIND (gunslinger, duelist-trial, evolution, ultimate, anniversary), its name, and
+    /// when it starts and ends (`parse_time`). `regulation` is a banlist by id or name (any when omitted); the prize is
+    /// BP, for taking part and for reaching a score.
+    CreateEvent { kind: String, name: String, start: String, end: String, #[serde(default)] regulation: Option<String>,
+        #[serde(default)] participation_bp: u32, #[serde(default)] threshold: u32, #[serde(default)] threshold_bp: u32 },
+    /// Changes an event that has not finished; what is left out stays. `regulation` `any` clears the banlist.
+    EditEvent { id: u32, #[serde(default)] name: Option<String>, #[serde(default)] start: Option<String>, #[serde(default)] end: Option<String>,
+        #[serde(default)] regulation: Option<String>, #[serde(default)] participation_bp: Option<u32>, #[serde(default)] threshold: Option<u32>,
+        #[serde(default)] threshold_bp: Option<u32> },
+    /// Cancels an event: it leaves the game's list and nothing is paid.
+    CancelEvent { id: u32 },
     /// The server's newest log lines (`problems`: only warnings and errors), newest first.
     Logs { #[serde(default)] limit: Option<u32>, #[serde(default)] problems: bool },
 }
@@ -145,7 +159,7 @@ impl Op {
     /// Whether it changes anything (and so writes an audit row).
     pub fn changes(&self) -> bool {
         !matches!(self, Op::Status | Op::Accounts | Op::Countries | Op::Titles | Op::Recipes | Op::Codes | Op::Invites | Op::Settings | Op::Audit { .. }
-            | Op::Account { .. } | Op::Backups | Op::Logs { .. } | Op::Reports { .. } | Op::Banlists)
+            | Op::Account { .. } | Op::Backups | Op::Logs { .. } | Op::Reports { .. } | Op::Banlists | Op::Events)
     }
 
     /// Whether a moderator may run it (the admin panel, #36): looking, moderation, invites and reset codes. Settings,
@@ -154,7 +168,7 @@ impl Op {
         matches!(self, Op::Status | Op::Accounts | Op::Account { .. } | Op::Countries | Op::Titles | Op::Codes | Op::Invites
             | Op::Settings | Op::Audit { .. } | Op::Logs { .. } | Op::Backups | Op::Invite { .. } | Op::ResetCode { .. }
             | Op::Rename { .. } | Op::Kick { .. } | Op::Ban { .. } | Op::Restrict { .. } | Op::Lift { .. } | Op::Mute { .. }
-            | Op::Unmute { .. } | Op::SignOut { .. } | Op::Reports { .. } | Op::HandleReport { .. } | Op::SetBanlist { .. } | Op::Banlists)
+            | Op::Unmute { .. } | Op::SignOut { .. } | Op::Reports { .. } | Op::HandleReport { .. } | Op::SetBanlist { .. } | Op::Banlists | Op::Events)
     }
 
     /// The account it acts on, if it acts on one (a User ID or a player's name).
@@ -184,6 +198,8 @@ impl Op {
             Op::AddCode { code, .. } | Op::RemoveCode { code } => code.clone(),
             Op::Account { who } | Op::DeleteAccount { who } | Op::SetBanlist { who, .. } => who.clone(),
             Op::HandleReport { id, .. } => format!("report {id}"),
+            Op::EditEvent { id, .. } | Op::CancelEvent { id } => format!("event {id}"),
+            Op::CreateEvent { name, .. } => name.clone(),
             _ => String::new(),
         }
     }
@@ -252,13 +268,15 @@ pub struct Api {
     receipts: Mutex<std::collections::HashMap<(String, String), crate::store::Receipt>>,
     /// The key that seals staff authenticator seeds, read at first use (`staff_mfa.rs`).
     pub(crate) mfa_key: Mutex<Option<[u8; 32]>>,
+    /// The official events when there is neither a hub nor a data folder (tests).
+    official_memory: Mutex<crate::official::Official>,
 }
 
 type Done = Result<(Value, Option<Value>, Option<Value>), String>;
 
 impl Api {
     pub fn new(accounts: Arc<Mutex<Directory>>, settings: Arc<crate::settings::Live>, data_dir: Option<PathBuf>, game_dir: PathBuf, origin: &'static str) -> Api {
-        Api { accounts, settings, hub: None, sessions: None, shutdown: None, status: Status::default(), data_dir, game_dir, titles: None, world: None, gifts: Default::default(), card_images: Default::default(), origin, run_id: crate::logins::new_token(), memory: Mutex::default(), effects: Mutex::default(), receipts: Mutex::default(), mfa_key: Mutex::default() }
+        Api { accounts, settings, hub: None, sessions: None, shutdown: None, status: Status::default(), data_dir, game_dir, titles: None, world: None, gifts: Default::default(), card_images: Default::default(), origin, run_id: crate::logins::new_token(), memory: Mutex::default(), effects: Mutex::default(), receipts: Mutex::default(), mfa_key: Mutex::default(), official_memory: Mutex::default() }
     }
 
     /// Runs `op` for `actor` and writes its audit row: its result, or why it was refused.
@@ -309,7 +327,7 @@ impl Api {
     /// The operations on player reports and banlists (#44, #63): each audits itself.
     fn player_feature(&self, op: &Op, actor: &str, origin: &str, role: Option<crate::logins::Role>) -> Option<Result<Value, String>> {
         use crate::reports::Status;
-        if !matches!(op, Op::Reports { .. } | Op::HandleReport { .. } | Op::SetBanlist { .. } | Op::Banlists) { return None }
+        if !matches!(op, Op::Reports { .. } | Op::HandleReport { .. } | Op::SetBanlist { .. } | Op::Banlists | Op::Events | Op::CreateEvent { .. } | Op::EditEvent { .. } | Op::CancelEvent { .. }) { return None }
         let caller = if role.is_none() { Actor::Host { by: actor } } else {
             match self.accounts.locked().login_of(actor).map(|(id, _)| id) {
                 Some(user_id) => Actor::Staff { user_id },
@@ -344,6 +362,41 @@ impl Api {
                     let done = self.set_banlist(&banlist::SetBanlistRequest { user_id, banlist: id }, caller, origin).map_err(|e| e.to_string())?;
                     let message = if done.chosen { format!("{who} logs in with {} from their next login", done.banlist.name) } else { format!("{who} logs in with the server's banlist ({}) from their next login", done.banlist.name) };
                     Ok(json!({ "banlist": done, "message": message }))
+                }
+                Op::Events => {
+                    let list = self.list_events(caller).map_err(|e| e.to_string())?;
+                    let lines: Vec<String> = list.events.iter().map(|e| format!("#{}\t{}\t{:?}\t{} to {}\t{} entrants\t\"{}\"", e.event_id, e.kind.title(), e.phase,
+                        e.start.format("%Y-%m-%d %H:%M"), e.end.format("%Y-%m-%d %H:%M"), e.entrants, e.name)).collect();
+                    let message = if lines.is_empty() { "no official events".to_string() } else { lines.join("\n") };
+                    Ok(json!({ "events": list.events, "message": message }))
+                }
+                Op::CreateEvent { kind, name, start, end, regulation, participation_bp, threshold, threshold_bp } => {
+                    let now = chrono::Utc::now();
+                    let kind = crate::official::Kind::parse(kind).ok_or_else(|| format!("no event kind {kind:?}: gunslinger, duelist-trial, evolution, ultimate or anniversary"))?;
+                    let regulation = self.regulation_arg(regulation.as_deref())?;
+                    let request = official::CreateEventRequest { kind, name: name.clone(), start: official::parse_time(start, now)?, end: official::parse_time(end, now)?,
+                        regulation, prize: crate::official::Prize { participation_bp: *participation_bp, threshold: *threshold, threshold_bp: *threshold_bp } };
+                    let done = self.create_event(&request, caller, origin).map_err(|e| e.to_string())?;
+                    Ok(json!({ "event": done.event, "message": done.message }))
+                }
+                Op::EditEvent { id, name, start, end, regulation, participation_bp, threshold, threshold_bp } => {
+                    let now = chrono::Utc::now();
+                    let time = |t: &Option<String>| t.as_deref().map(|t| official::parse_time(t, now)).transpose();
+                    let prize = if participation_bp.is_some() || threshold.is_some() || threshold_bp.is_some() {
+                        let old = self.list_events(caller).map_err(|e| e.to_string())?.events.into_iter().find(|e| e.event_id == *id).map(|e| e.prize)
+                            .ok_or_else(|| format!("no official event {id}"))?;
+                        Some(crate::official::Prize { participation_bp: participation_bp.unwrap_or(old.participation_bp), threshold: threshold.unwrap_or(old.threshold),
+                            threshold_bp: threshold_bp.unwrap_or(old.threshold_bp) })
+                    } else { None };
+                    let any = regulation.as_deref().is_some_and(|r| r.trim().eq_ignore_ascii_case("any"));
+                    let request = official::EditEventRequest { event_id: *id, name: name.clone(), start: time(start)?, end: time(end)?,
+                        regulation: if any { Some(0) } else { self.regulation_arg(regulation.as_deref())? }, prize };
+                    let done = self.edit_event(&request, caller, origin).map_err(|e| e.to_string())?;
+                    Ok(json!({ "event": done.event, "message": done.message }))
+                }
+                Op::CancelEvent { id } => {
+                    let done = self.cancel_event(&official::CancelEventRequest { event_id: *id }, caller, origin).map_err(|e| e.to_string())?;
+                    Ok(json!({ "event": done.event, "message": done.message }))
                 }
                 Op::Banlists => {
                     let choices = self.banlist_choices(caller).map_err(|e| e.to_string())?;
@@ -380,6 +433,11 @@ impl Api {
             Op::GiveCards { .. } | Op::GiveRecipe { .. } | Op::GrantTitle { .. } => self.named_gift(op, id, actor, origin),
             _ => Err(MutationError::new(MutationErrorCode::InvalidRequest, "This operation has not migrated to the typed mutation boundary.")),
         }
+    }
+
+    /// A banlist given by id or name on the command line (none when omitted).
+    fn regulation_arg(&self, arg: Option<&str>) -> Result<Option<u32>, String> {
+        arg.filter(|a| !a.trim().is_empty()).map(|a| crate::regulation_by(a, &self.banlist_names_for_ops())).transpose()
     }
 
     /// Writes an audit row for something that isn't an operation (the panel's backup download).
@@ -453,6 +511,8 @@ impl Api {
                 let account = d.account_of(user_id).ok_or("the account is gone")?;
                 let login = d.login_by_id(user_id).cloned();
                 let has_key = d.entries().any(|(_, key, a)| a.user_id == user_id && key.is_some());
+                let linked: Vec<Value> = d.linked_to(user_id, crate::logins::now()).into_iter().map(|(other, shared)| json!({ "user_id": other,
+                    "login": d.login_by_id(other).map(|l| &l.user), "players": d.player_names(other), "shared": shared.iter().map(|l| l.word()).collect::<Vec<_>>() })).collect();
                 drop(d);
                 let hub = self.hub.as_ref().map(|h| h.locked());
                 let now = crate::logins::now();
@@ -467,7 +527,7 @@ impl Api {
                     "standing": login.as_ref().map(|l| if l.refusal(now).is_some() { json!(l.standing) } else { json!({ "kind": "active" }) }),
                     "muted": login.as_ref().and_then(|l| l.mute(now)), "devices": login.as_ref().map(|l| l.devices.len()),
                     "reset_pending": login.as_ref().and_then(|l| l.reset.as_ref()).is_some_and(|(_, until)| *until > now),
-                    "players": players }), None, None))
+                    "linked": linked, "players": players }), None, None))
             }
             Op::DeleteAccount { .. } => Err("deletion requires the typed mutation boundary".into()),
             Op::Shutdown { .. } => Err("stop requires the typed mutation boundary".into()),

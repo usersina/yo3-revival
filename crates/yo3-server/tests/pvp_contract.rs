@@ -656,3 +656,24 @@ fn a_player_can_surrender_an_npc_duel_too() {
     assert_eq!(end.iter().filter(|(id, _)| matches!(id, 0xF | 2)).copied().collect::<Vec<_>>(), [(0xF, [0, 0, 0, 0]), (2, [2, 12, 0, 0])]);
     assert_eq!(hub.lock().unwrap().record_result(1001, 124, 0), [0, 1, 0], "the loss is counted");
 }
+
+#[test]
+fn a_duel_between_players_opens_the_same_with_the_anime_versions_on() {
+    // The `anime-cards` setting (#60) changes which scripts the engine plays, not what the client is sent to open the
+    // duel: the same setup, card table and piles as with it off.
+    let opening = |anime: bool| {
+        let (mut a, mut b, _) = table(true)?;
+        a.world.settings.set("anime-cards", if anime { "on" } else { "off" }).unwrap();
+        enter(&mut a, 1001);
+        enter(&mut b, 1002);
+        a.pushed();
+        a.send(0xC, &[("selectHand", 0)]);
+        b.send(0xC, &[("selectHand", 1)]);
+        a.pushed();
+        let to_a = a.send(0xD, &[("choice", 2)]);
+        Some(commands(&to_a))
+    };
+    let (Some(on), Some(off)) = (opening(true), opening(false)) else { return };
+    assert!(!off.is_empty());
+    assert_eq!(on.len(), off.len(), "Normal Monsters are the same cards with the setting on");
+}

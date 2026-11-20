@@ -36,6 +36,9 @@ pub struct Survey {
     #[serde(default)] pub providers_known: bool,
     /// What the launcher decided, written back into the file: [`Decision`].
     #[serde(default)] pub decision: Option<Decision>,
+    /// The server asked for a clean game (#69) when the launcher decided: with it, what the player could have gone
+    /// past stops the start too.
+    #[serde(default)] pub clean_game: bool,
 }
 
 /// What the launcher did with the report.
@@ -74,6 +77,12 @@ impl Assessment {
     /// first (unless they accepted), else go.
     pub fn decision(&self, accepted: bool) -> Decision {
         if !self.blocked.is_empty() { Decision::Blocked } else if !self.attention.is_empty() && !accepted { Decision::Held } else { Decision::Went }
+    }
+    /// [`Assessment::decision`] on a server that asks for a clean game (#69, the host's `clean-game` setting): anything
+    /// found stops the start, and there is no Continue anyway. A tidiness policy the launcher enforces by reporting,
+    /// not anti-cheat: nothing on the player's PC can't be bypassed.
+    pub fn decision_on(&self, accepted: bool, clean_game: bool) -> Decision {
+        if clean_game && !self.is_clear() { Decision::Blocked } else { self.decision(accepted) }
     }
     /// Every finding, the certain ones first.
     pub fn all(&self) -> impl Iterator<Item = &Finding> { self.blocked.iter().chain(self.attention.iter()) }
@@ -114,9 +123,13 @@ impl Survey {
 }
 
 /// Writes the launcher's decision into the report, so whoever started the launcher can read why a start stopped.
-pub fn record_decision(file: &Path, decision: Decision) -> anyhow::Result<()> {
+pub fn record_decision(file: &Path, decision: Decision) -> anyhow::Result<()> { record_decision_on(file, decision, false) }
+
+/// [`record_decision`], saying whether the server asked for a clean game (#69).
+pub fn record_decision_on(file: &Path, decision: Decision, clean_game: bool) -> anyhow::Result<()> {
     let mut report = Survey::read(file).unwrap_or_default();
     report.decision = Some(decision);
+    report.clean_game = clean_game;
     let part = file.with_extension("part");
     std::fs::write(&part, serde_json::to_vec(&report)?)?;
     std::fs::rename(&part, file)?;
@@ -158,6 +171,20 @@ mod tests {
         assert_eq!(verdict.attention, [Finding::GameFolderFile { name: "winmm.dll".into(), path: "C:\\Games\\yo3\\winmm.dll".into(), size: 9, sha256: "ab".into(), loaded: true }]);
         assert!(verdict.blocked.is_empty());
         assert_eq!((verdict.decision(false), verdict.decision(true)), (Decision::Held, Decision::Went), "Continue anyway releases it");
+    }
+
+    #[test]
+    fn a_clean_game_server_refuses_whatever_was_found_and_a_clean_game_goes() {
+        let file = Module { name: "dinput8.dll".into(), path: "C:\\g\\dinput8.dll".into(), game_folder: true, ..Module::default() };
+        let found = Survey { modules: vec![file], ..Survey::default() }.assessment();
+        assert_eq!((found.decision_on(false, false), found.decision_on(true, false)), (Decision::Held, Decision::Went), "an ordinary server: Continue anyway");
+        assert_eq!((found.decision_on(false, true), found.decision_on(true, true)), (Decision::Blocked, Decision::Blocked), "a clean-game server: no Continue anyway");
+        let provider = Survey { providers: vec![Provider { name: "Old VPN".into(), path: String::new(), microsoft: false }], providers_known: true, ..Survey::default() }.assessment();
+        assert_eq!(provider.decision_on(true, true), Decision::Blocked, "a Winsock provider counts");
+        let detour = Survey { hooked: vec![Hook { function: "connect".into(), how: "detour".into(), module: "aswhook.dll".into(), path: String::new(), product: "Avast".into() }], ..Survey::default() }.assessment();
+        assert_eq!(detour.decision_on(false, true), Decision::Blocked, "a detour counts");
+        let clean = Survey::default().assessment();
+        assert_eq!(clean.decision_on(false, true), Decision::Went, "nothing found: the game starts");
     }
 
     #[test]

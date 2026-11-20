@@ -26,6 +26,7 @@ use crate::api::profiles::{AccountDetail, AccountEditRequest, AccountEditResult,
 use crate::api::invites::{CreateInviteRequest, CreateInviteResult, InviteList};
 use crate::api::reports::{HandleReportRequest, HandleReportResult, ReportList, ReportQuery};
 use crate::api::banlist::{AccountBanlist, BanlistChoices, SetBanlistRequest};
+use crate::api::official::{CancelEventRequest, CreateEventRequest, EditEventRequest, EventList, EventResult};
 use crate::api::codes::{BpCodeList, CreateBpCodeRequest, CreateBpCodeResult, RemoveBpCodeRequest, RemoveBpCodeResult};
 
 #[derive(Clone)]
@@ -169,7 +170,7 @@ fn documented_routes() -> OpenApiRouter<Dashboard> {
         .routes(routes!(start_enrollment)).routes(routes!(confirm_enrollment)).routes(routes!(step_up)).routes(routes!(regenerate_recovery_codes))
         .routes(routes!(accounts)).routes(routes!(give_bp)).routes(routes!(list_bp_codes))
         .routes(routes!(create_bp_code)).routes(routes!(remove_bp_code)).routes(routes!(list_invites)).routes(routes!(create_invite))
-        .routes(routes!(get_account)).routes(routes!(edit_account)).routes(routes!(country_choices)).routes(routes!(issue_account_code)).routes(routes!(key_account)).routes(routes!(give_gift)).routes(routes!(gift_choices)).routes(routes!(card_image)).routes(routes!(moderate)).routes(routes!(delete_account)).routes(routes!(server_status)).routes(routes!(audit_history)).routes(routes!(server_logs)).routes(routes!(backups)).routes(routes!(create_backup)).routes(routes!(download_backup)).routes(routes!(stop_server)).routes(routes!(live_settings)).routes(routes!(change_settings).layer(DefaultBodyLimit::max(256 * 1024))).routes(routes!(list_reports)).routes(routes!(handle_report)).routes(routes!(banlist_choices)).routes(routes!(set_banlist))
+        .routes(routes!(get_account)).routes(routes!(edit_account)).routes(routes!(country_choices)).routes(routes!(issue_account_code)).routes(routes!(key_account)).routes(routes!(give_gift)).routes(routes!(gift_choices)).routes(routes!(card_image)).routes(routes!(moderate)).routes(routes!(delete_account)).routes(routes!(server_status)).routes(routes!(audit_history)).routes(routes!(server_logs)).routes(routes!(backups)).routes(routes!(create_backup)).routes(routes!(download_backup)).routes(routes!(stop_server)).routes(routes!(live_settings)).routes(routes!(change_settings).layer(DefaultBodyLimit::max(256 * 1024))).routes(routes!(list_reports)).routes(routes!(handle_report)).routes(routes!(banlist_choices)).routes(routes!(set_banlist)).routes(routes!(list_events)).routes(routes!(create_event)).routes(routes!(edit_event)).routes(routes!(cancel_event))
 }
 
 pub fn openapi() -> OpenApi {
@@ -945,4 +946,53 @@ async fn set_banlist(State(state): State<Dashboard>, Extension(viewer): Extensio
     let Json(request) = body?;
     tokio::task::spawn_blocking(move || state.api.set_banlist(&request, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
         .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The banlist could not be changed."))?.map(Json).map_err(Into::into)
+}
+
+#[utoipa::path(get, path = "/panel/api/v1/events", operation_id = "listEvents", tag = "Events",
+    security(("staffSession" = [])), responses((status = 200, description = "The Stadium's official events with their standings, newest first", body = EventList),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 404, description = "Not found", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError), (status = 409, description = "Already handled", body = ApiError),
+        (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError), (status = 503, description = "Stored data could not be read or written", body = ApiError), (status = 500, description = "Internal error", body = ApiError)))]
+async fn list_events(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>) -> Result<Json<EventList>, ApiError> {
+    tokio::task::spawn_blocking(move || state.api.list_events(Actor::Staff { user_id: viewer.user_id }))
+        .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The events could not be read."))?.map(Json).map_err(Into::into)
+}
+
+#[utoipa::path(post, path = "/panel/api/v1/events/create", operation_id = "createEvent", tag = "Events",
+    security(("staffSession" = [], "csrfToken" = [])), request_body = CreateEventRequest,
+    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "One ID per change; the same change again is answered as done.")),
+    responses((status = 200, description = "The event, scheduled (an identical one made again is answered as done)", body = EventResult),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 404, description = "Not found", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError), (status = 409, description = "Already handled", body = ApiError),
+        (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError), (status = 503, description = "Stored data could not be read or written", body = ApiError), (status = 500, description = "Internal error", body = ApiError)))]
+async fn create_event(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, body: Result<Json<CreateEventRequest>, JsonRejection>) -> Result<Json<EventResult>, ApiError> {
+    let Json(request) = body?;
+    tokio::task::spawn_blocking(move || state.api.create_event(&request, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
+        .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The event could not be scheduled."))?.map(Json).map_err(Into::into)
+}
+
+#[utoipa::path(post, path = "/panel/api/v1/events/edit", operation_id = "editEvent", tag = "Events",
+    security(("staffSession" = [], "csrfToken" = [])), request_body = EditEventRequest,
+    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "One ID per change; the same change again is answered as done.")),
+    responses((status = 200, description = "The event, changed", body = EventResult),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 404, description = "Not found", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError), (status = 409, description = "Already handled", body = ApiError),
+        (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError), (status = 503, description = "Stored data could not be read or written", body = ApiError), (status = 500, description = "Internal error", body = ApiError)))]
+async fn edit_event(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, body: Result<Json<EditEventRequest>, JsonRejection>) -> Result<Json<EventResult>, ApiError> {
+    let Json(request) = body?;
+    tokio::task::spawn_blocking(move || state.api.edit_event(&request, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
+        .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The event could not be changed."))?.map(Json).map_err(Into::into)
+}
+
+#[utoipa::path(post, path = "/panel/api/v1/events/cancel", operation_id = "cancelEvent", tag = "Events",
+    security(("staffSession" = [], "csrfToken" = [])), request_body = CancelEventRequest,
+    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "One ID per change; the same change again is answered as done.")),
+    responses((status = 200, description = "The event, cancelled", body = EventResult),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 404, description = "Not found", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError), (status = 409, description = "Already handled", body = ApiError),
+        (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError), (status = 503, description = "Stored data could not be read or written", body = ApiError), (status = 500, description = "Internal error", body = ApiError)))]
+async fn cancel_event(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, body: Result<Json<CancelEventRequest>, JsonRejection>) -> Result<Json<EventResult>, ApiError> {
+    let Json(request) = body?;
+    tokio::task::spawn_blocking(move || state.api.cancel_event(&request, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
+        .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The event could not be cancelled."))?.map(Json).map_err(Into::into)
 }

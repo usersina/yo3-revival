@@ -40,14 +40,28 @@ fn game() -> Option<GameData> {
     Some(GameData::load(&dir).expect("the client's data loads"))
 }
 
-fn engine() -> Option<Engine> {
+fn engine_dir() -> Option<PathBuf> {
     let dir = std::env::var_os("YO3_ENGINE_DIR").map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../engine"));
     if !dir.join("vendor/cardinfo.json").is_file() {
         eprintln!("engine not fetched; skipping");
         return None;
     }
-    Some(Engine::start(&dir).expect("the engine program runs"))
+    Some(dir)
+}
+
+fn engine() -> Option<Engine> {
+    Some(Engine::start(&engine_dir()?).expect("the engine program runs"))
+}
+
+/// An engine with the anime card versions on; None (the test skips) without their data.
+fn anime_engine() -> Option<Engine> {
+    let dir = engine_dir()?;
+    if yo3_server::engine::anime_problem(&dir).is_some() {
+        eprintln!("anime data not fetched; skipping");
+        return None;
+    }
+    Some(Engine::start_with(&dir, true).expect("the engine program runs"))
 }
 
 /// Every Konami id the client knows (tokens, 3900–3999, come from card effects and are matched by name instead), with
@@ -67,11 +81,29 @@ fn checked(engine: &mut Engine, cards: &BTreeMap<u16, String>) -> Vec<Json> {
 
 #[test]
 fn every_client_card_loads_in_the_engine_as_the_client_shows_it() {
-    let (Some(game), Some(mut engine)) = (game(), engine()) else { return };
-    let cards = client_cards(&game);
+    let (Some(game), Some(engine)) = (game(), engine()) else { return };
+    every_card_loads_as_the_client_shows_it(&game, engine, false);
+}
+
+/// The same check with the anime versions on (#60), against the anime card profile: a card that plays as its anime
+/// version has the kind, level, ATK, DEF and Main or Extra Deck the profile makes the client show (the client's own rows
+/// for the cards the profile does not rewrite); the cards the map holds back are the game's.
+#[test]
+fn every_client_card_loads_with_the_anime_versions_as_the_client_shows_it() {
+    let (Some(game), Some(engine)) = (game(), anime_engine()) else { return };
+    every_card_loads_as_the_client_shows_it(&game, engine, true);
+}
+
+fn every_card_loads_as_the_client_shows_it(game: &GameData, mut engine: Engine, anime: bool) {
+    let profile = anime.then(|| yo3_server::profile::Profile::load("anime", game.cards.iter(), &engine_dir().unwrap()).expect("the anime profile builds"));
+    let cards = client_cards(game);
     assert!(cards.len() > 4500, "{} cards", cards.len());
     let answers = checked(&mut engine, &cards);
     assert_eq!(answers.len(), cards.len());
+    if anime {
+        let played = answers.iter().filter(|a| a["anime"] == true).count();
+        assert!(played > 250, "{played} cards play as their anime versions");
+    }
 
     assert_eq!(NOT_IN_THE_ENGINE.map(|(cid, _)| cid), yo3_server::engine::NOT_IN_THE_ENGINE);
     let missing: BTreeSet<u16> = answers.iter().filter(|a| a["passcode"].is_null()).map(|a| a["cid"].as_u64().unwrap() as u16).collect();
@@ -94,15 +126,27 @@ fn every_client_card_loads_in_the_engine_as_the_client_shows_it() {
             problems.push(format!("{cid} {name}: no script {scripts:?}"));
         }
         if kind & TYPE_MONSTER != 0 && kind & TYPE_TOKEN == 0 {
-            let client = game.cards.by_cid(cid).unwrap();
+            let original = game.cards.by_cid(cid).unwrap();
+            // What the client shows: the profile's row for a card it rewrites, else the client's own.
+            let shown = profile.as_ref().and_then(|p| p.targets.values().find(|t| t.cid == cid));
+            let (is_extra, client_level, client_atk, client_def) = match shown {
+                Some(t) => (t.extra_deck(), t.level(), t.atk.shown(), t.def.shown()),
+                None => (original.extra_deck(), original.level, original.atk, original.def),
+            };
+            // Fusion and Synchro Monsters (0x40, 0x2000) belong in the Extra Deck in the engine as in the client.
+            if is_extra != (kind & 0x2040 != 0) {
+                problems.push(format!("{cid} {name}: the client {} the Extra Deck, the engine's type {kind:#x}", if is_extra { "puts it in" } else { "keeps it out of" }));
+            }
+            // The kind the client draws the card with (Normal, Effect, Fusion...) is the engine's type.
+            let client_kind = shown.map_or(original.kind, |t| t.kind());
+            if yo3_server::profile::client_kind(kind as u32).is_some_and(|k| k != client_kind) {
+                problems.push(format!("{cid} {name}: the client draws kind {client_kind}, the engine's type {kind:#x}"));
+            }
             let (level, atk, def) = (data["level"].as_u64().unwrap_or(0) as u32, data["attack"].as_i64().unwrap_or(0), data["defense"].as_i64().unwrap_or(0));
             // "?" ATK/DEF is -2 in the engine.
             let differs = |client: u32, engine: i64| engine >= 0 && engine != client as i64;
-            if level != client.level || differs(client.atk, atk) || differs(client.def, def) {
-                problems.push(format!(
-                    "{cid} {name}: client level {} ATK {} DEF {}, engine level {level} ATK {atk} DEF {def}",
-                    client.level, client.atk, client.def
-                ));
+            if level != client_level || differs(client_atk, atk) || differs(client_def, def) {
+                problems.push(format!("{cid} {name}: client level {client_level} ATK {client_atk} DEF {client_def}, engine level {level} ATK {atk} DEF {def}"));
             }
         }
     }
@@ -137,4 +181,19 @@ fn two_prints_of_a_card_keep_their_own_ids_in_one_duel() {
     let hand: Vec<u64> = state[0]["hand"].as_array().unwrap().iter().map(|c| c["cid"].as_u64().unwrap()).collect();
     assert_eq!(hand.iter().filter(|&&c| c == 4041).count(), 3, "{hand:?}");
     assert_eq!(hand.iter().filter(|&&c| c == 5165).count(), 2, "{hand:?}");
+}
+
+/// `engine/anime/client-tokens.tsv` (a Konami id and a name each: what `tools/engine/anime-map.py` holds the anime cards'
+/// tokens against, since a token the client has no card of is not shown) is the client's token cards.
+#[test]
+fn the_anime_maps_token_list_is_the_clients() {
+    let Some(game) = game() else { return };
+    let tokens: BTreeSet<(u16, String)> = game.cards.iter().filter(|c| (3900..4000).contains(&c.cid)).map(|c| (c.cid, c.name.clone())).collect();
+    let listed: BTreeSet<(u16, String)> = std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../engine/anime/client-tokens.tsv"))
+        .expect("the token list")
+        .lines()
+        .filter_map(|l| l.split_once('\t'))
+        .map(|(cid, name)| (cid.parse().unwrap(), name.to_string()))
+        .collect();
+    assert_eq!(listed, tokens);
 }

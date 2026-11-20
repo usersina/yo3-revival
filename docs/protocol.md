@@ -790,7 +790,7 @@ scene expects is in [history](history.md#-website-links-titles-and-official-even
 
 | Request                                                                                                          | Reply (error)                          | Fields                                                                                                                                                | Evidence                                                                 | Status                            |
 | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | --------------------------------- |
-| `0x177A` event list (bare, `0x4D0BB0`)                                                                           | `0x177B` (`0x177C`, dialog `0x4F7940`) | top `result_number`; items `{event_type, status, event_id}`. TournamentScene looks for `event_type` 10 with `status` 12; none means its no-event path | `0x4D0BB0`; the Stadium opens                                            | shape (empty)                     |
+| `0x177A` event list (bare, `0x4D0BB0`)                                                                           | `0x177B` (`0x177C`, dialog `0x4F7940`) | top `result_number`; items `{event_type, status, event_id}`. TournamentScene looks for `event_type` 10 with `status` 12; none means its no-event path | `0x4D0BB0`; the Championship's scene (the Stadium's own is below)                                            | shape (empty)                     |
 | `0x1789` event search `{search_flag, pname, status, pack_type, base_point, front_num 30, back_num}` (`0x4D9E37`) | `0x177B` (`0x177C`)                    | as above; the list case `0x4D66A0` reads `result_number` (tracer) and `premium` from another dataset                                                  | captured request; live created/participating user events described below | confirmed (see User events below) |
 | `0x339A` own user event (bare, `0x4D9C2B`)                                                                       | `0x33FE` (`0x33FF`)                    | `remain`, `event_id`: the scene keeps `event_id` only while `remain` ≠ 0 (its own event: relation 0 in the list, Create off)                          | `0x4D9BB0`; live                                                         | confirmed                         |
 
@@ -841,6 +841,31 @@ are the official tournament's "bosyuu" entry menu (`decideLobbyMenu`, `0x4D2340`
 only): no request builder for a Ready or Standby message exists in the client (no id between the event requests
 `0x3390`–`0x339B` and the lobby's `0x32C9`–`0x32D5` is built anywhere for it, searched in the decompiled client). The
 host's Start is the only gate. **Impossible without a request to answer**, so none is sent.
+
+### Official events (the Stadium, OfficialEventScene `0x4B0110`, #18, `official.rs`)
+
+The Stadium tile opens OfficialEventScene, not the tournament screen (the Championship's `0x4D0BB0` list above is a
+different scene). The host schedules the events (`create-event`, the dashboard's Events page); every player counts as
+premium (`premium` 1 in the login), so nobody gets the premium-only dialog `0x39E7`. Event ids start at 10000, above
+Auto Duel's (2) and the user events' (from 100).
+
+| Request | Reply (error) | Fields | Evidence | Status |
+| --- | --- | --- | --- | --- |
+| `0x177A` (bare, `0x4B0110`) | `0x177B` | `result_number`; per event `official` 1 (`0x4B1060` keeps only items with it), `event_name_type` 1 Gunslinger, 2 Duelist Trial, 3 Evolution, 4 Anniversary, 5 Ultimate (anything else is dropped), `status`, `event_start`, `event_end` (text `YYYY-MM-DD HH:MM:SS`, Japan time, parsed with `%d-%d-%d %d:%d:%d` and mktime at `0x4AB490` and shown in the player's time zone: live, 03:03 JST read 19:03 in CET; a number crashes the scene, found live), `player_num`, `event_id`; also `event_type` and `event_name` (not read there) | `0x4B1060` (decompiled) | shape; live (list shows the event) |
+| lobby poll `0x177F {event_id}` (every 60 s, `0x4B0B70`) | `0x1780` item[0] (`0x1781`) | `event_id`, `status`, `event_start`, `event_end`, `player_num`, `official` 1 and the player's own `event_score` | `0x4B0B70` finds the event by its `event_id` | shape; test |
+| entering the lobby `0x1784 {event_id}` (`0x4A1090`) | `0x1785` (`0x1786`) | `join_id`, `server_id` (non-zero: without it Participate never starts matching, `0x4A3F70`; the value 1 is ours), `event_score` and `event_id` echoed (without the echo the lobby says "This event is now finished" after a duel). An event that is not running answers `0x1786` | the dispatcher (`0x4F4AE7`) stores the four | live (see features) |
+| Participate `0x1798 {event_id, join_id}` | `0x1799` (`0x179A`) | the format is not sent: Gunslinger, Duelist Trial and Anniversary are single duels, Evolution and Ultimate matches. Only entrants of the same event are paired. An event under a banlist the player is not logged in with answers `0x179A` and a chat line | `0x4A1380` | live |
+| cancel `0x17A2 {event_id, join_id}`, leave `0x178E {event_id}` | `0x17A3`, `0x178F` | both end the wait; the score stays | `0x4A15D0` | test |
+| the match | push `0x1978` as for Auto Duel | `duelData` has the format | `0x4A2D30` | live |
+| a duel's end | push `0x2009` | top-level `score_<player_id>` becomes `event_score` (the dispatcher `0x4F4C9E`); a non-zero score adds the star effect on the result screen (`0x5128B0`), shown up to 9999 | `0x4F4C9E` | live |
+| My Profile / player records | `0x2260` item | `tp` (Tournament Points, ProfileGet `0x4705D0`) and `tprank` | `0x4705D0`, `0x475A20` | shape |
+
+What counts (ours; the client only shows numbers, see the guesses in the [roadmap](roadmap.md#open-questions-and-guesses-revisit)): a win adds one to
+the score (a win, a streak step or a star); a loss or a draw ends a Gunslinger's streak and changes nothing else; the
+prize and the Tournament Points use the best score reached. `status` is 10 more than a day before the start, 11 within it
+(the client treats them alike), 13 while it runs and 14 after the end or a cancel (12, "running, view only", is never
+sent). The prizes are BP, paid by D-Mail from the Host when the event ends. Scores, events and payments are kept in
+`server.db` (`official_events`, `official_scores`).
 
 ### Decks (deck editor `DeckEditTest`, handler `0x43FC60`)
 
@@ -1347,7 +1372,7 @@ the card clicked at index 5 was the one the engine summoned). Missed, it put the
 engine's: see the hand-index rule under the moves above, and the crash it caused in
 [client-internals](client-internals.md#crash-history-and-the-rule-each-one-taught).
 
-**Card relations** (equips and lasting targets sent; Swords of Revealing Light and the other types not). The client keeps a list of relations between field places (engine store `+0x90`,
+**Card relations** (equips, lasting targets and Swords of Revealing Light sent; the other types not). The client keeps a list of relations between field places (engine store `+0x90`,
 list at `+0xB8`/`+0xCC`) and draws them while the pointer is on a face-up field card (mouse move `0x50B700` →
 `0x50AC20` → `0x50B1C0`; command `0x26` redraws them too): every relation from the hovered card's place draws a
 marker on the related slot. Commands: 1017 (`0x3F9`) {param1 the source place `player | zone << 8` (client-relative,
@@ -1362,6 +1387,23 @@ Type n draws field effect `0x33 + n`, except 6 →
 slot (the opponent's row mirrored: their zone 0 on the client's right). What each type meant to the original server
 is **open** (no names in the client).
 
+*What Konami's server used each type for* (its 227 duel logs, 5,300 relation commands; the card is the last activation
+before the command, a rough attribution, so these are **shape**, not confirmed): **256** (0x100 on a target marker, 3,200
+commands) every effect that targets: Mystical Space Typhoon, Mind Control, Book of Moon, Brionac, Dimensional Prison, Icarus
+Attack, Caius the Shadow Monarch; the server's type 8 stands for it. **1** (cyan orb, 730): a card equipped to a monster, as
+Dragunity monsters equip each other (Phalanx, Dux, Vajrayana), Mark of the Rose, Axe of Despair, Blast Sphere. **2** (yellow ∞,
+360): a continuous Spell or Trap with its monster, Call of the Haunted (the far commonest) and Fiendish Chain; the server's
+equips use it (live, drawn as the same ∞ on the Axe). **3** (green star, 56): a monster and the Field Spell that affects it
+(source a monster, target the Field Spell's place: Necrovalley, Gleipnir). **5** (orange arrows, 380) and **6** (yellow ∞,
+90): a monster and the continuous Spell or Trap that changes it (Solidarity, Gladiator Beast effects), sometimes the same
+place both ways. **7** (red ✕, 455): a place marked with itself, or a monster and a card, when an effect applies to it:
+Dimensional Prison and Effect Veiler (a place related to itself), Debris Dragon, Fiendish Chain, Royal Decree (negation).
+**258** appears four times (Fiendish Chain). Type 4 (red ✕ circle, the same picture as 7) never occurs in the logs, so the
+server's Swords of Revealing Light markers use it (a guess). Sending 3, 5, 6 and 7 needs what the core doesn't say (which
+monster a Field Spell or a continuous card affects, which card is negated); the engine's `state` op would have to report it.
+
+While Swords of Revealing Light (4354) lies face up, each monster of its opponent is marked from it, both ways, with type 4 (a
+guess; translate `sync_relations`); a Set Spell or Trap that activates counts as face up from its chain link.
 The server sends the engine's links: an equip (MSG_EQUIP 93 {card, target}; a new one replaces that equip's earlier
 link) with type 2, a lasting target (MSG_CARD_TARGET 96, ended by MSG_CANCEL_TARGET 97) with type 8 (the pairing is a
 **guess**). Each link goes both ways (either card as the source), follows the cards by uid, so a card that changes place
@@ -1663,6 +1705,8 @@ in the dialog by its client card's id. Live (Gorz, before this): the dialog came
 click answered it and the duel stopped there.
 Live (Scapegoat): four Sheep Tokens in four colours, in defense, on both clients; Witch of the Black Forest's attack
 listed them as their own cards and the one destroyed shattered and left no Graveyard card.
+
+**Tributes and the Deck.** MSG_SELECT_TRIBUTE counts in Tributes: each select has a `release_param` (2 for a card that counts as two: Double Coston), and `min`/`max` are sums of them. The translator's list takes picks by card (as many as the biggest make `min`) and answers once their `release_param`s add up (`tribute_view`, `tribute_enough`). A card the engine lists at the Deck for a Special Summon (location 1) is put in the command map on the Deck pile (zone `0xD`, index 0) like the other piles' cards; the pile's menu already opens on a click (Surrender is there). **Guess**: Konami's logs hold only the server's side, so how the original client offered it is not known.
 
 **Pile views.** The field highlights a pile of either player (zones `0xC`–`0xF`, index 0) whose command bits there
 include Activate Effect or Confirm (`0x808`, DuelFieldManager `0x50A690`), and the card menu's bit 11 reads "Confirm".
@@ -2312,6 +2356,15 @@ requests over TLS. The patch index is the game's own, answered by the launcher, 
 (#39, [client internals](client-internals.md#the-patcher)); the server's own `yo3.idx` route stays for older launchers. The DLL routes the client's
 WinINet calls to its local authenticated asset proxy, including duel-log URLs (`0x498700`). No account key is put
 into a remote URL. See [authentication.md](authentication.md) for setup and credential lifetimes.
+
+**Card profile (#60, not a game request).** The connection DLL asks the launcher's local relay for
+`GET /session/<launch cookie>/web/card-profile` once, when the game starts; the launcher carries it over the authenticated HTTP
+role and the server answers it itself (`transport.rs`, never the local HTTP server) with the profile the `anime-cards` setting
+selects: `text/plain`, an empty body for the game's own cards, else the client file `yo3-card-profile 1`
+(`crates/yo3-server/src/profile.rs`: `profile NAME`, `hash`, then `card ROW CID A B GENRE ATK DEF` per CARD_Prop row, `text ROW
+"json"`, `art CID`). The server notes the name and hash against the account; a duel tells a game that fetched another one to restart
+(`RESTART_NOTE`). Status: shape (our own; the client has no such request); the client side of the rewrite is in
+[client internals](client-internals.md). `tests/card_profile_route.rs`.
 
 Persistence uses `data/server.db`, schema version 3 (#22): one row per account, record, mail and so on, in WAL mode,
 with backups at start, hourly and at stop. References elsewhere in this catalog to `accounts.json`, `friends.json`,
