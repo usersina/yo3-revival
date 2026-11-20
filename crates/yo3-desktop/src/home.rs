@@ -132,11 +132,14 @@ pub struct Notice { pub summary: String, pub details: Option<String>, pub open: 
     /// Not a problem (a backup put back): no Report, no Help.
     pub good: bool,
     /// Shown on both tabs, not only your own server's panel: a game opened directly may have played either.
-    pub everywhere: bool }
+    pub everywhere: bool,
+    /// Raised while the Multiplayer tab was open (Play as another account, a Play on a server): also said on that tab,
+    /// whose panel doesn't show your own server's notices (live on Windows 11: the files-need-repair line was nowhere).
+    pub multi: bool }
 
 impl Notice {
-    pub fn good(summary: impl Into<String>) -> Self { Self { summary: summary.into(), details: None, open: false, action: None, good: true, everywhere: false } }
-    pub fn problem(summary: impl Into<String>, action: Option<(&'static str, Message)>) -> Self { Self { summary: summary.into(), details: None, open: false, action, good: false, everywhere: false } }
+    pub fn good(summary: impl Into<String>) -> Self { Self { summary: summary.into(), details: None, open: false, action: None, good: true, everywhere: false, multi: false } }
+    pub fn problem(summary: impl Into<String>, action: Option<(&'static str, Message)>) -> Self { Self { summary: summary.into(), details: None, open: false, action, good: false, everywhere: false, multi: false } }
     /// A game opened directly couldn't play (#33): said once, on whichever tab is open.
     pub fn direct(problem: &DirectProblem) -> Self { Self { details: Some(problem.reason.clone()), everywhere: true, ..Self::problem(problem.summary(), None) } }
     /// Another program's `winmm.dll` runs inside the game (#65): said at each Play, in the bell, without stopping it.
@@ -651,7 +654,7 @@ impl State {
         };
         let shown = error_presentation::present(&error, hint, &crate::app::masks(ctx));
         let action = match hint { Hint::Component => Some(("Repair", Message::Repair)), Hint::GameFolder => Some(("Fix", Message::SetUp)), Hint::General => None };
-        self.notice = Some(Notice { details: shown.diagnosis, ..Notice::problem(shown.summary, action) });
+        self.notice = Some(Notice { details: shown.diagnosis, multi: self.tab == Tab::Multi, ..Notice::problem(shown.summary, action) });
     }
 
     /// Play started a game, or a game opened without the launcher is up.
@@ -678,7 +681,7 @@ impl State {
         };
         let panels = row![
             container(yo3_skin::panel(Some("Information"), news)).width(Fill).height(Fill),
-            container(column![self.ribbon(playing), side].spacing(8)).width(372).height(Fill),
+            container(column![self.ribbon(playing), self.multi_notice(), side].spacing(8)).width(372).height(Fill),
         ].spacing(16).height(Fill);
         let mut page = column![].spacing(10).padding([16, 18]).height(Fill);
         // The game folder moved or was removed since setup: say so plainly, with the fix, instead of a broken button.
@@ -732,6 +735,15 @@ impl State {
         container(content).padding([7, 12]).width(Fill).style(|_| container::Style {
             background: Some(iced::Background::Gradient(iced::gradient::Linear::new(0.0).add_stop(0.0, color::STRIP_LOW).add_stop(1.0, color::STRIP_TOP).into())),
             border: iced::Border { color: color::WARN, width: 1.5, radius: 4.0.into() }, ..container::Style::default() }).into()
+    }
+
+    /// A notice raised on the Multiplayer tab, above its panel (the Singleplayer panel has its own place for notices).
+    fn multi_notice(&self) -> Element<'_, Message> {
+        match &self.notice {
+            Some(notice) if notice.multi && self.tab == Tab::Multi => container(notice_view(notice, Message::ToggleDetails, Message::Dismiss)).padding([6, 12]).width(Fill)
+                .style(|_| container::Style { background: Some(color::PANEL_TOP.into()), border: iced::Border { color: color::BAD, width: 1.5, radius: 4.0.into() }, ..container::Style::default() }).into(),
+            _ => Space::new().into(),
+        }
     }
 
     fn notice(&self) -> Element<'_, Message> {
@@ -1123,6 +1135,23 @@ mod tests {
         let mut state = State { polling: true, game: Game { running: true, ..Game::default() }, ..State::default() };
         let _ = state.update(ended("The game stopped unexpectedly (exit code: 1)."), &mut ctx);
         assert!(state.notice.is_some(), "a game that fell over by itself is still said");
+    }
+
+    /// Play as another account with this release's files damaged: the Multiplayer tab says so, with the Repair link
+    /// (the failure used to land on the Singleplayer panel only).
+    #[test]
+    fn a_failed_play_as_says_so_on_the_multiplayer_tab() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let _inside = runtime.enter();
+        let mut ctx = ctx();
+        let mut state = State { tab: Tab::Multi, ..State::default() };
+        let _ = state.update(Message::ExtraStarted(Err("Connection DLL validation failed: yo3-auth.dll: Connection DLL release v0.1.3 does not match application v0.1.4. Repair with files from the same bundle.".into())), &mut ctx);
+        let notice = state.notice.as_ref().expect("a notice");
+        assert!(notice.multi, "raised on the Multiplayer tab, so said there");
+        assert!(matches!(notice.action, Some(("Repair", Message::Repair))), "with the Repair link");
+        let mut single = State::default();
+        let _ = single.update(Message::ExtraStarted(Err("The game could not start.".into())), &mut ctx);
+        assert!(single.notice.is_some_and(|n| !n.multi), "a notice raised on Singleplayer stays on its own panel");
     }
 
     #[test]
