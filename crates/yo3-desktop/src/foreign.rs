@@ -303,4 +303,15 @@ mod tests {
         assert!(move_aside(&game, "winmm.dll").is_ok(), "a changed one isn't ours");
         std::fs::remove_dir_all(game).unwrap();
     }
+
+    #[test]
+    fn our_own_loader_is_never_offered_to_move_aside_even_without_its_receipt() {
+        // #65: the player's winmm.dll was our v0.1.3 loader, and was called another program's.
+        let game = folder("own-no-receipt");
+        std::fs::write(game.join("yo3.exe"), b"game").unwrap();
+        std::fs::write(game.join("winmm.dll"), yo3_launcher::components::crafted_loader_for_tests("v0.1.3")).unwrap();
+        assert!(movable(&game, "winmm.dll").is_err() && move_aside(&game, "winmm.dll").is_err());
+        assert!(game.join("winmm.dll").exists(), "left where it was");
+        std::fs::remove_dir_all(game).unwrap();
+    }
 }

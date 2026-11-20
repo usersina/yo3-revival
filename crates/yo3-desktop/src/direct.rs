@@ -37,12 +37,23 @@ fn owned(game: &Path) -> anyhow::Result<Receipt> {
         && receipt.loader == hash(&regular(&game.join("winmm.dll"))?), "Game or loader changed since installation. Refusing to overwrite/remove another mod.");
     Ok(receipt)
 }
+/// Whether the game folder's `winmm.dll` is a YO3 Revival loader of some release (the `.yo3` section marker, see
+/// `yo3_launcher::components::recognize_loader`) that has no matching receipt: an older release's, or one whose receipt
+/// was lost (#65). It is ours: Play puts it right, and it is never called another program's.
+pub fn own_loader_without_receipt(game: &Path) -> bool {
+    let file = game.join("winmm.dll");
+    let Ok(bytes) = regular(&file) else { return false };
+    if yo3_launcher::components::recognize_loader(&bytes).is_none() { return false }
+    !regular(&game.join(RECEIPT)).ok().and_then(|b| serde_json::from_slice::<Receipt>(&b).ok())
+        .is_some_and(|receipt| receipt.format == 1 && receipt.loader == hash(&bytes))
+}
 /// A `winmm.dll` in the game folder that YO3 Revival didn't put there, or that changed since (#65): Windows loads it
-/// into the game on every start, beside YO3 Revival's connection DLL, so whatever it does runs there too. An old
-/// Revival's loader without its receipt counts as foreign: it isn't the one this release checks.
+/// into the game on every start, beside YO3 Revival's connection DLL, so whatever it does runs there too. One of our own
+/// loaders (any release, receipt or not) is never foreign.
 pub fn foreign_winmm(game: &Path) -> Option<PathBuf> {
     let file = game.join("winmm.dll");
     std::fs::symlink_metadata(&file).ok()?;
+    if own_loader_without_receipt(game) { return None }
     let receipt = regular(&game.join(RECEIPT)).ok().and_then(|bytes| serde_json::from_slice::<Receipt>(&bytes).ok());
     let ours = receipt.zip(regular(&file).ok()).is_some_and(|(receipt, bytes)| receipt.format == 1 && receipt.loader == hash(&bytes));
     (!ours).then_some(file)
@@ -56,6 +67,11 @@ fn direct_resolution(settings: &Settings) -> Option<String> {
 pub fn install_files(game: &Path, source: &Path) -> anyhow::Result<()> {
     let executable = hash(&regular(&game.join("yo3.exe"))?); let bytes = regular(source)?; let loader = hash(&bytes);
     let target = game.join("winmm.dll"); let receipt = game.join(RECEIPT);
+    if own_loader_without_receipt(game) && std::fs::symlink_metadata(&receipt).is_err() {
+        // Our own loader (an earlier release's, or its receipt was lost): replace it with this release's and write the receipt.
+        std::fs::remove_file(&target)?;
+        return install_files(game, source)
+    }
     if std::fs::symlink_metadata(&target).is_err() && std::fs::symlink_metadata(&receipt).is_ok() {
         let previous: Receipt = serde_json::from_slice(&regular(&receipt)?)?;
         ensure!(previous.format == 1 && previous.executable == executable, "Cannot repair an unrecognized or changed loader installation");
@@ -85,6 +101,7 @@ pub fn install_files(game: &Path, source: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 pub fn remove_files(game: &Path) -> anyhow::Result<()> {
+    if own_loader_without_receipt(game) && std::fs::symlink_metadata(game.join(RECEIPT)).is_err() { return Ok(std::fs::remove_file(game.join("winmm.dll"))?) }
     let receipt: Receipt = serde_json::from_slice(&regular(&game.join(RECEIPT))?)?;
     ensure!(receipt.format == 1 && receipt.executable == hash(&regular(&game.join("yo3.exe"))?), "The game or ownership receipt changed; removal refused");
     if std::fs::symlink_metadata(game.join("winmm.dll")).is_ok() { owned(game)?; std::fs::remove_file(game.join("winmm.dll"))?; }
@@ -290,6 +307,7 @@ impl Backend {
     pub fn direct_state(&self, settings: &Settings) -> State {
         let game = Path::new(&settings.game_dir); let receipt = game.join(RECEIPT);
         if !receipt.exists() {
+            if own_loader_without_receipt(game) { return State::NeedsRepair("YO3 Revival's own loader is in the game folder, but its receipt is missing. Play puts it right.".into()) }
             if std::fs::symlink_metadata(game.join("winmm.dll")).is_ok() { return State::Conflict("An unowned WINMM mod is installed. Keep it intact; use Play here or resolve the mod conflict manually.".into()) }
             return if self.root.join("profiles/loader.ini").exists() { State::NeedsRepair("The game-local loader is missing.".into()) } else { State::Disabled }
         }
