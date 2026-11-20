@@ -114,6 +114,8 @@ pub struct App {
     quitting: bool,
     /// The good toast on screen and since when, for its own time out.
     good_toast: Option<(String, std::time::Instant)>,
+    /// The anime pictures download, while Settings is closed: it goes on, and its end is a toast on the main screen.
+    pictures: Option<settings::Run>,
 }
 
 /// Runs blocking work (disk, processes, the network) off the window's thread.
@@ -153,7 +155,7 @@ impl App {
             listen_for_second_starts(&ctx.root, claim),
         ];
         if let Some(setup) = &mut setup { tasks.push(setup.start(&ctx).map(Message::Setup)) }
-        (Self { ctx, home, setup, settings: None, help: help::State::at(None), report: Report::default(), foreign: None, host: host::State::default(), dialog: None, updater, transfer: Default::default(), startup, quitting: false, good_toast: None },
+        (Self { ctx, home, setup, settings: None, help: help::State::at(None), report: Report::default(), foreign: None, host: host::State::default(), dialog: None, updater, transfer: Default::default(), startup, quitting: false, good_toast: None, pictures: None },
             Task::batch(tasks))
     }
 
@@ -210,7 +212,8 @@ impl App {
                 if self.setup.is_some() { return Task::none() }
                 // Already open (the footer's version while in Settings): go to that section, keeping what is typed elsewhere.
                 if self.settings.is_some() { return self.settings_update(settings::Message::Section(section)) }
-                let state = settings::State::new(&self.ctx, section);
+                let mut state = settings::State::new(&self.ctx, section);
+                state.resume_pictures(self.pictures.take());
                 let start = state.start(&self.ctx).map(Message::Settings);
                 // Accounts lists the Multiplayer tab's sign-ins: load its servers if it hasn't yet.
                 let load = self.home.multi.load(&self.ctx).map(|m| Message::Home(home::Message::Multi(m)));
@@ -318,7 +321,7 @@ impl App {
                 else if self.settings.as_ref().is_some_and(|s| s.has_dialog()) { return self.settings_update(settings::Message::PicturesDialogClose) }
                 // The bell's list and the server tools close before the screen under them does.
                 else if self.setup.is_none() && self.home.bell_open { return self.update(Message::Home(home::Message::Bell(false))) }
-                else if self.settings.is_some() { self.settings = None }
+                else if self.settings.is_some() { self.close_settings() }
                 else if self.setup.is_none() && let Some(message) = self.home.escape() { return self.update(Message::Home(message)) },
                 _ => {}
             },
@@ -444,10 +447,34 @@ impl App {
         Task::none()
     }
 
+    /// Leaves Settings, keeping a pictures download going (see `pictures`).
+    fn close_settings(&mut self) {
+        if let Some(mut state) = self.settings.take() { self.pictures = state.take_pictures() }
+    }
+
     fn settings_update(&mut self, message: settings::Message) -> Task<Message> {
         match message {
-            settings::Message::Close => { self.settings = None; Task::none() }
-            settings::Message::ChangeGame => { self.settings = None; self.open_setup(setup::Step::Game) }
+            settings::Message::Close => { self.close_settings(); Task::none() }
+            settings::Message::ChangeGame => { self.close_settings(); self.open_setup(setup::Step::Game) }
+            // The download's messages while Settings is closed: its bar's numbers, then its end as a toast.
+            settings::Message::Pictures(event) if self.settings.is_none() => {
+                match event {
+                    yo3_desktop::pictures::Event::Progress(done, total) => if let Some(run) = &mut self.pictures { run.0 = done; run.1 = total },
+                    yo3_desktop::pictures::Event::Done(result) => {
+                        self.pictures = None;
+                        match result {
+                            Ok(out) => {
+                                let (good, sentence) = yo3_desktop::pictures::download_sentence(&out);
+                                if let Some(backend) = &self.ctx.backend { backend.diagnostics.line(&format!("Anime pictures: {} saved, {} had, {} not fetched", out.saved.len(), out.had, out.failed.len())) }
+                                let sentence = format!("Anime pictures: {sentence}");
+                                if good { self.home.good(sentence) } else { self.home.fail(&self.ctx, sentence) }
+                            }
+                            Err(error) => self.home.fail(&self.ctx, format!("The anime pictures couldn't be saved.\n{error}")), // → Details
+                        }
+                    }
+                }
+                Task::none()
+            }
             settings::Message::Account(message) => self.home.update(home::Message::Multi(message), &mut self.ctx).map(Message::Home),
             settings::Message::Restore => { self.dialog = Some(Dialog::Backups); Task::none() }
             settings::Message::Open(url) => self.update(Message::OpenLink(url)),

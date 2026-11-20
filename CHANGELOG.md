@@ -15,6 +15,11 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Settings → Singleplayer → Your data has **Unlock all cards**: three of every card, in every artwork, for every player of
+  your own server. Hosts have the same as `unlock-cards`.
+- Anime pictures: the download keeps going when you leave Settings and ends in a toast, a picture that times out or
+  arrives broken is tried three times before it's given up, and the progress shows only under the switch, never in a
+  dialog. The section under Anime cards is tidier.
 - An effect with more than four choices now shows them as buttons, three at a time with "More choices" to see the next
   ones, instead of a card list with the choices written in the chat window.
 - More of the hover markers in a duel: pointing at a monster or a card now also shows which Field Spell powers it up,

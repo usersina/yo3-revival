@@ -116,6 +116,10 @@ pub enum Message {
     AnimeSet(bool, Result<bool, String>),
     /// Close the pictures dialog (during a download: stops it too).
     PicturesDialogClose,
+    /// Unlock all cards: asked first (`confirm_unlock`), then done on your own server.
+    UnlockAsk(bool),
+    UnlockCards,
+    Unlocked(Result<String, String>),
     /// Handled by the window: open a web page or a folder.
     Open(String),
     ToggleDetails,
@@ -131,7 +135,10 @@ pub enum Message {
 /// The dialog the Anime cards switch opens when pictures are missing: the offer, then (once Get pictures is pressed) the
 /// download on the shared bar, then its result.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Dialog { Offer, Result { good: bool, sentence: String } }
+pub enum Dialog { Offer }
+
+/// A pictures download in progress: cards done, all cards, the way to cancel it.
+pub type Run = (u32, u32, Arc<AtomicBool>);
 
 /// How many cards still have no picture, when there are any (the switch offers the download only then).
 /// How many cards still lack a picture, as a sentence.
@@ -161,6 +168,8 @@ pub struct State {
     wine: String,
     confirm_reset: bool,
     confirm_game_reset: bool,
+    /// Unlock all cards is waiting for its confirmation.
+    confirm_unlock: bool,
     licences: bool,
     update: Option<String>,
     /// The desktop shortcut is already there: its row offers to make it again (after an update moved the launcher).
@@ -170,7 +179,7 @@ pub struct State {
     /// Anime pictures the folder has, of the cards that have one to get (`None` until counted).
     pictures: Option<(usize, usize)>,
     /// A download in progress: cards done, all cards, the way to cancel it.
-    getting: Option<(u32, u32, Arc<AtomicBool>)>,
+    getting: Option<Run>,
     /// What the last download left that the bar must keep saying: its words, when it stopped on a problem.
     art_problem: Option<String>,
     /// Adding or saving a zip: the wait is shown on the pictures' own bar.
@@ -191,9 +200,16 @@ The full licences come with YO3 Revival, in its notices folder.";
 impl State {
     pub fn new(ctx: &Ctx, section: Section) -> Self {
         Self { section, note: None, busy: None, direct: Direct::Unknown, prefix: ctx.settings.wine_prefix.clone(), wine: ctx.settings.wine_binary.clone(),
-            confirm_reset: false, confirm_game_reset: false, licences: false, update: None, shortcut: yo3_desktop::shortcut::exists(),
+            confirm_reset: false, confirm_game_reset: false, confirm_unlock: false, licences: false, update: None, shortcut: yo3_desktop::shortcut::exists(),
             moved: yo3_desktop::foreign::moved_aside(std::path::Path::new(&ctx.settings.game_dir)), pictures: None, getting: None, art_problem: None, art_busy: None, anime: None, dialog: None, offer_when_counted: false }
     }
+
+    /// The pictures download in progress, taken out as Settings closes: the window keeps it (and its messages) until
+    /// Settings opens again, so leaving Settings never stops it.
+    pub fn take_pictures(&mut self) -> Option<Run> { self.getting.take() }
+
+    /// A download that went on while Settings was closed, back under the switch.
+    pub fn resume_pictures(&mut self, run: Option<Run>) { if run.is_some() { self.getting = run } }
 
     /// Whether Settings' own dialog is open: Escape closes it before it leaves Settings.
     pub fn has_dialog(&self) -> bool { self.dialog.is_some() }
@@ -313,6 +329,24 @@ impl State {
                 return job(move || backend.back_up_now(&settings), Message::BackedUp);
             }
             Message::BackedUp(result) => self.result(ctx, result, "Backed up. Restore lists it with the others."),
+            Message::UnlockAsk(ask) => self.confirm_unlock = ask,
+            Message::UnlockCards => {
+                let Some(backend) = ctx.backend.clone() else { return Task::none() };
+                let settings = ctx.settings.clone();
+                self.confirm_unlock = false;
+                self.busy = Some("Unlocking every card…");
+                return job(move || backend.unlock_cards(&settings), Message::Unlocked);
+            }
+            Message::Unlocked(Ok(sentence)) => {
+                self.busy = None;
+                let more = sentence.ends_with("added.");
+                self.good(match (more, playing) {
+                    (true, true) => format!("{sentence} In the open game, go back to the map to see them."),
+                    (true, false) => format!("{sentence} They're in your collection from the next PLAY."),
+                    (false, _) => sentence,
+                })
+            }
+            Message::Unlocked(Err(error)) => { self.busy = None; self.fail(ctx, &format!("Couldn't unlock the cards.\n{error}")) } // → Details
             Message::ResetData(false) => self.confirm_reset = !self.confirm_reset,
             Message::ResetData(true) => {
                 let Some(backend) = ctx.backend.clone() else { return Task::none() };
@@ -410,12 +444,12 @@ impl State {
                 }
             }
             Message::AnimeSet(_, Err(error)) => { self.busy = None; self.fail(ctx, &error) }
-            Message::PicturesDialogClose => {
-                if let Some((_, _, cancel)) = &self.getting { pictures::stop(cancel) }
-                self.dialog = None;
-            }
+            // Closing the offer never stops a download: it goes on with its bar in Settings and its toast at the end.
+            Message::PicturesDialogClose => self.dialog = None,
             Message::GetPictures => {
                 if self.getting.is_some() { return Task::none() }
+                // Started from the offer: the offer closes, and the bar under the switch shows the download.
+                self.dialog = None;
                 let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
                 let cancel = Arc::new(AtomicBool::new(false));
                 let dir = yo3_launcher::art::folder_in(&ctx.root);
@@ -442,9 +476,9 @@ impl State {
                             out.unreachable.as_deref().map(|why| format!(" (server not reached: {why})")).unwrap_or_default())) }
                         let mut sentence = sentence;
                         if good || !out.saved.is_empty() { sentence.push_str(if playing { " The open game shows them after you close it and press PLAY again." } else { " They show from the next PLAY." }) }
-                        if self.dialog.is_some() { self.dialog = Some(Dialog::Result { good, sentence }) } else { self.note = Some(Note { good, sentence, details: None, open: false }) }
+                        self.note = Some(Note { good, sentence, details: None, open: false });
                     }
-                    Err(error) => if self.dialog.is_some() { self.dialog = Some(Dialog::Result { good: false, sentence: "The pictures couldn't be saved. Try Get pictures again in Settings.".into() }) } else { self.fail(ctx, &error) },
+                    Err(error) => self.fail(ctx, &error),
                 }
                 return self.count_pictures(ctx);
             }
@@ -591,24 +625,13 @@ impl State {
     fn pictures_dialog<'a>(&'a self, dialog: &'a Dialog) -> Element<'a, Message> {
         let close = Message::PicturesDialogClose;
         let (have, total) = self.pictures.unwrap_or((0, 0));
-        let body: Element<'_, Message> = match (&self.getting, dialog) {
-            (Some(_), _) => {
-                let (bar, words) = self.pictures_bar();
-                column![text("Getting the pictures. You can cancel at any time: the cards that have one keep it.").size(15).color(color::INK),
-                    yo3_skin::progress_bar(bar, words, 24.0), Space::new().height(Fill),
-                    row![Space::new().width(Fill), pill("Cancel", Some(Message::CancelPictures), Kind::Secondary, 130, 38)]].spacing(14).into()
-            }
-            (None, Dialog::Offer) => column![
-                text("Anime cards are on. To see their anime artwork, YO3 Revival can get the pictures now.").size(15).color(color::INK),
-                text(format!("The download is {} from ProjectIgnis' picture server, one card at a time. {} A card without a picture keeps the game's artwork. \
-                    Nothing is downloaded unless you press Get pictures.", pictures::SIZE_NOTE, missing_words(have, total))).size(14).color(color::INK_SOFT),
-                Space::new().height(Fill),
-                row![Space::new().width(Fill), pill("Not now", Some(close.clone()), Kind::Secondary, 130, 38), pill("Get pictures", Some(Message::GetPictures), Kind::Primary, 160, 38)].spacing(10)].spacing(14).into(),
-            (None, Dialog::Result { good, sentence }) => column![
-                yo3_skin::rule(if *good { yo3_skin::Rule::Met } else { yo3_skin::Rule::Broken }, sentence.as_str()),
-                Space::new().height(Fill),
-                row![Space::new().width(Fill), pill("Close", Some(close.clone()), Kind::Primary, 130, 38)]].spacing(14).into(),
-        };
+        let Dialog::Offer = dialog;
+        let body: Element<'_, Message> = column![
+            text("Anime cards are on. To see their anime artwork, YO3 Revival can get the pictures now.").size(15).color(color::INK),
+            text(format!("The download is {} from ProjectIgnis' picture server, one card at a time. {} A card without a picture keeps the game's artwork. \
+                Nothing is downloaded unless you press Get pictures.", pictures::SIZE_NOTE, missing_words(have, total))).size(14).color(color::INK_SOFT),
+            Space::new().height(Fill),
+            row![Space::new().width(Fill), pill("Not now", Some(close.clone()), Kind::Secondary, 130, 38), pill("Get pictures", Some(Message::GetPictures), Kind::Primary, 160, 38)].spacing(10)].spacing(14).into();
         yo3_skin::dialog("Anime pictures", None, close, 520.0, 250.0, body)
     }
 
@@ -622,8 +645,7 @@ impl State {
             (Some(_), false) => "Some cards play and look as they did in the anime. From the next game start.",
         };
         let switch = toggler(self.anime == Some(true)).on_toggle_maybe((idle && self.anime.is_some()).then_some(Message::AnimeCards)).style(yo3_skin::switch).size(22);
-        let below = (self.anime == Some(true)).then(|| container(column![text("Anime pictures").size(14).font(BODY_BOLD).color(color::INK), self.pictures_view(playing)].spacing(6))
-            .padding(iced::Padding { left: 14.0, ..iced::Padding::ZERO }).into());
+        let below = (self.anime == Some(true)).then(|| self.pictures_view(playing));
         yo3_skin::setting("Anime cards", line, Some(switch.into()), below)
     }
 
@@ -657,8 +679,8 @@ impl State {
             Some(_) => pill("Cancel", Some(Message::CancelPictures), Kind::Secondary, 150, 32),
             None => pill("Get pictures", (idle && !all && self.pictures.is_some()).then_some(Message::GetPictures), Kind::Primary, 150, 32),
         };
-        let mut hint = format!("Get pictures downloads {} from ProjectIgnis' picture server, only when you press it. A card without one keeps the game's picture.", pictures::SIZE_NOTE);
-        if playing { hint.push_str(" New pictures show after you close the game and press PLAY again.") } else { hint.push_str(" New pictures show from the next PLAY.") }
+        let hint = format!("Pictures: {} from ProjectIgnis, only when you press Get pictures. {}", pictures::SIZE_NOTE,
+            if playing { "They show after the game's next PLAY." } else { "From the next PLAY." });
         let (bar, words) = self.pictures_bar();
         column![
             text(hint).size(13).color(color::INK_SOFT),
@@ -680,6 +702,9 @@ impl State {
         let reset_below: Option<Element<'_, Message>> = self.confirm_reset.then(|| row![
             text("Reset your singleplayer data? The old data is kept beside it.").size(14).font(BODY_BOLD).color(color::BAD).width(Fill),
             pill("Reset", Some(Message::ResetData(true)), Kind::Danger, 100, 32), yo3_skin::link("Cancel", Message::ResetData(false), false)].spacing(10).align_y(Center).into());
+        let unlock_below: Option<Element<'_, Message>> = self.confirm_unlock.then(|| row![
+            text("Give every player of your server three of every card, in every artwork? Backups keep your collection as it was.").size(14).font(BODY_BOLD).color(color::INK).width(Fill),
+            pill("Unlock", self.busy.is_none().then_some(Message::UnlockCards), Kind::Primary, 110, 32), yo3_skin::link("Cancel", Message::UnlockAsk(false), false)].spacing(10).align_y(Center).into());
         column![
             yo3_skin::setting_group("Cards", vec![
                 self.anime_cards_view(playing),
@@ -690,6 +715,8 @@ impl State {
                 yo3_skin::setting("Backups", "Your server keeps a backup from each of its last starts.", Some(pill("Back up now", self.busy.is_none().then_some(Message::BackUp), Kind::Secondary, 150, 32)),
                     Some(row![pill("Restore…", (!playing).then_some(Message::Restore), Kind::Secondary, 130, 32),
                         pill("Open data folder", Some(Message::OpenData), Kind::Secondary, 170, 32)].spacing(10).into())),
+                yo3_skin::setting("Unlock all cards", "Three of every card, in every artwork, for every player of your own server.",
+                    Some(pill("Unlock…", (self.busy.is_none() && !self.confirm_unlock).then_some(Message::UnlockAsk(true)), Kind::Secondary, 120, 32)), unlock_below),
                 yo3_skin::setting("Reset", "Starts your singleplayer collection, decks and duel record again.",
                     Some(pill("Reset…", (self.busy.is_none() && !playing).then_some(Message::ResetData(false)), Kind::Secondary, 120, 32)), reset_below),
             ]),
@@ -906,32 +933,32 @@ mod tests {
     }
 
     #[test]
-    fn the_pictures_dialog_goes_from_offer_to_download_to_result_and_the_switch_stays_on() {
+    fn the_download_shows_only_under_the_switch_survives_leaving_settings_and_ends_in_a_toast() {
         use yo3_launcher::art::get::Outcome;
         let mut ctx = ctx();
         let mut state = State::new(&ctx, Section::Singleplayer);
         state.pictures = Some((0, 418));
         state.anime = Some(true);
         state.dialog = Some(Dialog::Offer);
-        // Get pictures starts it inside the dialog: the bar is the shared one, Cancel stops it.
-        state.getting = Some((0, 418, Arc::new(AtomicBool::new(false))));
-        assert_eq!(state.pictures_bar(), (Bar::Starting, "Starting…".to_owned()));
+        // A download under way: closing the offer (or Escape) leaves it running, with no dialog of its own.
+        let cancel = Arc::new(AtomicBool::new(false));
+        state.getting = Some((0, 418, cancel.clone()));
+        let _ = state.update(Message::PicturesDialogClose, &mut ctx, false);
+        assert!(!cancel.load(std::sync::atomic::Ordering::SeqCst) && state.dialog.is_none(), "closing the offer never stops it");
         let _ = state.update(Message::Pictures(pictures::Event::Progress(100, 418)), &mut ctx, false);
         assert_eq!(state.pictures_bar().1, "100 of 418");
-        // It ends with the result in the dialog (no note behind it) and a Close button.
-        let _ = state.update(Message::Pictures(pictures::Event::Done(Ok(Outcome { saved: vec![1, 2], ..Outcome::default() }))), &mut ctx, false);
-        assert!(state.getting.is_none() && state.note.is_none());
-        assert!(matches!(&state.dialog, Some(Dialog::Result { good: true, sentence }) if sentence.starts_with("Got 2 pictures.")), "{:?}", state.dialog);
-        let _ = state.update(Message::PicturesDialogClose, &mut ctx, false);
-        assert_eq!((state.dialog.clone(), state.anime), (None, Some(true)));
-        // Closing during a download cancels it, and the end then lands in a note, not a dialog.
-        state.dialog = Some(Dialog::Offer);
-        let cancel = Arc::new(AtomicBool::new(false));
-        state.getting = Some((5, 418, cancel.clone()));
-        let _ = state.update(Message::PicturesDialogClose, &mut ctx, false);
-        assert!(cancel.load(std::sync::atomic::Ordering::SeqCst) && state.dialog.is_none());
-        let _ = state.update(Message::Pictures(pictures::Event::Done(Ok(Outcome { cancelled: true, saved: vec![1], ..Outcome::default() }))), &mut ctx, false);
-        assert!(state.note.is_some());
+        // Settings closes: the window keeps the run, and a new Settings shows it again where it got to.
+        let run = state.take_pictures();
+        assert!(state.getting.is_none() && run.as_ref().is_some_and(|r| (r.0, r.1) == (100, 418)));
+        let mut again = State::new(&ctx, Section::Singleplayer);
+        again.resume_pictures(run);
+        assert_eq!(again.pictures_bar().1, "100 of 418");
+        again.resume_pictures(None);
+        assert!(again.getting.is_some(), "nothing to resume keeps what is there");
+        // It ends in a toast (the note), never a dialog.
+        let _ = again.update(Message::Pictures(pictures::Event::Done(Ok(Outcome { saved: vec![1, 2], ..Outcome::default() }))), &mut ctx, false);
+        assert!(again.getting.is_none() && again.dialog.is_none());
+        assert!(again.note.as_ref().is_some_and(|n| n.good && n.sentence.starts_with("Got 2 pictures.")));
         // The words are plain, and the open game is told how to see the change.
         let mut open = State::new(&ctx, Section::Singleplayer);
         let _ = open.update(Message::AnimeSet(true, Ok(true)), &mut ctx, true);

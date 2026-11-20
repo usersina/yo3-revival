@@ -171,8 +171,8 @@ Deck card.
   lists when you press Play (it keeps the first version of each changed deck beside it as `<name>.y3d.pre-profile`, never
   deletes a deck and never touches a file it cannot read), and the server places a deck again when you pick it for a duel. A game
   opened without the launcher gets this at its next Play from the launcher.
-- **Pictures come from Settings.** The project does not host the anime pictures. In Desktop, Settings → Game → **Anime
-  pictures** shows "N of M" and **Get pictures** downloads them (about 10 MB, from ProjectIgnis' picture server, only when
+- **Pictures come from Settings.** The project does not host the anime pictures. In Desktop, Settings → Singleplayer, under
+  **Anime cards**, shows "N of M" and **Get pictures** downloads them (about 10 MB, from ProjectIgnis' picture server, only when
   you press it, with **Cancel**); **Add pictures from a file** takes a zip a friend made with **Save pictures to a file**.
   They show from the next PLAY. A card with no picture (not fetched yet, or the download was cancelled or failed) keeps
   the game's own picture with the anime card's stats and text, and your own pictures are never replaced

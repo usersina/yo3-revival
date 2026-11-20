@@ -2,7 +2,8 @@
 //! no picture: the list below says which passcode to ask for per card, the [`Fetcher`] asks (Desktop's does it over HTTPS,
 //! the tests' does not touch a network), and each picture is checked, made 200x290 and written as the folder's own file.
 //!
-//! * One card at a time, [`PACE`] apart, one retry; cancelling stops at the next card. A card whose face exists is
+//! * One card at a time, [`PACE`] apart, [`TRIES`] tries each (a failed request or a picture that can't be read, waiting
+//!   longer each time); cancelling stops at the next card. A card whose face exists is
 //!   skipped, so a second run only finishes the missing ones, and a face the player put there is never replaced.
 //! * A face is written whole or not at all (a temporary name, then renamed), so the game, which reads the folder at its
 //!   start, never meets a half-written picture. A card without a face, for any reason (not fetched yet, cancelled, failed,
@@ -23,6 +24,9 @@ pub const DOWNLOAD_SIZE: &str = "about 10 MB";
 pub const MAX_BYTES: usize = 2 << 20;
 /// Faces made by Desktop's download, in `card/`.
 pub const DOWNLOADED: &str = ".downloaded";
+/// How many times a picture is asked for before the card is given up: a timeout, a refused request or a picture that
+/// arrived broken is often gone on the next try.
+pub const TRIES: u32 = 3;
 /// After this many cards in a row that the server could not be asked about, the run stops: the server is out of reach.
 const GIVE_UP: u32 = 3;
 
@@ -141,32 +145,36 @@ pub fn download(dir: &Path, entries: &[Entry], fetcher: &mut dyn Fetcher, pace: 
         if cancel.load(Ordering::SeqCst) { out.cancelled = true; break }
         let face: PathBuf = dir.join("card").join(format!("{}.png", entry.cid));
         if face.exists() { out.had += 1; progress(n as u32 + 1, total); continue }
-        let mut ask = |passcode: u32| -> Result<Fetched, String> {
-            let mut last = String::new();
-            for attempt in 0..2 {
-                if asked { std::thread::sleep(if attempt == 0 { pace } else { pace * 5 }) }
+        // A picture or the server's "none" (Ok), or why it couldn't be had after TRIES tries: Err(network?, why).
+        let mut ask = |passcode: u32| -> Result<Option<Vec<u8>>, (bool, String)> {
+            let mut last = (true, String::new());
+            for attempt in 0..TRIES {
+                if asked { std::thread::sleep(if attempt == 0 { pace } else { pace * 5 * attempt }) }
                 asked = true;
-                match fetcher.fetch(passcode) { Ok(found) => return Ok(found), Err(e) => last = e }
+                match fetcher.fetch(passcode) {
+                    Ok(Fetched::Missing) => return Ok(None),
+                    Ok(Fetched::Jpeg(bytes)) => match face_from_jpeg(&bytes) {
+                        Ok(rgba) => return Ok(Some(rgba)),
+                        Err(why) => last = (false, why),
+                    },
+                    Err(why) => last = (true, why),
+                }
             }
             Err(last)
         };
-        let mut found = if entry.anime != 0 { ask(entry.anime) } else { Ok(Fetched::Missing) };
-        if matches!(found, Ok(Fetched::Missing)) && entry.official != 0 { found = ask(entry.official) }
+        let mut found = if entry.anime != 0 { ask(entry.anime) } else { Ok(None) };
+        if matches!(found, Ok(None)) && entry.official != 0 { found = ask(entry.official) }
         match found {
-            Ok(Fetched::Jpeg(bytes)) => {
+            Ok(Some(rgba)) => {
                 lost = 0;
-                match face_from_jpeg(&bytes) {
-                    Ok(rgba) => {
-                        write_png(&face, FACE, &rgba)?;
-                        ours.insert(entry.cid);
-                        save_ids(&marks, &ours)?;
-                        out.saved.push(entry.cid);
-                    }
-                    Err(why) => out.failed.push((entry.cid, why)),
-                }
+                write_png(&face, FACE, &rgba)?;
+                ours.insert(entry.cid);
+                save_ids(&marks, &ours)?;
+                out.saved.push(entry.cid);
             }
-            Ok(Fetched::Missing) => { lost = 0; out.failed.push((entry.cid, "the server has no picture of it".into())) }
-            Err(why) => {
+            Ok(None) => { lost = 0; out.failed.push((entry.cid, "the server has no picture of it".into())) }
+            Err((false, why)) => { lost = 0; out.failed.push((entry.cid, why)) }
+            Err((true, why)) => {
                 lost += 1;
                 out.failed.push((entry.cid, why.clone()));
                 if lost >= GIVE_UP { out.unreachable = Some(why); progress(n as u32 + 1, total); break }
@@ -329,17 +337,17 @@ mod tests {
     }
 
     #[test]
-    fn a_request_is_tried_twice_and_a_server_out_of_reach_stops_the_run() {
+    fn a_request_is_tried_three_times_and_a_server_out_of_reach_stops_the_run() {
         let dir = scratch("unreachable");
         let entries: Vec<Entry> = (1..=8).map(|i| Entry { cid: i, anime: 100 + i, official: 0 }).collect();
-        let mut fake = Fake { failing: 1, ..Fake::default() };
+        let mut fake = Fake { failing: 2, ..Fake::default() };
         fake.pics.insert(101, Ok(jpeg()));
         let one = run(&dir, &entries[..1], &mut fake);
-        assert_eq!((one.saved, fake.asked.len()), (vec![1], 2), "the first try failed, the retry got it");
+        assert_eq!((one.saved, fake.asked.len()), (vec![1], 3), "two tries failed (a timeout, an invalid request), the third got it");
         let mut down = Fake { failing: 1000, ..Fake::default() };
         let out = run(&dir, &entries[1..], &mut down);
         assert_eq!(out.unreachable.as_deref(), Some("no connection"));
-        assert_eq!(down.asked.len(), 6, "three cards, two tries each, then it stops");
+        assert_eq!(down.asked.len(), 9, "three cards, three tries each, then it stops");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

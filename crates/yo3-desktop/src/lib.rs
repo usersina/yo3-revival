@@ -354,6 +354,31 @@ impl Backend {
         let live = self.live(settings).context("Start your server first.")?;
         api::call(&live, &op).map_err(anyhow::Error::msg)
     }
+    /// Unlock all cards on your own server (Settings → Singleplayer → Your data): every artwork of every card, topped up to
+    /// three copies, for every player. Asked of the running server, else done in its stopped data folder under its lock
+    /// (the account it would make at its first start made first, so a new player gets them too). The server's sentence.
+    pub fn unlock_cards(&self, settings: &Settings) -> anyhow::Result<String> {
+        let op = Op::UnlockCards { player: None };
+        let done = match self.live(settings) {
+            Some(live) => api::call(&live, &op).map_err(anyhow::Error::msg)?,
+            None => {
+                let data = self.data_dir(settings);
+                let game = PathBuf::from(&settings.game_dir);
+                let _lock = yo3_server::store::lock(&data)?;
+                yo3_server::store::initialize(&data)?;
+                yo3_server::store::interrupt_effects(&data)?;
+                let mut directory = yo3_server::accounts::Directory::open(vec![], &data.join("accounts.json"))?;
+                if directory.entries().next().is_none() { directory.add_account(std::slice::from_ref(&settings.player_name)).map_err(anyhow::Error::msg)?; }
+                let live = yo3_server::settings::Live::open(Some(&data.join("settings.json")), banlists(&game))?;
+                let offline = api::Api::new(Arc::new(Mutex::new(directory)), Arc::new(live), Some(data), game, "offline");
+                offline.apply_request(&op, "Desktop", "offline", None, &yo3_server::logins::new_token()).map_err(anyhow::Error::msg)?
+            }
+        };
+        Ok(match done["added"].as_u64().unwrap_or(0) {
+            0 => "Every card was already unlocked.".to_owned(),
+            added => format!("Every card is unlocked: {added} cards added."),
+        })
+    }
     pub fn start_server(&self, settings: &Settings) -> anyhow::Result<Value> {
         let mut owned = self.server.lock().unwrap();
         self.check_server_resources()?;
