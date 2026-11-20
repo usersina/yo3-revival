@@ -798,11 +798,10 @@ mod tests {
     }
 
     #[test]
-    fn a_held_card_keeps_its_current_behaviour_with_the_setting_on() {
+    fn a_retained_card_keeps_its_current_behaviour_with_the_setting_on() {
         let Some(vendor) = fetched_vendor() else { return };
-        // Thousand Dragon (a Fusion Monster in the client, a Main Deck Effect Monster in the anime, whose effect the Deck triggers)
-        // and Clear Vice Dragon (the game shows "?" for the ATK that the anime database spells as 0).
-        let held = [4075, 8538];
+        // Thousand Dragon and Time Wizard keep the game's version on purpose (`DEFAULT_RETAINED` in tools/engine/anime-map.py).
+        let held = [4075, 4022];
         let off = check(&vendor, false, &held);
         let on = check(&vendor, true, &held);
         for (a, b) in off.iter().zip(&on) {
@@ -810,7 +809,7 @@ mod tests {
             assert_eq!(b["anime"], false);
         }
         assert_eq!(on[0]["passcode"], 41462083, "Thousand Dragon's own passcode");
-        assert_eq!(on[1]["passcode"], 97811903, "Clear Vice Dragon's own passcode");
+        assert_eq!(on[1]["passcode"], 71625222, "Time Wizard's own passcode");
     }
 
     #[test]
