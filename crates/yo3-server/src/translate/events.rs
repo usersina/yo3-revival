@@ -1012,7 +1012,17 @@ impl Translator {
         let at = Loc { location: c.loc.location & !loc::OVERLAY, ..c.loc.clone() };
         let Some(place) = self.engine_place(&at) else { return vec![] };
         let index = if place.zone <= zone::FIELD_SPELL { 0 } else { place.index };
-        let Some(card) = self.sides[place.player as usize].zones.get(&place.zone).and_then(|z| z.get(index)).copied() else { return vec![] };
+        let pile = self.sides[place.player as usize].zones.get(&place.zone);
+        // A card activating from the Deck (an effect used from the Deck, Theinen the Great Sphinx's) is found by its id: the
+        // mirror's Deck is in the order of the opening, so the card at its index 0 is some other card, which would have been
+        // named to both players as the one that activates.
+        let card = if place.zone == zone::DECK {
+            let cid = c.loc.cid.unwrap_or(0) as u16;
+            pile.and_then(|z| z.iter().find(|d| self.cards.get(&d.row).map(|s| s.cid) == Some(cid))).copied()
+        } else {
+            pile.and_then(|z| z.get(index)).copied()
+        };
+        let Some(card) = card else { return vec![] };
         let cid = self.cards.get(&card.row).map_or(0, |c| c.cid as u32);
         let mut out = vec![];
         if (5..=zone::FIELD_SPELL).contains(&place.zone) {

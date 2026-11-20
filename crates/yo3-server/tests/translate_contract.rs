@@ -1903,6 +1903,62 @@ fn a_summon_from_the_deck_is_offered_on_the_deck_pile() {
     assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 1, "action": 1, "index": 1 }))));
 }
 
+/// A duel against a player: rows 100.. are the client's deck, 200.. the opponent's, whose cards the client gets with row 0.
+fn against_a_player() -> Translator {
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 10 * r as u32, def: 1000, level: 4, attribute: 2, race: 12 };
+    let cids = (100..110).chain(200..210).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
+    let (client, other): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
+    Translator::against_player(0, [&client, &other], cids).0
+}
+
+#[test]
+fn a_deck_trigger_is_asked_and_both_answers_reach_the_engine() {
+    // An optional trigger of a card in the Deck (Theinen the Great Sphinx's EVENT_LEAVE_FIELD, range hand and Deck): the
+    // engine's MSG_SELECT_CHAIN lists it at location 1. The client's chain question is the same Yes/No dialog with the
+    // card's face (row 101 here, found among the Deck's cards by its id), and Yes and No both answer the engine: the
+    // duel check's round trip finds no answer the dialog cannot give.
+    let mut t = with_cards();
+    let theinen = card_at(0, 1, 20, 4101);
+    let Prompt::Client(out) = t.prompt(&select_chain(1, false, json!([theinen.clone()]))) else { panic!("the client chooses") };
+    let faces: Vec<_> = out.iter().map(cmd).filter(|(id, _)| *id == 0x3F2).collect();
+    assert_eq!(faces, [(0x3F2, [101, 0, 0, 0])], "the question shows the Deck card's face");
+    assert!(out.iter().map(cmd).any(|c| c.0 == 0x36), "and asks it as the effect dialog");
+    assert_eq!(t.unreachable_answers(), Vec::<String>::new());
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 8, "index": 0 }))), "Yes chains the Deck card's effect");
+    t.prompt(&select_chain(1, false, json!([theinen])));
+    assert_eq!(t.dialog_result(0), Some(Prompt::Answer(json!({ "type": 8, "index": null }))), "No leaves it");
+}
+
+#[test]
+fn a_deck_trigger_shows_the_opponent_only_the_card_that_activates() {
+    // The same trigger as the opponent's client sees it (against a player, the other side's rows are 0): the effect's
+    // activation names the activating card (row 207 here, engine sequence 20 of a Deck whose first card is another one),
+    // never the card the mirror lists first; the script's own MSG_CONFIRM_CARDS reveals the card to the opponent, and its
+    // move to the field shows its face. No other card of the Deck is named anywhere in what the client receives.
+    let mut t = against_a_player();
+    let mut stream = vec![];
+    let sphinx = |location: u32, sequence: u32, position: u32| loc(1, location, sequence, position);
+    stream.extend(t.events(&[json!({ "type": 70, "code": 4207, "cid": 4207, "controller": 1, "location": 1, "sequence": 20, "position": 8,
+        "triggering_controller": 1, "triggering_location": 1, "triggering_sequence": 20, "description": 0, "chain_size": 1 })]));
+    stream.extend(t.events(&[
+        json!({ "type": 100, "player": 1, "amount": 1000 }),
+        json!({ "type": 31, "player": 0, "cards": [{ "cid": 4207, "code": 4207, "controller": 1, "location": 1, "sequence": 20 }] }),
+        json!({ "type": 71, "chain_size": 1 }),
+        json!({ "type": 72, "chain_size": 1 }),
+        json!({ "type": 50, "cid": 4207, "from": sphinx(1, 20, 8), "to": sphinx(4, 2, 1), "reason": 0x800 }),
+        json!({ "type": 73, "chain_size": 1 }),
+        json!({ "type": 74 }),
+    ]));
+    let hidden = |v: u32| (200..210).contains(&v) && v != 207 || (4200..4210).contains(&v) && v != 4207;
+    for m in &stream {
+        let (id, params) = cmd(m);
+        assert!(!params.iter().any(|&p| hidden(p)), "command {id:#x} {params:?} names a Deck card that did not activate");
+    }
+    let activated = stream.iter().map(cmd).find(|(id, _)| *id == 0x22).expect("the activation plays");
+    assert_eq!(activated.1[1], 4207, "{activated:?}");
+    assert!(stream.iter().map(cmd).any(|(id, p)| id == 1000 && p[1] == 207), "the card's face shows when it lands on the field");
+}
+
 #[test]
 fn with_several_cards_able_a_piles_command_asks_which() {
     // Two extra deck monsters can be Special Summoned: the pile's Special Summon opens a card list of them with the
