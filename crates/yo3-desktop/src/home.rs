@@ -796,14 +796,17 @@ const WELCOME: [(&str, &str); 3] = [
     ("Beta", "Multiplayer: sign in to a server with your User ID"),
 ];
 
+/// A server's news is written with `code` spans; the panel shows their words without the backticks.
+fn plain(text: &str) -> String { text.replace('`', "") }
+
 /// The Information panel: a title and a line per entry (Singleplayer's welcome, or the selected server's news).
 fn news<'a>(items: Vec<(String, String)>) -> Element<'a, Message> {
     let mut list = column![];
     for (i, (title, body)) in items.into_iter().enumerate() {
         let shade = if i % 2 == 0 { color::ROW } else { color::ROW_ALT };
         list = list.push(container(column![
-            text(title).font(BODY_BOLD).size(15).color(color::NAVY),
-            text(body).size(15).color(color::INK),
+            text(plain(&title)).font(BODY_BOLD).size(15).color(color::NAVY),
+            text(plain(&body)).size(15).color(color::INK),
         ].spacing(2)).padding([9, 12]).width(Fill)
             .style(move |_| container::Style { background: Some(shade.into()), ..container::Style::default() }));
     }
@@ -1102,6 +1105,12 @@ mod tests {
         state.notice = Some(Notice::problem("already running", None));
         let _ = state.update(Message::Started(Ok(false)), &mut ctx);
         assert!(state.notice.is_none(), "a settled start clears it");
+    }
+
+    #[test]
+    fn news_code_spans_show_without_backticks() {
+        assert_eq!(plain("Use `/help` and `/rules` in chat."), "Use /help and /rules in chat.");
+        assert_eq!(plain("no code"), "no code");
     }
 
     #[test]

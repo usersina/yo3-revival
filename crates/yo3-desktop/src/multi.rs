@@ -729,6 +729,8 @@ impl State {
     fn play(&self) -> (&'static str, Option<Message>, String) {
         let Some(server) = self.selected() else { return ("LOG IN", None, "Add a server first.".into()) };
         match self.status.get(server.key()) {
+            // Your own hosted server (at this PC's address) that isn't running: Retry can't start it, Host for friends can.
+            Some(Status::Offline) if is_own_hosted(server) => return ("START HOSTING", Some(Message::Host), "Your hosted server isn't running.".into()),
             Some(Status::Offline) => return ("RETRY", Some(Message::Retry), String::new()),
             Some(Status::Maintenance) => return ("RETRY", Some(Message::Retry), "The server is in maintenance.".into()),
             Some(Status::NeedsUpdate { min }) => return ("UPDATE", Some(Message::Remedy(Remedy::Update)), format!("This server needs YO3 Revival {min} or newer.")),
@@ -966,6 +968,9 @@ fn fingerprint(identity: &str) -> String {
     identity.as_bytes().chunks(4).map(|c| std::str::from_utf8(c).unwrap_or("")).collect::<Vec<_>>().join(" ")
 }
 
+/// The server Host for friends made on this PC: in the list at this PC's own address (app.rs adds it as 127.0.0.1).
+fn is_own_hosted(server: &Server) -> bool { !server.official && server.address.starts_with("127.0.0.1:") }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1024,6 +1029,18 @@ mod tests {
         let _ = state.update(Message::Recheck(key.clone()), &ctx());
         assert!(!state.status.contains_key(&key), "no last check left showing while the new one runs");
         assert_eq!(State::row_status(state.status.get(&key)).1, State::row_status(None).1);
+    }
+
+    #[test]
+    fn your_own_stopped_hosted_server_offers_to_start_it() {
+        let mut state = tab(Status::Offline, None);
+        state.servers[0] = yo3_desktop::hosting::hosted_server("Friday (yours)", "127.0.0.1", 7443, &"ab".repeat(32)).unwrap();
+        let key = state.servers[0].key().to_string();
+        state.selected = Some(key.clone());
+        state.status.insert(key, Status::Offline);
+        let (label, action, _) = state.play();
+        assert_eq!(label, "START HOSTING");
+        assert!(matches!(action, Some(Message::Host)), "the same action as Host for friends");
     }
 
     #[test]
