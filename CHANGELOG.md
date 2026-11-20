@@ -25,7 +25,8 @@ Older entries describe their release at the time. For current setup, use the [RE
 - The Settings cog moved from the title bar to the bottom left. The footer has a red-heart **Support us** and a new **Help &
   contact** window: read the guide, ask the community, or report a problem.
 - Fixed: choosing another game folder in setup no longer asks Windows for permission to tidy a folder another launcher set
-  up; the anime picture count refreshes when you come back to it; after Sign out you can type your User ID straight away.
+  up; the anime picture count refreshes when you come back to it; after Sign out you can type your User ID straight away;
+  Cancel during a slow start no longer shows "Start your server first."
 
 ## v0.1.5 (2026-11-20)
 
