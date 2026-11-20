@@ -177,14 +177,24 @@ impl Translator {
                 self.picks.clear();
                 Prompt::Client(out)
             }
-            Ask::Race(_) | Ask::Attrib(_) | Ask::Number(_) | Ask::CardName(_) => match declaration(&ask, std::mem::take(&mut self.hint) == hintmsg::LVRANK) {
-                Some(out) => {
-                    self.pending = Some(m.clone());
-                    Prompt::Client(out)
+            Ask::Race(_) | Ask::Attrib(_) | Ask::Number(_) | Ask::CardName(_) => {
+                let hint = std::mem::take(&mut self.hint);
+                match declaration(&ask, hint == hintmsg::LVRANK) {
+                    Some(out) => {
+                        self.pending = Some(m.clone());
+                        Prompt::Client(out)
+                    }
+                    None if matches!(ask, Ask::CardName(_)) => Prompt::Answer(self.cpu_card_name(m)),
+                    // Several Types, numbers beyond the number dialog: asked in steps where the dialogs can.
+                    None => match self.declaration_steps(&ask, hint) {
+                        Some(out) => {
+                            self.pending = Some(m.clone());
+                            Prompt::Client(out)
+                        }
+                        None => Prompt::Answer(cpu_answer(m)),
+                    },
                 }
-                None if matches!(ask, Ask::CardName(_)) => Prompt::Answer(self.cpu_card_name(m)),
-                None => Prompt::Answer(cpu_answer(m)),
-            },
+            }
             // A zone an effect takes (Ground Collapse's, Senet Switch's move): the client's own prompt in an OK dialog, then
             // the zones as click targets (`zone_map`).
             Ask::Disfield(p) if !free_zones(p).is_empty() => self.zone_prompt(m),
@@ -287,7 +297,9 @@ impl Translator {
     /// a free monster zone of its player (`token` puts it at its own zone).
     pub(super) fn position_dialog(&mut self, p: &SelectPosition) -> Option<Vec<Message>> {
         let allowed = p.positions;
-        if allowed & (pos::FACEUP_ATTACK | pos::FACEDOWN_ATTACK) == 0 {
+        let (attacks, defenses) = position_sides(allowed);
+        // One position is no choice; two of one side are asked in steps (see `Steps`).
+        if attacks.is_empty() && defenses.len() < 2 {
             return None;
         }
         let cid = p.cid.unwrap_or(0) as u16;
@@ -336,9 +348,153 @@ impl Translator {
             (None, None) => (0, cid),
         };
         let face_up = if allowed & pos::FACEUP_DEFENSE != 0 { dialog::FACE_UP_DEFENSE } else { 0 };
+        // Two positions of the only side there is: no side to choose, the Select dialog at once.
+        let only = if attacks.is_empty() { Some(defenses.clone()) } else if defenses.is_empty() && attacks.len() > 1 { Some(attacks.clone()) } else { None };
+        if let Some(options) = only {
+            out.extend(self.position_choice(&options, name as u32));
+            self.asking = Asking::Steps(Steps::Position { options });
+            return Some(out);
+        }
         out.extend(message(&[entry::TEXT | text::POSITION, entry::CARD_NAME | name as u32]));
         out.push(Cmd::Dialog { kind: dialog::POSITION, message: dialog::FROM_ENTRIES, param: uid | face_up }.message());
+        if attacks.len() > 1 || defenses.len() > 1 {
+            self.asking = Asking::Steps(Steps::PositionSide { name: name as u32 });
+        }
         Some(out)
+    }
+
+    /// The Select dialog of a position prompt's positions on one side (two, face-up and face-down), under the position
+    /// dialog's message, worded by the server through the connection DLL.
+    pub(super) fn position_choice(&mut self, options: &[u64], name: u32) -> Vec<Message> {
+        let mut out = vec![];
+        let labels: Vec<u32> = options
+            .iter()
+            .map(|&p| POSITION_WORDS.iter().find(|(bit, _)| *bit == p).map_or("Position", |&(_, words)| words))
+            .map(|words| self.text(&mut out, words) | dialog::LISTED)
+            .collect();
+        out.push(command(cmd::LIST_BEGIN, [labels.len() as u32, 0, 0, 0]));
+        out.extend(fours(cmd::LIST_VALUES, &labels));
+        out.extend(message(&[entry::TEXT | text::POSITION, entry::CARD_NAME | name]));
+        out.push(Cmd::Dialog { kind: dialog::SELECT, message: dialog::FROM_ENTRIES, param: 0 }.message());
+        out
+    }
+
+    /// The steps of a declaration the client's dialogs can't make in one (several Types, a number out of the number
+    /// dialog's range): the first window, with the state the next result needs. None when it can't be asked at all
+    /// (fewer Types than declared, no options), which takes the automatic answer.
+    pub(super) fn declaration_steps(&mut self, ask: &Ask, hint: u64) -> Option<Vec<Message>> {
+        match ask {
+            Ask::Race(a) if a.count > 1 && TYPES.iter().filter(|&&b| a.available & b != 0).count() as u64 >= a.count => {
+                self.asking = Asking::Steps(Steps::Types { picked: vec![] });
+                Some(self.type_step(a, &[]))
+            }
+            Ask::Number(n) if !n.options.is_empty() => {
+                let mut out = vec![];
+                let title = if hint == hintmsg::LVRANK {
+                    text::LEVEL
+                } else {
+                    match self.hint_message(&mut out, hint) {
+                        Some(title) => title,
+                        None => self.text(&mut out, "Declare a number."),
+                    }
+                };
+                let mut order: Vec<usize> = (0..n.options.len()).collect();
+                order.sort_by_key(|&i| (n.options[i], i));
+                out.extend(self.number_step(&n.options, order, title));
+                Some(out)
+            }
+            _ => None,
+        }
+    }
+
+    /// One Type's dialog of several: the types not declared yet, "Select Type n of m.".
+    pub(super) fn type_step(&mut self, a: &Announce, picked: &[u64]) -> Vec<Message> {
+        let left = picked.iter().fold(a.available, |left, p| left & !p);
+        let bits = TYPES.iter().enumerate().filter(|(_, b)| left & **b != 0).fold(0u32, |f, (i, _)| f | 1 << (i + 1));
+        let mut out = vec![];
+        let words = self.text(&mut out, &format!("Select @3Type {} of {}@0.", picked.len() + 1, a.count));
+        out.extend(message(&[entry::TEXT | words]));
+        out.push(Cmd::Dialog { kind: dialog::TYPE, message: dialog::FROM_ENTRIES, param: bits }.message());
+        out
+    }
+
+    /// A number question narrowed by ranges: `candidates` (indices into the engine's options, by value) in at most four
+    /// labels of equal share, each a range of their values or, with four or fewer, one value each. The Select
+    /// dialog's result picks the share, `Steps::Number` remembering them.
+    pub(super) fn number_step(&mut self, options: &[u64], candidates: Vec<usize>, title: u32) -> Vec<Message> {
+        let size = if candidates.len() <= SELECT_MAX { 1 } else { candidates.len().div_ceil(SELECT_MAX) };
+        let groups: Vec<Vec<usize>> = candidates.chunks(size).map(<[usize]>::to_vec).collect();
+        let mut out = vec![];
+        let labels: Vec<u32> = groups
+            .iter()
+            .map(|g| {
+                let (lo, hi) = (options[g[0]], options[g[g.len() - 1]]);
+                let words = if lo == hi { lo.to_string() } else { format!("{lo}-{hi}") };
+                self.text(&mut out, &words) | dialog::LISTED
+            })
+            .collect();
+        out.push(command(cmd::LIST_BEGIN, [labels.len() as u32, 0, 0, 0]));
+        out.extend(fours(cmd::LIST_VALUES, &labels));
+        out.extend(message(&[entry::TEXT | title]));
+        out.push(Cmd::Dialog { kind: dialog::SELECT, message: dialog::FROM_ENTRIES, param: 0 }.message());
+        self.asking = Asking::Steps(Steps::Number { groups, title });
+        out
+    }
+
+    /// A result of a stepped choice (`Steps`): the next window, or the answer.
+    pub(super) fn step_result(&mut self, steps: Steps, count: u32) -> Option<Prompt> {
+        let m = self.pending.clone()?;
+        let ask = Ask::lenient(&m).ok()??;
+        // A result the step has no answer for (a stale click) asks the whole question again.
+        let again = |t: &mut Translator| Some(t.prompt(&m));
+        match (steps, &ask) {
+            (Steps::PositionSide { name }, Ask::Position(p)) => {
+                let (attacks, defenses) = position_sides(p.positions);
+                let side = if count == 0 { attacks } else { defenses };
+                match side[..] {
+                    [] => again(self),
+                    [one] => {
+                        self.pending = None;
+                        Some(Prompt::Answer(Response::Position(one).json()))
+                    }
+                    _ => {
+                        let out = self.position_choice(&side, name);
+                        self.asking = Asking::Steps(Steps::Position { options: side });
+                        Some(Prompt::Client(out))
+                    }
+                }
+            }
+            (Steps::Position { options }, Ask::Position(_)) => match options.get(count as usize) {
+                Some(&position) => {
+                    self.pending = None;
+                    Some(Prompt::Answer(Response::Position(position).json()))
+                }
+                None => again(self),
+            },
+            (Steps::Types { mut picked }, Ask::Race(a)) => {
+                let race = TYPES.get((count as usize).wrapping_sub(1)).copied().filter(|r| a.available & r != 0 && !picked.contains(r));
+                if let Some(race) = race {
+                    picked.push(race);
+                }
+                if picked.len() as u64 >= a.count {
+                    self.pending = None;
+                    return Some(Prompt::Answer(Response::Race(picked).json()));
+                }
+                let out = self.type_step(a, &picked);
+                self.asking = Asking::Steps(Steps::Types { picked });
+                Some(Prompt::Client(out))
+            }
+            (Steps::Number { groups, title }, Ask::Number(n)) => match groups.get(count as usize) {
+                Some(group) if group.len() == 1 => {
+                    self.pending = None;
+                    Some(Prompt::Answer(Response::Number(group[0] as u64).json()))
+                }
+                Some(group) => Some(Prompt::Client(self.number_step(&n.options, group.clone(), title))),
+                // Back to this step's labels (the texts they used may be gone from the DLL's slots).
+                None => Some(Prompt::Client(self.number_step(&n.options, groups.concat(), title))),
+            },
+            _ => None,
+        }
     }
 
     /// MSG_SELECT_CHAIN {spe_count, forced, hint_timing, selects}: the question shows the cards, names the chain's last
@@ -529,6 +685,7 @@ impl Translator {
                 let m = self.pending.clone()?;
                 return Some(self.prompt(&m));
             }
+            Asking::Steps(steps) => return self.step_result(steps, count),
             Asking::Surrender => return self.surrender_answer(count == 1),
             Asking::SurrenderEarly => return self.surrender_answer(false),
             Asking::PileView => {

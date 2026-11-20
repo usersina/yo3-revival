@@ -13,7 +13,7 @@ use yo3_proto::{Message, Value};
 
 use crate::card_options::CARD_OPTION_LABELS;
 use crate::duel::{CLIENT, CPU, CardCommand, ClientRequest, TEXT_IDS, TEXT_SLOTS, command, command_data, text_message};
-use crate::ocg::message::{AnnounceCard, Ask, Attack, Battle, Chaining, Coded, Confirm, Counter, DeckTop, Event, Field, FieldDisabled, Link, Loc, Move, Shuffle, ShuffleSet, Swap, SwapGraveDeck, SelectCard, SelectChain, SelectOption, SelectPlace, SelectPosition, SelectSum};
+use crate::ocg::message::{Announce, AnnounceCard, Ask, Attack, Battle, Chaining, Coded, Confirm, Counter, DeckTop, Event, Field, FieldDisabled, Link, Loc, Move, Shuffle, ShuffleSet, Swap, SwapGraveDeck, SelectCard, SelectChain, SelectOption, SelectPlace, SelectPosition, SelectSum};
 use crate::ocg::{Response, battle, hint, hintmsg, idle, loc, msg, pos, reason, resp};
 use crate::wire::{Cmd, OPEN, Place, SURRENDERED, SURRENDER_TURN, Target, cmd, dialog, entry, flag, list, menu, mode, move_place, result, table_place, text, zone};
 
@@ -247,6 +247,19 @@ const TYPES: [u64; 22] = [
     0x2, 0x1000, 0x80000, 0x100000, 0x200000,
 ];
 const ATTRIBUTES: [u64; 7] = [0x10, 0x20, 0x2, 0x4, 0x1, 0x8, 0x40];
+/// A position prompt's attack and defense positions in the order the dialogs list them (face-up first). The position
+/// dialog reaches one of each (its two buttons); more than one of a side is asked in a second step.
+pub(super) fn position_sides(allowed: u64) -> (Vec<u64>, Vec<u64>) {
+    let side = |bits: [u64; 2]| bits.into_iter().filter(|b| allowed & b != 0).collect();
+    (side([pos::FACEUP_ATTACK, pos::FACEDOWN_ATTACK]), side([pos::FACEUP_DEFENSE, pos::FACEDOWN_DEFENSE]))
+}
+/// The server's words for a position (the client's dialogs have none for the Select dialog's labels).
+const POSITION_WORDS: [(u64, &str); 4] = [
+    (pos::FACEUP_ATTACK, "Face-up Attack Position"),
+    (pos::FACEDOWN_ATTACK, "Face-down Attack Position"),
+    (pos::FACEUP_DEFENSE, "Face-up Defense Position"),
+    (pos::FACEDOWN_DEFENSE, "Face-down Defense Position"),
+];
 /// WIN's player for a draw.
 const TEAM_DRAW: u64 = 2;
 /// A prompt's card lists: (list name, card menu bit, response action).
@@ -440,6 +453,24 @@ enum Asking {
     /// The Surrender question ("Do you surrender?", Yes/No) or, before the turn it opens, the OK dialog saying when.
     Surrender,
     SurrenderEarly,
+    /// A choice the client's dialogs can't make in one window, asked in steps (#16): see [`Steps`].
+    Steps(Steps),
+}
+
+/// Where a choice asked in several windows stands. Each step is a dialog the client has: the engine's prompt stays
+/// pending until the last one answers it.
+#[derive(Clone, Debug, PartialEq)]
+enum Steps {
+    /// A position prompt of three or four positions (or two of one side): the position dialog is up, whose buttons
+    /// are attack and defense; the side's face-up and face-down positions are asked next (`name`: the card's name entry).
+    PositionSide { name: u32 },
+    /// The Select dialog of positions is up (the engine's bits, in the labels' order).
+    Position { options: Vec<u64> },
+    /// Several Types declared one dialog at a time: the races (EDOPro's bits) declared so far.
+    Types { picked: Vec<u64> },
+    /// A number the number dialog can't show, narrowed by ranges: the options (indices of the engine's list, by value)
+    /// each label stands for, and the dialog's title text.
+    Number { groups: Vec<Vec<usize>>, title: u32 },
 }
 
 #[derive(Clone)]

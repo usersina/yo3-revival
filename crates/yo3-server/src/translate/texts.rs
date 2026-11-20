@@ -37,14 +37,18 @@ pub(super) fn message(entries: &[u32]) -> Vec<Message> {
 }
 
 /// The client's dialog for a declaration (MSG_ANNOUNCE_RACE / ATTRIB {count, available}, NUMBER {options}, CARD):
-/// None when it can't ask it (several types at once, numbers outside the number dialog's range). `level`: the number is
+/// None when it can't ask it in one window (several types at once, numbers outside the number dialog's range:
+/// `declaration_steps` asks those in steps). `level`: the number is
 /// a Level (hint 567 before it), which the dialog says; Duel.AnnounceLevel is only an alias of AnnounceNumberRange, and
 /// the client's other cards declare counts and die rolls with it.
 pub(super) fn declaration(ask: &Ask, level: bool) -> Option<Vec<Message>> {
     let bits = |allowed: u64, table: &[u64]| table.iter().enumerate().filter(|(_, b)| allowed & **b != 0).fold(0u32, |f, (i, _)| f | 1 << (i + 1));
     let (dialog, text, param3) = match ask {
-        Ask::Race(a) if a.count == 1 => (dialog::TYPE, text::TYPE, bits(a.available, &TYPES)),
-        Ask::Attrib(a) => (dialog::ATTRIBUTE, text::ATTRIBUTE, bits(a.available, &ATTRIBUTES) << 16 | a.count as u32),
+        // A dialog with no type to pick (the client has none of the available ones) would hold the player.
+        Ask::Race(a) if a.count == 1 && bits(a.available, &TYPES) != 0 => (dialog::TYPE, text::TYPE, bits(a.available, &TYPES)),
+        Ask::Attrib(a) if a.count > 0 && bits(a.available, &ATTRIBUTES).count_ones() as u64 >= a.count => {
+            (dialog::ATTRIBUTE, text::ATTRIBUTE, bits(a.available, &ATTRIBUTES) << 16 | a.count as u32)
+        }
         Ask::Number(n) => {
             let options = &n.options;
             let (unit, format) = number_unit(options)?;

@@ -77,6 +77,22 @@ impl Translator {
         offered.into_iter().filter(|(answer, _)| !reachable.contains(answer)).map(|(_, what)| what).collect()
     }
 
+    /// Every answer a stepped number question can end in: each label of its Select dialog, and of each next dialog in
+    /// turn, down to `depth` steps.
+    fn reached_by_dialogs(&self, depth: usize) -> Vec<Json> {
+        let mut found = vec![];
+        let labels = if let Asking::Steps(Steps::Number { groups, .. }) = &self.asking { groups.len() } else { 0 };
+        for result in 0..labels as u32 {
+            let mut t = self.clone();
+            match t.dialog_result(result) {
+                Some(Prompt::Answer(a)) => found.push(a),
+                Some(Prompt::Client(_)) if depth > 0 => found.extend(t.reached_by_dialogs(depth - 1)),
+                _ => {}
+            }
+        }
+        found
+    }
+
     /// [`unreachable_answers`] for an attack target picked on the field: each target's Confirm, and the right-click.
     pub(super) fn unreachable_targets(&self, choice: &SelectCard) -> Vec<String> {
         let mut missing = vec![];
@@ -193,24 +209,63 @@ impl Translator {
                     cases.push((format!("options[{i}]"), clicks, Response::Option(i as usize).json()));
                 }
             }
-            // Each allowed position: the dialog's button 0 (attack) or 1 (defense).
+            // Each allowed position: the dialog's button 0 (attack) or 1 (defense), then, for two positions of a side, the
+            // Select dialog's label (face-up first).
             Ask::Position(p) => {
-                for (bit, button) in [(pos::FACEUP_ATTACK, 0), (pos::FACEDOWN_ATTACK, 0), (pos::FACEUP_DEFENSE, 1), (pos::FACEDOWN_DEFENSE, 1)] {
-                    if p.positions & bit != 0 {
-                        cases.push((format!("position {bit}"), vec![(vec![], button)], Response::Position(bit).json()));
+                let (attacks, defenses) = position_sides(p.positions);
+                let both = !attacks.is_empty() && !defenses.is_empty();
+                for (button, side) in [(0, &attacks), (1, &defenses)] {
+                    for (i, &bit) in side.iter().enumerate() {
+                        let mut clicks = vec![];
+                        if both || side.len() == 1 {
+                            clicks.push((vec![], button));
+                        }
+                        if side.len() > 1 {
+                            clicks.push((vec![], i as u32));
+                        }
+                        cases.push((format!("position {bit}"), clicks, Response::Position(bit).json()));
                     }
                 }
             }
-            // Each allowed Type and Attribute, one declared (the client's number, or its bit for an attribute).
-            Ask::Race(a) if a.count == 1 => {
-                for (i, &race) in TYPES.iter().enumerate().filter(|(_, r)| a.available & **r != 0) {
-                    cases.push((format!("type {race:#x}"), vec![(vec![], i as u32 + 1)], Response::Race(vec![race]).json()));
+            // Each allowed Type and Attribute, one declared (the client's number, or its bit for an attribute); of several,
+            // each type with each other, one dialog for each.
+            Ask::Race(a) => {
+                let numbers: Vec<(usize, u64)> = TYPES.iter().copied().enumerate().filter(|(_, r)| a.available & r != 0).collect();
+                let count = a.count.max(1) as usize;
+                let mut picks: Vec<Vec<(usize, u64)>> = vec![vec![]];
+                for _ in 0..count {
+                    let mut longer = vec![];
+                    for p in &picks {
+                        for &n in numbers.iter().filter(|n| p.last().is_none_or(|l| n.0 > l.0)) {
+                            longer.push([p.clone(), vec![n]].concat());
+                        }
+                    }
+                    picks = longer;
+                    // Every pair is checked; of three or more, the first types of the list in order.
+                    if count > 2 {
+                        picks.truncate(1);
+                    }
+                }
+                for pick in picks {
+                    let clicks = pick.iter().map(|&(i, _)| (vec![], i as u32 + 1)).collect();
+                    let races: Vec<u64> = pick.iter().map(|&(_, r)| r).collect();
+                    cases.push((format!("types {races:#x?}"), clicks, Response::Race(races).json()));
                 }
             }
             Ask::Attrib(a) if a.count == 1 => {
                 for (i, &attribute) in ATTRIBUTES.iter().enumerate().filter(|(_, b)| a.available & **b != 0) {
                     cases.push((format!("attribute {attribute:#x}"), vec![(vec![], 1 << (i + 1))], Response::Attrib(vec![attribute]).json()));
                 }
+            }
+            // Numbers the number dialog can't show: every option must be the end of some path of the Select dialogs.
+            Ask::Number(n) if matches!(self.asking, Asking::Steps(Steps::Number { .. })) => {
+                let reached = self.reached_by_dialogs(12);
+                for i in 0..n.options.len() as u64 {
+                    if !reached.contains(&Response::Number(i).json()) {
+                        cases.push((format!("number {}", n.options[i as usize]), vec![], Response::Number(i).json()));
+                    }
+                }
+                return cases.into_iter().map(|(what, _, _)| format!("{what} of a {ask:?} prompt")).collect();
             }
             // Each number offered, as the dialog sends it (in its unit).
             Ask::Number(n) => {
