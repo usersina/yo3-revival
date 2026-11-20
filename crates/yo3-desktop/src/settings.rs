@@ -111,6 +111,12 @@ pub enum Message {
     PicturesAdded(Result<Option<yo3_launcher::art::pack::Imported>, String>),
     SavePictures,
     PicturesSaved(Result<Option<yo3_launcher::art::pack::Exported>, String>),
+    /// The Anime cards switch (#60): the server's value, the player's click, and the server's answer.
+    AnimeRead(Result<bool, String>),
+    AnimeCards(bool),
+    AnimeSet(bool, Result<bool, String>),
+    /// Close the pictures dialog (during a download: stops it too).
+    PicturesDialogClose,
     /// Handled by the window: open a web page or a folder.
     Open(String),
     ToggleDetails,
@@ -121,6 +127,16 @@ pub enum Message {
     Report(String),
     /// Handled by the window: back to the main screen.
     Close,
+}
+
+/// The dialog the Anime cards switch opens when pictures are missing: the offer, then (once Get pictures is pressed) the
+/// download on the shared bar, then its result.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Dialog { Offer, Result { good: bool, sentence: String } }
+
+/// How many cards still have no picture, when there are any (the switch offers the download only then).
+pub fn offer(pictures: Option<(usize, usize)>) -> Option<usize> {
+    pictures.map(|(have, total)| total.saturating_sub(have)).filter(|&missing| missing > 0)
 }
 
 /// One plain sentence, good or not, with the technical text behind Details.
@@ -150,6 +166,12 @@ pub struct State {
     art_problem: Option<String>,
     /// Adding or saving a zip: the wait is shown on the pictures' own bar.
     art_busy: Option<&'static str>,
+    /// Your own server's anime-cards value, as the server says (`None` until read, or when it can't be).
+    anime: Option<bool>,
+    /// The pictures dialog, opened by turning Anime cards on while pictures are missing.
+    dialog: Option<Dialog>,
+    /// The switch went on before the pictures were counted: offer them when the count is in.
+    offer_when_counted: bool,
 }
 
 pub const LICENCES: &str = "YO3 Revival is free software under the MIT licence. Its rules engine is built on EDOPro's core and ProjectIgnis' \
@@ -161,11 +183,17 @@ impl State {
     pub fn new(ctx: &Ctx, section: Section) -> Self {
         Self { section, note: None, busy: None, direct: Direct::Unknown, prefix: ctx.settings.wine_prefix.clone(), wine: ctx.settings.wine_binary.clone(),
             confirm_reset: false, confirm_game_reset: false, licences: false, update: None, shortcut: yo3_desktop::shortcut::exists(),
-            moved: yo3_desktop::foreign::moved_aside(std::path::Path::new(&ctx.settings.game_dir)), pictures: None, getting: None, art_problem: None, art_busy: None }
+            moved: yo3_desktop::foreign::moved_aside(std::path::Path::new(&ctx.settings.game_dir)), pictures: None, getting: None, art_problem: None, art_busy: None, anime: None, dialog: None, offer_when_counted: false }
     }
 
     /// The first tasks: what direct start is like now, and how many anime pictures there are.
-    pub fn start(&self, ctx: &Ctx) -> Task<Message> { Task::batch([self.check_direct(ctx), self.count_pictures(ctx)]) }
+    pub fn start(&self, ctx: &Ctx) -> Task<Message> { Task::batch([self.check_direct(ctx), self.count_pictures(ctx), self.read_anime(ctx)]) }
+
+    fn read_anime(&self, ctx: &Ctx) -> Task<Message> {
+        let Some(backend) = ctx.backend.clone() else { return Task::none() };
+        let settings = ctx.settings.clone();
+        Task::perform(async move { tokio::task::spawn_blocking(move || backend.anime_cards(&settings).map_err(|e| format!("{e:#}"))).await.unwrap_or_else(|e| Err(e.to_string())) }, Message::AnimeRead)
+    }
 
     fn count_pictures(&self, ctx: &Ctx) -> Task<Message> {
         let dir = yo3_launcher::art::folder_in(&ctx.root);
@@ -337,7 +365,41 @@ impl State {
                     Err(error) => self.fail(ctx, &format!("Couldn't check for updates.\n{error}")), // → Details
                 }
             }
-            Message::PicturesCounted(counts) => self.pictures = Some(counts),
+            Message::PicturesCounted(counts) => {
+                self.pictures = Some(counts);
+                if std::mem::take(&mut self.offer_when_counted) && offer(self.pictures).is_some() && self.anime == Some(true) { self.dialog = Some(Dialog::Offer) }
+            }
+            Message::AnimeRead(Ok(on)) => self.anime = Some(on),
+            Message::AnimeRead(Err(_)) => self.anime = None,
+            Message::AnimeCards(on) => {
+                let Some(backend) = ctx.backend.clone() else { return Task::none() };
+                let settings = ctx.settings.clone();
+                self.busy = Some(if on { "Turning anime cards on…" } else { "Turning anime cards off…" });
+                return job(move || backend.set_anime_cards(&settings, on), move |result| Message::AnimeSet(on, result));
+            }
+            Message::AnimeSet(on, Ok(now)) => {
+                self.busy = None;
+                self.anime = Some(now);
+                if now != on { self.fail(ctx, "The server didn't take the change."); return Task::none() }
+                self.good(match (on, playing) {
+                    (true, true) => "Anime cards are on. The open game needs a restart to show them: use RESTART THE GAME.",
+                    (true, false) => "Anime cards are on. They show from the next game start.",
+                    (false, true) => "Anime cards are off. The open game needs a restart to show the game's own cards: use RESTART THE GAME.",
+                    (false, false) => "Anime cards are off from the next game start.",
+                });
+                if on {
+                    match (offer(self.pictures), self.pictures) {
+                        (Some(_), _) => self.dialog = Some(Dialog::Offer),
+                        (None, None) => self.offer_when_counted = true,
+                        (None, Some(_)) => {}
+                    }
+                }
+            }
+            Message::AnimeSet(_, Err(error)) => { self.busy = None; self.fail(ctx, &error) }
+            Message::PicturesDialogClose => {
+                if let Some((_, _, cancel)) = &self.getting { pictures::stop(cancel) }
+                self.dialog = None;
+            }
             Message::GetPictures => {
                 if self.getting.is_some() { return Task::none() }
                 let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
@@ -366,9 +428,9 @@ impl State {
                             out.unreachable.as_deref().map(|why| format!(" (server not reached: {why})")).unwrap_or_default())) }
                         let mut sentence = sentence;
                         if good || !out.saved.is_empty() { sentence.push_str(if playing { " The open game shows them after you close it and press PLAY again." } else { " They show from the next PLAY." }) }
-                        self.note = Some(Note { good, sentence, details: None, open: false });
+                        if self.dialog.is_some() { self.dialog = Some(Dialog::Result { good, sentence }) } else { self.note = Some(Note { good, sentence, details: None, open: false }) }
                     }
-                    Err(error) => self.fail(ctx, &error),
+                    Err(error) => if self.dialog.is_some() { self.dialog = Some(Dialog::Result { good: false, sentence: "The pictures couldn't be saved. Try Get pictures again in Settings.".into() }) } else { self.fail(ctx, &error) },
                 }
                 return self.count_pictures(ctx);
             }
@@ -447,7 +509,11 @@ impl State {
         if let Some(note) = &self.note { content = content.push(self.note(note)) }
         let content = content.push(body);
         let panel = yo3_skin::panel(Some(self.section.title()), scrollable(content.padding([0, 14])).height(Fill));
-        row![container(tabs).width(200).height(Fill), container(panel).width(Fill).height(Fill)].spacing(16).padding([16, 18]).height(Fill).into()
+        let screen: Element<'_, Message> = row![container(tabs).width(200).height(Fill), container(panel).width(Fill).height(Fill)].spacing(16).padding([16, 18]).height(Fill).into();
+        match &self.dialog {
+            Some(dialog) => yo3_skin::modal(screen, self.pictures_dialog(dialog), Message::PicturesDialogClose),
+            None => screen,
+        }
     }
 
     fn note<'a>(&'a self, note: &'a Note) -> Element<'a, Message> {
@@ -505,6 +571,43 @@ impl State {
                 pill(if self.shortcut { "Make again" } else { "Add" }, self.busy.is_none().then_some(Message::Shortcut), Kind::Secondary, 120, 32)]
                 .spacing(10).align_y(Center).into()),
         ].spacing(16).into()
+    }
+
+    /// The dialog of the Anime cards switch: what is about to be downloaded, the download, its result.
+    fn pictures_dialog<'a>(&'a self, dialog: &'a Dialog) -> Element<'a, Message> {
+        let close = Message::PicturesDialogClose;
+        let (have, total) = self.pictures.unwrap_or((0, 0));
+        let body: Element<'_, Message> = match (&self.getting, dialog) {
+            (Some(_), _) => {
+                let (bar, words) = self.pictures_bar();
+                column![text("Getting the pictures. You can cancel at any time: the cards that have one keep it.").size(15).color(color::INK),
+                    yo3_skin::progress_bar(bar, words, 24.0), Space::new().height(Fill),
+                    row![Space::new().width(Fill), pill("Cancel", Some(Message::CancelPictures), Kind::Secondary, 130, 38)]].spacing(14).into()
+            }
+            (None, Dialog::Offer) => column![
+                text("Anime cards are on. To see their anime artwork, YO3 Revival can get the pictures now.").size(15).color(color::INK),
+                text(format!("{} from ProjectIgnis' picture server, one card at a time. {} of {total} cards still have no picture. A card without a picture keeps the game's artwork. \
+                    Nothing is downloaded unless you press Get pictures.", pictures::SIZE_NOTE, total.saturating_sub(have))).size(14).color(color::INK_SOFT),
+                Space::new().height(Fill),
+                row![Space::new().width(Fill), pill("Not now", Some(close.clone()), Kind::Secondary, 130, 38), pill("Get pictures", Some(Message::GetPictures), Kind::Primary, 160, 38)].spacing(10)].spacing(14).into(),
+            (None, Dialog::Result { good, sentence }) => column![
+                yo3_skin::rule(if *good { yo3_skin::Rule::Met } else { yo3_skin::Rule::Broken }, sentence.as_str()),
+                Space::new().height(Fill),
+                row![Space::new().width(Fill), pill("Close", Some(close.clone()), Kind::Primary, 130, 38)]].spacing(14).into(),
+        };
+        yo3_skin::dialog("Anime pictures", None, close, 520.0, 250.0, body)
+    }
+
+    /// The Anime cards switch of Settings → Singleplayer: your own server's value, which the server owns.
+    fn anime_cards_view(&self, playing: bool) -> Element<'_, Message> {
+        let idle = self.busy.is_none() && self.getting.is_none();
+        let mut col = column![
+            checkbox(self.anime == Some(true)).label("Anime cards").on_toggle_maybe((idle && self.anime.is_some()).then_some(Message::AnimeCards)).style(yo3_skin::tick).size(16).text_size(15),
+            text("Play and see some cards as they were in the anime. Takes effect from the next game start.").size(14).color(color::INK_SOFT),
+        ].spacing(6);
+        if self.anime.is_none() { col = col.push(text("The setting can't be read right now.").size(14).color(color::INK_SOFT)) }
+        if playing && self.anime.is_some() { col = col.push(text("With the game open, changing it makes RESTART THE GAME appear on the main screen.").size(14).color(color::INK_SOFT)) }
+        col.into()
     }
 
     /// The anime card pictures (#60): how many there are and the three ways to get more.
@@ -571,6 +674,7 @@ impl State {
                 pill("Reset", Some(Message::ResetData(true)), Kind::Danger, 100, 32), yo3_skin::link("Cancel", Message::ResetData(false), false)].spacing(10).align_y(Center);
         }
         column![
+            item("Anime cards", self.anime_cards_view(playing)),
             item("Banlist", column![banlist, text("The banlist your own server checks decks against. From the next PLAY.").size(14).color(color::INK_SOFT)].spacing(6).into()),
             item("Backups", column![
                 text("Your server keeps a backup from each of its last starts.").size(14).color(color::INK_SOFT),
@@ -737,6 +841,77 @@ mod tests {
         assert_eq!(state.pictures_bar(), (Bar::Done, "418 of 418 pictures ready".to_owned()));
         // The words on the bar are plain.
         for words in ["Starting…", "Stopping…", "The picture server can't be reached", "400 of 418 pictures ready: 18 not fetched"] { assert_eq!(yo3_desktop::words::technical(words), None) }
+    }
+
+    #[test]
+    fn the_anime_cards_switch_offers_the_download_only_when_pictures_are_missing() {
+        assert_eq!((offer(None), offer(Some((418, 418))), offer(Some((167, 418))), offer(Some((0, 0)))), (None, None, Some(251), None));
+        let mut ctx = ctx();
+        let turn_on = |state: &mut State, ctx: &mut Ctx| { let _ = state.update(Message::AnimeSet(true, Ok(true)), ctx, false); };
+        // Missing pictures: the dialog opens, the switch is on, and Not now only closes it.
+        let mut state = State::new(&ctx, Section::Singleplayer);
+        state.pictures = Some((167, 418));
+        turn_on(&mut state, &mut ctx);
+        assert_eq!((state.anime, state.dialog.clone()), (Some(true), Some(Dialog::Offer)));
+        let _ = state.update(Message::PicturesDialogClose, &mut ctx, false);
+        assert_eq!((state.anime, state.dialog.clone()), (Some(true), None), "Not now keeps the switch on");
+        // Every picture there: no dialog.
+        let mut full = State::new(&ctx, Section::Singleplayer);
+        full.pictures = Some((418, 418));
+        turn_on(&mut full, &mut ctx);
+        assert_eq!((full.anime, full.dialog.clone()), (Some(true), None));
+        // Turning it off never opens one.
+        let _ = state.update(Message::AnimeSet(false, Ok(false)), &mut ctx, false);
+        assert_eq!((state.anime, state.dialog.clone()), (Some(false), None));
+        // Not counted yet: the dialog waits for the count, and only if some are missing.
+        let mut early = State::new(&ctx, Section::Singleplayer);
+        turn_on(&mut early, &mut ctx);
+        assert!(early.dialog.is_none() && early.offer_when_counted);
+        let _ = early.update(Message::PicturesCounted((10, 418)), &mut ctx, false);
+        assert_eq!(early.dialog, Some(Dialog::Offer));
+        let mut early_full = State::new(&ctx, Section::Singleplayer);
+        turn_on(&mut early_full, &mut ctx);
+        let _ = early_full.update(Message::PicturesCounted((418, 418)), &mut ctx, false);
+        assert!(early_full.dialog.is_none());
+        // A server that kept the old value is an error, not a silent switch.
+        let mut refused = State::new(&ctx, Section::Singleplayer);
+        refused.pictures = Some((0, 418));
+        let _ = refused.update(Message::AnimeSet(true, Ok(false)), &mut ctx, false);
+        assert!(refused.dialog.is_none() && refused.anime == Some(false) && refused.note.as_ref().is_some_and(|n| !n.good));
+    }
+
+    #[test]
+    fn the_pictures_dialog_goes_from_offer_to_download_to_result_and_the_switch_stays_on() {
+        use yo3_launcher::art::get::Outcome;
+        let mut ctx = ctx();
+        let mut state = State::new(&ctx, Section::Singleplayer);
+        state.pictures = Some((0, 418));
+        state.anime = Some(true);
+        state.dialog = Some(Dialog::Offer);
+        // Get pictures starts it inside the dialog: the bar is the shared one, Cancel stops it.
+        state.getting = Some((0, 418, Arc::new(AtomicBool::new(false))));
+        assert_eq!(state.pictures_bar(), (Bar::Starting, "Starting…".to_owned()));
+        let _ = state.update(Message::Pictures(pictures::Event::Progress(100, 418)), &mut ctx, false);
+        assert_eq!(state.pictures_bar().1, "100 of 418");
+        // It ends with the result in the dialog (no note behind it) and a Close button.
+        let _ = state.update(Message::Pictures(pictures::Event::Done(Ok(Outcome { saved: vec![1, 2], ..Outcome::default() }))), &mut ctx, false);
+        assert!(state.getting.is_none() && state.note.is_none());
+        assert!(matches!(&state.dialog, Some(Dialog::Result { good: true, sentence }) if sentence.starts_with("Got 2 pictures.")), "{:?}", state.dialog);
+        let _ = state.update(Message::PicturesDialogClose, &mut ctx, false);
+        assert_eq!((state.dialog.clone(), state.anime), (None, Some(true)));
+        // Closing during a download cancels it, and the end then lands in a note, not a dialog.
+        state.dialog = Some(Dialog::Offer);
+        let cancel = Arc::new(AtomicBool::new(false));
+        state.getting = Some((5, 418, cancel.clone()));
+        let _ = state.update(Message::PicturesDialogClose, &mut ctx, false);
+        assert!(cancel.load(std::sync::atomic::Ordering::SeqCst) && state.dialog.is_none());
+        let _ = state.update(Message::Pictures(pictures::Event::Done(Ok(Outcome { cancelled: true, saved: vec![1], ..Outcome::default() }))), &mut ctx, false);
+        assert!(state.note.is_some());
+        // The words are plain, and the open game is told how to see the change.
+        let mut open = State::new(&ctx, Section::Singleplayer);
+        let _ = open.update(Message::AnimeSet(true, Ok(true)), &mut ctx, true);
+        let note = open.note.unwrap();
+        assert!(note.sentence.contains("RESTART THE GAME") && yo3_desktop::words::technical(&note.sentence).is_none());
     }
 
     #[test]
