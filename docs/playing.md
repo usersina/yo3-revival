@@ -161,10 +161,12 @@ Deck card.
   lists when you press Play (it keeps the first version of each changed deck beside it as `<name>.y3d.pre-profile`, never
   deletes a deck and never touches a file it cannot read), and the server places a deck again when you pick it for a duel. A game
   opened without the launcher gets this at its next Play from the launcher.
-- **Artwork is yours to add.** The project does not ship or download the anime pictures. Put a 200x290 PNG named after the
-  card's Konami id in `anime-art/card/` (the launcher's data folder: `%LOCALAPPDATA%\YO3 Revival\anime-art` on Windows,
-  `~/.local/share/yo3-revival/anime-art` on Linux) and that card shows it; a card with no file keeps its own picture
-  ([the folder](anime-cards.md#artwork)).
+- **Pictures come from Settings.** The project does not host the anime pictures. In Desktop, Settings → Game → **Anime
+  pictures** shows "N of M" and **Get pictures** downloads them (about 10 MB, from ProjectIgnis' picture server, only when
+  you press it, with **Cancel**); **Add pictures from a file** takes a zip a friend made with **Save pictures to a file**.
+  They show from the next PLAY. A card with no picture (not fetched yet, or the download was cancelled or failed) keeps
+  the game's own picture with the anime card's stats and text, and your own pictures are never replaced
+  ([how](anime-cards.md#artwork)).
 - **Reconstructions.** Dark Strike Fighter and Fortune Lady Fire have no real anime script upstream, so ours are rebuilt from
   descriptions of the episodes and the card's text says so ([what each does](anime-cards.md#reconstructions)): Dark Strike
   Fighter Tributes another monster for Level x 200 damage and cannot attack that turn; Fortune Lady Fire destroys a monster and

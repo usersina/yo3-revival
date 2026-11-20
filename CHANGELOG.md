@@ -15,6 +15,12 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Anime card pictures without anyone hosting them (#60). Settings → Game has a new **Anime pictures** line ("12 of 418"): **Get
+  pictures** downloads them (about 10 MB) from ProjectIgnis' picture server when you press it, one card at a time, with a
+  count and **Cancel**, and pressing it again only fetches what is missing. **Add pictures from a file…** takes a zip of
+  pictures and **Save pictures to a file…** makes one to share with a friend. It all works without any server, so Singleplayer
+  gets them too. Pictures show from your next PLAY; a card without one keeps the game's own picture with the anime card's
+  stats and text, and pictures you put there yourself are never replaced.
 - Desktop's Settings now says "YO3 Revival's own file in the game folder needs repair. The next PLAY puts it right." when the
   game folder holds our loader without its receipt and "Open the game without the launcher" is on (it only said the next PLAY
   sets it up). The "Starting a game as…" line under Play as another account no longer stays on screen after that game has started.
