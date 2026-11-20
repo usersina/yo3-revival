@@ -51,6 +51,21 @@ fn typeable(text: &str, min: usize) -> bool { (min..=16).contains(&text.len()) &
 fn rule_for(typed: &str, met: bool) -> Rule { if typed.is_empty() { Rule::Pending } else if met { Rule::Met } else { Rule::Broken } }
 
 /// A new password's rules, as lines: 8 to 16 letters or digits, not the User ID, and typed twice the same.
+/// The characters the server picker's line holds (about 290 px of 15 px text) before it cuts the end off.
+const PICKER_CHARS: usize = 38;
+
+/// One line of the server picker: the name and the state. A long name never pushes the state out of sight: the ping
+/// goes first, then the name is cut short with an ellipsis.
+fn choice_label(official: bool, name: &str, status: &str) -> String {
+    let star = if official { "★ " } else { "" };
+    let fits = |status: &str| star.chars().count() + name.chars().count() + 5 + status.chars().count() <= PICKER_CHARS;
+    let short = status.split_once(" · ").map_or(status, |(count, _ping)| count);
+    let status = if fits(status) { status } else { short };
+    let room = PICKER_CHARS.saturating_sub(star.chars().count() + 5 + status.chars().count()).max(8);
+    let name = if name.chars().count() <= room { name.to_owned() } else { format!("{}…", name.chars().take(room - 1).collect::<String>().trim_end()) };
+    format!("{star}{name}  ·  {status}")
+}
+
 pub fn password_rules(user: &str, password: &str, again: &str) -> Vec<(Rule, &'static str)> {
     vec![
         (rule_for(password, typeable(password, 8)), "Password: 8 to 16 letters or digits"),
@@ -728,7 +743,7 @@ impl State {
     /// The server panel. `busy` is the game's state while it is starting, open or closing: the big button follows it.
     pub fn view<'a>(&'a self, busy: Option<crate::home::Busy>) -> Element<'a, Message> {
         let choices: Vec<Choice> = self.servers.iter().map(|s| Choice { key: s.key().to_string(),
-            label: format!("{}{}  ·  {}", if s.official { "★ " } else { "" }, s.name, Self::row_status(self.status.get(s.key())).1) }).collect();
+            label: choice_label(s.official, &s.name, &Self::row_status(self.status.get(s.key())).1) }).collect();
         let selected = choices.iter().find(|c| Some(&c.key) == self.selected.as_ref()).cloned();
         let picker: Element<'_, Message> = if choices.is_empty() {
             container(text("No servers yet.").size(15).color(color::INK_SOFT)).padding([7, 0]).width(Fill).into()
@@ -975,6 +990,17 @@ mod tests {
     }
     fn online() -> Status { Status::Online { online: Some(3), max: None, registration: "invite".into(), news: vec![], ping: std::time::Duration::from_millis(40), clean_game: false } }
     fn signed(user: &str, token: Option<&str>) -> SignedIn { SignedIn { user: user.into(), session: [7; 32], device_token: token.map(str::to_owned) } }
+
+    #[test]
+    fn a_long_server_name_never_hides_its_state_in_the_picker() {
+        assert_eq!(choice_label(true, "YO3 Revival", "0 online · 225 ms"), "★ YO3 Revival  ·  0 online · 225 ms");
+        // The ping goes first: it is the least useful part, and the name stays whole.
+        assert_eq!(choice_label(false, "Friends' server (yours)", "0 online · 0 ms"), "Friends' server (yours)  ·  0 online");
+        // A name too long even for that is cut, and the state stays whole.
+        let label = choice_label(false, "The Very Long Name Of A Friends' Duel Server", "12 online · 40 ms");
+        assert!(label.ends_with("  ·  12 online") && label.contains("…") && label.chars().count() <= PICKER_CHARS + 2, "{label}");
+        assert_eq!(choice_label(false, "A server with a pretty long name here", "Offline"), "A server with a pretty lo…  ·  Offline");
+    }
 
     #[test]
     fn escape_leaves_a_form_for_the_sign_in_but_not_a_recovery_code() {
