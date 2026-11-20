@@ -548,3 +548,97 @@ fn skill_drain_still_negates_other_monsters_for_good() {
         clean(&s);
     }
 }
+
+/// Ra with Tributes of different ATK (2000, 800 and 2000): the total is exactly 4800, 0 for the rest of the turn Skill Drain
+/// is activated, and exactly 4800 again from the next, not just some non-zero number.
+#[test]
+fn ras_exact_total_comes_back_after_skill_drain() {
+    let hand = [SKILL_DRAIN, WARWOLF, HEDGEHOG, WARWOLF, RA];
+    let Some(mut s) = start(true, [(&deck(&hand, &[]), &[]), (&passive(), &[])]) else { return };
+    s.run(&[SetSpell(SKILL_DRAIN), Summon(WARWOLF), Summon(HEDGEHOG), Summon(WARWOLF), Summon(RA)]).unwrap();
+    assert_eq!(s.attack_of(0, RA), Some(4800), "{}", s.context());
+    activate(&mut s, SKILL_DRAIN);
+    assert_eq!(s.attack_of(0, RA), Some(0), "{}", s.context());
+    next_own_turn(&mut s);
+    assert_eq!(s.attack_of(0, RA), Some(4800), "the exact total: {}", s.context());
+    next_own_turn(&mut s);
+    assert_eq!(s.attack_of(0, RA), Some(4800), "and it stays: {}", s.context());
+    clean(&s);
+}
+
+/// With the setting off the official Gods and Skill Drain are the game's: Skill Drain negates the God for good, as it does
+/// any effect monster (the override does nothing without the anime Gods).
+#[test]
+fn standard_skill_drain_negates_a_god_for_good() {
+    let Some(mut s) = gods_duel(false, SLIFER) else { return };
+    s.run(&[SetSpell(SKILL_DRAIN), Summon(WARWOLF), Summon(WARWOLF), Summon(WARWOLF), Summon(SLIFER)]).unwrap();
+    activate(&mut s, SKILL_DRAIN);
+    let now = s.attack_of(0, SLIFER);
+    next_own_turn(&mut s);
+    let later = s.attack_of(0, SLIFER);
+    next_own_turn(&mut s);
+    assert_eq!(s.attack_of(0, SLIFER), later, "standard Skill Drain does not give the God its effects back: {} / {now:?} {later:?}", s.context());
+    assert!(later.is_some_and(|a| a <= 0), "negated for good in standard mode: {later:?} {}", s.context());
+    clean(&s);
+}
+
+/// Two copies. Skill Drain affects a God once ("until the end of the turn in which it first affects it"): the second copy,
+/// activated a turn later, does not negate a God the first one already affected, and does negate one that the first did not.
+#[test]
+fn a_second_skill_drain_does_not_affect_a_god_again() {
+    for god in [RA, SLIFER] {
+        let hand = [SKILL_DRAIN, SKILL_DRAIN, WARWOLF, WARWOLF, WARWOLF];
+        let Some(mut s) = start(true, [(&deck(&hand, &[god]), &[]), (&passive(), &[])]) else { return };
+        s.run(&[SetSpell(SKILL_DRAIN), SetSpell(SKILL_DRAIN), Summon(WARWOLF), Summon(WARWOLF), Summon(WARWOLF), Summon(god)]).unwrap();
+        activate(&mut s, SKILL_DRAIN);
+        assert!(s.attack_of(0, god).is_some_and(|a| a <= 0), "{god}: the first copy negates it: {}", s.context());
+        next_own_turn(&mut s);
+        assert_eq!(s.attack_of(0, god), Some(god_atk(&s, god)), "{god}: back: {}", s.context());
+        activate(&mut s, SKILL_DRAIN);
+        assert_eq!(s.count(0, "szone", SKILL_DRAIN), 2, "both are face-up: {}", s.context());
+        assert_eq!(s.attack_of(0, god), Some(god_atk(&s, god)), "{god}: the second copy does not affect it again: {}", s.context());
+        next_own_turn(&mut s);
+        assert_eq!(s.attack_of(0, god), Some(god_atk(&s, god)), "{god}: {}", s.context());
+        clean(&s);
+    }
+    // A God that arrives after the first copy is affected by the second, once.
+    let hand = [SKILL_DRAIN, SKILL_DRAIN, WARWOLF, WARWOLF, WARWOLF];
+    let Some(mut s) = start(true, [(&deck(&hand, &[RA]), &[]), (&passive(), &[])]) else { return };
+    s.run(&[SetSpell(SKILL_DRAIN), SetSpell(SKILL_DRAIN), Summon(WARWOLF), Summon(WARWOLF), Summon(WARWOLF)]).unwrap();
+    activate(&mut s, SKILL_DRAIN);
+    s.run(&[Summon(RA)]).unwrap();
+    assert_eq!(s.attack_of(0, RA), Some(6000), "Ra arrives under the first copy, unaffected: {}", s.context());
+    activate(&mut s, SKILL_DRAIN);
+    assert_eq!(s.attack_of(0, RA), Some(0), "the second copy affects it for the first time: {}", s.context());
+    next_own_turn(&mut s);
+    assert_eq!(s.attack_of(0, RA), Some(6000), "{}", s.context());
+    clean(&s);
+}
+
+/// A God that leaves the field and returns is a new card to the game: Skill Drain face-up does not affect it, and the next
+/// Skill Drain activated does, once. Slifer is destroyed by Raigeki Break in the turn it is negated (it is unaffected otherwise)
+/// and brought back by Monster Reborn a turn later.
+#[test]
+fn a_god_that_comes_back_is_a_new_card() {
+    let hand = [SKILL_DRAIN, SKILL_DRAIN, WARWOLF, WARWOLF, WARWOLF];
+    let Some(mut s) = start(true, [(&deck(&hand, &[RAIGEKI_BREAK, SLIFER, WARWOLF, WARWOLF, MONSTER_REBORN]), &[]), (&passive(), &[])]) else { return };
+    s.prefer(&[(0, SLIFER)]);
+    s.run(&[SetSpell(SKILL_DRAIN), SetSpell(SKILL_DRAIN), Summon(WARWOLF), SetSpell(RAIGEKI_BREAK), Summon(WARWOLF), Summon(WARWOLF), Summon(SLIFER)]).unwrap();
+    activate(&mut s, SKILL_DRAIN);
+    assert!(s.attack_of(0, SLIFER).is_some_and(|a| a <= 0), "{}", s.context());
+    activate(&mut s, RAIGEKI_BREAK);
+    assert_eq!(s.count(0, "grave", SLIFER), 1, "negated, Slifer is destroyed: {}", s.context());
+    while !offers(&s, MONSTER_REBORN) {
+        next_own_turn(&mut s);
+    }
+    activate(&mut s, MONSTER_REBORN);
+    assert!(s.monster(0, SLIFER).is_some(), "Slifer is back: {}", s.context());
+    assert_eq!(s.attack_of(0, SLIFER), Some(god_atk(&s, SLIFER)), "a new card, Skill Drain face-up does not affect it: {}", s.context());
+    assert!(s.attack_of(0, SLIFER).is_some_and(|a| a > 0), "{}", s.context());
+    activate(&mut s, SKILL_DRAIN);
+    assert!(s.attack_of(0, SLIFER).is_some_and(|a| a <= 0), "the next Skill Drain affects the new card once: {}", s.context());
+    // The anime Gods Special Summoned by a Spell effect go back to where they came from at the End Phase (their own rule).
+    next_own_turn(&mut s);
+    assert_eq!(s.count(0, "grave", SLIFER), 1, "{}", s.context());
+    clean(&s);
+}

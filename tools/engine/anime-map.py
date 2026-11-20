@@ -542,8 +542,11 @@ def doc(data):
             " (`engine/overrides/c82732705.lua`, which changes only how it treats the anime Gods; every other monster is as before). The Gods are"
             " unaffected by most effects, but Skill Drain, when activated, negates the effects of the Gods already on the field until the end of"
             " that turn; then they come back, though Skill Drain stays face up. Ra's ATK (the Tributes' total) is 0 for the rest of that turn and the"
-            " total again from the next one. A God summoned while Skill Drain is already face up is not affected at all. Each point has a real-core"
-            " test in `tests/anime_cards.rs`.", "",
+            " total again from the next one. A God summoned while Skill Drain is already face up is not affected at all. Skill Drain affects a God"
+            " once, in the turn it first affects it: a second copy activated in a later turn does not negate a God the first already affected (it does one"
+            " the first did not), and a God that leaves the field and comes back is a new card, unaffected by the Skill Drain already face up and affected once by"
+            " the next. The end-of-turn recovery is the engine's reset of a marker on the God, not an effect, so no negation can hold it back. With the"
+            " setting off, the official Gods and Skill Drain are the game's. Each point has a real-core test in `tests/anime_reconstructions.rs`.", "",
             "## Reconstructions", "",
             "Where ProjectIgnis has no usable script, the data record and the script are ours (`engine/anime/records.json`, `engine/overrides/`) and"
             " the card's text in the game says it is a reconstruction. Everything else about the card (the engine, the profile, the duel check,"
