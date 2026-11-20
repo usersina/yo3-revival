@@ -123,6 +123,28 @@ class Run(unittest.TestCase):
             self.assertIn('6.1.7601', ''.join(c.args[0] for c in out.write.call_args_list))
             self.assertEqual(list(Path(share, vm.RUN_DIR).iterdir()), [], 'the files are removed afterwards')
 
+    def test_run_waits_for_the_code_not_just_the_file(self):
+        # The release run of v0.1.6 (2026-11-20): the guest's echo makes the file before it writes the code, and the empty
+        # file was read as exit code 1.
+        with tempfile.TemporaryDirectory() as share:
+            config = {'name': 'win7', 'share': share, 'guest_share': 'Z:'}
+
+            def guest():
+                folder = Path(share, vm.RUN_DIR)
+                while not list(folder.glob('*.cmd')):
+                    threading.Event().wait(0.02)
+                ident = next(folder.glob('*.cmd')).stem
+                (folder / f'{ident}.out').write_bytes(b'ok\r\n')
+                (folder / f'{ident}.rc').write_text('')
+                threading.Event().wait(0.2)
+                (folder / f'{ident}.rc').write_text('3 \r\n')
+            thread = threading.Thread(target=guest)
+            thread.start()
+            with mock.patch.object(vm, 'keys'), mock.patch.object(vm, 'type_text'), mock.patch.object(vm.time, 'sleep'), mock.patch('sys.stdout'):
+                code = vm.run(config, 'ver', timeout=10)
+            thread.join()
+            self.assertEqual(code, 3)
+
     def test_run_prefers_ssh(self):
         with mock.patch.object(vm.subprocess, 'run', return_value=mock.Mock(returncode=0)) as run:
             self.assertEqual(vm.run({'name': 'w', 'ssh': 'me@w'}, 'ver'), 0)

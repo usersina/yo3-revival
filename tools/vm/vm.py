@@ -231,7 +231,8 @@ def run(vm, command, timeout=120):
     type_text(vm, launcher)
     keys(vm, 'ret')
     deadline = time.monotonic() + timeout
-    while not rc.exists():
+    # The guest's `echo` creates the file before it writes the code: wait for the code itself (an empty read was taken as 1).
+    while not (rc.exists() and rc.read_bytes().strip()):
         if time.monotonic() > deadline:
             raise Fail(f'no result after {timeout} s: is the desktop unlocked, and {launcher} reachable? '
                        f'(left in {share} for a look)')
