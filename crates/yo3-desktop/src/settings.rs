@@ -7,7 +7,7 @@ use yo3_desktop::options::{self, Change};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use yo3_desktop::{Settings, direct, pictures, updates};
-use yo3_skin::{BODY_BOLD, DISPLAY, Kind, color, pill};
+use yo3_skin::{BODY_BOLD, Bar, DISPLAY, Kind, color, pill};
 use crate::app::{Ctx, dot, job};
 use crate::{error_presentation, home, multi};
 
@@ -146,6 +146,8 @@ pub struct State {
     pictures: Option<(usize, usize)>,
     /// A download in progress: cards done, all cards, the way to cancel it.
     getting: Option<(u32, u32, Arc<AtomicBool>)>,
+    /// What the last download left that the bar must keep saying: its words, when it stopped on a problem.
+    art_problem: Option<String>,
 }
 
 pub const LICENCES: &str = "YO3 Revival is free software under the MIT licence. Its rules engine is built on EDOPro's core and ProjectIgnis' \
@@ -157,7 +159,7 @@ impl State {
     pub fn new(ctx: &Ctx, section: Section) -> Self {
         Self { section, note: None, busy: None, direct: Direct::Unknown, prefix: ctx.settings.wine_prefix.clone(), wine: ctx.settings.wine_binary.clone(),
             confirm_reset: false, confirm_game_reset: false, licences: false, update: None, shortcut: yo3_desktop::shortcut::exists(),
-            moved: yo3_desktop::foreign::moved_aside(std::path::Path::new(&ctx.settings.game_dir)), pictures: None, getting: None }
+            moved: yo3_desktop::foreign::moved_aside(std::path::Path::new(&ctx.settings.game_dir)), pictures: None, getting: None, art_problem: None }
     }
 
     /// The first tasks: what direct start is like now, and how many anime pictures there are.
@@ -341,6 +343,7 @@ impl State {
                 let dir = yo3_launcher::art::folder_in(&ctx.root);
                 self.getting = Some((0, pictures::count(&dir).1 as u32, cancel.clone()));
                 self.note = None;
+                self.art_problem = None;
                 pictures::start(dir, pictures::SERVER.into(), cancel, tx);
                 return Task::run(iced::futures::stream::unfold(Some(rx), |rx| async move {
                     let mut rx = rx?;
@@ -352,9 +355,11 @@ impl State {
             Message::Pictures(pictures::Event::Progress(done, total)) => if let Some(run) = &mut self.getting { run.0 = done; run.1 = total },
             Message::Pictures(pictures::Event::Done(result)) => {
                 self.getting = None;
+                self.art_problem = None;
                 match result {
                     Ok(out) => {
                         let (good, sentence) = pictures::download_sentence(&out);
+                        if !good { self.art_problem = Some(if out.unreachable.is_some() { "The picture server can't be reached".to_owned() } else { format!("{} not fetched", out.failed.len()) }) }
                         if let Some(backend) = &ctx.backend { backend.diagnostics.line(&format!("Anime pictures: {} saved, {} had, {} not fetched{}", out.saved.len(), out.had, out.failed.len(),
                             out.unreachable.as_deref().map(|why| format!(" (server not reached: {why})")).unwrap_or_default())) }
                         let mut sentence = sentence;
@@ -497,6 +502,28 @@ impl State {
     }
 
     /// The anime card pictures (#60): how many there are and the three ways to get more.
+    /// The bar of the anime pictures (#60) and its words: the download's progress, a wait of unknown length while a zip is
+    /// read or written, what the last download stopped on, or how many pictures there are.
+    pub(crate) fn pictures_bar(&self) -> (Bar, String) {
+        let (have, total) = self.pictures.unwrap_or((0, 0));
+        if let Some((done, all, cancel)) = &self.getting {
+            return match (cancel.load(std::sync::atomic::Ordering::SeqCst), *done) {
+                (true, _) => (Bar::Starting, "Stopping…".into()),
+                (false, 0) => (Bar::Starting, "Starting…".into()),
+                _ => (Bar::of(*done, *all), format!("{done} of {all}")),
+            }
+        }
+        if let Some(busy) = self.busy.filter(|_| self.pictures.is_some()) { return (Bar::Starting, busy.to_owned()) }
+        let fraction = if total == 0 { 0.0 } else { have as f32 / total as f32 };
+        match (&self.art_problem, self.pictures) {
+            (_, None) => (Bar::Starting, "Counting…".into()),
+            (Some(problem), _) => (Bar::Failed(fraction), format!("{have} of {total} pictures ready: {problem}")),
+            (None, Some(_)) if have >= total && total > 0 => (Bar::Done, format!("{have} of {total} pictures ready")),
+            (None, Some(_)) => (Bar::Fraction(fraction), format!("{have} of {total} pictures ready")),
+        }
+    }
+
+    /// The anime card pictures (#60): how many there are and the three ways to get more.
     fn pictures_view(&self, playing: bool) -> Element<'_, Message> {
         let line = match (&self.getting, self.pictures) {
             (Some((done, total, _)), _) => format!("Getting pictures: {done} of {total}…"),
@@ -512,9 +539,11 @@ impl State {
         let mut hint = format!("Cards with an anime version can show its anime artwork. Get pictures downloads {} from ProjectIgnis' picture server, one card at a time, \
             only when you press it. A card without a picture keeps the game's artwork.", pictures::SIZE_NOTE);
         if playing { hint.push_str(" The game is open: new pictures show after you close it and press PLAY again.") } else { hint.push_str(" New pictures show from the next PLAY.") }
+        let (bar, words) = self.pictures_bar();
         column![
             text(line).size(15).color(color::INK),
             text(hint).size(14).color(color::INK_SOFT),
+            yo3_skin::progress_bar(bar, words, 22.0),
             row![get, pill("Add pictures from a file…", idle.then_some(Message::AddPictures), Kind::Secondary, 240, 32),
                 pill("Save pictures to a file…", idle.then_some(Message::SavePictures), Kind::Secondary, 230, 32)].spacing(10),
         ].spacing(6).into()
@@ -671,6 +700,35 @@ mod tests {
         let down = ended(false, Outcome { unreachable: Some("x".into()), ..Outcome::default() });
         assert!(!down.good && down.sentence.contains("Add pictures from a file") && !down.sentence.contains("next PLAY"), "{}", down.sentence);
         assert!(yo3_desktop::words::technical(&down.sentence).is_none());
+    }
+
+    #[test]
+    fn the_pictures_bar_follows_the_download_the_wait_and_what_it_left() {
+        let ctx = ctx();
+        let mut state = State::new(&ctx, Section::Game);
+        assert_eq!(state.pictures_bar(), (Bar::Starting, "Counting…".to_owned()));
+        state.pictures = Some((12, 418));
+        assert_eq!(state.pictures_bar(), (Bar::Fraction(12.0 / 418.0), "12 of 418 pictures ready".to_owned()));
+        let cancel = Arc::new(AtomicBool::new(false));
+        state.getting = Some((0, 418, cancel.clone()));
+        assert_eq!(state.pictures_bar(), (Bar::Starting, "Starting…".to_owned()));
+        state.getting = Some((209, 418, cancel.clone()));
+        assert_eq!(state.pictures_bar(), (Bar::Fraction(0.5), "209 of 418".to_owned()));
+        cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(state.pictures_bar().1, "Stopping…");
+        state.getting = None;
+        state.busy = Some("Adding the pictures…");
+        assert_eq!(state.pictures_bar(), (Bar::Starting, "Adding the pictures…".to_owned()), "a zip is read with a wait of unknown length");
+        state.busy = None;
+        state.pictures = Some((400, 418));
+        state.art_problem = Some("18 not fetched".into());
+        assert_eq!(state.pictures_bar().1, "400 of 418 pictures ready: 18 not fetched");
+        assert!(matches!(state.pictures_bar().0, Bar::Failed(f) if (f - 400.0 / 418.0).abs() < 1e-6));
+        state.art_problem = None;
+        state.pictures = Some((418, 418));
+        assert_eq!(state.pictures_bar(), (Bar::Done, "418 of 418 pictures ready".to_owned()));
+        // The words on the bar are plain.
+        for words in ["Starting…", "Stopping…", "The picture server can't be reached", "400 of 418 pictures ready: 18 not fetched"] { assert_eq!(yo3_desktop::words::technical(words), None) }
     }
 
     #[test]
