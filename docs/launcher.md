@@ -120,7 +120,7 @@ Settings → Accounts lists every server you're signed in to on this PC, with Si
 
 ### Several games at once
 
-**Unreleased.** There is still one launcher per user (a second start brings the open window to the front). Signed in on a
+**Since v0.1.5 (2026-11-20).** There is still one launcher per user (a second start brings the open window to the front). Signed in on a
 server, **Play as another account…** under your User ID starts another game on that server signed in to a *different*
 account: type its User ID and password and press **Play**. The password is used once and not kept, and the other account
 doesn't "stay signed in".
@@ -185,7 +185,7 @@ For a server that runs without the launcher (an always-on PC or a VPS), use the 
 The gear at the top right opens **Settings**; **Back** or Escape returns to the main screen. Every change is saved at
 once and applies at the next PLAY (or your server's next start), without restarting YO3 Revival.
 
-**Escape** closes the topmost thing first (**Unreleased**): an open dialog, then the bell's list or the server tools, then a
+**Escape** closes the topmost thing first (**Since v0.1.5 (2026-11-20)**): an open dialog, then the bell's list or the server tools, then a
 Multiplayer form (**Add a server**, **Create account**, **Forgot password?**; a recovery code shown once stays until you
 press **I saved it**), then Settings. In a text box the first Escape only leaves the box.
 
@@ -199,7 +199,7 @@ press **I saved it**), then Settings. In a text box the first Escape only leaves
 | Advanced | On Linux, the Wine prefix and the Wine program (empty for Wine's defaults; **Save** checks it); **Detailed logs** for your servers; **Export logs…** and **Open logs folder**; [Reset local game data](#reset-local-game-data) |
 | About | The version, **Check for updates**, release notes, the project, licences and credits |
 
-**Anime pictures (Unreleased):** Settings → Game lists how many of the anime cards have a picture. **Get pictures** downloads the missing ones (about 10 MB) from ProjectIgnis' picture server when you press it, with a progress count and **Cancel**; a second press carries on. **Add pictures from a file…** adds a zip of pictures and **Save pictures to a file…** makes one. Pictures show from the next PLAY, and your own pictures are never replaced.
+**Anime pictures (since v0.1.5 (2026-11-20)):** Settings → Game lists how many of the anime cards have a picture. **Get pictures** downloads the missing ones (about 10 MB) from ProjectIgnis' picture server when you press it, with a progress count and **Cancel**; a second press carries on. **Add pictures from a file…** adds a zip of pictures and **Save pictures to a file…** makes one. Pictures show from the next PLAY, and your own pictures are never replaced.
 
 **Since v0.1.4 (2026-11-19):** clicking the version at the bottom left also opens **About**.
 
@@ -422,7 +422,7 @@ connection (a list that ships empty). **Move it aside** is offered when the culp
 Everything else stays a warning, unless the host asks for a clean game (next paragraph). The same check runs for Scripts' `play` (it prints what it found and stops; `--accept-foreign`
 goes on past a warning). A game opened [directly](#open-the-game-directly) is not held: what was found goes in the logs.
 
-**A server that asks for a clean game** (**Unreleased**, the host's `clean-game` setting, off by default): on that server PLAY
+**A server that asks for a clean game** (**Since v0.1.5 (2026-11-20)**, the host's `clean-game` setting, off by default): on that server PLAY
 stops for anything the check lists, with no **Continue anyway**: another program's `.dll` or `.asi` in the game folder, a
 Winsock provider that isn't Microsoft's, or a detour on the game's network functions. The dialog is titled "This server asks
 for a clean game" and says so; **Move it aside** is still offered for files, and the other advice (the Winsock command,

@@ -237,7 +237,7 @@ changing the audit name (`--by`) does not permit a second grant. Details: [accou
 
 ### Linked accounts and fair play
 
-**Unreleased.** The launcher can run several games ([Play as another account](launcher.md#several-games-at-once)), so the
+**Since v0.1.5 (2026-11-20).** The launcher can run several games ([Play as another account](launcher.md#several-games-at-once)), so the
 server needs a way to keep one person's accounts from earning from each other. It remembers, for each account, the devices
 and addresses it was seen on: the launcher sends a random install id with its sign-ins (the server keeps only a digest of
 it), and the address a sign-in and a game connection came from is noted too (devices for 90 days, addresses for 14). Two

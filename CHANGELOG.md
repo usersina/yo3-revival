@@ -13,7 +13,9 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.1.5 (2026-11-20)
+
+Multiplayer: update to v0.1.5 to join the hosted server after deployment.
 
 - Anime card pictures without anyone hosting them (#60). Settings → Game has a new **Anime pictures** line ("12 of 418"): **Get
   pictures** downloads them (about 10 MB) from ProjectIgnis' picture server when you press it, one card at a time, with a
@@ -29,6 +31,9 @@ Older entries describe their release at the time. For current setup, use the [RE
 - Desktop's Settings now says "YO3 Revival's own file in the game folder needs repair. The next PLAY puts it right." when the
   game folder holds our loader without its receipt and "Open the game without the launcher" is on (it only said the next PLAY
   sets it up). The "Starting a game as…" line under Play as another account no longer stays on screen after that game has started.
+- Desktop fixes: Cancel or CLOSE GAME during a start no longer leaves a red "The game could not start" notice; a failed
+  Play as another account now says so on the Multiplayer tab, with Repair; Escape closes the topmost dialog or list first;
+  the sign-in form puts the cursor in its first empty field; a long server name no longer hides its state in the picker.
 - YO3 Revival no longer calls its own `winmm.dll` another program's (#65). If the game folder holds our loader (any version)
   but its small receipt file is missing, Desktop now says it needs repair and PLAY fixes it, instead of warning about "an
   unowned WINMM mod" and offering to move it aside. Another program's `winmm.dll` is still named as before. Sorry to the
