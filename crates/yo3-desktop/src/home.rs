@@ -617,6 +617,9 @@ impl State {
         let hint = match &self.game.readiness {
             Some(Readiness::ComponentProblem(_)) => Hint::Component,
             Some(Readiness::GameProblem(_)) => Hint::GameFolder,
+            // A start that finds our own files from another release (Play as…, a game that didn't pass Readiness) says so
+            // and offers the same Repair as the main button.
+            _ if error_presentation::is_component(&error) => Hint::Component,
             _ => Hint::General,
         };
         let shown = error_presentation::present(&error, hint, &crate::app::masks(ctx));
@@ -899,6 +902,18 @@ mod tests {
         assert_eq!(state.unread, 0, "opening the bell reads them");
         state.tell(Notice::problem("Your singleplayer data couldn't be opened.", None));
         assert!(state.notice.is_some() && state.inbox.len() == 1, "your own server's notices stay on its panel");
+    }
+
+    /// Play as… with the bundle's connection DLL from another release than the launcher (Windows 11): the start's error
+    /// said only "Something went wrong"; now it is the repair sentence with the Repair button.
+    #[test]
+    fn a_start_refused_for_our_files_of_another_release_offers_repair() {
+        let ctx = crate::app::Ctx { root: std::env::temp_dir(), backend: None, store: None, settings: Default::default() };
+        let mut state = State { game: game(Some(Readiness::Ready)), ..State::default() };
+        state.fail(&ctx, "Connection DLL validation failed: C:\\Revival\\yo3-auth.dll: Connection DLL release v0.1.3 does not match application v0.1.4. Repair with files from the same bundle.".into());
+        let notice = state.notice.as_ref().expect("said");
+        assert_eq!(notice.summary, "Some of YO3 Revival's files need repair.");
+        assert!(notice.action.is_some());
     }
 
     #[test]

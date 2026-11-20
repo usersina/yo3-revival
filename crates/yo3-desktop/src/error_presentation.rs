@@ -58,6 +58,14 @@ pub(super) fn plain(first:&str)->String {
     let lower=first.to_lowercase();
     PLAIN.iter().find(|(needles,_)|needles.iter().any(|needle|lower.contains(needle))).map_or(GENERAL,|(_,sentence)|sentence).into()
 }
+/// Whether an error says one of YO3 Revival's own files is missing, changed or from another release (the connection DLL
+/// beside the launcher after a partial update, a changed helper, a bundle manifest that doesn't match).
+pub(super) fn is_component(message:&str)->bool {
+    let lower=message.to_lowercase();
+    ["connection dll","does not match application","differs from the release manifest","bundle manifest","release manifest","complete application bundle",
+        "complete matching bundle","connection files are missing","required connection file","required component not found","injector"]
+        .iter().any(|needle|lower.contains(needle))
+}
 /// What an error is about, by words of its first line, and its sentence.
 const PLAIN:&[(&[&str],&str)]=&[
     (&["server discovery failed"],"Couldn't reach this server."),
@@ -67,7 +75,8 @@ const PLAIN:&[(&[&str],&str)]=&[
     (&["already used by another program","address already in use","os error 98","os error 10048"],"Another program is using your server's port."),
     (&["rules engine"],"The rules engine couldn't start: YO3 Revival needs repair."),
     (&["did not become ready","stopped during startup","server startup failed"],"Your server couldn't start."),
-    (&["release manifest","complete application bundle","complete matching bundle","connection files are missing","required connection file","required server file"],
+    (&["connection dll","does not match application","differs from the release manifest","bundle manifest",
+        "release manifest","complete application bundle","complete matching bundle","connection files are missing","required connection file","required server file"],
         "Some of YO3 Revival's files need repair."),
     (&["launcher's settings","launcher database"],"YO3 Revival couldn't read its settings."),
     (&["update readiness","installed update"],"The update couldn't finish. This version keeps running."),
@@ -134,6 +143,15 @@ mod tests {
         assert!(evidence.contains("yo3-auth-launch.exe") && evidence.contains("not found"));assert!(!evidence.contains("/home/test"));
         let mismatch=present("Connection DLL validation failed: /home/test/Revival/yo3-auth.dll: Connection DLL release v0.0.5 does not match application v0.0.6. Repair with files from the same bundle.",Hint::Component,&prefixes);
         let evidence=mismatch.diagnosis.unwrap();assert!(evidence.contains("yo3-auth.dll") && evidence.contains("v0.0.5") && evidence.contains("does not match") && evidence.contains("v0.0.6"));
+    }
+    #[test]
+    fn a_connection_dll_from_another_release_reads_as_repair_for_every_start() {
+        let message="Connection DLL validation failed: /home/test/Revival/yo3-auth.dll: Connection DLL release v0.1.3 does not match application v0.1.4. Repair with files from the same bundle.";
+        assert!(is_component(message) && !is_component("The game is already running."));
+        for hint in [Hint::General,Hint::Component] {
+            assert_eq!(present(message,hint,&[]).summary,"Some of YO3 Revival's files need repair.");
+        }
+        assert!(yo3_desktop::words::technical(&present(message,Hint::General,&[]).summary).is_none());
     }
     #[test]
     fn component_and_game_file_evidence_survives_a_nested_os_error_chain() {
