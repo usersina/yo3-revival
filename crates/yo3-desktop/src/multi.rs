@@ -235,6 +235,13 @@ impl State {
         matches!(self.status.get(server.key()), Some(Status::Online { clean_game: true, .. }))
     }
 
+    /// What Escape does on the Multiplayer tab: close the server tools, or leave a form for the sign-in, like its Back button. A recovery code
+    /// shown once stays until the player says they saved it.
+    pub fn escape(&self) -> Option<Message> {
+        if self.menu { return Some(Message::Menu(false)) }
+        (!matches!(self.form, Form::SignIn | Form::Code(_))).then_some(Message::Show(Form::SignIn))
+    }
+
     pub fn session(&self) -> Option<(Server, SignedIn)> {
         let server = self.selected()?.clone();
         let signed = self.signed_in.get(server.key())?.clone();
@@ -968,6 +975,21 @@ mod tests {
     }
     fn online() -> Status { Status::Online { online: Some(3), max: None, registration: "invite".into(), news: vec![], ping: std::time::Duration::from_millis(40), clean_game: false } }
     fn signed(user: &str, token: Option<&str>) -> SignedIn { SignedIn { user: user.into(), session: [7; 32], device_token: token.map(str::to_owned) } }
+
+    #[test]
+    fn escape_leaves_a_form_for_the_sign_in_but_not_a_recovery_code() {
+        let mut state = tab(online(), None);
+        assert!(state.escape().is_none(), "nothing to leave on the sign-in");
+        let _ = state.update(Message::Menu(true), &ctx());
+        assert!(matches!(state.escape(), Some(Message::Menu(false))), "Escape closes the server tools first");
+        let _ = state.update(Message::Menu(false), &ctx());
+        for form in [Form::Add, Form::Register, Form::Recover, Form::PlayAs] {
+            let _ = state.update(Message::Show(form), &ctx());
+            assert!(matches!(state.escape(), Some(Message::Show(Form::SignIn))));
+        }
+        let _ = state.update(Message::Show(Form::Code("ABCD".into())), &ctx());
+        assert!(state.escape().is_none(), "the recovery code is shown once: the player confirms it");
+    }
 
     #[test]
     fn a_stopped_hosted_server_is_checked_again_at_once() {

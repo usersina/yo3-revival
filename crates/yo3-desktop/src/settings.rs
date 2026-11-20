@@ -186,6 +186,9 @@ impl State {
             moved: yo3_desktop::foreign::moved_aside(std::path::Path::new(&ctx.settings.game_dir)), pictures: None, getting: None, art_problem: None, art_busy: None, anime: None, dialog: None, offer_when_counted: false }
     }
 
+    /// Whether Settings' own dialog is open: Escape closes it before it leaves Settings.
+    pub fn has_dialog(&self) -> bool { self.dialog.is_some() }
+
     /// The first tasks: what direct start is like now, and how many anime pictures there are.
     pub fn start(&self, ctx: &Ctx) -> Task<Message> { Task::batch([self.check_direct(ctx), self.count_pictures(ctx), self.read_anime(ctx)]) }
 
@@ -853,7 +856,9 @@ mod tests {
         state.pictures = Some((167, 418));
         turn_on(&mut state, &mut ctx);
         assert_eq!((state.anime, state.dialog.clone()), (Some(true), Some(Dialog::Offer)));
+        assert!(state.has_dialog(), "Escape has a dialog to close before it leaves Settings");
         let _ = state.update(Message::PicturesDialogClose, &mut ctx, false);
+        assert!(!state.has_dialog());
         assert_eq!((state.anime, state.dialog.clone()), (Some(true), None), "Not now keeps the switch on");
         // Every picture there: no dialog.
         let mut full = State::new(&ctx, Section::Singleplayer);

@@ -572,6 +572,12 @@ impl State {
     /// A good sentence on the main screen (Move it aside worked, #68).
     pub fn good(&mut self, sentence: String) { self.notice = Some(Notice::good(sentence)) }
 
+    /// What Escape does on the main screen: leave a Multiplayer form, like its Back button.
+    pub fn escape(&self) -> Option<Message> {
+        if self.tab != Tab::Multi { return None }
+        self.multi.escape().map(Message::Multi)
+    }
+
     /// Plays again, on the same tab: the player's Continue anyway, or Move it aside (#68), once the dialog is closed.
     pub fn play_again(&mut self, ctx: &mut Ctx) -> Task<Message> {
         if self.allow_for.is_some() { self.update(Message::Multi(multi::Message::Play), ctx) } else { self.update(Message::Play, ctx) }

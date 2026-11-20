@@ -284,7 +284,13 @@ impl App {
             Message::Key(keyboard::Event::KeyPressed { key: keyboard::Key::Named(named), modifiers, .. }) => match named {
                 keyboard::key::Named::Tab if modifiers.shift() => return operation::focus_previous(),
                 keyboard::key::Named::Tab => return operation::focus_next(),
-                keyboard::key::Named::Escape => if self.dialog.is_some() { self.dialog = None } else { self.settings = None },
+                keyboard::key::Named::Escape => if self.dialog.is_some() { self.dialog = None }
+                // Settings' own dialog (Anime pictures) closes first, not the whole Settings screen behind it.
+                else if self.settings.as_ref().is_some_and(|s| s.has_dialog()) { return self.settings_update(settings::Message::PicturesDialogClose) }
+                // The bell's list and the server tools close before the screen under them does.
+                else if self.setup.is_none() && self.home.bell_open { return self.update(Message::Home(home::Message::Bell(false))) }
+                else if self.settings.is_some() { self.settings = None }
+                else if self.setup.is_none() && let Some(message) = self.home.escape() { return self.update(Message::Home(message)) },
                 _ => {}
             },
             Message::Key(_) => {}
