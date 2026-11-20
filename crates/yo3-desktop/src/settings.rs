@@ -328,7 +328,7 @@ impl State {
                 self.confirm_reset = false;
                 self.busy = Some("Resetting…");
                 return job(move || {
-                    if backend.live(&settings).is_some() { backend.stop_server(&settings)?; }
+                    backend.stop_server_if_running(&settings)?;
                     backend.reset_singleplayer(&settings).map(|_| ())
                 }, Message::DataReset);
             }

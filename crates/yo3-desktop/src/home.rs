@@ -479,7 +479,7 @@ impl State {
                 if generation != self.grace || self.game.running || self.game.starting.is_some() || self.game.outside { return Task::none() }
                 let Some(backend) = ctx.backend.clone() else { return Task::none() };
                 let settings = ctx.settings.clone();
-                return job(move || { if backend.live(&settings).is_some() { backend.stop_server(&settings)?; } Ok(()) }, Message::ServerStopped);
+                return job(move || { backend.stop_server_if_running(&settings)?; Ok(()) }, Message::ServerStopped);
             }
             Message::ServerStopped(result) => if let Err(error) = result { self.fail(ctx, error) },
             Message::Banlists(list) => self.banlists = list,
@@ -579,7 +579,7 @@ impl State {
         self.game.closing = Some(Instant::now());
         job(move || {
             backend.force_stop_game(&settings)?;
-            if backend.live(&settings).is_some() { backend.stop_server(&settings)?; }
+            backend.stop_server_if_running(&settings)?;
             Ok(())
         }, Message::Cancelled)
     }

@@ -428,6 +428,12 @@ impl Backend {
         cmd.args(extra);
         Ok(cmd)
     }
+    /// Stops your server when it runs. A server that stops itself between the look and the stop (an owned server ends once
+    /// its launcher's game is gone, as after Cancel) is what was asked for, not a failure.
+    pub fn stop_server_if_running(&self, settings: &Settings) -> anyhow::Result<()> {
+        if self.live(settings).is_none() { return Ok(()) }
+        match self.stop_server(settings) { Err(_) if self.live(settings).is_none() => Ok(()), result => result.map(|_| ()) }
+    }
     pub fn stop_server(&self, settings: &Settings) -> anyhow::Result<Value> {
         let mut owned = self.server.lock().unwrap();
         let live=self.live(settings).context("Start your server first.")?;
@@ -903,6 +909,16 @@ mod tests {
         drop(backend); std::fs::remove_dir_all(root).unwrap();
         assert_eq!(reply["stopping"],true);
         assert!(released,"a shutdown acknowledgement must not enable Start while the owned server is still stopping");
+    }
+    #[test]
+    fn stopping_a_server_that_is_already_gone_is_not_an_error() {
+        // Windows 11 (2026-11-20): Cancel killed the game, the owned server saw its launcher's game gone and stopped itself,
+        // and Cancel's own stop then failed with "Start your server first.", shown as a red notice.
+        let root=std::env::temp_dir().join(format!("yo3-server-gone-{}",std::process::id()));
+        let backend=Backend::new(root.clone()).unwrap(); let settings=Settings::default();
+        assert!(backend.stop_server(&settings).is_err(),"stopping a stopped server on purpose still says so");
+        assert!(backend.stop_server_if_running(&settings).is_ok(),"a clean-up that finds the server gone has nothing to report");
+        drop(backend); std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn stopping_an_attached_server_waits_until_its_management_port_closes() {

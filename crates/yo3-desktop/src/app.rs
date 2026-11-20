@@ -270,7 +270,7 @@ impl App {
                     // Every game the launcher started closes with it, the extra ones of Play as… too (#64).
                     backend.close_all_games(&settings)?;
                     let _ = backend.stop_hosting();
-                    if backend.live(&settings).is_some() { backend.stop_server(&settings)?; }
+                    backend.stop_server_if_running(&settings)?;
                     Ok(())
                 }, |_| Message::Exit);
             }
@@ -328,7 +328,7 @@ impl App {
                 return job(move || {
                     anyhow::ensure!(!backend.game_running() && !backend.game_open_elsewhere(&settings), "{GAME_OPEN}");
                     let _ = backend.stop_hosting();
-                    if backend.live(&settings).is_some() { backend.stop_server(&settings)?; }
+                    backend.stop_server_if_running(&settings)?;
                     // The new version opens its window, then this one exits; if it doesn't, this one stays.
                     match updates::activation::launch(&root, &installed, false, std::time::Duration::from_secs(25)) {
                         Ok(_ready) => { let _ = updates::install::clear_pending(&root, None); Ok(()) }
