@@ -135,6 +135,16 @@ pub enum Message {
 pub enum Dialog { Offer, Result { good: bool, sentence: String } }
 
 /// How many cards still have no picture, when there are any (the switch offers the download only then).
+/// How many cards still lack a picture, as a sentence.
+fn missing_words(have: usize, total: usize) -> String {
+    match total.saturating_sub(have) {
+        0 => "Every card has a picture.".to_owned(),
+        missing if missing >= total => format!("None of the {total} cards has a picture yet."),
+        1 => format!("1 of the {total} cards has no picture yet."),
+        missing => format!("{missing} of the {total} cards have no picture yet."),
+    }
+}
+
 pub fn offer(pictures: Option<(usize, usize)>) -> Option<usize> {
     pictures.map(|(have, total)| total.saturating_sub(have)).filter(|&missing| missing > 0)
 }
@@ -589,8 +599,8 @@ impl State {
             }
             (None, Dialog::Offer) => column![
                 text("Anime cards are on. To see their anime artwork, YO3 Revival can get the pictures now.").size(15).color(color::INK),
-                text(format!("The download is {} from ProjectIgnis' picture server, one card at a time. {} of {total} cards still have no picture. A card without a picture keeps the game's artwork. \
-                    Nothing is downloaded unless you press Get pictures.", pictures::SIZE_NOTE, total.saturating_sub(have))).size(14).color(color::INK_SOFT),
+                text(format!("The download is {} from ProjectIgnis' picture server, one card at a time. {} A card without a picture keeps the game's artwork. \
+                    Nothing is downloaded unless you press Get pictures.", pictures::SIZE_NOTE, missing_words(have, total))).size(14).color(color::INK_SOFT),
                 Space::new().height(Fill),
                 row![Space::new().width(Fill), pill("Not now", Some(close.clone()), Kind::Secondary, 130, 38), pill("Get pictures", Some(Message::GetPictures), Kind::Primary, 160, 38)].spacing(10)].spacing(14).into(),
             (None, Dialog::Result { good, sentence }) => column![
@@ -637,11 +647,6 @@ impl State {
 
     /// The anime card pictures (#60): how many there are and the three ways to get more.
     fn pictures_view(&self, playing: bool) -> Element<'_, Message> {
-        let line = match (&self.getting, self.pictures) {
-            (Some((done, total, _)), _) => format!("Getting pictures: {done} of {total}…"),
-            (None, Some((have, total))) => format!("Anime pictures: {have} of {total}"),
-            (None, None) => "Counting…".to_owned(),
-        };
         let idle = self.getting.is_none() && self.busy.is_none();
         let all = self.pictures.is_some_and(|(have, total)| have >= total);
         let get = match &self.getting {
@@ -653,7 +658,6 @@ impl State {
         if playing { hint.push_str(" The game is open: new pictures show after you close it and press PLAY again.") } else { hint.push_str(" New pictures show from the next PLAY.") }
         let (bar, words) = self.pictures_bar();
         column![
-            text(line).size(15).color(color::INK),
             text(hint).size(14).color(color::INK_SOFT),
             yo3_skin::progress_bar(bar, words, 22.0),
             row![get, pill("Add pictures from a file…", idle.then_some(Message::AddPictures), Kind::Secondary, 240, 32),
@@ -844,6 +848,14 @@ mod tests {
         assert_eq!(state.pictures_bar(), (Bar::Done, "418 of 418 pictures ready".to_owned()));
         // The words on the bar are plain.
         for words in ["Starting…", "Stopping…", "The picture server can't be reached", "400 of 418 pictures ready: 18 not fetched"] { assert_eq!(yo3_desktop::words::technical(words), None) }
+    }
+
+    #[test]
+    fn the_offer_counts_the_missing_pictures_in_a_sentence() {
+        assert_eq!(missing_words(0, 418), "None of the 418 cards has a picture yet.");
+        assert_eq!(missing_words(167, 418), "251 of the 418 cards have no picture yet.");
+        assert_eq!(missing_words(417, 418), "1 of the 418 cards has no picture yet.");
+        assert_eq!(missing_words(418, 418), "Every card has a picture.");
     }
 
     #[test]
