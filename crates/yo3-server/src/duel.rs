@@ -778,7 +778,7 @@ impl DuelSession {
         if let (Some(player_id), false) = (self.player_id, self.reported) {
             self.reported = true;
             let opponent = self.entry.as_ref().and_then(|e| e.npc_id).unwrap_or(0);
-            let duel_id = self.entry.as_ref().and_then(|e| e.duel_id).unwrap_or(0);
+            let duel_id = self.entry.as_ref().and_then(|e| e.cpu_match.or(e.duel_id)).unwrap_or(0);
             let mut hub = self.hub.locked();
             let replay = self.replay(&hub);
             let stats = self.engine.as_ref().map(|(_, t)| t.stats().clone());

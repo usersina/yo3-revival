@@ -68,6 +68,10 @@ impl Kind {
     /// Whether it is played as a match (best of three) rather than a single duel.
     pub fn is_match(self) -> bool { matches!(self, Kind::Evolution | Kind::Ultimate) }
 
+    /// Whether the computer may be the opponent: the client describes only the Ultimate Match as "PvP or PvCPU" (text
+    /// 15261; the other kinds' texts say PvP).
+    pub fn computer(self) -> bool { self == Kind::Ultimate }
+
     /// What the score counts, in the host's words.
     pub fn counts(self) -> &'static str {
         match self { Kind::Gunslinger => "win streak", Kind::DuelistTrial | Kind::Anniversary => "wins", Kind::Evolution | Kind::Ultimate => "stars" }

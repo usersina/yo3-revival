@@ -614,19 +614,20 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     let maintenance_task = tokio::spawn(maintenance(world.clone(), hub.clone(), directory.clone(), sessions.clone()));
     // Duel clocks between players run out on the server's side: checked once a second.
     let clock_task = {
-        let hub = hub.clone();
+        let (hub, world) = (hub.clone(), world.clone());
         tokio::spawn(async move {
             let mut every = tokio::time::interval(std::time::Duration::from_secs(1));
             loop {
                 every.tick().await;
                 // On a blocking thread (a table's engine call may take a while), and a panic in one pass is logged,
                 // not the end of the clock.
-                let hub = hub.clone();
+                let (hub, world) = (hub.clone(), world.clone());
                 let pass = tokio::task::spawn_blocking(move || {
                     duel::tick_tables(&hub, std::time::Instant::now());
                     let mut hub = hub.locked();
                     hub.tick_matches(std::time::Instant::now());
                     hub.match_waiting();
+                    hub.match_computers(&world);
                     hub.tick_events(std::time::Instant::now());
                     hub.tick_official(chrono::Utc::now().timestamp());
                     hub.tick_rentals(chrono::Utc::now().timestamp());

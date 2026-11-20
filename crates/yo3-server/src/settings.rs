@@ -126,6 +126,9 @@ pub const REGISTRY: &[Setting] = &[
     // 30: an NPC duel's engine peaks near 100 MB and a player duel's near 50 MB (measured, #27): about 3 GB at most.
     Setting { name: "max-duels", help: "Duels running at once, each with its rules engine; beyond it NPC duels and Create Duel are refused \
         (\"Duels are busy\") and Auto Duel waits", kind: Kind::Number { min: 1, max: 2000 }, applies: Applies::AtOnce, default: || json!(30) },
+    // The client calls the Ultimate Match "PvP or PvCPU" (text 15261) and says nothing of when the computer plays: a guess.
+    Setting { name: "ultimate-cpu-wait", help: "Seconds an Ultimate Match entrant waits for another player before the computer plays them \
+        (0: only players)", kind: Kind::Number { min: 0, max: 3600 }, applies: Applies::AtOnce, default: || json!(30) },
     Setting { name: "max-connections", help: "TLS connections at once (a player's game holds several)",
         kind: Kind::Number { min: 16, max: 100_000 }, applies: Applies::AtOnce, default: || json!(2048) },
     // Real play peaks near 32 requests a second on the front and 6 on a duel connection (packet logs, #39).
@@ -189,6 +192,8 @@ pub struct Settings {
     /// The caps (#27).
     pub max_players: usize,
     pub max_duels: usize,
+    /// Seconds before the computer plays an Ultimate Match entrant nobody joined (0: never).
+    pub ultimate_cpu_wait: u32,
     pub max_connections: usize,
     pub handshake_burst: u32,
     pub handshakes_per_second: u32,
@@ -239,6 +244,7 @@ impl Settings {
             maintenance_message: text("maintenance-message"),
             max_players: number("max-players") as usize,
             max_duels: number("max-duels") as usize,
+            ultimate_cpu_wait: number("ultimate-cpu-wait"),
             max_connections: number("max-connections") as usize,
             handshake_burst: number("handshake-burst"),
             handshakes_per_second: number("handshakes-per-second"),

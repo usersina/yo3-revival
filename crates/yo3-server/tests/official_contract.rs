@@ -10,9 +10,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use common::{Client, Server, one, req, req_with};
-use yo3_proto::{Message, Value};
+use yo3_proto::{Message, Packet, Value};
 use yo3_server::accounts::Directory;
-use yo3_server::front::Ended;
+use yo3_server::front::{Ended, World};
 use yo3_server::official::{Kind, NewEvent, Prize};
 
 const STADIUM_LIST: u32 = 0x177A;
@@ -334,4 +334,113 @@ fn prizes_are_paid_in_bp_by_d_mail_when_the_event_ends() {
     // Paid once.
     server.hub.lock().unwrap().tick_official(end + 60);
     assert_eq!(d.lock().unwrap().dpoint(user), Some(before + 500));
+}
+
+// The Ultimate Match against the computer (#18). The client's own text for the event (15261) calls it a "PvP or PvCPU
+// Match Duel event"; nothing says when the computer plays, so it is the fallback of a wait (a guess, the live setting
+// `ultimate-cpu-wait`), and its match is one duel pushed like a player's (`0x1978`, the NPC's record as `vsPlayerData`).
+
+/// A server with six NPCs and the computer's wait set to `wait` seconds (0: never).
+fn with_computers(wait: u32) -> Server {
+    let names = [(120, "Seto Kaiba"), (121, "Seto Kaiba"), (122, "Seto Kaiba"), (123, "Joey Wheeler"), (124, "Joey Wheeler"), (125, "Joey Wheeler")];
+    let world = World { npcs: (120..126).collect(), npc_names: names.iter().map(|(i, n)| (*i, n.to_string())).collect(), ..World::new((1..=20).collect()) };
+    let server = Server::with_world(world);
+    let live = yo3_server::settings::Live::open(None, vec![]).unwrap();
+    live.set("ultimate-cpu-wait", &wait.to_string()).unwrap();
+    server.hub.lock().unwrap().set_settings(Arc::new(live));
+    server
+}
+
+fn computers(server: &Server) { server.hub.lock().unwrap().match_computers(&server.world); }
+
+#[test]
+fn an_ultimate_entrant_nobody_joins_gets_a_computer_after_the_wait() {
+    let server = with_computers(1);
+    let mut a = server.join(1001, "Yugi");
+    let id = schedule(&server, Kind::Ultimate, Prize::default());
+    assert_eq!(participate(&mut a, id).request(), Some(0x1799));
+    computers(&server);
+    assert!(pushed_within(&mut a, Duration::from_millis(200)).is_empty(), "not before the wait");
+    std::thread::sleep(Duration::from_millis(1100));
+    computers(&server);
+    let push = one(pushed_within(&mut a, Duration::from_secs(3)));
+    assert_eq!(push.request(), Some(0x1978));
+    let vs = named(&push, "vsPlayerData");
+    let npc = int(vs, "player_id").unwrap();
+    assert!((120..126).contains(&npc), "an NPC of the client's roster, not a player: {npc}");
+    let name = vs.get("pname").and_then(Value::as_str).unwrap();
+    assert_eq!(name, if npc < 123 { "Seto Kaiba" } else { "Joey Wheeler" }, "its name from the client's text table");
+    let data = named(&push, "duelData");
+    assert!(int(data, "duel_id").is_some_and(|d| d > 0));
+    assert_eq!(int(data, "match_type"), Some(1), "one duel counts as the match (guess)");
+    // Paired once: no second push, and the player no longer waits.
+    std::thread::sleep(Duration::from_millis(1100));
+    computers(&server);
+    assert!(pushed_within(&mut a, Duration::from_millis(200)).is_empty());
+}
+
+#[test]
+fn the_computer_plays_only_in_the_ultimate_match_and_only_when_the_wait_is_on() {
+    let server = with_computers(1);
+    let (mut a, mut b) = (server.join(1001, "Yugi"), server.join(1002, "Kaiba"));
+    let (evolution, trial) = (schedule(&server, Kind::Evolution, Prize::default()), schedule(&server, Kind::DuelistTrial, Prize::default()));
+    participate(&mut a, evolution);
+    participate(&mut b, trial);
+    std::thread::sleep(Duration::from_millis(1100));
+    computers(&server);
+    assert!(pushed_within(&mut a, Duration::from_millis(300)).is_empty() && b.pushed().is_empty());
+    // A wait of 0 turns the computer off.
+    let off = with_computers(0);
+    let mut c = off.join(1003, "Joey");
+    let id = schedule(&off, Kind::Ultimate, Prize::default());
+    participate(&mut c, id);
+    std::thread::sleep(Duration::from_millis(100));
+    computers(&off);
+    assert!(pushed_within(&mut c, Duration::from_millis(300)).is_empty());
+}
+
+#[test]
+fn a_player_who_arrives_first_is_matched_before_the_computer() {
+    let server = with_computers(1);
+    let (mut a, mut b) = (server.join(1001, "Yugi"), server.join(1002, "Kaiba"));
+    let id = schedule(&server, Kind::Ultimate, Prize::default());
+    participate(&mut a, id);
+    participate(&mut b, id);
+    let to_a = one(pushed_within(&mut a, Duration::from_secs(3)));
+    assert_eq!(int(named(&to_a, "vsPlayerData"), "player_id"), Some(1002));
+    std::thread::sleep(Duration::from_millis(1100));
+    computers(&server);
+    assert!(pushed_within(&mut a, Duration::from_millis(200)).is_empty() && b.pushed().len() == 1, "only the player match's push");
+}
+
+#[test]
+fn the_computer_match_brings_the_npc_to_the_duel_and_counts_a_star_like_a_player_match() {
+    let server = with_computers(1);
+    let mut a = server.join(1001, "Yugi");
+    let id = schedule(&server, Kind::Ultimate, Prize::default());
+    participate(&mut a, id);
+    std::thread::sleep(Duration::from_millis(1100));
+    computers(&server);
+    let push = one(pushed_within(&mut a, Duration::from_secs(3)));
+    let (duel, npc) = (int(named(&push, "duelData"), "duel_id").unwrap(), int(named(&push, "vsPlayerData"), "player_id").unwrap());
+    // Select Deck for the match's duel_id (0x1F4F) is accepted and the duel connection is told to play the NPC, not to sit
+    // at a table.
+    let deck = Message::deck().with("deck_name", Value::text("Starter Deck"));
+    let fields = [("duel_id", Value::U32(duel)), ("event_id", Value::U32(0)), ("update_type", Value::U32(1))];
+    let update = fields.iter().fold(Message::reply(0x1F4F), |m, (k, v)| m.with(k, v.clone())).item(deck);
+    assert_eq!(one(a.send(Packet::Message(update))).request(), Some(0x22CA));
+    let entry = server.hub.lock().unwrap().duel_entry(1001).expect("the deck was brought");
+    assert_eq!((entry.npc_id, entry.cpu_match, entry.duel_id), (Some(npc), Some(duel), None));
+    // The computer match does not count as a duel that never started: no engine counted before it begins, and the
+    // 180 s "nobody came" ending leaves it alone.
+    server.hub.lock().unwrap().tick_matches(Instant::now() + Duration::from_secs(600));
+    assert!(server.hub.lock().unwrap().match_ids().contains(&duel));
+    // Its end: a win is a star, shown in the result and the lobby; the match is over.
+    server.hub.lock().unwrap().finish_duel(&Ended { npc: true, opponent: npc, ..ended(1001, npc, duel, 1, 1) });
+    assert_eq!(score_of(&a.pushed(), 1001), Some(1));
+    assert!(!server.hub.lock().unwrap().match_ids().contains(&duel));
+    assert_eq!(int(&one(a.send(req_with(0x177F, &[("event_id", Value::U32(id))]))).items[0], "event_score"), Some(1));
+    // An ordinary NPC duel afterwards is not the event's.
+    server.hub.lock().unwrap().finish_duel(&Ended { npc: true, opponent: npc, ..ended(1001, npc, 0, 1, 1) });
+    assert_eq!(score_of(&a.pushed(), 1001), None);
 }
