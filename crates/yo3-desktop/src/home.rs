@@ -681,7 +681,7 @@ impl State {
         };
         let panels = row![
             container(yo3_skin::panel(Some("Information"), news)).width(Fill).height(Fill),
-            container(column![self.ribbon(playing), self.multi_notice(), side].spacing(8)).width(372).height(Fill),
+            container(self.multi_notice().into_iter().fold(column![self.ribbon(playing)].spacing(8), |c, n| c.push(n)).push(side)).width(372).height(Fill),
         ].spacing(16).height(Fill);
         let mut page = column![].spacing(10).padding([16, 18]).height(Fill);
         // The game folder moved or was removed since setup: say so plainly, with the fix, instead of a broken button.
@@ -738,12 +738,10 @@ impl State {
     }
 
     /// A notice raised on the Multiplayer tab, above its panel (the Singleplayer panel has its own place for notices).
-    fn multi_notice(&self) -> Element<'_, Message> {
-        match &self.notice {
-            Some(notice) if notice.multi && self.tab == Tab::Multi => container(notice_view(notice, Message::ToggleDetails, Message::Dismiss)).padding([6, 12]).width(Fill)
-                .style(|_| container::Style { background: Some(color::PANEL_TOP.into()), border: iced::Border { color: color::BAD, width: 1.5, radius: 4.0.into() }, ..container::Style::default() }).into(),
-            _ => Space::new().into(),
-        }
+    fn multi_notice(&self) -> Option<Element<'_, Message>> {
+        let notice = self.notice.as_ref().filter(|n| n.multi && self.tab == Tab::Multi)?;
+        Some(container(notice_view(notice, Message::ToggleDetails, Message::Dismiss)).padding([6, 12]).width(Fill)
+            .style(|_| container::Style { background: Some(color::PANEL_TOP.into()), border: iced::Border { color: color::BAD, width: 1.5, radius: 4.0.into() }, ..container::Style::default() }).into())
     }
 
     fn notice(&self) -> Element<'_, Message> {
