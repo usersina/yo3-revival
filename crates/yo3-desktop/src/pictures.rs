@@ -161,6 +161,19 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// By hand only, against the real server and for three cards (never the whole set): `YO3_LIVE_PICTURES=/scratch/dir cargo test
+    /// -p yo3-desktop --lib live_three_cards -- --ignored`.
+    #[test]
+    #[ignore]
+    fn live_three_cards() {
+        let dir = PathBuf::from(std::env::var("YO3_LIVE_PICTURES").expect("a scratch folder"));
+        let entries: Vec<_> = get::list().into_iter().filter(|e| [4021, 8035, 4998].contains(&e.cid)).collect();
+        let mut fetcher = HttpFetcher::new(SERVER).unwrap();
+        let out = get::download(&dir, &entries, &mut fetcher, get::PACE, &AtomicBool::new(false), &mut |d, t| eprintln!("{d}/{t}")).unwrap();
+        eprintln!("{out:?}");
+        assert_eq!(out.saved.len(), 3, "{out:?}");
+    }
+
     #[test]
     fn every_sentence_reads_plainly_and_points_to_the_file_when_the_server_does_not_answer() {
         let ok = Outcome { saved: vec![1, 2], ..Outcome::default() };
