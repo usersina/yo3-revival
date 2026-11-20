@@ -112,7 +112,7 @@ A new Python test goes in `tools/<area>/test_*.py` (unittest, standard library) 
 
 | Tool | What it does |
 | --- | --- |
-| `task dev:server` (`tools/dev/scratch-server.py`) | A scratch server beside a live one: free ports (never 7443/8080), its own data and logs, key accounts and their profiles; `--from-db FILE --profile-for WHO` starts from a copy of another server's database. `env`, `status`, `stop` |
+| `task dev:server` (`tools/dev/scratch-server.py`) | A scratch server beside a live one: free ports (never 7443/8080), its own data and logs, key accounts and their profiles; `--from-db FILE --profile-for WHO` starts from a copy of another server's database; `--host HOST` names the address a client dials (a VM's: `--host 192.168.122.1 -- --bind 0.0.0.0`, only on ports the VM's firewall zone allows, never 7443/8080). `env`, `status`, `stop` (always with the server's DIR when others may run) |
 | `task client -- …` (`tools/client/vclient.sh`) | The headless game client on a private display |
 | `task client:scenario -- FILE` (`tools/client/ui-scenario.py`) | A scripted UI scenario on the running headless client: clicks, keys and text, then `expect text`, `expect flash` or `expect component` against the UI probe since the last action. On failure, the UI view and a screenshot. Scenarios live in `tools/client/scenarios/` |
 | `task check:cards` (`tools/engine/coverage.py`) | Which card effects the duel check's self-play exercised: per pool card, its chain links activated, resolved, resolved with a visible result, negated; `--sweep target/tmp/card-sweep.tsv` for a card sweep. A list to choose scenario tests from, not a gate |

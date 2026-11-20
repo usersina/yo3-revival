@@ -15,6 +15,9 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Desktop's Settings now says "YO3 Revival's own file in the game folder needs repair. The next PLAY puts it right." when the
+  game folder holds our loader without its receipt and "Open the game without the launcher" is on (it only said the next PLAY
+  sets it up). The "Starting a game as…" line under Play as another account no longer stays on screen after that game has started.
 - YO3 Revival no longer calls its own `winmm.dll` another program's (#65). If the game folder holds our loader (any version)
   but its small receipt file is missing, Desktop now says it needs repair and PLAY fixes it, instead of warning about "an
   unowned WINMM mod" and offering to move it aside. Another program's `winmm.dll` is still named as before. Sorry to the
