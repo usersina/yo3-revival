@@ -70,7 +70,7 @@ game** with **Fix**, which reopens Setup at the Game step. Settings → Game →
 ![The main screen: Singleplayer, with the Information panel and PLAY](../screenshots/desktop.png)
 
 **PLAY** starts your own server, then the game, and the line above the button names each step; after 30 seconds
-without the game, the big button becomes **CANCEL**, which stops what it started. While you play it is **CLOSE GAME**,
+without the game, the big button becomes **CANCEL**, which stops what it started: a game that appears while or just after you press it is closed, and PLAY comes back only once the start has settled. A notice about the game ("already running", a failed start) goes as soon as the game's state changes. While you play it is **CLOSE GAME**,
 which asks the game to stop and forces it after 10 seconds. Your server stops 30 seconds after the game exits, so a quick relaunch reuses it. If YO3 Revival
 crashes, the game keeps playing and your server stops by itself once nobody has played for two minutes. A game opened
 without the launcher shows as **PLAYING**, so a second copy can't be started.
@@ -91,7 +91,8 @@ The **Multiplayer** tab signs in to servers with a User ID and password ([accoun
 - **The server list**: the official servers (the project's YO3 Revival server, from a list the project signs) and the ones
   you added, the last one you played on first. Each shows whether it is online (the dot: green, amber or red), with how
   many players and its ping, or Maintenance, Offline, Needs a newer launcher, or Identity changed. The Information panel
-  shows the chosen server's news.
+  shows the chosen server's news (`code` in it shows as plain words). Your own hosted server, when it isn't running, shows
+  Offline with **START HOSTING** (the same as Host for friends) in place of RETRY.
 - **Server tools** (the **⋯** beside the list): **Add a server**, **Host for friends**, and **Remove this server** for one
   you added.
 - **Add a server**: paste an invite link a host sent you (`yo3revival://server?…`), or type an address (`host` or
@@ -106,9 +107,8 @@ The **Multiplayer** tab signs in to servers with a User ID and password ([accoun
   under the form ticks each rule green as you type; **Create account** works once all are met and the rules are
   accepted. You then see a **recovery code** once: **Copy** it or **Save** it as a text file, then **I saved it** signs
   you in.
-- **LOG IN**: **Save User ID** keeps only the name. **Stay signed in** keeps a sign-in token in your system's credential
-  store (Windows Credential Manager, or the Secret Service on Linux), never the password; without such a store it is
-  off and says why. Wrong User ID or password get the same message, and repeated tries wait longer each time.
+- **LOG IN**: the User ID field has the typing when the form opens (the password, when a saved User ID is filled in). **Save User ID** keeps only the name. **Stay signed in** keeps a sign-in token in your system's credential
+  store (Windows Credential Manager, or the Secret Service on Linux), never the password; without such a store the box is greyed out, off, and a line says why. Wrong User ID or password get the same message, and repeated tries wait longer each time.
 - **Forgot password?**: your recovery code (or a reset code from the server's moderators, who check it's you first) and
   a new password. A recovery code is replaced by a new one, shown once.
 - **PLAY** starts the game signed in to the server; **CLOSE GAME** and **CANCEL** work as in Singleplayer. Signed in,

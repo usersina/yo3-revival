@@ -701,7 +701,15 @@ pub fn tick(_theme: &Theme, status: checkbox::Status) -> checkbox::Style {
     let (checked, hovered) = match status {
         checkbox::Status::Active { is_checked } => (is_checked, false),
         checkbox::Status::Hovered { is_checked } => (is_checked, true),
-        checkbox::Status::Disabled { is_checked } => (is_checked, false),
+        checkbox::Status::Disabled { is_checked } => {
+            // Unavailable: greyed, so it doesn't look like a box that can be ticked.
+            return checkbox::Style {
+                background: Background::Color(if is_checked { INK_SOFT } else { Color::from_rgb8(0xe4, 0xe7, 0xeb) }),
+                icon_color: Color::WHITE,
+                border: Border { color: Color::from_rgb8(0xc3, 0xc9, 0xd0), width: 1.0, radius: 2.0.into() },
+                text_color: Some(INK_SOFT),
+            };
+        }
     };
     checkbox::Style {
         background: Background::Color(if checked { NAVY } else { Color::WHITE }),
@@ -733,6 +741,14 @@ pub fn choice_menu(_theme: &Theme) -> iced::overlay::menu::Style {
 mod tests {
     use super::*;
     use iced::widget::canvas::Program;
+
+    #[test]
+    fn a_disabled_tick_looks_unavailable() {
+        let active = tick(&Theme::Light, checkbox::Status::Active { is_checked: false });
+        let off = tick(&Theme::Light, checkbox::Status::Disabled { is_checked: false });
+        assert_ne!(active.background, off.background);
+        assert_eq!(off.text_color, Some(INK_SOFT));
+    }
 
     /// iced picks a font by family name: a name that matches no loaded face silently falls back to another font.
     #[test]

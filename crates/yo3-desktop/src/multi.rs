@@ -285,8 +285,11 @@ impl State {
         self.user = self.selected().and_then(|s| s.saved_user.clone()).unwrap_or_default();
         self.save_user = !self.user.is_empty();
         let Some(server) = self.selected().cloned() else { return Task::none() };
-        Task::batch([self.probe(&server), self.resume()])
+        Task::batch([self.probe(&server), self.resume(), self.focus_sign_in()])
     }
+
+    /// The sign-in form's first empty field takes the typing, as the other forms' first field does.
+    fn focus_sign_in(&self) -> Task<Message> { iced::widget::operation::focus(field_id(sign_in_first_field(&self.user))) }
 
     fn save(&self, ctx: &Ctx, server: Server) -> Task<Message> {
         let Some(store) = ctx.store.clone() else { return Task::none() };
@@ -362,7 +365,9 @@ impl State {
                 // The form's first field takes the typing.
                 if form == Form::PlayAs { self.other_user.clear() }
                 let first = match form { Form::Add => Some(Field::Address), Form::Register | Form::Recover => Some(Field::User), Form::PlayAs => Some(Field::Other), _ => None };
+                let form_was_sign_in = form == Form::SignIn;
                 self.form = form; self.problem = None; self.note = None; self.code_note = None; self.password.clear(); self.again.clear();
+                if form_was_sign_in { return self.focus_sign_in() }
                 if let Some(field) = first { return iced::widget::operation::focus(field_id(field)) }
             }
             Message::SignIn => {
@@ -968,6 +973,9 @@ fn fingerprint(identity: &str) -> String {
     identity.as_bytes().chunks(4).map(|c| std::str::from_utf8(c).unwrap_or("")).collect::<Vec<_>>().join(" ")
 }
 
+/// The field the sign-in form focuses: User ID, or the password when a saved User ID is already filled in.
+fn sign_in_first_field(user: &str) -> Field { if user.trim().is_empty() { Field::User } else { Field::Password } }
+
 /// The server Host for friends made on this PC: in the list at this PC's own address (app.rs adds it as 127.0.0.1).
 fn is_own_hosted(server: &Server) -> bool { !server.official && server.address.starts_with("127.0.0.1:") }
 
@@ -1029,6 +1037,12 @@ mod tests {
         let _ = state.update(Message::Recheck(key.clone()), &ctx());
         assert!(!state.status.contains_key(&key), "no last check left showing while the new one runs");
         assert_eq!(State::row_status(state.status.get(&key)).1, State::row_status(None).1);
+    }
+
+    #[test]
+    fn the_sign_in_form_focuses_user_id_first() {
+        assert_eq!(sign_in_first_field(""), Field::User);
+        assert_eq!(sign_in_first_field("yugi"), Field::Password, "a saved User ID is already there");
     }
 
     #[test]
