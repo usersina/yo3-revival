@@ -108,6 +108,93 @@ int main(void) {
         /* Each patched stat has a stub (card_mul_stub in card-profile.h: eax for ATK and DEF here, ecx/edx for the panels'). */
         for (unsigned i = 6; i < SITES; ++i) assert(yo3_card_mul_sites[i].reg == 0);
     }
+    /* Sorting and range search (docs/client-internals.md "Sorting and range search"): the client's key and filter, on crafted rows,
+     * with the profile's numbers and without a profile. Rows: a Monster per stat the anime has, plus "?" and a Spell. */
+    {
+        enum { N = 12 };
+        struct { unsigned cid, nine; int monster; const char *line; const char *name; } rows[N] = {
+            {5001, 0,    1, "5001 0 0",    "0 (nine bits 0)"},     {5002, 0,    1, "5002 1 1",    "1/1 (nine bits 0)"},
+            {5003, 0,    1, "5003 9 9",    "9 (nine bits 0)"},     {5004, 1,    1, "-",           "10 (a word)"},
+            {5005, 250,  1, "5005 2500 2500", "2500"},             {5006, 250,  1, "5006 2501 2501", "2501 (nine bits 250)"},
+            {5007, 0x1FE, 1, "5007 5100 5100", "5100"},            {5008, 0x1FE, 1, "5008 6000 6000", "6000 (nine bits 510)"},
+            {5009, 0x1FF, 1, "5009 ? ?",   "? (all ones)"},        {5010, 0x1FF, 1, "-",           "? of the game (all ones)"},
+            {5011, 250,  1, "-",           "2500 of the game"},    {5012, 0x1FF, 0, "-",           "a Spell (all ones)"},
+        };
+        char text[2048], *w = text; w += sprintf(w, "yo3-card-profile 1\n");
+        for (unsigned i = 0; i < N; ++i) if (rows[i].line[0] != '-') w += sprintf(w, "card %u %u 0 0 0 %s\n", i, rows[i].cid, rows[i].line + 5);
+        assert(yo3_profile_parse(text, (size_t)(w - text), &profile) && profile.ncards == 8 && !profile.skipped);
+        /* the filter's stat for each row, then a range that starts and ends on every boundary */
+        const int want[N] = { 0, 1, 9, 10, 2500, 2501, 5100, 6000, 0, 0, 2500, 0 };
+        for (unsigned i = 0; i < N; ++i) {
+            if (!rows[i].monster) continue;
+            int with = yo3_card_filter_stat(&profile, rows[i].cid, 0, rows[i].nine);
+            int without = yo3_card_filter_stat(NULL, rows[i].cid, 0, rows[i].nine);
+            assert(with == want[i]);
+            assert(without == (rows[i].nine == 0x1FF ? 0 : (int)rows[i].nine * 10));     /* standard mode: tens only, "?" 0 */
+            assert(yo3_card_filter_stat(&profile, rows[i].cid, 1, rows[i].nine) == want[i]);   /* the DEF twin */
+        }
+        const int bounds[] = { 0, 1, 2, 9, 10, 11, 2500, 2501, 5000, 5100, 6000, YO3_STAT_NO_LIMIT };
+        for (unsigned lo = 0; lo < sizeof bounds / sizeof *bounds; ++lo) for (unsigned hi = 0; hi < sizeof bounds / sizeof *bounds; ++hi)
+            for (unsigned i = 0; i < N; ++i) {
+                if (!rows[i].monster) continue;
+                int stat = yo3_card_filter_stat(&profile, rows[i].cid, 0, rows[i].nine);
+                assert(yo3_card_in_range(stat, bounds[lo], bounds[hi]) == (want[i] >= bounds[lo] && want[i] <= bounds[hi]));
+            }
+        assert(yo3_card_in_range(1, 1, 1) && !yo3_card_in_range(1, 2, 5000) && !yo3_card_in_range(0, 1, 1));
+        assert(yo3_card_in_range(6000, 6000, 6000) && !yo3_card_in_range(6000, 0, YO3_STAT_DEFAULT_MAX) && yo3_card_in_range(6000, 0, YO3_STAT_NO_LIMIT));
+        /* a profile's own "?" with a numeric nine bits (a hand made profile) is 0 in the filter, 0xFFFF in the getter */
+        assert(yo3_card_filter_stat(&profile, 5009, 0, 17) == 0 && yo3_card_getter_word(&profile, 5009, 0, 17) == 0xFFFF);
+        /* the blank maximum opens only for a profile with a stat above 5000 (6000 here); the check of the bytes is exact */
+        assert(yo3_profile_needs_open_max(&profile));
+        static const unsigned char mov[5] = { 0xB8, 0x88, 0x13, 0, 0 }, other[5] = { 0xB8, 0x89, 0x13, 0, 0 };
+        assert(yo3_card_default_max_ok(mov) && !yo3_card_default_max_ok(other));
+        Yo3Profile low; const char *lowtext = "yo3-card-profile 1\ncard 0 5001 0 0 0 5000 1\ncard 1 5002 0 0 0 ? 5100\n";
+        assert(yo3_profile_parse(lowtext, strlen(lowtext), &low) && low.ncards == 2 && yo3_profile_needs_open_max(&low));
+        lowtext = "yo3-card-profile 1\ncard 0 5001 0 0 0 5000 1\ncard 1 5002 0 0 0 ? 2500\n";
+        assert(yo3_profile_parse(lowtext, strlen(lowtext), &low) && !yo3_profile_needs_open_max(&low));
+        lowtext = "yo3-card-profile 1\ncard 0 5001 0 0 0 40000 1\n";   /* over the signed word: capped, never negative */
+        assert(yo3_profile_parse(lowtext, strlen(lowtext), &low));
+        { int v; assert(yo3_profile_stat_of(&low, 5001, 0, &v) && v == YO3_STAT_MAX_SHOWN); }
+        yo3_profile_free(&low);
+        /* the sort: key per row, then the list ordered by key; check both ways, with and without the profile */
+        for (int mode = 0; mode < 2; ++mode) for (int descending = 0; descending < 2; ++descending) for (int def = 0; def < 2; ++def) {
+            const Yo3Profile *p = mode ? &profile : NULL;
+            long keys[N]; unsigned order[N];
+            for (unsigned i = 0; i < N; ++i) {
+                int word = yo3_card_getter_word(p, rows[i].cid, def, rows[i].nine);
+                keys[i] = yo3_card_sort_key(word, rows[i].monster, descending, (int)i); order[i] = i;
+            }
+            for (unsigned i = 1; i < N; ++i) for (unsigned j = i; j > 0 && keys[order[j - 1]] > keys[order[j]]; --j) { unsigned t = order[j]; order[j] = order[j - 1]; order[j - 1] = t; }
+            /* what the order must be: ascending by the word ("?" first), ties in list order; descending is the reverse of the words, ties in list order */
+            for (unsigned k = 1; k < N; ++k) {
+                unsigned a = order[k - 1], b = order[k];
+                int sign = descending ? 1 : -1;     /* the Monster's 2 is taken off going up and added going down */
+                int wa = (int16_t)yo3_card_getter_word(p, rows[a].cid, def, rows[a].nine) + sign * 2 * rows[a].monster;
+                int wb = (int16_t)yo3_card_getter_word(p, rows[b].cid, def, rows[b].nine) + sign * 2 * rows[b].monster;
+                if (descending) assert(wa > wb || (wa == wb && a < b)); else assert(wa < wb || (wa == wb && a < b));
+            }
+            if (mode && !descending) {
+                /* the profile's exact numbers apart: 0, 1, 9 before 10, 2500 before 2501 before 5100 before 6000; "?" first of the Monsters */
+                unsigned pos[N]; for (unsigned k = 0; k < N; ++k) pos[order[k]] = k;
+                assert(pos[8] < pos[0] && pos[0] < pos[1] && pos[1] < pos[2] && pos[2] < pos[3]);
+                assert(pos[3] < pos[4] && pos[4] < pos[5] && pos[5] < pos[6] && pos[6] < pos[7] && pos[4] < pos[10]);
+                assert(pos[8] < pos[9]);        /* the game's own "?" is the same word: list order */
+            }
+            if (mode && descending) {
+                unsigned pos[N]; for (unsigned k = 0; k < N; ++k) pos[order[k]] = k;
+                assert(pos[7] < pos[6] && pos[6] < pos[5] && pos[5] < pos[4] && pos[4] < pos[3] && pos[3] < pos[2] && pos[2] < pos[1] && pos[1] < pos[0]);
+                assert(pos[8] > pos[0] && pos[9] > pos[0]);      /* "?" last */
+            }
+            if (!mode && !descending && !def) {
+                /* standard mode: 2500 and the row of 2501 (same nine bits) are not told apart, they keep the list's order */
+                unsigned pos[N]; for (unsigned k = 0; k < N; ++k) pos[order[k]] = k;
+                assert(pos[4] < pos[5] && pos[4] < pos[10] && pos[5] < pos[10]);
+                assert(pos[0] < pos[1] && pos[1] < pos[2]);      /* tens only: 0, 1, 9 are all 0, list order */
+            }
+        }
+        assert(yo3_card_sort_key(0xFFFF, 1, 0, 0) == -30000 && yo3_card_sort_key(0xFFFF, 1, 1, 0) == 655340000 && yo3_card_sort_key(0, 1, 0, 7) == -19993);
+        yo3_profile_free(&profile);
+    }
     puts("PASS: the card profile parses its format, refuses what is wrong, patches rows by their ids and finds stats, texts and art");
     return 0;
 }

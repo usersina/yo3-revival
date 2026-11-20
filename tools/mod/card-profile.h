@@ -11,7 +11,10 @@
  *   - exact ATK/DEF (an a word holds tens only: 1 ATK is not representable): 0x5373C0/0x5373F0 and the info panel's
  *     0x418600/0x418660 are wrapped; they answer the profile's number, or 0xFFFF for "?". The card panels that do the math
  *     themselves (yo3_card_mul_sites: 0x4565C6, 0x4C7955, 0x4C876D and their DEF twins, and the deck editor's ATK/DEF range filters
- *     0x418AB7, 0x418ADE, 0x418CBF, 0x418CE1) have their `ten times` replaced.
+ *     0x418AB7, 0x418ADE, 0x418CBF, 0x418CE1) have their `ten times` replaced (a profile's "?" is 0 there, as the game's own).
+ *   - sorting by ATK/DEF (0x419050) reads the wrapped getters, so its keys are the exact numbers already; nothing more is hooked
+ *     there. The search fields' blank maximum (5000, four immediates) is opened when the profile has a stat above it
+ *     (card_open_max). Evidence and the key formula: yo3_card_sort_key and docs/client-internals.md "Sorting and range search".
  *   - the effect text: 0x537510 (EAX the Konami id, ESI the table, returns the text's address) is wrapped.
  *   - artwork: see card_profile_art_* below.
  * Where the profile comes from: YO3_CARD_PROFILE (a file path) else the helper's /session/<cookie>/web/card-profile, else
@@ -66,6 +69,23 @@ static int card_readable(const void *p, size_t n) {
 
 static void *card_detour(uintptr_t preferred, unsigned n, const unsigned char *expect, int call_at, void *wrapper);
 static int card_art_install(void);
+static void card_open_max(void);
+
+/* The deck editor's search fields: a blank maximum is 5000, which would hide a card whose ATK or DEF is above it (5100, 6000). With such
+ * a card in the profile the four immediates are raised (yo3_card_default_max_sites); the bytes are checked first, and nothing else
+ * changes: without such a card, or without a profile, the client's own 5000 stays. */
+static void card_open_max(void) {
+    if (!card_profile_on || !yo3_profile_needs_open_max(&card_profile)) return;
+    for (size_t i = 0; i < 4; ++i) if (!yo3_card_default_max_ok((const unsigned char *)game_address(yo3_card_default_max_sites[i]))) {
+        card_profile_log("[YO3 MOD] card profile: the search's blank maximum is not as expected, left at 5000"); return;
+    }
+    for (size_t i = 0; i < 4; ++i) {
+        unsigned char *imm = (unsigned char *)game_address(yo3_card_default_max_sites[i]) + 1; DWORD previous, ignored; int32_t v = YO3_STAT_NO_LIMIT;
+        if (!VirtualProtect(imm, 4, PAGE_EXECUTE_READWRITE, &previous)) continue;
+        memcpy(imm, &v, 4); FlushInstructionCache(GetCurrentProcess(), imm, 4); VirtualProtect(imm, 4, previous, &ignored);
+    }
+    card_profile_log("[YO3 MOD] card profile: the search's blank maximum is open (the profile has an ATK or DEF above 5000)");
+}
 
 /* After the game has loaded its card data: the profile, fetched and applied to the table of `env`'s card object. */
 static void card_profile_patch(void *env) {
@@ -93,6 +113,7 @@ static void card_profile_patch(void *env) {
     card_profile_log("[YO3 MOD] card profile %s (%s): %u cards patched, %u refused, %u texts, %u artworks, %u lines skipped",
         card_profile.name, card_profile.hash, done, refused, card_profile.ntexts, card_profile.narts, card_profile.skipped);
     card_art_install();
+    card_open_max();
 }
 
 
@@ -173,6 +194,9 @@ static void *card_orig_rows_by_cid __attribute__((used)); /* 0x537230 */
 /* The panels' own `ten times the nine bits` (yo3_card_mul_sites): the profile's number when it has one. */
 static __attribute__((used)) int __attribute__((cdecl)) card_cb_mul_atk(unsigned nine) { int v; return card_profile_on && yo3_profile_stat_of(&card_profile, card_last_cid, 0, &v) ? v : yo3_card_times_ten(nine); }
 static __attribute__((used)) int __attribute__((cdecl)) card_cb_mul_def(unsigned nine) { int v; return card_profile_on && yo3_profile_stat_of(&card_profile, card_last_cid, 1, &v) ? v : yo3_card_times_ten(nine); }
+/* The range filters' (yo3_card_filter_stat): the same, but a profile's "?" is 0 there, as the game's own "?" is. */
+static __attribute__((used)) int __attribute__((cdecl)) card_cb_filter_atk(unsigned nine) { return card_profile_on ? yo3_card_filter_stat(&card_profile, card_last_cid, 0, nine) : yo3_card_times_ten(nine); }
+static __attribute__((used)) int __attribute__((cdecl)) card_cb_filter_def(unsigned nine) { return card_profile_on ? yo3_card_filter_stat(&card_profile, card_last_cid, 1, nine) : yo3_card_times_ten(nine); }
 
 #define YO3_CARD_WRAPPER(name, tramp, callback) \
     __asm__(".text\n.globl _" #name "\n_" #name ":\n push %eax\n call *_" #tramp "\n pop %ecx\n push %eax\n push %ecx\n call _" #callback "\n add $8,%esp\n ret\n")
@@ -196,9 +220,12 @@ __asm__(".text\n.globl _card_stub_note_cid\n_card_stub_note_cid:\n mov %eax,_car
 #define YO3_CARD_MUL_ECX(name, cb) __asm__(".text\n.globl _" #name "\n_" #name ":\n push %eax\n push %edx\n push %eax\n call _" #cb "\n add $4,%esp\n mov %eax,%ecx\n pop %edx\n pop %eax\n ret\n")
 #define YO3_CARD_MUL_EDX(name, cb) __asm__(".text\n.globl _" #name "\n_" #name ":\n push %eax\n push %ecx\n push %eax\n call _" #cb "\n add $4,%esp\n mov %eax,%edx\n pop %ecx\n pop %eax\n ret\n")
 void card_mul_atk_eax(void); void card_mul_atk_edx(void); void card_mul_def_eax(void); void card_mul_def_ecx(void);
+void card_filter_atk_eax(void); void card_filter_def_eax(void);
+YO3_CARD_MUL_EAX(card_filter_atk_eax, card_cb_filter_atk); YO3_CARD_MUL_EAX(card_filter_def_eax, card_cb_filter_def);
 YO3_CARD_MUL_EAX(card_mul_atk_eax, card_cb_mul_atk); YO3_CARD_MUL_EDX(card_mul_atk_edx, card_cb_mul_atk);
 YO3_CARD_MUL_EAX(card_mul_def_eax, card_cb_mul_def); YO3_CARD_MUL_ECX(card_mul_def_ecx, card_cb_mul_def);
 static void *card_mul_stub(const Yo3CardMulSite *site) {
+    if (site->filter) return site->reg == 0 ? (void *)(site->def ? card_filter_def_eax : card_filter_atk_eax) : NULL;
     if (site->def) return site->reg == 0 ? (void *)card_mul_def_eax : site->reg == 1 ? (void *)card_mul_def_ecx : NULL;
     return site->reg == 0 ? (void *)card_mul_atk_eax : site->reg == 2 ? (void *)card_mul_atk_edx : NULL;
 }
