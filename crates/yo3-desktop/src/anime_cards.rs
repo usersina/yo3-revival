@@ -36,7 +36,9 @@ impl Backend {
 
     fn saved_settings(&self, settings: &Settings) -> anyhow::Result<yo3_server::settings::Live> {
         let data = self.data_dir(settings);
-        std::fs::create_dir_all(&data)?;
+        // The server keeps its settings in server.db and ignores a settings.json file, so the database has to exist
+        // before the first write: a switch set before the server's first start would otherwise be lost.
+        yo3_server::store::initialize(&data)?;
         Ok(yo3_server::settings::Live::open(Some(&data.join("settings.json")), crate::banlists(std::path::Path::new(&settings.game_dir)))?)
     }
 }
@@ -84,12 +86,17 @@ mod tests {
         let settings = Settings::default();
         assert!(!backend.anime_cards(&settings).unwrap(), "off until a player turns it on");
         assert!(backend.set_anime_cards(&settings, true).unwrap());
-        // A fresh read, as the server's start would do, sees what was saved.
-        let file = backend.data_dir(&settings).join("settings.json");
-        assert!(std::fs::read_to_string(&file).unwrap().contains("anime-cards"));
+        // A fresh read, as the server's start would do, sees what was saved: the server keeps its settings in server.db
+        // and ignores a settings.json file (live on Windows 11: the switch set before the first start was lost).
+        let data = backend.data_dir(&settings);
+        let file = data.join("settings.json");
+        assert!(!file.exists(), "a plain settings.json is a file the server doesn't read");
+        yo3_server::store::initialize(&data).unwrap();
+        let as_the_server_reads_it = yo3_server::settings::Live::open(Some(&file), Vec::new()).unwrap();
+        assert!(as_the_server_reads_it.now().anime_cards, "the server's start finds the switch on");
         assert!(Backend::new(root.clone()).unwrap().anime_cards(&settings).unwrap());
         assert!(!backend.set_anime_cards(&settings, false).unwrap());
-        assert!(!std::fs::read_to_string(&file).unwrap_or_default().contains("anime-cards"), "off is the default again, not a stored 'off'");
+        assert!(!yo3_server::settings::Live::open(Some(&file), Vec::new()).unwrap().now().anime_cards, "off is the default again");
         let _ = std::fs::remove_dir_all(root);
     }
 
