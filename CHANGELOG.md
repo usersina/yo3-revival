@@ -27,6 +27,8 @@ Older entries describe their release at the time. For current setup, use the [RE
   problem; every problem's toast also has its own Report link.
 - Settings is easier to read: each section is short groups of rows, with the setting's name and one line on the left and
   its control on the right, and switches for everything that is on or off.
+- Fixed: **Create account** always has the **Invite code** box now, unless the server says anyone can join (#70). Before,
+  it only appeared once the server had answered, so it could be missing.
 - Fixed: choosing another game folder in setup no longer asks Windows for permission to tidy a folder another launcher set
   up; the anime picture count refreshes when you come back to it; after Sign out you can type your User ID straight away;
   Cancel during a slow start no longer shows "Start your server first."; REPAIR checks the files again first, so a file you put back yourself turns it back into PLAY.
