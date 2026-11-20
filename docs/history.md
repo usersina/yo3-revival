@@ -9,6 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-20 — Synchro Strike was never broken (#67)](#2026-11-20--synchro-strike-was-never-broken-67)
   - [2026-11-18 — Bundled GitHub TLS trust](#2026-11-18--bundled-github-tls-trust)
   - [2026-11-18 — Measured release-runner concurrency](#2026-11-18--measured-release-runner-concurrency)
   - [2026-11-18 — Production image dependency-cache inputs](#2026-11-18--production-image-dependency-cache-inputs)
@@ -129,6 +130,18 @@ version and were refused; they now send the helper's.
 
 Validation: every group CI's release job runs (lint, py, docs, rust, dashboard, e2e; actionlint not installed
 locally) and the local `mod` group passed.
+
+## 2026-11-20 — Synchro Strike was never broken (#67)
+
+The preset-deck coverage listed Synchro Strike (7921) as never offered, and the roadmap read that as the core not
+evaluating its condition or target. The card is a Normal Trap (database row type 4, script
+`CardScripts/official/c30123142.lua`: `EFFECT_TYPE_ACTIVATE`, `aux.StatChangeDamageStepCondition`), not a Quick-Play
+Spell: it has to be Set and can only be activated from the next turn. The scenario test
+`synchro_strike_adds_500_attack_per_material` first tried to activate it from the hand (never offered, as the coverage
+saw), then Set it, Synchro Summoned Goyo Guardian from two materials and activated it the next turn: offered, resolved,
+2800 + 1000 ATK, client model clean. No core or script change was needed; the coverage's "never offered" came from
+self-play that rarely has the Trap Set before a Synchro Monster is on the field. New scenario tests in the same pass:
+Max Warrior, Fortress Warrior, Synchro Deflector and Mist Wurm, all passing without a fix.
 
 ## 2026-11-18 — Bundled GitHub TLS trust
 

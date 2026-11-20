@@ -304,3 +304,91 @@ fn familiar_possessed_wynn_comes_from_the_deck() {
     assert_eq!(s.count(0, "hand", FAMILIAR_POSSESSED_WYNN), 0, "it was not in the hand");
     clean(&s);
 }
+
+const SYNCHRO_STRIKE: u16 = 7921;
+
+/// Synchro Strike (7921), a Normal Trap (Set first, activated from the next turn on; the database row's type is Trap, not
+/// the Quick-Play Spell it was first taken for): "Select 1 face-up Synchro Monster on the field. It gains 500 ATK for each
+/// material used for its Synchro Summon until the end of the turn." Goyo Guardian (2800) Synchro Summoned from two
+/// materials gains 1000.
+#[test]
+fn synchro_strike_adds_500_attack_per_material() {
+    let deck: Vec<u16> = [ZUBABA_KNIGHT, JUNK_SYNCHRON, SYNCHRO_STRIKE].iter().copied().cycle().take(40).collect();
+    let Some(mut s) = start([(&deck, &[GOYO_GUARDIAN]), (&[WARWOLF; 40], &[])]) else { return };
+    let plan = [
+        SetSpell(SYNCHRO_STRIKE),
+        Summon(ZUBABA_KNIGHT),
+        Summon(JUNK_SYNCHRON),
+        SpSummon(GOYO_GUARDIAN),
+        EndTurn,
+        Activate(SYNCHRO_STRIKE),
+    ];
+    s.run(&plan).unwrap();
+    assert_eq!(s.attack_of(0, GOYO_GUARDIAN), Some(2800 + 1000), "{}", s.state());
+    clean(&s);
+}
+
+const MAX_WARRIOR: u16 = 8438;
+const FORTRESS_WARRIOR: u16 = 7985;
+const SYNCHRO_DEFLECTOR: u16 = 7758;
+const MIST_WURM: u16 = 7549;
+
+/// Max Warrior (8438): "If this card attacks an opponent's monster, this card gains 400 ATK during the Damage Step only.
+/// If this card destroys an opponent's monster by battle, until your next Standby Phase: this card becomes Level 2 and its
+/// original ATK and DEF are halved." 1800 + 400 beats Gene-Warped Warwolf's 2000, then it is Level 2 with 900 ATK.
+#[test]
+fn max_warrior_shrinks_after_destroying_a_monster() {
+    let Some(mut s) = start([(&deck_with(&[MAX_WARRIOR]), &[]), (&[WARWOLF; 40], &[])]) else { return };
+    s.run_both([&[Summon(MAX_WARRIOR), Attack(MAX_WARRIOR)], &[Summon(WARWOLF)]]).unwrap();
+    assert!(s.monster(1, WARWOLF).is_none(), "Warwolf should be destroyed: {}", s.state());
+    assert_eq!(s.lp(1), 8000 - 200, "{}", s.state());
+    assert_eq!(s.level_of(0, MAX_WARRIOR), Some(2), "{}", s.state());
+    assert_eq!(s.attack_of(0, MAX_WARRIOR), Some(900), "{}", s.state());
+    clean(&s);
+}
+
+/// Fortress Warrior (7985): "You take no battle damage from attacks involving this card. Once per turn, this card cannot
+/// be destroyed by battle." Warwolf (2000) attacks its 600 ATK: no damage, and it stays.
+#[test]
+fn fortress_warrior_takes_no_battle_damage_and_survives_once() {
+    let Some(mut s) = start([(&deck_with(&[FORTRESS_WARRIOR]), &[]), (&[WARWOLF; 40], &[])]) else { return };
+    s.run_both([&[Summon(FORTRESS_WARRIOR)], &[Summon(WARWOLF), Attack(WARWOLF)]]).unwrap();
+    assert!(s.monster(0, FORTRESS_WARRIOR).is_some(), "{}", s.state());
+    assert_eq!(s.lp(0), 8000, "{}", s.state());
+    clean(&s);
+}
+
+/// Synchro Deflector (7758): "Activate only when a face-up Synchro Monster you control is selected as an attack target.
+/// Negate the attack and destroy 1 monster your opponent controls." Goyo Guardian (2800) would beat the attacking
+/// Warwolf and hurt its controller by 800; with the Trap the attack is negated and Warwolf destroyed: no damage.
+#[test]
+fn synchro_deflector_negates_the_attack_and_destroys_the_attacker() {
+    let deck: Vec<u16> = [ZUBABA_KNIGHT, JUNK_SYNCHRON, SYNCHRO_DEFLECTOR].iter().copied().cycle().take(40).collect();
+    let Some(mut s) = start([(&deck, &[GOYO_GUARDIAN]), (&[WARWOLF; 40], &[])]) else { return };
+    let mine = [
+        SetSpell(SYNCHRO_DEFLECTOR),
+        Summon(ZUBABA_KNIGHT),
+        Summon(JUNK_SYNCHRON),
+        SpSummon(GOYO_GUARDIAN),
+        ChainOnAttack(SYNCHRO_DEFLECTOR),
+    ];
+    // Warwolf waits a turn, so it attacks only once Goyo Guardian is there to be selected.
+    s.run_both([&mine, &[Summon(WARWOLF), EndTurn, Attack(WARWOLF)]]).unwrap();
+    assert!(s.monster(1, WARWOLF).is_none(), "{}", s.state());
+    assert_eq!(s.lp(1), 8000, "the attack was negated, no battle damage: {}", s.state());
+    assert_eq!(s.count(0, "grave", SYNCHRO_DEFLECTOR), 1, "{}", s.state());
+    clean(&s);
+}
+
+/// Mist Wurm (7549): "If this card is Synchro Summoned: Target up to 3 cards your opponent controls; return those
+/// targets to the hand." Synchro Summoned from Junk Synchron and two Zubaba Knights (3 + 3 + 3), it returns Warwolf.
+#[test]
+fn mist_wurm_returns_the_opponents_monster() {
+    let deck: Vec<u16> = [ZUBABA_KNIGHT, JUNK_SYNCHRON].iter().copied().cycle().take(40).collect();
+    let Some(mut s) = start([(&deck, &[MIST_WURM]), (&[WARWOLF; 40], &[])]) else { return };
+    let mine = [Summon(ZUBABA_KNIGHT), Summon(ZUBABA_KNIGHT), Summon(JUNK_SYNCHRON), SpSummon(MIST_WURM)];
+    s.run_both([&mine, &[Summon(WARWOLF)]]).unwrap();
+    assert!(s.monster(0, MIST_WURM).is_some(), "{}", s.state());
+    assert!(s.monster(1, WARWOLF).is_none(), "Warwolf should be back in the hand: {}", s.state());
+    clean(&s);
+}
