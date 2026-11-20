@@ -78,7 +78,7 @@ impl Play {
     /// What a click sends; `None` draws the button disabled.
     pub fn action(self) -> Option<Message> {
         match self {
-            Play::SetUp => Some(Message::SetUp), Play::Repair => Some(Message::Repair), Play::Retry => Some(Message::Recheck),
+            Play::SetUp => Some(Message::SetUp), Play::Repair => Some(Message::RepairCheck), Play::Retry => Some(Message::Recheck),
             Play::Ready => Some(Message::Play), _ => None,
         }
     }
@@ -187,6 +187,8 @@ pub enum Message {
     Tick,
     Polled(Result<Live, String>),
     Recheck,
+    /// The REPAIR button: checks the files again first, and asks for the repair only if they still need it.
+    RepairCheck,
     Checked(Readiness, Option<String>),
     FingerprintSaved(Result<(), String>),
     /// Handled by the window: open setup at the Game step (Set up, or the missing-game banner's Fix).
@@ -241,6 +243,8 @@ pub struct State {
     start_pending: bool,
     /// Restart the game was pressed: once the game is gone and the check passed, Play starts it again.
     restart_when_ready: bool,
+    /// REPAIR was pressed: once the check answers, the repair dialog opens only if the files still need it.
+    repair_after_check: bool,
     /// When the Play that is now waiting for the game's window was pressed.
     waiting_since: Option<Instant>,
     /// The Multiplayer tab (#30).
@@ -512,8 +516,13 @@ impl State {
                 }
             }
             Message::Recheck => return self.check(ctx),
+            Message::RepairCheck => { self.repair_after_check = true; return self.check(ctx) }
             Message::Checked(readiness, fingerprint) => {
                 self.game.readiness = Some(readiness);
+                // Live on Windows 11: a file put back by hand left REPAIR on the button until a restart.
+                if std::mem::take(&mut self.repair_after_check) && matches!(self.game.readiness, Some(Readiness::ComponentProblem(_))) {
+                    return Task::done(Message::Repair);
+                }
                 // A restart (the server changed its cards): the game is gone and the check passed, so it starts again.
                 if self.restart_when_ready && !self.game.running && matches!(self.game.readiness, Some(Readiness::Ready)) {
                     self.restart_when_ready = false;
@@ -1097,6 +1106,19 @@ mod tests {
         let notice = state.notice.as_ref().expect("a notice");
         assert!(matches!(notice.action, Some(("Repair", Message::Repair))), "with the Repair link");
         assert!(state.toast().is_some(), "a toast, whichever tab is open");
+    }
+
+    /// REPAIR checks the files again first: put right by hand, the button is PLAY again and no repair dialog opens.
+    #[test]
+    fn repair_checks_again_and_asks_only_when_the_files_still_need_it() {
+        let mut ctx = ctx();
+        let mut state = State { game: game(Some(Readiness::ComponentProblem("no dll".into()))), ..State::default() };
+        assert!(matches!(Play::of(&state.game).action(), Some(Message::RepairCheck)));
+        let _ = state.update(Message::RepairCheck, &mut ctx);
+        assert!(state.repair_after_check);
+        let _ = state.update(Message::Checked(Readiness::Ready, None), &mut ctx);
+        assert!(!state.repair_after_check);
+        assert_eq!(Play::of(&state.game), Play::Ready, "fixed by hand: PLAY");
     }
 
     #[test]

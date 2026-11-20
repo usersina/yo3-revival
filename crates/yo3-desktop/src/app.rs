@@ -504,8 +504,10 @@ impl App {
         };
         let page = column![self.title_bar(), container(body).height(Fill), self.footer()];
         let mut screen = stack![yo3_skin::backdrop(), page];
-        // Toasts float in the bottom right corner, above the footer: what happens never moves the page (the player's
-        // request, 2026-11-20). Settings' own come first while it is open; the main screen's otherwise.
+        // Toasts float above the footer: what happens never moves the page (the player's request, 2026-11-20). Settings'
+        // own sit bottom right; the main screen's bottom left, over the news panel's empty end, never over PLAY or LOG IN
+        // (live on Windows 11 a toast hid the lower half of the button).
+        let toast_side = if self.settings.is_some() { iced::alignment::Horizontal::Right } else { iced::alignment::Horizontal::Left };
         if self.setup.is_none() {
             let mut toasts: Vec<Element<'_, Message>> = match &self.settings {
                 Some(settings) => settings.toasts().into_iter().map(|t| t.map(Message::Settings)).collect(),
@@ -514,8 +516,8 @@ impl App {
             if self.settings.is_none() && let Some(toast) = self.home.toast() { toasts.push(toast.map(Message::Home)) }
             if !toasts.is_empty() {
                 screen = screen.push(container(iced::widget::Column::with_children(toasts).spacing(8))
-                    .padding(iced::Padding { bottom: 46.0, right: 18.0, ..iced::Padding::ZERO }).width(Fill).height(Fill)
-                    .align_x(iced::alignment::Horizontal::Right).align_y(iced::alignment::Vertical::Bottom));
+                    .padding(iced::Padding { bottom: 50.0, right: 18.0, left: 22.0, ..iced::Padding::ZERO }).width(Fill).height(Fill)
+                    .align_x(toast_side).align_y(iced::alignment::Vertical::Bottom));
             }
         }
         if self.home.bell_open && self.setup.is_none() {
