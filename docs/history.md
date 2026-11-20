@@ -196,6 +196,18 @@ about 20 s behind the server's (the trace's timestamps against the server log). 
 not a confirmed cause of the disconnect. Review regressions cover errors while shutting down either connection,
 retrying interrupted reads and receiving a reply after the request side closes; the warning is checked on both tabs.
 
+## 2026-11-20 — #65: the `winmm.dll` was ours
+
+The file the player attached (SHA-256 `1fa64875…`) is byte for byte the loader in the v0.1.3 Windows Desktop bundle: our own,
+with the `.yo3` mark (`YO3MOD02`, interface 3, v0.1.3). Desktop had called it "an unowned WINMM mod" only because its receipt
+file was missing, and earlier replies told the player it wasn't from YO3 Revival: wrong. With PLAY the loader is inert and
+only forwards WINMM. Both log sets show the shop loading, then the helper's 10053 on the game's connection 20 to 30 seconds
+into the session, after different requests, with no server-side close or warning (the server's only stall disconnects are
+the outbox limits). The cause is still open: a program on the player's PC (security software, VPN, a Winsock layer, or a
+cheat or debugging tool the player later mentioned) is the likeliest. Changes: the loader is recognised without a receipt
+and repaired, the relay's error says reading or writing and the bytes in flight, and the helper's log names a running
+memory tool.
+
 ## 2026-11-18 — Original card previews in the staff dashboard
 
 Added same-origin authenticated card PNGs and original description text to the gift catalogue, with generated

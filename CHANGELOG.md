@@ -15,6 +15,13 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- YO3 Revival no longer calls its own `winmm.dll` another program's (#65). If the game folder holds our loader (any version)
+  but its small receipt file is missing, Desktop now says it needs repair and PLAY fixes it, instead of warning about "an
+  unowned WINMM mod" and offering to move it aside. Another program's `winmm.dll` is still named as before. Sorry to the
+  players we told otherwise.
+- If the game's connection is cut on your PC, the log now says whether the game's side was reading or writing, how much was
+  on its way, and whether Cheat Engine, a debugger or a similar tool was running, so a report can show who closed it. Nothing is
+  blocked for those tools. If the shop disconnects you, see the [new troubleshooting row](docs/launcher.md#troubleshooting).
 - Several games from one launcher (#64): signed in on a server, **Play as another account…** starts another game signed in
   to a different account (the same account twice is refused). Running games are listed with their account and server and
   can be closed one by one; closing the launcher asks, then closes them all. Each extra game has its own ports and
