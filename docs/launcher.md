@@ -182,7 +182,7 @@ For a server that runs without the launcher (an always-on PC or a VPS), use the 
 
 ## Settings
 
-The gear at the top right opens **Settings**; **Back** or Escape returns to the main screen. Every change is saved at
+The cog at the bottom left (**Settings**) opens **Settings**; **Back**, the same cog (**Close settings**) or Escape returns to the main screen. **Unreleased:** the cog moved there from the title bar. Every change is saved at
 once and applies at the next PLAY (or your server's next start), without restarting YO3 Revival.
 
 **Escape** closes the topmost thing first (**Since v0.1.5 (2026-11-20)**): an open dialog, then the bell's list or the server tools, then a
@@ -193,13 +193,13 @@ press **I saved it**), then Settings. In a text box the first Escape only leaves
 
 | Section | What it has |
 | --- | --- |
-| Game | The game folder (**Change…** opens Setup), **Verify** (checks the game and YO3 Revival's own files in full, and says how to fix what isn't right), the [screen size](#screen-size), **Anime pictures** ("N of M", [**Get pictures**, **Add pictures from a file…** and **Save pictures to a file…**](anime-cards.md#artwork)), [opening the game without the launcher](#open-the-game-directly) with its state and **Fix permission** when the game folder needs it, and **Add** for a desktop shortcut |
+| Game | The game folder (**Change…** opens Setup), **Verify** (checks the game and YO3 Revival's own files in full, and says how to fix what isn't right), the [screen size](#screen-size), [opening the game without the launcher](#open-the-game-directly) (a tick: pressing it sets it up at once, asking Windows for permission when the game folder needs it), and **Add** for a desktop shortcut |
 | Accounts | Each server you're signed in to on this PC: **Sign out**, **Sign out everywhere** (every PC signed in to the account must sign in again; asks for the password when this PC didn't stay signed in) and **Change password** (signs every PC out, this one too) |
-| Singleplayer | **Anime cards** (your own server's `anime-cards` setting, [see below](#anime-cards)), the [banlist](#banlist), **Back up now**, **Restore…** (a backup from a recent start), **Reset…** (starts your Singleplayer data again; the old data is kept beside it, renamed) and **Open data folder** |
+| Singleplayer | **Anime cards** (your own server's `anime-cards` setting, [see below](#anime-cards)) with, right under it while it is on, **Anime pictures** ("N of M", [**Get pictures**, **Add pictures from a file…** and **Save pictures to a file…**](anime-cards.md#artwork)), the [banlist](#banlist), **Back up now**, **Restore…** (a backup from a recent start), **Reset…** (starts your Singleplayer data again; the old data is kept beside it, renamed) and **Open data folder** |
 | Advanced | On Linux, the Wine prefix and the Wine program (empty for Wine's defaults; **Save** checks it); **Detailed logs** for your servers; **Export logs…** and **Open logs folder**; [Reset local game data](#reset-local-game-data) |
 | About | The version, **Check for updates**, release notes, the project, licences and credits |
 
-**Anime pictures (since v0.1.5 (2026-11-20)):** Settings → Game lists how many of the anime cards have a picture. **Get pictures** downloads the missing ones (about 10 MB) from ProjectIgnis' picture server when you press it, with a progress count and **Cancel**; a second press carries on. **Add pictures from a file…** adds a zip of pictures and **Save pictures to a file…** makes one. Pictures show from the next PLAY, and your own pictures are never replaced.
+**Anime pictures (since v0.1.5 (2026-11-20); under the Anime cards tick in Settings → Singleplayer, Unreleased):** it lists how many of the anime cards have a picture. **Get pictures** downloads the missing ones (about 10 MB) from ProjectIgnis' picture server when you press it, with a progress count and **Cancel**; a second press carries on. **Add pictures from a file…** adds a zip of pictures and **Save pictures to a file…** makes one. Pictures show from the next PLAY, and your own pictures are never replaced.
 
 **Since v0.1.4 (2026-11-19):** clicking the version at the bottom left also opens **About**.
 
@@ -230,7 +230,7 @@ saved settings while it is stopped) and writes it the same way. It takes effect 
 **RESTART THE GAME** appears on the main screen. Turning it on while some pictures are missing opens a dialog: what is about to be
 downloaded (about 10 MB from ProjectIgnis' picture server, how many of the cards still have no picture, that a card without one keeps
 the game's artwork), **Get pictures** (a progress bar, **Cancel**, then the result and **Close**) or **Not now**. The switch stays on
-whatever you choose, and Settings → Game → **Anime pictures** downloads later. A server you join never shows this switch: its host
+whatever you choose, and **Anime pictures**, right under the switch, downloads later. A server you join never shows this switch: its host
 decides.
 
 ### Banlist
@@ -264,9 +264,11 @@ The setup adds an owned `winmm.dll` loader and a small receipt beside `yo3.exe`;
 changed. Your sign-in stays in the system's credential store (on Linux, also in the game's Wine prefix), never a
 password. The connection helper is copied into the app's own data folder, so moving or updating YO3 Revival leaves
 direct start working; if that copy is gone, the game opens offline and one line says to open YO3 Revival once. It never
-replaces another mod's file of that name: the setting then says so, and PLAY here still works. In a protected game
-folder, PLAY never asks for permission by itself: its notice offers **Allow**, and Settings → Game offers **Fix
-permission**. Turning the setting off takes the loader out of the game folder again.
+replaces another mod's file of that name: the setting then says so, and PLAY here still works. It is a tick, in Setup's last step (off for a new player) and in Settings → Game:
+pressing it sets it up at once, and in a protected game folder Windows asks for permission then. Say no and the tick
+stays off, with one quiet line; nothing asks again at PLAY (**Unreleased**: before, each PLAY's notice offered **Allow**). If
+it was on but the game folder lost its files, Settings → Game says so beside the tick, with **Ask again**. Turning the
+setting off takes the loader out of the game folder again.
 
 When a game opened this way couldn't play (its server didn't start or refused the sign-in), YO3 Revival's main screen
 says so once, the next time it is open with the game closed, with the technical reason behind **Details**.
@@ -278,16 +280,19 @@ old one first.
 
 ## Help and errors
 
-**Help** in the footer opens the guide inside the launcher, a topic at a time: getting started, Singleplayer,
+**Help & contact** in the footer (**Unreleased**) opens **Need a hand?**: **Read the guide**, **Ask the community** (the
+project's discussions) and **Report a problem**. The guide is inside the launcher, a topic at a time: getting started, Singleplayer,
 Multiplayer, hosting, settings, the common problems and where to talk with other players (the project's
 [discussions](https://github.com/usersina/yo3-revival/discussions)). Its **Report a problem** starts a report.
 
-**Support**, the heart in the footer, says how to help the project: its discussions, and a donation link. YO3 Revival
+**Support us**, the red heart in the footer, says how to help the project: its discussions, and a donation link. YO3 Revival
 is free, and giving changes nothing in the game.
 
-Every error is one plain sentence with one action: its own (**Retry**, **Fix**, **Repair**, **Allow**, **Restore a
-backup**) or **Report**. Your own server's notices show on its panel. Those about both tabs (a game opened without the
-launcher that couldn't play, an update that didn't install, a permission to give) go to the **bell** in the title
+Every error is one plain sentence with one action: its own (**Retry**, **Fix**, **Repair**, **Restore a
+backup**) or **Report**. It shows as a toast in the bottom right corner, above the footer, so the page never moves
+(**Unreleased**): good news goes by itself after a few seconds, a problem stays until **Dismiss**. Settings' jobs show
+there too, with a waiting bar. Those about both tabs (a game opened without the
+launcher that couldn't play, an update that didn't install) go to the **bell** in the title
 bar, which counts the new ones; click it to see them. **Help** opens the topic for that error. **Details** shows the technical text, with your
 folders written as names such as `<game>` or `<app data>`, and **Copy** puts it on the clipboard.
 
@@ -295,7 +300,7 @@ folders written as names such as `<game>` or `<app data>`, and **Copy** puts it 
 
 ## Logs and support
 
-**Report a problem** (in the footer, in Help, or beside an error):
+**Report a problem** (in the footer's **Help & contact**, in Help, or beside an error):
 
 1. Say what you were doing and what went wrong.
 2. Click **Continue on GitHub**. YO3 Revival saves this session's logs in a ZIP, with personal details removed, opens

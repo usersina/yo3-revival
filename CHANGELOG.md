@@ -13,6 +13,20 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- Desktop is calmer. Messages now float as a toast in the bottom right corner instead of pushing the screen around: good
+  news goes by itself after a few seconds, a problem stays until you dismiss it, and Settings' jobs show their progress
+  there too.
+- **Open the game without the launcher** is one tick, asked once in setup (off unless you tick it) and kept in Settings →
+  Game. Ticking it sets it up right away; if your game folder is protected, Windows asks for permission then. Say no and it
+  simply stays off: PLAY no longer asks you to **Allow** every time.
+- Anime pictures now sit right under the **Anime cards** tick in Settings → Singleplayer, shown while it is on.
+- The Settings cog moved from the title bar to the bottom left. The footer has a red-heart **Support us** and a new **Help &
+  contact** window: read the guide, ask the community, or report a problem.
+- Fixed: choosing another game folder in setup no longer asks Windows for permission to tidy a folder another launcher set
+  up; the anime picture count refreshes when you come back to it; after Sign out you can type your User ID straight away.
+
 ## v0.1.5 (2026-11-20)
 
 Multiplayer: update to v0.1.5 to join the hosted server after deployment.

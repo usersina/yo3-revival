@@ -288,7 +288,7 @@ connections, and say so to your players: they are asked to remove files from the
   each game fetches once at start, so **a change needs the players to restart their games** (Desktop offers RESTART THE GAME while a game runs the old cards, and until they do
   the server refuses every duel of an open game that loaded another profile, with a chat line saying why; a server restart
   applies the saved setting, and the games that were open must be restarted anyway); `yo3 card-profile FILE` writes the
-  file for a check). Artwork is not shipped or hosted: each player gets the pictures through Desktop (Settings → Game → Anime pictures:
+  file for a check). Artwork is not shipped or hosted: each player gets the pictures through Desktop (Settings → Singleplayer → Anime pictures, under the Anime cards tick:
   downloaded from ProjectIgnis on their click, or from a zip; [how](anime-cards.md#artwork)). What changes for players: [playing](playing.md#anime-card-versions); the list of cards:
   [anime cards](anime-cards.md).
 - **Prices.** `pack-cost`, `deck-cost`, `trade-cards` and the Rental's `rental-cards`, `rental-bp` and `rental-days`

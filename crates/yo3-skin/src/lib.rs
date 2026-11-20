@@ -77,6 +77,8 @@ pub mod color {
     pub const LINK: Color = hex(0x1f4fb4);
     pub const LINK_HOVER: Color = hex(0x3a78f0);
     pub const CLOSE: Color = hex(0xc4383a);
+    /// The footer's Support heart.
+    pub const HEART: Color = hex(0xff4d6d);
     /// A destructive button's face (Stop hosting, Sign out), from the top of the bevel to the bottom.
     pub const DANGER_TOP: Color = hex(0xe0675c);
     pub const DANGER: Color = hex(0xb4342a);
@@ -472,6 +474,19 @@ pub fn link<'a, M: Clone + 'a>(label: impl text::IntoFragment<'a>, on_press: M, 
 /// A link on the dark bars led by a heart, like the footer's other links (the footer's Support).
 pub fn heart_link<'a, M: Clone + 'a>(label: impl text::IntoFragment<'a>, on_press: M) -> Element<'a, M> { icon_link(Icon::Heart, label, on_press, true) }
 
+/// The footer's Support: a red heart in a warm chip, the one bright thing on the bar.
+pub fn support_link<'a, M: Clone + 'a>(label: impl text::IntoFragment<'a>, on_press: M) -> Element<'a, M> {
+    button(iced::widget::row![
+        svg(ICONS[Icon::Heart as usize].clone()).width(15).height(15).style(|_, status| svg::Style {
+            color: Some(if matches!(status, svg::Status::Hovered) { mix(HEART, Color::WHITE, 0.25) } else { HEART }) }),
+        text(label).size(14).font(BODY_BOLD),
+    ].spacing(6).align_y(iced::Alignment::Center)).padding([3, 11]).on_press(on_press).style(|_, status| {
+        let hover = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style { background: Some(alpha(HEART, if hover { 0.28 } else { 0.15 }).into()), text_color: if hover { Color::WHITE } else { ON_DARK },
+            border: Border { color: alpha(HEART, if hover { 0.9 } else { 0.55 }), width: 1.0, radius: 12.0.into() }, ..button::Style::default() }
+    }).into()
+}
+
 /// A text link in red on a panel, for an action that ends something (Sign out).
 pub fn danger_link<'a, M: Clone + 'a>(label: impl text::IntoFragment<'a>, on_press: M) -> Element<'a, M> {
     button(text(label).size(14).font(BODY_BOLD)).padding(0).on_press(on_press).style(|_, status| {
@@ -482,11 +497,11 @@ pub fn danger_link<'a, M: Clone + 'a>(label: impl text::IntoFragment<'a>, on_pre
 
 /// The kit's line icons (24 px grid), drawn in one colour: the widget tints them.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Icon { Copy, Save, Help, Flag, Heart, More, Check, Cross, Pending, Plus, Trash, Server, User, Open, Bell, Link, Refresh }
+pub enum Icon { Copy, Save, Help, Flag, Heart, More, Check, Cross, Pending, Plus, Trash, Server, User, Open, Bell, Link, Refresh, Cog, Chat, Book }
 
 static ICONS: LazyLock<Vec<svg::Handle>> = LazyLock::new(|| {
     const LINE: &str = "fill='none' stroke='#000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'";
-    let shapes: [String; 17] = [
+    let shapes: [String; 20] = [
         format!("<g {LINE}><rect x='9' y='9' width='12' height='12' rx='2'/><path d='M5 15V5a2 2 0 0 1 2-2h10'/></g>"),
         format!("<g {LINE}><path d='M12 3v12M7 10l5 5 5-5M4 20h16'/></g>"),
         format!("<g {LINE}><circle cx='12' cy='12' r='9'/><path d='M9.4 9.3a2.7 2.7 0 1 1 3.8 2.5c-.7.3-1.2 1-1.2 1.8v.4'/></g><circle cx='12' cy='17.3' r='1.2'/>"),
@@ -504,6 +519,9 @@ static ICONS: LazyLock<Vec<svg::Handle>> = LazyLock::new(|| {
         format!("<g {LINE}><path d='M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z'/><path d='M10 21h4'/></g>"),
         format!("<g {LINE}><path d='M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1'/></g>"),
         format!("<g {LINE}><path d='M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6'/></g>"),
+        format!("<g {LINE}><circle cx='12' cy='12' r='3'/><path d='M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1'/><circle cx='12' cy='12' r='6.5'/></g>"),
+        format!("<g {LINE}><path d='M4 5h16v11H9l-5 4z'/><path d='M8 9.5h8M8 12.5h5'/></g>"),
+        format!("<g {LINE}><path d='M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z'/><path d='M4 21V5M8 7h7'/></g>"),
     ];
     shapes.iter().map(|shape| svg::Handle::from_memory(format!("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>{shape}</svg>").into_bytes())).collect()
 });

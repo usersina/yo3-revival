@@ -41,7 +41,7 @@ Antivirus warning? [Check the download and what to allow](docs/antivirus.md). So
 
 ## Help and more
 
-This is a beta: **Report a problem** in the launcher's footer includes your logs
+This is a beta: **Report a problem** (the launcher footer's **Help & contact**) includes your logs
 ([reporting guide](docs/launcher.md#logs-and-support)) · [Issues](https://github.com/usersina/yo3-revival/issues/new/choose)
 · [Discussions](https://github.com/usersina/yo3-revival/discussions) · [Features](docs/playing.md#features-and-limitations)
 and [their status](docs/features.md) · [All documentation](docs/README.md)

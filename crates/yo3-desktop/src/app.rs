@@ -20,7 +20,7 @@ pub struct Ctx {
 pub enum Claim { Now(instance::Owner), AfterUpdate }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Dialog { Help, Report, Repair, ConfirmClose, Backups, Host, Support, WhatsNew, ConfirmRestart, Foreign }
+pub enum Dialog { Help, Report, Repair, ConfirmClose, Backups, Host, Support, Contact, WhatsNew, ConfirmRestart, Foreign }
 
 /// Report a problem: what the player says happened, the error it is about, and how far it got.
 #[derive(Debug, Default)]
@@ -48,6 +48,10 @@ pub enum Message {
     OpenReport(String),
     /// The footer's heart: how to support the project.
     OpenSupport,
+    /// The footer's Help & contact: the guide, the community, a report.
+    OpenContact,
+    /// The footer's cog: Settings, or back from it.
+    ToggleSettings,
     Report(ReportMessage),
     Foreign(ForeignMessage),
     Copy(String),
@@ -216,6 +220,10 @@ impl App {
             Message::Help(help::Message::Close) => self.dialog = None,
             Message::Help(help::Message::Open(url)) => return self.update(Message::OpenLink(url)),
             Message::OpenSupport => self.dialog = Some(Dialog::Support),
+            Message::OpenContact => self.dialog = Some(Dialog::Contact),
+            Message::ToggleSettings => if self.setup.is_none() {
+                return self.update(if self.settings.is_some() { Message::Settings(settings::Message::Close) } else { Message::OpenSettings(settings::Section::Game) });
+            },
             Message::OpenHelp(topic) => { self.help = help::State::at(topic); self.dialog = Some(Dialog::Help) }
             Message::OpenReport(error) => { self.report = Report { error, ..Report::default() }; self.dialog = Some(Dialog::Report) }
             Message::Report(ReportMessage::Edit(action)) => {
@@ -537,10 +545,10 @@ impl App {
             stack![pill("", Some(Message::Home(home::Message::Bell(!bell_open))), Kind::Window(Glyph::Bell), 34, 28),
                 container(yo3_skin::badge(self.home.unread)).width(34).align_x(iced::alignment::Horizontal::Right)].into()
         } else { pill("", Some(Message::Home(home::Message::Bell(!bell_open))), Kind::Window(Glyph::Bell), 34, 28) };
+        // Settings moved to the footer's cog (the player's request, 2026-11-20): the title bar keeps the bell and the window.
         let controls = row![
             bell,
-            pill("", (self.setup.is_none()).then_some(if self.settings.is_some() { Message::Settings(settings::Message::Close) } else { Message::OpenSettings(settings::Section::Game) }),
-                Kind::Window(Glyph::Settings), 34, 28),
+            Space::new().width(6),
             pill("", Some(Message::Minimize), Kind::Window(Glyph::Minimize), 34, 28),
             pill("", Some(Message::CloseRequested), Kind::Window(Glyph::Close), 34, 28),
         ].spacing(3);
@@ -551,8 +559,11 @@ impl App {
 
     fn footer(&self) -> Element<'_, Message> {
         let version = format!("v{}", yo3_tunnel::BUILD_VERSION.trim_start_matches('v'));
+        // The cog first: Settings, or back from it (not during setup).
+        let cog: Option<Element<'_, Message>> = self.setup.is_none()
+            .then(|| yo3_skin::icon_link(Icon::Cog, if self.settings.is_some() { "Close settings" } else { "Settings" }, Message::ToggleSettings, true));
         // The version opens About; a separate update link opens What's new (#32).
-        let mut line = match self.updater.offered() {
+        let versions = match self.updater.offered() {
             Some(offered) => row![
                 row![yo3_skin::link(version, Message::OpenSettings(settings::Section::About), true),
                     container(container(Space::new().width(8).height(8)).style(|_| dot(color::WARN))).height(20).align_y(iced::alignment::Vertical::Top)].spacing(1),
@@ -560,17 +571,18 @@ impl App {
             ],
             None => row![yo3_skin::link(version, Message::OpenSettings(settings::Section::About), true)],
         }.spacing(10).align_y(Center);
+        let mut line = match cog { Some(cog) => row![cog, versions], None => row![versions] }.spacing(18).align_y(Center);
         if self.host.hosted.is_some() {
             // Hosting for friends runs while the launcher is open: the footer says so and opens its dialog.
             let online = self.host.activity.online;
             line = line.push(container(Space::new().width(9).height(9)).style(|_| dot(color::GOOD)))
                 .push(yo3_skin::link(format!("Hosting for friends · {online} online"), Message::Home(home::Message::Multi(crate::multi::Message::Host)), true));
         }
-        let footer = line.push(Space::new().width(Fill)).push(yo3_skin::heart_link("Support", Message::OpenSupport))
-            .push(Space::new().width(18)).push(yo3_skin::icon_link(Icon::Flag, "Report a problem", Message::OpenReport(String::new()), true))
-            .push(Space::new().width(18)).push(yo3_skin::icon_link(Icon::Help, "Help", Message::OpenHelp(None), true))
-            .padding([0, 16]).height(Fill);
-        container(yo3_skin::footer_strip(footer)).height(34).into()
+        // A red heart for Support, then one friendly door to the guide, the community and a report.
+        let footer = line.push(Space::new().width(Fill)).push(yo3_skin::support_link("Support us", Message::OpenSupport))
+            .push(Space::new().width(16)).push(yo3_skin::icon_link(Icon::Chat, "Help & contact", Message::OpenContact, true))
+            .padding([0, 16]).height(Fill).align_y(Center);
+        container(yo3_skin::footer_strip(footer)).height(38).into()
     }
 
     fn dialog(&self, which: Dialog) -> Element<'_, Message> {
@@ -589,6 +601,7 @@ impl App {
             Dialog::WhatsNew => self.whats_new(),
             Dialog::ConfirmRestart => short("Restart to install?", None, "You are hosting for friends: restarting stops your server. Start hosting again after the update.".into(),
                 row![pill("Cancel", Some(close), Kind::Secondary, 110, 38), pill("Restart", Some(Message::Restart), Kind::Primary, 120, 38)], 200.0),
+            Dialog::Contact => self.contact(),
             Dialog::Support => short("Support YO3 Revival", None, "YO3 Revival is free, and nothing in it is for sale. If you enjoy it, a donation helps keep it going.".into(),
                 row![pill("Discussions", Some(Message::OpenLink(DISCUSSIONS.into())), Kind::Secondary, 140, 38),
                     pill("Donate", Some(Message::OpenLink(DONATE.into())), Kind::Primary, 130, 38)], 190.0),
@@ -720,6 +733,24 @@ impl App {
             text(self.updater.status(playing)).size(14).font(yo3_skin::BODY_BOLD).color(color::INK_SOFT),
             buttons,
         ].spacing(12))
+    }
+
+    /// Help & contact: the three ways to get a hand, each one line and one button.
+    fn contact(&self) -> Element<'_, Message> {
+        let way = |icon: Icon, title: &'static str, line: &'static str, button: &'static str, action: Message| {
+            container(row![
+                yo3_skin::icon(icon, 26.0, color::NAVY),
+                column![text(title).size(15).font(yo3_skin::BODY_BOLD).color(color::INK), text(line).size(14).color(color::INK_SOFT)].spacing(2).width(Fill),
+                pill(button, Some(action), Kind::Secondary, 130, 34),
+            ].spacing(14).align_y(Center)).padding([10, 12]).width(Fill).style(|_| container::Style { background: Some(color::ROW.into()),
+                border: iced::Border { color: color::CHROME, width: 1.0, radius: 4.0.into() }, ..container::Style::default() })
+        };
+        yo3_skin::dialog("Need a hand?", None, Message::CloseDialog, 600.0, 350.0, column![
+            text("YO3 Revival is a small fan project made by players. We read every question and report.").size(15).color(color::INK),
+            way(Icon::Book, "Read the guide", "Setup, playing, hosting, and fixes for common problems.", "Open guide", Message::OpenHelp(None)),
+            way(Icon::Chat, "Ask the community", "Questions, ideas and servers to join, on GitHub.", "Discussions", Message::OpenLink(DISCUSSIONS.into())),
+            way(Icon::Flag, "Report a problem", "Tell us what went wrong. We help you attach your logs.", "Report…", Message::OpenReport(String::new())),
+        ].spacing(10))
     }
 
     fn report_dialog(&self) -> Element<'_, Message> {

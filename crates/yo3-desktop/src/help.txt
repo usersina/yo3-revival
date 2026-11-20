@@ -45,10 +45,10 @@ Friends on the same network use the address YO3 Revival shows. Friends elsewhere
 Check reachability tests the port from this computer's side.
 
 # settings | Settings
-The gear at the top right opens Settings. Every change applies at the next PLAY, without restarting YO3 Revival.
-- Game: the game folder, Verify and repair, the screen size, the Anime pictures to get, opening the game without the launcher, and a desktop shortcut.
+The Settings cog at the bottom left opens Settings. Every change applies at the next PLAY, without restarting YO3 Revival.
+- Game: the game folder, Verify and repair, the screen size, opening the game without the launcher (ticking it may ask Windows for permission once), and a desktop shortcut.
 - Accounts: your sign-ins on each server.
-- Singleplayer: Anime cards (some cards play as they did in the anime), the banlist, backups and a reset.
+- Singleplayer: Anime cards (some cards play as they did in the anime) with their pictures right under it, the banlist, backups and a reset.
 - Advanced: Wine on Linux, detailed logs, exporting logs, and resetting the game's local data.
 - About: the version, updates, licences and links.
 
