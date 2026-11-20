@@ -182,7 +182,7 @@ For a server that runs without the launcher (an always-on PC or a VPS), use the 
 
 ## Settings
 
-**Settings** at the bottom right opens **Settings**; **Back**, **Settings** again or Escape returns to the main screen. **Unreleased:** it moved there from the title bar, and each section is grouped rows: a setting's name and one line on the left, its control (a switch for on and off) on the right.
+**Settings** at the bottom right opens **Settings**; **Back**, **Settings** again or Escape returns to the main screen. **Since v0.1.6 (2026-11-20):** it moved there from the title bar, and each section is grouped rows: a setting's name and one line on the left, its control (a switch for on and off) on the right.
 once and applies at the next PLAY (or your server's next start), without restarting YO3 Revival.
 
 **Escape** closes the topmost thing first (**Since v0.1.5 (2026-11-20)**): an open dialog, then the bell's list or the server tools, then a
@@ -199,7 +199,7 @@ press **I saved it**), then Settings. In a text box the first Escape only leaves
 | Advanced | On Linux, the Wine prefix and the Wine program (empty for Wine's defaults; **Save** checks it); **Detailed logs** for your servers; **Export logs…** and **Open logs folder**; [Reset local game data](#reset-local-game-data) |
 | About | The version, **Check for updates**, release notes, the project, licences and credits |
 
-**Anime pictures (since v0.1.5 (2026-11-20); under the Anime cards tick in Settings → Singleplayer, Unreleased):** it lists how many of the anime cards have a picture. **Get pictures** downloads the missing ones (about 10 MB) from ProjectIgnis' picture server when you press it, with a progress count and **Cancel**; a second press carries on. **Add pictures from a file…** adds a zip of pictures and **Save pictures to a file…** makes one. Pictures show from the next PLAY, and your own pictures are never replaced.
+**Anime pictures (since v0.1.5 (2026-11-20); under the Anime cards tick in Settings → Singleplayer, since v0.1.6 (2026-11-20)):** it lists how many of the anime cards have a picture. **Get pictures** downloads the missing ones (about 10 MB) from ProjectIgnis' picture server when you press it, with a progress count and **Cancel**; a second press carries on. **Add pictures from a file…** adds a zip of pictures and **Save pictures to a file…** makes one. Pictures show from the next PLAY, and your own pictures are never replaced.
 
 **Since v0.1.4 (2026-11-19):** clicking the version at the bottom (now in the middle of the footer, with an "About YO3 Revival" hint) also opens **About**, from Settings too.
 
@@ -266,7 +266,7 @@ password. The connection helper is copied into the app's own data folder, so mov
 direct start working; if that copy is gone, the game opens offline and one line says to open YO3 Revival once. It never
 replaces another mod's file of that name: the setting then says so, and PLAY here still works. It is a tick, in Setup's last step (off for a new player) and in Settings → Game:
 pressing it sets it up at once, and in a protected game folder Windows asks for permission then. Say no and the tick
-stays off, with one quiet line; nothing asks again at PLAY (**Unreleased**: before, each PLAY's notice offered **Allow**). If
+stays off, with one quiet line; nothing asks again at PLAY (**since v0.1.6 (2026-11-20)**: before, each PLAY's notice offered **Allow**). If
 it was on but the game folder lost its files, Settings → Game says so beside the tick, with **Ask again**. Turning the
 setting off takes the loader out of the game folder again.
 
@@ -280,7 +280,7 @@ old one first.
 
 ## Help and errors
 
-**Help** at the bottom right, beside Settings (**Unreleased**), opens **Need a hand?**: **Read the guide**, **Ask the community** (the
+**Help** at the bottom right, beside Settings (**since v0.1.6 (2026-11-20)**), opens **Need a hand?**: **Read the guide**, **Ask the community** (the
 project's discussions) and **Report a problem**. The guide is inside the launcher, a topic at a time: getting started, Singleplayer,
 Multiplayer, hosting, settings, the common problems and where to talk with other players (the project's
 [discussions](https://github.com/usersina/yo3-revival/discussions)). Its **Report a problem** starts a report.
@@ -289,8 +289,8 @@ Multiplayer, hosting, settings, the common problems and where to talk with other
 is free, and giving changes nothing in the game.
 
 Every error is one plain sentence with one action: its own (**Retry**, **Fix**, **Repair**, **Restore a
-backup**) or **Report**. It shows as a toast in the bottom right corner, above the footer, so the page never moves
-(**Unreleased**): good news goes by itself after a few seconds, a problem stays until **Dismiss**. Settings' jobs show
+backup**) or **Report**. It shows as a toast above the footer (bottom left on the main screen, clear of PLAY; bottom right in Settings), so the page never moves
+(**since v0.1.6 (2026-11-20)**): good news goes by itself after a few seconds, a problem stays until **Dismiss**. Settings' jobs show
 there too, with a waiting bar. Those about both tabs (a game opened without the
 launcher that couldn't play, an update that didn't install) go to the **bell** in the title
 bar, which counts the new ones; click it to see them. **Help** opens the topic for that error. **Details** shows the technical text, with your
