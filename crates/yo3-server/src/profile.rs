@@ -486,7 +486,7 @@ impl CardView {
             view.cards.insert(t.row, t.stats());
             view.card_kinds.insert(t.cid, t.kind());
             if t.extra_deck() { view.extra_deck_rows.insert(t.row); } else { view.extra_deck_rows.remove(&t.row); }
-            if matches!(t.kind(), 15 | 16) { view.tuners.insert(t.cid); } else { view.tuners.remove(&t.cid); }
+            if yo3_data::tuner_kind(t.kind()) { view.tuners.insert(t.cid); } else { view.tuners.remove(&t.cid); }
         }
         view
     }

@@ -159,10 +159,15 @@ impl Card {
         matches!(self.kind, 2 | 3 | 17..=19)
     }
 
-    /// A Tuner (kinds 15 and 16).
+    /// A Tuner ([`tuner_kind`]).
     pub fn tuner(&self) -> bool {
-        matches!(self.kind, 15 | 16)
+        tuner_kind(self.kind)
     }
+}
+
+/// Whether a client card kind is a Tuner: a Normal or Effect Tuner (15, 16) or a Synchro Tuner (19, Formula Synchron).
+pub fn tuner_kind(kind: u32) -> bool {
+    matches!(kind, 15 | 16 | 19)
 }
 
 #[derive(Default)]

@@ -30,6 +30,7 @@ const TYPE_MONSTER: u64 = 0x1;
 const TYPE_NORMAL: u64 = 0x10;
 const TYPE_EFFECT: u64 = 0x20;
 const TYPE_TOKEN: u64 = 0x4000;
+const TYPE_TUNER: u64 = 0x1000;
 
 fn game() -> Option<GameData> {
     let dir = std::env::var_os("YO3_GAME_DIR").map(PathBuf::from).unwrap_or_else(default_game_dir);
@@ -96,6 +97,11 @@ fn every_client_card_loads_with_the_anime_versions_as_the_client_shows_it() {
 
 fn every_card_loads_as_the_client_shows_it(game: &GameData, mut engine: Engine, anime: bool) {
     let profile = anime.then(|| yo3_server::profile::Profile::load("anime", game.cards.iter(), &engine_dir().unwrap()).expect("the anime profile builds"));
+    // The Tuners the server's duels use under the profile (CardView::over), over the game's (Card::tuner).
+    let views = profile.as_ref().map(|p| {
+        let base = yo3_server::profile::CardView { tuners: game.cards.iter().filter(|c| c.tuner()).map(|c| c.cid).collect(), ..Default::default() };
+        yo3_server::profile::CardView::over(&base, std::sync::Arc::new(p.clone()))
+    });
     let cards = client_cards(game);
     assert!(cards.len() > 4500, "{} cards", cards.len());
     let answers = checked(&mut engine, &cards);
@@ -141,6 +147,15 @@ fn every_card_loads_as_the_client_shows_it(game: &GameData, mut engine: Engine, 
             let client_kind = shown.map_or(original.kind, |t| t.kind());
             if yo3_server::profile::client_kind(kind as u32).is_some_and(|k| k != client_kind) {
                 problems.push(format!("{cid} {name}: the client draws kind {client_kind}, the engine's type {kind:#x}"));
+            }
+            // A Tuner to the server (the order and the tuning flags of a Synchro Summon's materials, translate/events.rs) is
+            // a Tuner to the engine: Synchro Tuners (kind 19, Formula Synchron) too.
+            let server_tuner = match (&views, shown) {
+                (Some(view), _) => view.tuners.contains(&cid),
+                (None, _) => original.tuner(),
+            };
+            if server_tuner != (kind & TYPE_TUNER != 0) {
+                problems.push(format!("{cid} {name}: the server {} it a Tuner, the engine's type {kind:#x}", if server_tuner { "calls" } else { "doesn't call" }));
             }
             let (level, atk, def) = (data["level"].as_u64().unwrap_or(0) as u32, data["attack"].as_i64().unwrap_or(0), data["defense"].as_i64().unwrap_or(0));
             // "?" ATK/DEF is -2 in the engine.

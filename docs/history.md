@@ -142,6 +142,14 @@ A player reported anime cards showing the wrong text: The Winged Dragon of Ra an
 - [x] `anime-map.py --card NAME` (one card's row, decision, script and text), `--compare EDOPRO_APP` (375 anime cards
       the same as EDOPro 41.0.2, 37 with another script or text, the rest our own records) and `--candidates` (none;
       Action Cards and Skills are not anime versions), tested in `test_anime_map.py`.
+- [x] Synchro Tuners are Tuners (found by a co-worker's review of adding a card): `Card::tuner()` and the profile's
+      Tuner list counted client kinds 15 and 16 only, so Formula Synchron (kind 19, the game's one Synchro Tuner) was
+      not a Tuner to the server. A Synchro Summon with it as a material would order it among the non-Tuners and send
+      no tuning flag, the shape that crashed the game's Synchro animation before (protocol, "Synchro"). The duel check
+      and scenarios take Tuners from the engine, so they never saw it. Now `yo3_data::tuner_kind` (15, 16, 19) serves
+      both; `card_data.rs` compares the server's Tuner set with the engine's for every card, with and without the
+      anime profile (it failed on Formula Synchron alone before the fix). Not run live: no deck in the game reaches a
+      Synchro Summon with Formula Synchron as a material without building one.
 
 ## 2026-11-21 — Problem reports: a broken game's logs go to the host
 
