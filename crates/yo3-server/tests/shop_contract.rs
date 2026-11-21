@@ -650,3 +650,30 @@ fn a_trade_card_swap_takes_the_hosts_number_of_cards() {
     let exchange = req_with(0x1B6A, &[("sale_id", Value::U32(265)), ("item_id", Value::U32(40)), ("kaban", bin(&[20, 20, 20]))]);
     assert_eq!(one(c.send(exchange)).request(), Some(0x1C28));
 }
+
+/// #73 against the real game (skips without it): the Packs pages and the `pack` command list exactly the shop's booster
+/// packs, each with every card it can give in the tier the shop deals it from.
+#[test]
+fn the_pack_lists_match_what_the_shops_packs_give() {
+    let game_dir = std::env::var_os("YO3_GAME_DIR").map(std::path::PathBuf::from).unwrap_or_else(yo3_data::default_game_dir);
+    if !game_dir.join("package/data002.ypk").is_file() {
+        eprintln!("the game is missing; skipping");
+        return;
+    }
+    let data = yo3_data::GameData::load(&game_dir).expect("the client's data loads");
+    let lists = yo3_server::pack_lists(&data);
+    let shop: Vec<&yo3_data::Pack> = data.packs.iter().filter(|p| p.kind == 1 && !p.cards.is_empty()).collect();
+    assert_eq!(lists.iter().map(|l| l.id).collect::<Vec<_>>(), shop.iter().map(|p| p.id).collect::<Vec<_>>(), "one list per pack on sale");
+    assert!(lists.len() > 40, "{} packs", lists.len());
+    for (list, pack) in lists.iter().zip(&shop) {
+        assert!(!list.name.starts_with("Booster Pack ") && !list.about.is_empty(), "{}: the shop's own name and description", list.name);
+        let tiers = shop::tiers(&pack.cards);
+        assert_eq!(list.tiers.len(), tiers.len(), "{}", list.name);
+        for (names, rows) in list.tiers.iter().zip(&tiers) {
+            for row in rows {
+                let card = data.cards.by_row(*row).expect("a pack's row is a card");
+                assert!(names.contains(&card.name), "{}: {} listed in its tier", list.name, card.name);
+            }
+        }
+    }
+}

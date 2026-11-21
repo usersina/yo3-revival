@@ -1,4 +1,4 @@
-//! Chat commands (#63 banlist, #58 draw, #55 where, #44 report). The game keeps its own `/` commands and answers an
+//! Chat commands (#63 banlist, #58 draw, #55 where, #73 pack, #44 report). The game keeps its own `/` commands and answers an
 //! unknown one itself ("That command is not available."), but `/p NAME MESSAGE` goes to the server as a whisper
 //! (`chat_type` 0, `to_name`, `chat_str`; seen live): the server is the player "Server". A chat room line that starts
 //! with `!` and a command's name is one too. Each is answered to the sender alone, as lines in their chat window.
@@ -16,6 +16,7 @@ use yo3_server::api::{Api, Op};
 use yo3_server::front::{Deck, World};
 use yo3_server::logins::{self, Login, Registration, Role};
 use yo3_server::reports::{Reports, Status};
+use yo3_server::shop::PackList;
 use yo3_server::sources::{CardSource, Kind};
 use yo3_server::translate::CardStats;
 
@@ -41,6 +42,10 @@ fn world() -> World {
             CardSource { kind: Kind::Pack, name: "Booster Pack 3".into(), cards: [1007, 1008].into() },
             CardSource { kind: Kind::TradePool, name: "Blister's Trade Card (cards from Booster Packs 1-14)".into(), cards: [1007].into() },
             CardSource { kind: Kind::Rental, name: "Blister's Rental".into(), cards: [1008].into() },
+        ],
+        pack_lists: vec![
+            PackList::new(3, "Booster Pack 3".into(), String::new(), &[vec![1, 2], vec![7], vec![8]], |row| Some(format!("Card {}", 1000 + row))),
+            PackList::new(4, "Booster Pack 4".into(), String::new(), &[vec![9]], |row| Some(format!("Card {}", 1000 + row))),
         ],
         npcs: vec![124],
         ..World::new(vec![3, 5, 20])
@@ -92,7 +97,7 @@ fn a_whisper_to_the_server_is_answered_to_the_sender_alone() {
     let d = directory();
     let (mut a, mut b) = (s.join_from(&d, addr(1)), s.join_from(&d, addr(2)));
     let text = ask(&mut a, "help");
-    for command in ["banlist", "draw", "where", "report"] {
+    for command in ["banlist", "draw", "where", "pack", "report"] {
         assert!(text.contains(command), "{command} in the help: {text}");
     }
     assert!(ask(&mut a, "nonsense").contains("banlist"), "an unknown command gets the help");
@@ -272,6 +277,20 @@ fn where_lists_the_places_a_card_comes_from() {
     assert!(ask(&mut c, "where card 10").contains("Be more specific"), "many cards match: a few are named");
     assert!(ask(&mut c, "where zzz").contains("No card is named like"));
     assert!(ask(&mut c, "where").starts_with("Usage"));
+}
+
+/// #73: before buying, `pack NAME` lists every card of a pack, rarest first, at the shop's price; `pack` lists the packs.
+#[test]
+fn pack_lists_a_packs_cards_by_rarity() {
+    let s = Server::with_world(world());
+    let mut c = s.join(1001, "Yugi");
+    let three = ask(&mut c, "pack booster pack 3");
+    assert_eq!(three, "Booster Pack 3 (100 BP for 5 cards):\nSuper Rare: Card 1008\nRare: Card 1007\nCommon: Card 1001, Card 1002\n\
+        The full list is on the Packs page: the title screen's Official Website, then Packs.", "an exact name, any case");
+    assert!(ask(&mut c, "pack").starts_with("Packs: Booster Pack 3, Booster Pack 4"), "the list");
+    assert!(ask(&mut c, "pack booster").contains("2 packs match"), "a part of two names");
+    assert!(ask(&mut c, "!pack 4").contains("Common: Card 1009"), "one match");
+    assert!(ask(&mut c, "pack zzz").contains("No pack is named like"));
 }
 
 fn report_world() -> (Server, Arc<Mutex<Directory>>) {

@@ -374,7 +374,10 @@ async fn legacy_http(
             }
             _ => None,
         };
-        (StatusCode::OK, crate::web::page(&old, ranking.as_ref()).into_bytes())
+        let settings = api.settings.now();
+        let packs = api.world.as_ref().map_or(&[][..], |w| &w.pack_lists[..]);
+        let site = crate::web::Site { name: &settings.server_name, ranking: ranking.as_ref(), packs, pack_cost: settings.shop.pack_cost };
+        (StatusCode::OK, crate::web::page(&old, &site).into_bytes())
     }
     else { (StatusCode::NOT_FOUND, vec![]) };
     tracing::info!("[http] GET {} -> {status} ({} B)", if path.ends_with("/yo3.idx") { "/yo3/yo3.idx" } else { path }, body.len());

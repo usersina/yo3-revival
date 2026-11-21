@@ -627,6 +627,8 @@ pub struct World {
     pub rooms: Vec<Room>,
     /// The booster packs and structure decks on the shop's shelves (from the client's pack and recipe files).
     pub packs: Vec<crate::shop::ShopPack>,
+    /// The same packs' cards by name, for players (`web.rs`'s pack pages and the `pack` chat command, #73).
+    pub pack_lists: Vec<crate::shop::PackList>,
     pub structure_decks: Vec<crate::shop::ShopDeck>,
     /// The theme decks and the other starters, sold by the `recipes` chat command (#19): the shelf can't show a deck without art.
     pub recipe_decks: Vec<crate::shop::ShopDeck>,
@@ -753,6 +755,7 @@ impl World {
                 Room::new(4, "Duel Recruiting"),
             ],
             packs: vec![],
+            pack_lists: vec![],
             structure_decks: vec![],
             recipe_decks: vec![],
             protectors: vec![],

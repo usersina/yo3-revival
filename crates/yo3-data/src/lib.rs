@@ -521,6 +521,17 @@ pub fn parse_texts(table: &[u8]) -> HashMap<u32, String> {
     texts
 }
 
+impl Pack {
+    /// The ids of its name and description in the UI text table (stored as text in the pack file).
+    pub fn name_id(&self) -> Option<u32> {
+        text_int(&self.record, "name_id")
+    }
+
+    pub fn description_id(&self) -> Option<u32> {
+        text_int(&self.record, "discription_id")
+    }
+}
+
 impl Deck {
     /// The id of its name in the UI text table (stored as text in the recipe).
     pub fn name_id(&self) -> Option<u32> {

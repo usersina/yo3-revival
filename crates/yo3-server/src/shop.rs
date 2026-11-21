@@ -99,6 +99,43 @@ pub struct ShopDeck {
     pub item: Option<u16>,
 }
 
+/// A booster pack's cards for players to read before buying (#73: the `packs` page and the `pack` chat command): its id,
+/// name, description (the shop's) and each rarity tier's card names (in [`tiers`]' order, a name once per tier, sorted).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackList {
+    pub id: u32,
+    pub name: String,
+    pub about: String,
+    pub tiers: Vec<Vec<String>>,
+}
+
+impl PackList {
+    /// A pack's list from its tiers of CARD_Prop rows and each row's card name (a row without a name is left out).
+    pub fn new(id: u32, name: String, about: String, tiers: &[Vec<u16>], name_of: impl Fn(u16) -> Option<String>) -> PackList {
+        let tiers = tiers.iter().map(|tier| {
+            let mut names: Vec<String> = tier.iter().filter_map(|&row| name_of(row)).collect();
+            names.sort_by_key(|n| n.to_lowercase());
+            names.dedup();
+            names
+        }).collect();
+        PackList { id, name, about, tiers }
+    }
+}
+
+/// The rarity names of a pack's tiers (**guess**: the OCG's, [`tiers`]).
+pub fn rarity(tier: usize, tiers: usize) -> String {
+    const NAMES: [&str; 5] = ["Common", "Rare", "Super Rare", "Ultra Rare", "Secret Rare"];
+    match NAMES.get(tier) { Some(name) if tiers <= NAMES.len() => (*name).to_string(), _ => format!("Rarity {}", tier + 1) }
+}
+
+/// What a pack gives, as [`open`] deals it: four of its first tier, then one of a higher tier, each half as likely
+/// as the one below it. A tier's chance of being the fifth card, in whole percent.
+pub fn fifth_card_chances(tiers: usize) -> Vec<u32> {
+    let higher = tiers.saturating_sub(1) as u32;
+    let total = (1u32 << higher) - 1;
+    (0..higher).map(|i| ((1u32 << (higher - 1 - i)) * 100 + total / 2) / total.max(1)).collect()
+}
+
 /// An exchange pool: its id (the client's pack file, which the client expands into one card per row), dates and cards.
 #[derive(Clone, Debug)]
 pub struct ExchangePool {

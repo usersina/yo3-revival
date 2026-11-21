@@ -14,7 +14,7 @@ use crate::lock::Locked;
 pub const SERVER: &str = "Server";
 
 /// The commands, by the word that starts them.
-const COMMANDS: [&str; 8] = ["help", "banlist", "draw", "draw5", "where", "report", "recipes", "h"];
+const COMMANDS: [&str; 9] = ["help", "banlist", "draw", "draw5", "where", "pack", "report", "recipes", "h"];
 
 /// The longest reason a command's help line and answers may run: the game's chat window wraps longer lines.
 const LINE: usize = 110;
@@ -50,6 +50,42 @@ fn wrap(head: &str, items: &[String], separator: &str) -> Vec<String> {
     lines
 }
 
+/// `pack NAME` (#73): every card of the booster pack whose name has NAME in it, by rarity, the rarest first; `pack` alone
+/// lists the packs on sale.
+pub fn pack_command(query: &str, packs: &[crate::shop::PackList], cost: u32) -> Vec<String> {
+    let page = "The full list is on the Packs page: the title screen's Official Website, then Packs.";
+    if packs.is_empty() { return vec!["This server has no booster packs on sale.".into()] }
+    let query = query.trim().to_lowercase();
+    if query.is_empty() {
+        let names: Vec<String> = packs.iter().map(|p| p.name.clone()).collect();
+        let mut lines = wrap("Packs: ", &names, ", ");
+        lines.push("Type pack NAME (or part of it) for its cards.".into());
+        return lines
+    }
+    let found: Vec<&crate::shop::PackList> = match packs.iter().find(|p| p.name.to_lowercase() == query) {
+        Some(exact) => vec![exact],
+        None => packs.iter().filter(|p| crate::sources::matches(&p.name.to_lowercase(), &query)).collect(),
+    };
+    let shown: String = query.chars().take(40).collect();
+    match found[..] {
+        [] => vec![format!("No pack is named like \"{shown}\". Type pack alone for the list.")],
+        [pack] => {
+            let mut lines = vec![format!("{} ({cost} BP for 5 cards):", pack.name)];
+            for (i, cards) in pack.tiers.iter().enumerate().rev() {
+                lines.extend(wrap(&format!("{}: ", crate::shop::rarity(i, pack.tiers.len())), cards, ", "));
+            }
+            lines.push(page.into());
+            lines
+        }
+        _ => {
+            let names: Vec<String> = found.iter().map(|p| p.name.clone()).collect();
+            let mut lines = wrap(&format!("{} packs match \"{shown}\": ", found.len()), &names, ", ");
+            lines.push("Type more of the name.".into());
+            lines
+        }
+    }
+}
+
 impl FrontSession {
     /// A chat line that is a command: what to answer the sender, as chat lines. None: it is ordinary chat.
     pub(super) fn chat_command(&mut self, text: &str, whisper_to: Option<&str>) -> Option<Vec<String>> {
@@ -58,6 +94,7 @@ impl FrontSession {
             "banlist" => self.banlist_command(&rest),
             "draw" | "draw5" => self.draw_command(&rest, word == "draw5"),
             "where" => crate::sources::answer(&rest, &self.world.card_names, &self.world.card_sources),
+            "pack" | "packs" => pack_command(&rest, &self.world.pack_lists, self.world.settings.now().shop.pack_cost),
             "report" => self.report_command(&rest),
             "recipes" => self.recipes_command(&rest),
             _ => help(),
@@ -247,6 +284,7 @@ fn help() -> Vec<String> {
         "banlist [NAME|default]: the banlist your Auto Duel and NPC duels use".into(),
         "draw [N] [DECK]: draw N (5) random cards from your newest deck, or draw5".into(),
         "where CARD: where a card comes from (packs, decks, Trade Card, rental)".into(),
+        "pack NAME: every card a booster pack can give, rarest first (pack alone lists the packs)".into(),
         "recipes [NAME]: the theme deck recipes for sale, or buy one with BP".into(),
         "report PLAYER reason: tell the staff about a player".into(),
     ]

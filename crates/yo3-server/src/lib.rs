@@ -332,7 +332,7 @@ fn card_sources(data: &yo3_data::GameData, with_extras: bool) -> Vec<sources::Ca
     let of = |rows: &mut dyn Iterator<Item = u16>| -> std::collections::HashSet<u16> { rows.filter_map(|r| cid(&r)).collect() };
     let mut all = vec![];
     for p in data.packs.iter().filter(|p| !p.cards.is_empty()) {
-        let name = p.record.get("name_id").and_then(Value::as_u32).and_then(|id| data.text(id)).filter(|n| !n.is_empty());
+        let name = p.name_id().and_then(|id| data.text(id)).filter(|n| !n.is_empty());
         let (kind, name) = match (p.kind, name) {
             (1, Some(name)) => (Kind::Pack, name.to_string()),
             (1, None) => (Kind::Pack, format!("Booster Pack {}", p.id)),
@@ -376,6 +376,17 @@ fn has_art(d: &yo3_data::Deck) -> bool {
 /// (deck_type 2), the starter recipes besides the free one (deck_type 1 without art) and the 57 NPC decks (deck_type 3)
 /// of NPCs the client's roster doesn't list, so no win can give them. The shop's own shelf can't show them: a deck
 /// without `deck_image` is an invisible slot there (checked live), so only the structure decks go on it.
+/// The booster packs' cards by name for players (#73: the Packs pages and the `pack` command), in the same tiers as the
+/// shop's packs (`World::packs`, pack_type 1).
+pub fn pack_lists(data: &yo3_data::GameData) -> Vec<shop::PackList> {
+    data.packs.iter().filter(|p| p.kind == 1 && !p.cards.is_empty()).map(|p| {
+        let name = p.name_id().and_then(|id| data.text(id)).filter(|n| !n.is_empty())
+            .map_or_else(|| format!("Booster Pack {}", p.id), str::to_string);
+        let about = p.description_id().and_then(|id| data.text(id)).unwrap_or_default().to_string();
+        shop::PackList::new(p.id, name, about, &shop::tiers(&p.cards), |row| data.cards.by_row(row).map(|c| c.name.clone()))
+    }).collect()
+}
+
 pub fn recipe_deck(data: &yo3_data::GameData, d: &yo3_data::Deck) -> bool {
     match d.kind {
         1 if has_art(d) => false,
@@ -528,6 +539,7 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
                     shop::ShopPack { id: p.id, released: date("created"), modified: date("modified"), tiers: shop::tiers(&p.cards) }
                 })
                 .collect(),
+            pack_lists: pack_lists(&data),
             // Structure decks: the deck_type 1 presets with their own art (SD001-SD005; the others are starters).
             structure_decks: data.decks.iter().filter(|d| shelf_deck(d)).map(|d| shop_deck(&data, d)).collect(),
             recipe_decks: data.decks.iter().filter(|d| recipe_deck(&data, d)).map(|d| sold_deck(&data, d)).collect(),
