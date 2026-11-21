@@ -47,3 +47,4 @@ windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_UI_Shel
 
 [dev-dependencies]
 rcgen.workspace = true
+tokio = { workspace = true, features = ["test-util"] }

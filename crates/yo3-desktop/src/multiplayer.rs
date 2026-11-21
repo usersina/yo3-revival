@@ -212,7 +212,7 @@ pub async fn status(server: &Server) -> Status {
     let started = Instant::now();
     let Ok(endpoints) = server.endpoints() else { return Status::Offline };
     for endpoint in endpoints {
-        if let Ok(info) = endpoint.info().await {
+        if let Ok(info) = info_retried(&endpoint).await {
             if info.maintenance { return Status::Maintenance }
             if let Some(min) = &info.min_launcher && !yo3_server::logins::version_at_least(yo3_tunnel::BUILD_VERSION, min) {
                 return Status::NeedsUpdate { min: min.clone() };
@@ -224,6 +224,20 @@ pub async fn status(server: &Server) -> Status {
     match yo3_tunnel::discover(&server.address, &server.server_name).await {
         Ok(seen) if !server.identities.contains(&seen.identity) => Status::IdentityChanged,
         _ => Status::Offline,
+    }
+}
+
+/// A probe that fails quickly (a connection refused or reset, a TLS handshake cut) is tried once more after a short
+/// pause, so one dropped packet doesn't show the server Offline until the player clicks RETRY. A probe that timed out
+/// isn't: the server is slow or away, and a second wait would only double it.
+const QUICK_FAILURE: Duration = Duration::from_secs(2);
+const RETRY_PAUSE: Duration = Duration::from_millis(300);
+
+async fn info_retried(endpoint: &yo3_tunnel::Endpoint) -> anyhow::Result<yo3_tunnel::ServerInfo> {
+    let tried = Instant::now();
+    match endpoint.info().await {
+        Err(_) if tried.elapsed() < QUICK_FAILURE => { tokio::time::sleep(RETRY_PAUSE).await; endpoint.info().await }
+        answered => answered,
     }
 }
 
@@ -391,8 +405,16 @@ pub fn init_device_id(root: &std::path::Path) {
     let _ = DEVICE_ID.set(id);
 }
 
-/// One account request to `server`, through whichever of its identities answers.
+/// How long an account request may take in all, with the probes that tell "unreachable" from "a different server":
+/// each step has its own 10 s, and without one deadline a server that doesn't answer kept the spinner up for about 40 s.
+pub const ACCOUNT_DEADLINE: Duration = Duration::from_secs(12);
+
+/// One account request to `server`, through whichever of its identities answers, within [`ACCOUNT_DEADLINE`].
 async fn ask(server: &Server, request: Value) -> Result<Value, Problem> {
+    tokio::time::timeout(ACCOUNT_DEADLINE, ask_any(server, request)).await.unwrap_or(Err(Problem::Unreachable))
+}
+
+async fn ask_any(server: &Server, request: Value) -> Result<Value, Problem> {
     let mut request = request;
     request["launcher"] = json!(yo3_tunnel::BUILD_VERSION.trim_start_matches('v'));
     // This install's id, for the server's linked-account rules (#64): the server keeps only a digest of it.
@@ -405,7 +427,9 @@ async fn ask(server: &Server, request: Value) -> Result<Value, Problem> {
             Err(_) => reached |= endpoint.info().await.is_ok(),
         }
     }
-    if !reached && matches!(status(server).await, Status::IdentityChanged) { return Err(Problem::IdentityChanged) }
+    // None of its identities answered: a different key at its address is worth saying (status's own question).
+    if !reached && let Ok(seen) = yo3_tunnel::discover(&server.address, &server.server_name).await
+        && !server.identities.contains(&seen.identity) { return Err(Problem::IdentityChanged) }
     Err(Problem::Unreachable)
 }
 

@@ -61,3 +61,43 @@ async fn sign_out_everywhere_and_a_new_password_end_every_sign_in() {
     throttled().await;
     mp::sign_in(&server, "Yugi", "NewerPassword2", false).await.unwrap();
 }
+
+/// A server that takes the connection and never answers (#65's review): an account request gives up with Unreachable
+/// within its one deadline, not after the request's, then each probe's own 10 s (about 40 s before).
+#[tokio::test(start_paused = true)]
+async fn a_server_that_never_answers_is_unreachable_within_the_account_deadline() {
+    let silent = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = silent.local_addr().unwrap().to_string();
+    std::thread::spawn(move || { let held: Vec<_> = silent.incoming().collect(); drop(held) });
+    let server = mp::Server { name: "Silent".into(), address, server_name: "localhost".into(), identities: vec!["a".repeat(64)],
+        official: false, description: String::new(), saved_user: None, last_used: 0 };
+    let started = tokio::time::Instant::now();
+    assert_eq!(mp::sign_in(&server, "Yugi", "LongPassphrase1", false).await.map(|_| ()), Err(Problem::Unreachable));
+    let waited = started.elapsed();
+    assert!(waited <= mp::ACCOUNT_DEADLINE + std::time::Duration::from_millis(100), "the spinner waited {waited:?}");
+}
+
+/// One dropped status probe (#65's review): the server's row still says Online, as the probe is tried once more.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn one_dropped_status_probe_still_shows_the_server_online() {
+    let root = std::env::temp_dir().join(format!("yo3-desktop-probe-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let running = yo3_server::start(Config::ephemeral(root.join("host"))).await.unwrap();
+    let server = mp::first_contact(&format!("localhost:{}", running.auth.port())).await.unwrap();
+    // A relay in front of the server that drops the first connection it gets, then carries the others.
+    let relay = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let relayed = mp::Server { address: relay.local_addr().unwrap().to_string(), ..server };
+    let target = running.auth;
+    tokio::spawn(async move {
+        let (first, _) = relay.accept().await.unwrap();
+        drop(first);
+        loop {
+            let (mut game, _) = relay.accept().await.unwrap();
+            tokio::spawn(async move {
+                let mut real = tokio::net::TcpStream::connect(target).await.unwrap();
+                let _ = tokio::io::copy_bidirectional(&mut game, &mut real).await;
+            });
+        }
+    });
+    assert!(matches!(mp::status(&relayed).await, mp::Status::Online { .. }), "one dropped probe isn't Offline");
+}
