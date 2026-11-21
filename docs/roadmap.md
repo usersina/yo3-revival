@@ -76,7 +76,7 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
 - [ ] A Japanese or Korean IME, a second monitor.
 - [ ] Direct start: the DLL loads after the window exists, so `yo3.exe` opened directly stays 1024×768. The WINMM
       loader would have to install the window and Direct3D hooks itself.
-- Out of scope: true 16:9 (every screen laid out again).
+- Out of scope: true 16:9 (every screen laid out again; #72, closed as frozen).
 
 ## Later, with a public server and enough players
 
