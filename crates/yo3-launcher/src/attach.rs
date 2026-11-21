@@ -72,7 +72,8 @@ pub struct Attachment { pub pid: u32, pub game: PathBuf, pub ready: PathBuf, pub
 /// own server started on demand for Singleplayer), and let the game's login show a refusal. Until the game exits,
 /// Delete Login Data's request forgets this device's sign-in.
 #[cfg(windows)]
-pub async fn serve(request: Attachment, loaded: crate::Loaded, profile: &Path, proxy: Proxy) -> anyhow::Result<()> {
+pub async fn serve(request: Attachment, loaded: crate::Loaded, profile: &Path, proxy: Proxy, log: yo3_tunnel::diagnostics::Session,
+    reports: bool) -> anyhow::Result<()> {
     use crate::direct::{self, Failure, Refusal};
     use crate::vault::{SystemVault, Vault};
     let owner = GameProcess::open(request.pid, &request.game)?;
@@ -156,12 +157,17 @@ pub async fn serve(request: Attachment, loaded: crate::Loaded, profile: &Path, p
         }
         Ok(())
     }.await;
+    // A direct-start game that broke sends its log to the server before the sign-out (problems.rs).
+    if let Some(session) = session && reports {
+        let failure = result.as_ref().err().map(|e| format!("{e:#}"));
+        crate::problems::send_if_broken(&endpoint, &session, &log, failure.as_deref()).await;
+    }
     if let Some(session) = session && credential.owns_session() { let _ = endpoint.logout(&session).await; }
     drop(server);
     result
 }
 #[cfg(not(windows))]
-pub async fn serve(_: Attachment, _: crate::Loaded, _: &Path, _: Proxy) -> anyhow::Result<()> {
+pub async fn serve(_: Attachment, _: crate::Loaded, _: &Path, _: Proxy, _: yo3_tunnel::diagnostics::Session, _: bool) -> anyhow::Result<()> {
     anyhow::bail!("Direct game attachment uses the Windows helper, including the supplied helper under Wine")
 }
 

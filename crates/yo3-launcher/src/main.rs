@@ -48,6 +48,9 @@ struct Args {
     /// Start the game although another program's file or provider was found (the player's Continue anyway). A redirected
     /// network function still stops it.
     #[arg(long)] accept_foreign: bool,
+    /// Send no problem report: by default, after a game whose connection broke or that exited with an error, its session
+    /// log goes to the server it played on, for the host (the same as a `problem-reports.off` file beside the profile).
+    #[arg(long)] no_problem_reports: bool,
     /// The server asks for a clean game (#69): other programs' files or network software found in the game stop the
     /// start, and --accept-foreign does not go past them.
     #[arg(long)] clean_game: bool,
@@ -158,7 +161,7 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
             ready: args.ready_file.context("Direct game attachment requires a private ready file")?,
             ack: args.mod_ready_file.context("Direct game attachment requires a private acknowledgement file")? };
         log.line("Waiting for the direct loader to acknowledge mod readiness");
-        return yo3_launcher::attach::serve(request, loaded, &profile, proxy).await;
+        return yo3_launcher::attach::serve(request, loaded, &profile, proxy, log.clone(), !args.no_problem_reports && !yo3_launcher::problems::off(&profile)).await;
     }
     if args.proxy_only {
         let session = key.sign_in(&endpoint).await?; proxy.activate(session);
@@ -348,6 +351,11 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
         if let Some(status) = status { ensure!(status.success(), "Game or injector exited with an error ({status})"); }
         Ok(())
     }.await;
+    // Before the sign-out, while the session can still file it: a game that broke sends its log to the server.
+    if let Some(session) = session && !args.no_problem_reports && !yo3_launcher::problems::off(&profile) {
+        let failure = result.as_ref().err().map(|e| format!("{e:#}"));
+        yo3_launcher::problems::send_if_broken(&endpoint, &session, &log, failure.as_deref()).await;
+    }
     if let Some(session) = session && key.owns_session() { let _ = endpoint.logout(&session).await; }
     if child.try_wait()?.is_none() { let _ = child.kill().await; }
     let _ = tokio::time::timeout(std::time::Duration::from_secs(1), output).await;

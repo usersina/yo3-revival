@@ -64,6 +64,11 @@ impl Session {
         result.line("Session started"); prune(root, now(), RETAIN_BYTES, RETAIN_SECS)?; Ok(result)
     }
     pub fn id(&self) -> String { self.0.lock().unwrap().meta.id.clone() }
+    /// The newest `max` bytes of this session's log, across its parts, from a line's start.
+    pub fn tail(&self, max: usize) -> String {
+        let (root, id) = { let inner = self.0.lock().unwrap(); (inner.root.clone(), inner.meta.id.clone()) };
+        tail_of(&root, &id, max)
+    }
     pub fn secret(&self, value: &str) { if !value.is_empty() { self.0.lock().unwrap().secrets.push(value.into()); } }
     pub fn writer(&self) -> LineWriter { self.prefixed_writer("") }
     pub fn client_writer(&self) -> LineWriter { self.prefixed_writer("[YO3 CLIENT] ") }
@@ -82,6 +87,26 @@ impl Session {
         if text.len() <= LINE_BYTES && inner.file.write_all(text.as_bytes()).is_ok() { inner.bytes += text.len() as u64; }
     }
 }
+/// The newest `max` bytes of session `id`'s log in `root`, across its parts, from a line's start.
+pub fn tail_of(root: &Path, id: &str, max: usize) -> String {
+    if !valid_id(id) { return String::new() }
+    let mut parts: Vec<(u32, PathBuf)> = std::fs::read_dir(root).into_iter().flatten().flatten().filter_map(|e| {
+        let name = e.file_name().into_string().ok()?;
+        let part = name.strip_prefix(id)?.strip_prefix('.')?.strip_suffix(".log")?.parse().ok()?;
+        Some((part, e.path()))
+    }).collect();
+    parts.sort_by_key(|p| std::cmp::Reverse(p.0));
+    let mut kept: Vec<u8> = Vec::new();
+    for (_, path) in parts {
+        let Ok(bytes) = std::fs::read(path) else { continue };
+        kept.splice(0..0, bytes);
+        if kept.len() >= max { break }
+    }
+    let start = kept.len().saturating_sub(max);
+    let start = if start == 0 { 0 } else { kept[start..].iter().position(|b| *b == b'\n').map_or(kept.len(), |p| start + p + 1) };
+    String::from_utf8_lossy(&kept[start..]).into_owned()
+}
+
 pub struct LineWriter { session: Session, line: Vec<u8>, dropped: bool, private_key: bool, prefix: &'static str }
 pub struct ConsoleWriter { logger: Option<LineWriter>, color: bool }
 impl ConsoleWriter {
@@ -206,6 +231,19 @@ pub fn prune(root: &Path, time: u64, max_bytes: u64, max_age: u64) -> io::Result
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_sessions_tail_is_its_newest_lines_across_parts() {
+        let p = std::env::temp_dir().join(format!("yo3-tail-{}", std::process::id())); let _ = std::fs::remove_dir_all(&p);
+        let s = Session::start(&p, "game", None).unwrap();
+        for i in 0..40_000 { s.line(&format!("line {i:05} {}", "x-".repeat(30))); }
+        let tail = s.tail(100_000);
+        assert!(tail.len() <= 100_000 && tail.len() > 90_000, "{}", tail.len());
+        assert!(tail.trim_end().ends_with(&format!("line 39999 {}", "x-".repeat(30))));
+        assert!(tail.lines().next().unwrap().split(' ').nth(1) == Some("line"), "it starts at a line's start");
+        assert!(s.tail(10_000_000).contains("Session started"), "all of it when it fits, the first part too");
+        let _ = std::fs::remove_dir_all(p);
+    }
+
     #[test]
     fn log_levels_are_found_and_only_the_terminal_copy_is_coloured() {
         use super::{Level, colorize, level};
