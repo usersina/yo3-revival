@@ -2298,7 +2298,7 @@ impl Hub {
             self.round_banner(at, false);
         }
         if self.events[at].champ.is_some() {
-            self.champ_round_over(at);
+            self.champ_award(at);
         }
         if alive.len() <= 1 {
             self.finish_event(at);
@@ -3458,6 +3458,12 @@ impl FrontSession {
             // Duel Log (0x499750): the championship list it asks for on opening (its server log tab waits for it), and
             // Server Duel Logs, which would list replays to download; the server keeps none.
             0x1793 => self.hub().championship_past(),
+            // The same request with an `event_id` is Duel Log's viewer of a past Championship's final duels (DuelLogWindow
+            // 0x49C470, step 1): it needs each duel's replay file, which the server keeps none of, and opening it with none
+            // crashed the client (live), so that is answered with the list's error (0x1790).
+            0x19C8 if msg.get("event_id").and_then(Value::as_u32).is_some_and(|e| self.hub().championships.by_event(e).is_some()) => {
+                Message::reply(0x1790).with("error_code", Value::U32(0))
+            }
             0x19C8 => Message::reply(0x19C9),
             // Rental Card List (0x481A30) opens once all three come: the rental records, then the borrowed (rental_kind
             // 0) and lent (1) lists: rentals between players and from the shop.

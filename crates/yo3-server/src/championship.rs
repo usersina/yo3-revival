@@ -87,6 +87,9 @@ pub fn titles_for(wins: u32) -> Vec<&'static str> {
     [QUALIFIER, Q_FINALIST, S_FINALIST, FINALIST, WINNER].into_iter().take(1 + wins.min(4) as usize).collect()
 }
 
+/// A player: their id and name.
+pub type Entrant = (u32, String);
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Championship {
     pub id: u32,
@@ -272,7 +275,9 @@ impl Championships {
         }
         let id = self.list.iter().map(|c| c.id).max().unwrap_or(0) + 1;
         let year = jst_year(new.start);
-        let season = 1 + self.list.iter().filter(|c| c.year == year && c.state != ChampionshipState::Cancelled).count() as u32;
+        // The banner names the season (Spring, Summer, Autumn, Winter): the Championship's number in the year, cycling through
+        // the client's four.
+        let season = 1 + self.list.iter().filter(|c| c.year == year && c.state != ChampionshipState::Cancelled).count() as u32 % 4;
         self.list.push(Championship { id, name, year, season, entry_open: new.entry_open, entry_close: new.entry_close, start: new.start, min_duels: new.min_duels,
             prize: new.prize, state: ChampionshipState::Scheduled, finished: 0, entrants: vec![], winner: None, second: None, bracket: None });
         self.save(id).map_err(|e| e.to_string())?;
@@ -356,8 +361,9 @@ pub fn forget(dir: &Path, players: &[u32]) -> io::Result<usize> {
 /// can end up with, then the fewest the winner has, then the evenest halves. A player gets a second bye only when the
 /// bracket's fixed four rounds leave no other way (below nine players).
 pub fn plan(n: usize) -> [bool; SEATS] {
-    // (worst byes of anyone in the subtree, byes of its eventual winner) by tree height (0..=4) and players placed.
-    fn best(height: u32, k: usize, memo: &mut std::collections::HashMap<(u32, usize), Option<(u32, u32, Vec<bool>)>>) -> Option<(u32, u32, Vec<bool>)> {
+    // (worst byes of anyone in the subtree, byes of its eventual winner, the seats taken) by tree height (0..=4) and players placed.
+    type Best = Option<(u32, u32, Vec<bool>)>;
+    fn best(height: u32, k: usize, memo: &mut std::collections::HashMap<(u32, usize), Best>) -> Best {
         let seats = 1usize << height;
         if k > seats { return None }
         if let Some(hit) = memo.get(&(height, k)) { return hit.clone() }
@@ -365,7 +371,8 @@ pub fn plan(n: usize) -> [bool; SEATS] {
             Some((0, 0, vec![k == 1]))
         } else {
             let half = seats / 2;
-            let mut chosen: Option<((u32, u32, usize, usize), Vec<bool>)> = None;
+            type Key = (u32, u32, usize, usize);
+            let mut chosen: Option<(Key, Vec<bool>)> = None;
             for left in 0..=k.min(half) {
                 let right = k - left;
                 let (Some(l), Some(r)) = (best(height - 1, left, memo), best(height - 1, right, memo)) else { continue };
@@ -407,7 +414,7 @@ pub fn shuffle<T>(items: &mut [T]) {
 
 /// The entry draw: up to [`SEATS`] of the entrants, at random, and the seats they take in the bracket (16 slots, 0 an
 /// empty seat). The ones not drawn are the second list.
-pub fn draw(entrants: &[(u32, String)]) -> (Vec<(u32, String)>, Vec<(u32, String)>) {
+pub fn draw(entrants: &[Entrant]) -> (Vec<Entrant>, Vec<Entrant>) {
     let mut all = entrants.to_vec();
     shuffle(&mut all);
     let out = all.split_off(all.len().min(SEATS));
@@ -415,7 +422,7 @@ pub fn draw(entrants: &[(u32, String)]) -> (Vec<(u32, String)>, Vec<(u32, String
 }
 
 /// The 16 seats of the bracket for the drawn players: `(player_id, name)`, `(0, "")` for an empty seat.
-pub fn seat(drawn: &[(u32, String)]) -> Vec<(u32, String)> {
+pub fn seat(drawn: &[Entrant]) -> Vec<Entrant> {
     let mut players = drawn.to_vec();
     shuffle(&mut players);
     let mut players = players.into_iter();

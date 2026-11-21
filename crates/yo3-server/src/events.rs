@@ -131,7 +131,7 @@ impl Event {
     /// 8 Semi-Finals, 9 Final) and the banners `0x32D3` the matching "Starting ..." and "... has now finished" (`0x4CC5B0`).
     pub fn round_label(&self) -> u32 {
         // While the lobby waits it names the round to come.
-        let round = self.round_number + self.waiting as u32;
+        let round = self.next_round_number();
         // The Final's four rounds: the 1st Round, the Quarter-Final, the Semi-Finals, the Final.
         if self.champ.is_some() {
             return match round.min(self.total_rounds()) { 0 => 0, 1 => 1, 2 => 7, 3 => 8, _ => 9 };
@@ -150,9 +150,22 @@ impl Event {
     /// still take the name.
     pub fn lobby_round(&self) -> u32 {
         match self.champ {
-            Some(_) => (self.round_number + self.waiting as u32).min(self.total_rounds()),
+            Some(_) => self.next_round_number().min(self.total_rounds()),
             None => self.round_label(),
         }
+    }
+
+    /// The round the lobby shows: the one under way, or while it waits the one to come. Before a Championship's first round
+    /// that is the first with a duel in it (the byes of the rounds before it are gone through at once).
+    fn next_round_number(&self) -> u32 {
+        if self.champ.is_none() || !self.waiting || self.round_number > 0 {
+            return self.round_number + self.waiting as u32;
+        }
+        let occupied = |from: usize, size: usize| self.slots.iter().skip(from).take(size).any(|(p, _)| *p != 0);
+        (1..=self.total_rounds()).find(|r| {
+            let size = 1usize << (r - 1);
+            (0..self.slots.len() / size / 2).any(|pair| occupied(2 * pair * size, size) && occupied((2 * pair + 1) * size, size))
+        }).unwrap_or(1)
     }
 
     /// The block (0x32CB `block_index`) a seat belongs to on a level.

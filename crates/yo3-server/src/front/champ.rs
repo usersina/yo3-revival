@@ -256,7 +256,21 @@ impl Hub {
         if let Some(c) = self.championships.list.iter_mut().find(|c| c.id == id) { c.state = State::Running }
         if let Err(e) = self.championships.save(id) { tracing::warn!("Championship {id} not saved: {e}") }
         let at = self.events.len() - 1;
-        self.next_round(at, true);
+        self.champ_award(at);
+        // The first round waits as the later ones do ("Match-ups coming up" and the countdown), so the lot's dialog and the
+        // bracket can be read before Select Deck takes the screen (the match push arrives on whatever screen is open).
+        if self.round_delay.is_zero() {
+            self.next_round(at, true);
+            return;
+        }
+        let event = &mut self.events[at];
+        event.waiting = true;
+        event.next_at = Some(Instant::now() + self.round_delay);
+        for p in self.events[at].players() {
+            self.push(p, &Message::reply(0x3301).with("timer", Value::U32(self.round_delay.as_secs() as u32)));
+        }
+        self.refresh_lobby(at, &[6, 5, 2, 3]);
+        self.save_events();
     }
 
     /// Pairs the Final's next round. The seats are a tree: in round r the seats form groups of 2^(r-1), neighbours
@@ -324,7 +338,7 @@ impl Hub {
     }
 
     /// A round is over: the titles of the rounds the players have now gone through.
-    pub(super) fn champ_round_over(&mut self, at: usize) {
+    pub(super) fn champ_award(&mut self, at: usize) {
         let event = &self.events[at];
         let wins: Vec<(u32, u32)> = event.slots.iter().filter(|(p, _)| *p != 0).map(|(p, _)| (*p, event.won(*p))).collect();
         for (p, w) in wins {

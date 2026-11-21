@@ -15,7 +15,9 @@ use std::time::Instant;
 use common::{Client, Server, one, req, req_with};
 use yo3_proto::{Message, Value};
 use yo3_server::accounts::Directory;
-use yo3_server::front::Ended;
+use yo3_server::duel::DuelSession;
+use yo3_server::front::{Deck, DuelEntry, Ended, World};
+use yo3_server::translate::CardStats;
 use yo3_server::championship::{ChampionshipPrize as Prize, ChampionshipState as State, FIRST_EVENT, New};
 use yo3_server::titles::TitleData;
 
@@ -272,6 +274,29 @@ fn the_rounds_are_named_by_number_and_the_match_push_leaves_event_type_and_offic
 }
 
 #[test]
+fn the_first_round_waits_after_the_draw_as_the_later_ones_do() {
+    // The lot's dialog (0x32D1) and the bracket can be read before Select Deck takes the screen: the lobby says "Match-ups
+    // coming up" (status 4) with the countdown (0x3301), and the first round is paired when it is up.
+    let server = Server::new();
+    server.hub.lock().unwrap().set_round_delay(std::time::Duration::from_secs(20));
+    let (mut yugi, mut kaiba) = (server.join(1001, "Yugi"), server.join(1002, "Kaiba"));
+    let (event, start) = schedule(&server);
+    enter(&mut yugi, event);
+    enter(&mut kaiba, event);
+    yugi.pushed();
+    tick(&server, start);
+    let pushed = yugi.pushed();
+    assert!(requests(&pushed).contains(&0x32D1) && !requests(&pushed).contains(&0x1978), "{:?}", requests(&pushed));
+    assert_eq!(int(pushed.iter().find(|m| m.request() == Some(0x3301)).expect("timer"), "timer"), Some(20));
+    let state = ask(&mut kaiba, 0x32C9, event, &[]);
+    assert_eq!((int(&state, "status"), int(&state, "total_round")), (Some(4), Some(4)), "two players: the byes go by and the Final is to come");
+    assert!(server.hub.lock().unwrap().event_duels(event).is_empty());
+    server.hub.lock().unwrap().tick_events(Instant::now() + std::time::Duration::from_secs(21));
+    assert_eq!(server.hub.lock().unwrap().event_duels(event).len(), 1);
+    assert!(requests(&yugi.pushed()).contains(&0x1978));
+}
+
+#[test]
 fn a_seat_keeps_its_players_face_when_they_go_offline() {
     // The client draws a seat blank without the player's avatar (0x4CEBE0): a player gone offline keeps the face they had
     // at the draw in 0x32CA.
@@ -282,7 +307,7 @@ fn a_seat_keeps_its_players_face_when_they_go_offline() {
     enter(&mut yugi, event);
     enter(&mut kaiba, event);
     tick(&server, start);
-    let faces = |c: &mut Client| ask(c, 0x32CA, event, &[("start_index", Value::U32(0))]).items.iter().map(|i| (int(i, "player_id").unwrap(), i.get("avatar1").is_some())).collect::<Vec<_>>();
+    let faces = |c: &mut Client| { let mut v = ask(c, 0x32CA, event, &[("start_index", Value::U32(0))]).items.iter().map(|i| (int(i, "player_id").unwrap(), i.get("avatar1").is_some())).collect::<Vec<_>>(); v.sort(); v };
     assert_eq!(faces(&mut yugi), [(1001, true), (1002, true)]);
     drop(kaiba);
     assert_eq!(faces(&mut yugi), [(1001, true), (1002, true)], "Kaiba's face stays");
@@ -370,7 +395,7 @@ fn titles_follow_the_rounds_gone_through_and_the_prize_is_paid() {
         assert!(owned(*id).contains(&301) && owned(*id).len() as u32 >= before[ids.iter().position(|x| x == id).unwrap()]);
     }
     // The prize: the winner got 10 + 100 + 1000 BP, the loser of the final 10 + 100, and a D-Mail each.
-    let mut bp_pushed = |at: usize| c[at].pushed().iter().filter_map(|m| int(m, "revival_bp")).last();
+    let mut bp_pushed = |at: usize| c[at].pushed().iter().filter_map(|m| int(m, "revival_bp")).next_back();
     let (w, s) = (ids.iter().position(|i| *i == winner).unwrap(), ids.iter().position(|i| *i == second).unwrap());
     let (won, lost) = (bp_pushed(w).expect("the winner's BP"), bp_pushed(s).expect("the runner-up's BP"));
     assert_eq!(won - lost, 1000, "{won} {lost}");
@@ -404,4 +429,35 @@ fn a_restart_ends_a_running_championship_and_brings_the_finished_brackets_back()
     assert!(c.winner.is_some() && c.bracket.is_some());
     yo3_server::store::close(&dir);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_player_leaving_the_janken_loses_the_round_to_the_one_who_stayed() {
+    // A leaver before the duel began used to end the match with no winner, which put both players out of the bracket.
+    let stats = |cid, atk| CardStats { cid, atk, def: 0, level: 4, attribute: 1, race: 1 };
+    let cards = [(1, stats(6960, 2000)), (2, stats(5004, 1900))].into_iter().collect();
+    let server = Server::with_world(World { cards, ..World::new((1..=20).collect()) });
+    let (mut yugi, mut kaiba) = (server.join(1001, "Yugi"), server.join(1002, "Kaiba"));
+    let (event, start) = schedule(&server);
+    enter(&mut yugi, event);
+    enter(&mut kaiba, event);
+    tick(&server, start);
+    let duel = server.hub.lock().unwrap().event_duels(event)[0];
+    for (me, them, row) in [(1001, 1002, 1), (1002, 1001, 2)] {
+        let deck = Deck { main: vec![row; 40], ..Deck::default() };
+        server.hub.lock().unwrap().enter_duel(me, DuelEntry { deck, duel_id: Some(duel), opponent: Some(them), best_of: 1, ..DuelEntry::default() });
+    }
+    let seat = |seed| {
+        let (tx, _inbox) = tokio::sync::mpsc::unbounded_channel();
+        DuelSession::new(server.world.clone(), server.hub.clone(), seed).with_outbox(tx)
+    };
+    let (mut a, mut b) = (seat(3), seat(5));
+    for (session, player) in [(&mut a, 1001), (&mut b, 1002)] {
+        let m = Message::reply(0x200A).with("player_id", Value::U32(player)).with("autoSet", Value::U32(1));
+        session.handle(&yo3_proto::Packet::Message(m));
+    }
+    drop(a);
+    let c = server.hub.lock().unwrap().championships.get(1).cloned().unwrap();
+    assert_eq!((c.state, c.winner.map(|w| w.0)), (State::Finished, Some(1002)), "Kaiba stayed");
+    drop(b);
 }
