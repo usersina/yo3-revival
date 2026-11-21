@@ -118,7 +118,10 @@ now frames, 40 fuzzing connections, 30 duel pairs, 300 s): 2,496,478 messages, 0
 canary p50 210 ms, p99 633 ms, max 1.3 s; server peak 293 MB and 543 descriptors, back to 18 after; a restart on the
 run's data came up. A read-only review of the launcher's other paths (server list, account requests, liveness) found
 nothing severe; its medium findings (a register whose reply is lost loses the recovery code, a failing account request
-waits up to about 40 s, one dropped probe marks a server Offline) are on the roadmap.
+waits up to about 40 s, one dropped probe marks a server Offline, a relayed page with no read timeout) were fixed the
+same day: a sign-up sent again within 15 minutes with the same password gets a new recovery code (the account keeps when
+a player's own sign-up made it, `registered`), an account request has one 12 s deadline with its probes, a status probe
+that fails within 2 s is tried once more after 300 ms, and a relayed answer has 30 s once connected (a page gets a 504).
 
 ## 2026-11-21 — The Championship (#17)
 

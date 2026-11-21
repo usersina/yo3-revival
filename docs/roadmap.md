@@ -59,13 +59,6 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
 
 - [ ] #65: confirm the shop no longer disconnects the reporting players with the next release; if it still does, their
       session log now names the receive step (`Game network: …`) and the code that closed the connection.
-- [ ] A register whose reply is lost (client and server both give up at 10 s, argon2 included) leaves the account made
-      and its recovery code unseen; a retry says "User ID taken". Longer account-request timeouts, or an idempotent
-      register for the same User ID and password.
-- [ ] A failing account request waits up to about 40 s before "Unreachable" (the request, then the diagnostic probes,
-      each 10 s): one deadline of about 12 s for the whole request.
-- [ ] One dropped status probe marks a server Offline until RETRY: one quick retry on a connect or TLS failure.
-- [ ] The helper's HTTP relay (`relay_http`) has no read timeout on the server's side; a stalled page waits for keepalive.
 
 **Windows and hosting verification**
 

@@ -21,6 +21,11 @@ Older entries describe their release at the time. For current setup, use the [RE
 - If the game drops its connection anyway, its log now says why and where. Please send **Settings → Advanced → Export
   logs…** with a report.
 - A sign-in or a game connection no longer waits while the server is busy saving.
+- If your connection drops while making an account, making it again with the same User ID and password now works and
+  shows you a new recovery code, instead of "That User ID is taken".
+- A sign-in that can't reach the server says so within about 12 seconds, not 40.
+- One lost answer no longer shows a server as Offline until you click RETRY.
+- An old website page that stops loading now ends after 30 seconds.
 
 ## v0.1.9 (2026-11-21)
 
