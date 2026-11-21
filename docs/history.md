@@ -154,6 +154,12 @@ A player reported anime cards showing the wrong text: The Winged Dragon of Ra an
       it (and Malefic Paradox Dragon). `where`'s places never listed the Special Pack. `player_card_sources` adds it;
       `prizes_data.rs` checks those two name it and that every card of the game but the five that stay out has a place.
       Every Malefic card is already in the game: nothing needs adding.
+- [x] A player's report: after Soul Exchange (anime on) the Tribute list showed the opponent's face-up monster as a card
+      back, though the Tribute worked. MSG_SELECT_TRIBUTE has no position (the other card prompts do), a field card
+      without one read as face down, and the opponent's face-down cards are hidden. The engine program now adds each
+      field card's position to the prompt (`session.rs` `add_tribute_positions`); `anime_cards.rs`
+      `a_tribute_of_the_opponents_face_up_monster_shows_its_face` failed before. (The Node sidecar that
+      `tools/engine/parity.py` compares against has no such field.)
 
 ## 2026-11-21 — Problem reports: a broken game's logs go to the host
 

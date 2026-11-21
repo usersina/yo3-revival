@@ -579,3 +579,24 @@ fn anime_crush_card_virus_destroys_every_strong_monster_in_the_deck() {
     assert!(anime >= 30, "the anime card destroys every Warwolf on the field, in the hand and in the Deck: {anime}");
     assert!(game < 10, "the game's card destroys only those it sees: {game}");
 }
+
+/// Soul Exchange (5099, anime 513000054) lets the player Tribute a monster the opponent controls. The Tribute list showed
+/// that face-up monster as a card back (a player's report): MSG_SELECT_TRIBUTE gives no position, and a field card without
+/// one read as face down, which the opponent's side hides. The list's row is the Warwolf's.
+#[test]
+fn a_tribute_of_the_opponents_face_up_monster_shows_its_face() {
+    const SOUL_EXCHANGE: u16 = 5099;
+    const SKULL: u16 = 4028; // Summoned Skull, Level 6: one Tribute
+    let deck: Vec<u16> = [SOUL_EXCHANGE, SKULL].iter().copied().cycle().take(40).collect();
+    let Some(mut s) = start(true, [(&deck, &[]), (&[WARWOLF; 40], &[])]) else { return };
+    s.run_both([&[EndTurn, Activate(SOUL_EXCHANGE)], &[Summon(WARWOLF)]]).unwrap();
+    let i = s.prompt()["summons"].as_array().unwrap().iter().position(|c| c["cid"] == SKULL).expect("Summoned Skull can be summoned");
+    s.respond(json!({"type": 1, "action": idle::SUMMON, "index": i})).unwrap();
+    assert_eq!(s.prompt()["type"], msg::SELECT_TRIBUTE);
+    assert_eq!(s.prompt()["selects"][0]["position"], 1, "the engine says the Warwolf is face-up: {}", s.prompt());
+    let list = s.windows(0).expect("the Tribute list is the player's");
+    let rows: Vec<u32> = list.iter().filter(|m| m.get("id").and_then(yo3_proto::Value::as_u32) == Some(0x3F2))
+        .flat_map(|m| ["param1", "param2", "param3", "param4"].map(|k| m.get(k).and_then(yo3_proto::Value::as_u32).unwrap_or(0))).collect();
+    assert_ne!(rows[0], 0, "the opponent's face-up Warwolf shows its face, not a card back: {list:?}");
+    clean(&s);
+}

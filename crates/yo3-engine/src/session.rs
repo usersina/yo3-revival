@@ -242,6 +242,7 @@ impl Session {
             self.add_reasons(&mut batch)?;
             self.fix_shuffles(&mut batch)?;
             self.fix_grave_swaps(&mut batch)?;
+            self.add_tribute_positions(&mut batch)?;
             self.add_fits(&mut batch);
             let waiting = status == Status::Awaiting;
             // Before the prompt, which stays last.
@@ -296,6 +297,26 @@ impl Session {
                 places.push(json!({ "controller": c, "location": loc, "sequence": s, "position": get(decode::QUERY_POSITION), "code": get(decode::QUERY_CODE) }));
             }
             m["places"] = Json::Array(places);
+        }
+        Ok(())
+    }
+
+    /// MSG_SELECT_TRIBUTE's field cards get their `position`: the core's message has none (other card prompts carry it),
+    /// and a field card without one read as face down, so the opponent's face-up monster a Soul Exchange let the player
+    /// Tribute showed as a card back.
+    fn add_tribute_positions(&mut self, batch: &mut [Json]) -> Result<(), String> {
+        for m in batch.iter_mut().filter(|m| m["type"] == msg::SELECT_TRIBUTE) {
+            let Some(selects) = m["selects"].as_array_mut() else { continue };
+            for c in selects.iter_mut() {
+                let location = c["location"].as_u64().unwrap_or(0) as u32;
+                if location & (LOCATION_MZONE | LOCATION_SZONE) == 0 {
+                    continue;
+                }
+                let (controller, sequence) = (c["controller"].as_u64().unwrap_or(0) as u8, c["sequence"].as_u64().unwrap_or(0) as u32);
+                if let Some(position) = self.query(decode::QUERY_POSITION, controller, location, sequence)?.and_then(|q| q.get(decode::QUERY_POSITION)) {
+                    c["position"] = position.into();
+                }
+            }
         }
         Ok(())
     }
