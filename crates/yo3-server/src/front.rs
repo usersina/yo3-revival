@@ -2,6 +2,7 @@
 //!
 //! The request/reply catalog, with the client evidence and status of every pair, is
 //! `docs/protocol.md`. Keep it, this file and the contract tests in step.
+mod champ;
 mod commands;
 use crate::lock::Locked;
 use std::collections::{BTreeMap, HashMap, VecDeque};
@@ -820,6 +821,12 @@ pub struct Hub {
     events_file: Option<std::path::PathBuf>,
     /// The host's official events (the Stadium, #18) with the players' scores.
     pub official: crate::official::Official,
+    /// The host's Championships (#17): schedule, entries and results. The bracket under way is one of `events`.
+    pub championships: crate::championship::Championships,
+    /// Championships whose entry draw was announced (`0x32D0`), by id, and when the draw is made.
+    champ_drawing: HashMap<u32, std::time::Instant>,
+    /// How long the entry draw's "Selecting players for entry..." shows before the lots are drawn.
+    champ_draw_delay: std::time::Duration,
     /// How long the lobby waits between an event's rounds (the winners go through the result screens first).
     round_delay: std::time::Duration,
     /// Where the duel logs are kept, and the HTTP port clients download them from (none: no logs).
@@ -837,6 +844,7 @@ pub(crate) struct AccountCleanup {
     social: Social, mail: Mailbox, teams: Teams, rentals: crate::rental::Rentals,
     records: HashMap<(u32, u32), [u32; 3]>, events: Vec<crate::events::Event>,
     players: Vec<u32>, notices: Vec<(Vec<u32>, Message)>, official: crate::official::Official,
+    championships: crate::championship::Championships,
 }
 impl AccountCleanup {
     pub(crate) fn persist(&self, hub: &Hub) -> std::io::Result<()> {
@@ -1144,7 +1152,9 @@ impl Hub {
     pub fn official_list(&self) -> Message {
         let now = chrono::Utc::now().timestamp();
         let shown = self.official.listed(now);
-        shown.iter().fold(Message::reply(0x177B).with("result_number", Value::U32(shown.len() as u32)), |m, e| m.item(e.row(now)))
+        let champ = self.championship_item(now);
+        let list = Message::reply(0x177B).with("result_number", Value::U32((shown.len() + champ.is_some() as usize) as u32));
+        champ.into_iter().chain(shown.iter().map(|e| e.row(now))).fold(list, Message::item)
     }
 
     /// The official event's lobby (`0x1780`, polled every 60 s by 0x4B0B70): the row with the player's own score.
@@ -2224,6 +2234,11 @@ impl Hub {
         self.push(winner, &duel_left(winner, record));
     }
 
+    /// The two players of a match not yet over (tests).
+    pub fn match_players(&self, duel_id: u32) -> Option<[u32; 2]> {
+        self.matches.get(&duel_id).map(|m| m.players)
+    }
+
     /// The duels of an event's round under way (tests).
     pub fn event_duels(&self, event_id: u32) -> Vec<u32> {
         self.events.iter().find(|e| e.id == event_id).map(|e| e.round.iter().map(|(d, _)| *d).collect()).unwrap_or_default()
@@ -2276,8 +2291,11 @@ impl Hub {
     /// the wait (the lobby shows "Match-ups coming up" and the timer `0x3301` meanwhile; `immediate` skips it).
     fn next_round(&mut self, at: usize, immediate: bool) {
         let alive = self.events[at].alive.clone();
-        if self.events[at].round_number > 0 {
+        if self.events[at].round_number > 0 && self.events[at].played {
             self.round_banner(at, false);
+        }
+        if self.events[at].champ.is_some() {
+            self.champ_round_over(at);
         }
         if alive.len() <= 1 {
             self.finish_event(at);
@@ -2301,6 +2319,9 @@ impl Hub {
     /// agent does (TournamentScene's 0x4CC60C reads it the same way), the last one without a partner going through.
     /// The lobby is told: the round's banner, the bracket, the state.
     fn start_round(&mut self, at: usize) {
+        if self.events[at].champ.is_some() {
+            return self.start_champ_round(at);
+        }
         let alive = self.events[at].alive.clone();
         self.events[at].round_number += 1;
         self.events[at].dueling = false;
@@ -2369,6 +2390,9 @@ impl Hub {
         }
         self.refresh_lobby(at, &[6, 5, 3]);
         self.save_events();
+        if self.events[at].champ.is_some() {
+            self.champ_finished(at);
+        }
     }
 
     /// The user event requests (UserEventScene 0x4D9BB0, the lobby 0x4CBD70). Each reply's error twin is the id after
@@ -2378,19 +2402,24 @@ impl Hub {
         let int = |k: &str| msg.get(k).and_then(|v| v.as_u32().or_else(|| v.as_str()?.trim().parse().ok())).unwrap_or(0);
         let fail = |reply: u32, code: u32| Message::reply(reply + 1).with("error_code", Value::U32(code));
         let event_id = int("event_id");
-        let hosted = self.events.iter().find(|e| e.host.0 == me && e.status != crate::events::FINISHED).map(|e| e.id);
+        // A Championship still waiting for its draw has no bracket yet (#17): its lobby answers from the schedule.
+        if self.championships.by_event(event_id).is_some() && !self.events.iter().any(|e| e.id == event_id) {
+            return self.champ_waiting(me, id, event_id, int("start_index"));
+        }
+        let hosted = self.events.iter().find(|e| e.host.0 == me && e.status != crate::events::FINISHED && e.champ.is_none()).map(|e| e.id);
         match id {
             // The player's own event: remain 1 keeps its id (and turns Create off).
             0x339A => Message::reply(0x33FE).with("remain", Value::U32(hosted.is_some() as u32)).with("event_id", Value::U32(hosted.unwrap_or(0))),
             // May the player create one: 0, or bit 8 "already in another event" (0x3E88).
             0x339B => {
-                let busy = self.events.iter().any(|e| e.status != crate::events::FINISHED && e.entrants.iter().any(|(p, _)| *p == me));
+                let busy = self.events.iter().any(|e| e.status != crate::events::FINISHED && e.entrants.iter().any(|(p, _)| *p == me))
+                    || self.champ_busy(me);
                 Message::reply(0x3400).with("create_status", Value::U32(if busy { 8 } else { 0 }))
             }
             // The Create form -> 0x33F4 {event_id}; the client then enters it (0x1784, 0x3397).
             0x3390 => {
                 // One unfinished event per host (the client turns Create off for them, 0x339A), and a limit overall.
-                if hosted.is_some() || self.events.iter().filter(|e| e.status != crate::events::FINISHED).count() >= MAX_EVENTS {
+                if hosted.is_some() || self.events.iter().filter(|e| e.status != crate::events::FINISHED && e.champ.is_none()).count() >= MAX_EVENTS {
                     return fail(0x33F4, 0);
                 }
                 let fields = clip_fields(msg.fields.iter().chain(msg.items.first().map(|i| &i.fields).into_iter().flatten()).filter(|(k, _)| k != "request").cloned());
@@ -2428,7 +2457,7 @@ impl Hub {
                     self.waiting.retain(|w| w.player_id != me);
                     return Message::reply(0x178F);
                 }
-                let Some(event) = self.events.iter_mut().find(|e| e.id == event_id) else { return Message::reply(0x178F) };
+                let Some(event) = self.events.iter_mut().find(|e| e.id == event_id && e.champ.is_none()) else { return Message::reply(0x178F) };
                 if event.host.0 == me {
                     return fail(0x178F, 0);
                 }
@@ -2478,6 +2507,7 @@ impl Hub {
             // The lobby's event (0x4CBD70: official 0, the host's player_id), which its Event Menu (the menu bar's duel
             // button) also shows: the list row's fields.
             0x177F if self.official.get(event_id).is_some() => self.official_lobby(event_id, me),
+            0x177F if self.championships.by_event(event_id).is_some() => self.champ_row(event_id),
             0x177F => match self.events.iter().find(|e| e.id == event_id) {
                 Some(e) => Message::reply(0x1780).item(e.row().with("official", Value::U32(0))),
                 None => fail(0x1780, 0),
@@ -2485,12 +2515,12 @@ impl Hub {
             // The entries (0x4D13F0): the seats of the bracket, each with what 0x4CEBE0 shows of them (name, face).
             0x32CA => {
                 let Some(event) = self.events.iter().find(|e| e.id == event_id) else { return Message::reply(0x32FD).with("total_num", Value::U32(0)) };
-                let seats = event.seats();
+                let seats = event.seated();
                 let list = Message::reply(0x32FD).with("total_num", Value::U32(seats.len() as u32));
                 seats.iter().skip(int("start_index") as usize).fold(list, |m, (p, name)| {
                     let online = self.online.values().find(|o| o.player_id == *p);
                     let field = |k: &str| online.and_then(|o| o.record.get(k).cloned());
-                    let item = Message::record().with("player_id", Value::U32(*p)).with("player_name", Value::text(name)).with("remain", Value::U32(0));
+                    let item = Message::record().with("player_id", Value::U32(*p)).with("player_name", Value::text(name)).with("remain", Value::U32(event.remain(*p)));
                     let item = field("avatar1").into_iter().fold(item, |i, a| i.with("avatar1", a));
                     m.item(field("country").into_iter().fold(item, |i, c| i.with("country", c)))
                 })
@@ -2505,17 +2535,22 @@ impl Hub {
                 // status is the lobby's own state (+0x2F8): above 1 the event has begun and the host's Start/Cancel go
                 // (0x4CE670); 0 open, 6 "Prepare to Duel", 7 "Duel in Progress", 8 "Event Completed". `total_round` is the
                 // round's name (0x3BCD + n, see Event::round_label), shown beside the status.
-                let label = event.map_or(0, |e| e.round_label());
-                Message::reply(0x32FB)
+                let label = event.map_or(0, |e| e.lobby_round());
+                let tournament = event.and_then(|e| e.champ).map(|t| {
+                    [("tournament_id", crate::championship::FINAL_ID), ("championship_id", t.championship), ("year", t.year), ("season", t.season)]
+                });
+                let reply = Message::reply(0x32FB)
                     .with("event_id", Value::U32(event_id))
                     .with("status", Value::U32(event.map_or(0, |e| e.lobby_status())))
-                    .with("phase", Value::U32(0))
+                    .with("phase", Value::U32(tournament.is_some() as u32))
                     .with("round", Value::U32(label))
                     .with("total_round", Value::U32(label))
                     .with("winner", Value::U32(winner.unwrap_or(0)))
                     .with("winner_name", Value::text(&name(winner)))
                     .with("second", Value::U32(second.unwrap_or(0)))
                     .with("second_name", Value::text(&name(second)))
+                ;
+                tournament.into_iter().flatten().fold(reply, |m, (k, v)| m.with(k, Value::U32(v)))
             }
             // The time to the next round (0x3301, shown as the lobby's TIME by 0x4CEAD0).
             0x32CC => {
@@ -2526,7 +2561,7 @@ impl Hub {
                 let event = self.events.iter().find(|e| e.id == event_id);
                 Message::reply(0x3303)
                     .with("alive_num", Value::U32(event.map_or(0, |e| if e.alive.is_empty() { e.entrants.len() } else { e.alive.len() }) as u32))
-                    .with("entry_num", Value::U32(event.map_or(0, |e| e.seats().len()) as u32))
+                    .with("entry_num", Value::U32(event.map_or(0, |e| e.seated().len()) as u32))
                     .with("watch_num", Value::U32(0))
             }
             // The blocks the round plays in (0x3305, lit on the bracket map by 0x4CF4A0; -1 for none).
@@ -2546,7 +2581,7 @@ impl Hub {
             }
             // The event list (search_flag 1 all; the other criteria aren't kept): open and running events.
             0x1789 => {
-                let shown: Vec<&Event> = self.events.iter().filter(|e| e.status != crate::events::FINISHED).collect();
+                let shown: Vec<&Event> = self.events.iter().filter(|e| e.status != crate::events::FINISHED && e.champ.is_none()).collect();
                 let page = shown.iter().skip(int("base_point") as usize).take((int("front_num") as usize).max(1));
                 page.fold(Message::reply(0x177B).with("result_number", Value::U32(shown.len() as u32)), |m, e| m.item(e.row()))
             }
@@ -2615,6 +2650,7 @@ impl Hub {
         hub.keep_social(&dir.join("friends.json")); hub.keep_mail(&dir.join("mail.json"));
         hub.keep_teams(&dir.join("teams.json")); hub.keep_events(&dir.join("events.json")); hub.keep_rentals(&dir.join("rentals.json"));
         hub.keep_official(dir);
+        hub.keep_championships(dir);
         Ok(hub)
     }
 
@@ -2638,14 +2674,15 @@ impl Hub {
         }
         let mut records = self.records.clone(); records.retain(|(me, _), _| !players.contains(me));
         let mut official = self.official.clone(); official.forget_players(players);
-        AccountCleanup { social: self.social.prepare_forget(players), mail: self.mail.prepare_forget(players), teams,
+        let mut championships = self.championships.clone(); championships.forget_players(players);
+        AccountCleanup { championships, social: self.social.prepare_forget(players), mail: self.mail.prepare_forget(players), teams,
             rentals: self.rentals.prepare_forget(players), records, events, players: players.to_vec(), notices, official }
     }
 
     /// Install committed cleanup and notify surviving team/event members. Never called on transaction failure.
     pub(crate) fn publish_account_deletion(&mut self, next: AccountCleanup) {
         self.social = next.social; self.mail = next.mail; self.teams = next.teams; self.rentals = next.rentals;
-        self.records = next.records; self.events = next.events; self.official = next.official;
+        self.records = next.records; self.events = next.events; self.official = next.official; self.championships = next.championships;
         for id in &next.players { self.host_presents.remove(id); self.ratings.remove(id); }
         self.evals.retain(|_, (rater, rated)| !next.players.contains(rater) && !next.players.contains(rated));
         for (players, message) in next.notices { for player in players { self.push(player, &message); } }
@@ -3405,6 +3442,7 @@ impl FrontSession {
             // (UserEventScene 0x4D9E37): no events are held.
             // The Stadium's official events (OfficialEventScene 0x4B0110, read by 0x4B1060, which keeps the items with
             // `official` set) and the Championship's search for its `event_type` 10 (none here).
+            // The Championship, when the host has one: `event_type` 10 with `status` 12 (TournamentScene 0x4CBD70).
             0x177A => self.hub().official_list(),
             // User events (Satellite Plaza's list and Create, the lobby).
             0x3390 | 0x3397 if self.stale_game() => Message::reply(if id == 0x3390 { 0x33F5 } else { 0x33FB }).with("error_code", Value::U32(0)),
@@ -3416,7 +3454,7 @@ impl FrontSession {
             }
             // Duel Log (0x499750): the championship list it asks for on opening (its server log tab waits for it), and
             // Server Duel Logs, which would list replays to download; the server keeps none.
-            0x1793 => Message::reply(0x177B),
+            0x1793 => self.hub().championship_past(),
             0x19C8 => Message::reply(0x19C9),
             // Rental Card List (0x481A30) opens once all three come: the rental records, then the borrowed (rental_kind
             // 0) and lent (1) lists: rentals between players and from the shop.
@@ -3599,6 +3637,9 @@ impl FrontSession {
                 let (me, name) = (player.player_id, player.name.clone());
                 let mut hub = self.hub();
                 if let Some(reply) = hub.official_join(msg.get("event_id").and_then(Value::as_u32).unwrap_or(0), me, &name) {
+                    return vec![reply];
+                }
+                if let Some(reply) = hub.championship_join(msg.get("event_id").and_then(Value::as_u32).unwrap_or(0), me, &name) {
                     return vec![reply];
                 }
                 hub.last_join += 1;
@@ -3872,11 +3913,12 @@ impl FrontSession {
     fn watch(&self, msg: &Message) -> Message {
         let refused = Message::reply(0x183A);
         let Some(duel_id) = msg.get("duel_id").and_then(Value::as_u32) else { return refused };
-        let (table, match_type) = {
+        let (table, match_type, event_type, official) = {
             let hub = self.hub();
             let m = hub.matches.get(&duel_id);
-            let rule = m.and_then(|m| m.rule.iter().find(|(k, _)| k == "match_type").and_then(|(_, v)| v.as_u32()));
-            (hub.watchable_table(duel_id), rule.unwrap_or(SINGLE_MODE))
+            let rule = |k: &str| m.and_then(|m| m.rule.iter().find(|(n, _)| n == k).and_then(|(_, v)| v.as_u32()));
+            // A Championship duel is `event_type` 10, `official` 1 (watch mode 6, BGM 0x22).
+            (hub.watchable_table(duel_id), rule("match_type").unwrap_or(SINGLE_MODE), rule("event_type").unwrap_or(0), rule("official").unwrap_or(0))
         };
         let Some(table) = table else { return refused };
         // The hub is free while the table is locked (the table locks the hub when a duel ends).
@@ -3888,8 +3930,8 @@ impl FrontSession {
         let (host, port) = self.duel_server();
         let data = Message::record()
             .with("name", Value::text("duelData"))
-            .with("event_type", Value::U32(0))
-            .with("official", Value::U32(0))
+            .with("event_type", Value::U32(event_type))
+            .with("official", Value::U32(official))
             .with("duel_id", Value::U32(duel_id))
             .with("match_type", Value::U32(match_type));
         Message::reply(0x1839)
