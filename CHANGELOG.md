@@ -13,6 +13,13 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## v0.1.13 (2026-11-21)
+
+Multiplayer: update to v0.1.13 to join the hosted server after deployment.
+
+- A Synchro Summon that uses Formula Synchron as a material now treats it as the Tuner it is. Before, the server
+  ordered it among the other materials, which could break the game's Synchro animation.
+
 ## v0.1.12 (2026-11-21)
 
 Multiplayer: update to v0.1.12 to join the hosted server after deployment.
