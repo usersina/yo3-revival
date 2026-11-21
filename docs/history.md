@@ -9,6 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-21 — The Championship (#17)](#2026-11-21--the-championship-17)
   - [2026-11-20 — Preset-deck scenarios, paged effect choices and lasting-effect markers (#67, #16)](#2026-11-20--preset-deck-scenarios-paged-effect-choices-and-lasting-effect-markers-67-16)
   - [2026-11-20 — Synchro Strike was never broken (#67)](#2026-11-20--synchro-strike-was-never-broken-67)
   - [2026-11-18 — Bundled GitHub TLS trust](#2026-11-18--bundled-github-tls-trust)
@@ -88,6 +89,27 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   one PC are "linked accounts": the first duel counted nothing until `set linked-accounts off`.
 - **Guesses** (roadmap): the Special Pack's contents, tiers and cap, the artwork odds (1 in 20), the theme decks' price, the
   champion rule and THE ANNIVERSARIAN's win.
+
+## 2026-11-21 — The Championship (#17)
+
+- **What was read first** (issue #17, the client): the setup queue, `0x32FB`'s Championship fields, the draw pushes and the
+  Final's 16 seats. **What the live run corrected:** (1) the setup stops at `0x32FB.status` 0 before joining, so the entry
+  window must report 1 and opening the lobby (`0x1784`) is the entry, the client having no other way in; (2) the Final's
+  `total_round` is the round's number while the banners take the round's name; (3) `duelData.event_type` 10 / `official` 1
+  crashed the client at the end of the first duel (the lobby sets mode 6 and BGM `0x22` itself); (4) a seat whose player
+  went offline is drawn blank unless its avatar is kept; (5) Duel Log's past-Championship viewer crashed on an empty
+  `0x19C9`; (6) a player leaving the janken ended the round with both out.
+- **Built:** a host-scheduled Championship (`create-championship`, the dashboard's Championship page), the entry draw
+  (16 of the entrants, the rest told), the 16-seat knockout with byes spread, the Y.O.C. titles, BP prizes, the record
+  for Duel Log. Contract tests: `championship_contract.rs`, `championship_admin_contract.rs`, `dashboard_contract.rs`.
+- **Live (scratch server, two headless clients, byes):** the map's Tournament tile showed the banner, "Tournament coming
+  up", Duelist 0/2 and the TIME countdown; "Selecting players for entry..." and the "unable to enter" dialog (lots 0, 2, 3, 4)
+  and "made it into the PRELIMINARY ROUND" (lot 1); with two entrants the Final block showed both seats and block A one
+  player with the advance lines of three byes and seven empty seats; "Match-ups coming up" with the countdown, Select
+  Deck, the janken, a duel (a clock loss and a disconnection ended it), "Tournament Completed" with the MC's winner speech;
+  Avatar Settings listed the five titles; Duel Log's "YOC FINAL TOURNAMENT DUEL LOGS" listed the Championships. The
+  Windows VM and more than two players were not tried (a third entrant needs a protocol client).
+- **Guesses:** the roadmap's guesses table (the delays, the seasons' cycle, the titles' timing, the prizes).
 
 ## 2026-11-20 — The Ultimate Match against the computer (#18)
 

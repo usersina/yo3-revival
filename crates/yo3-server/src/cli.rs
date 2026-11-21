@@ -305,6 +305,38 @@ pub enum Admin {
     },
     /// Cancel official event ID: the game stops listing it, nothing is paid.
     CancelEvent { id: u32 },
+    /// List the Championships with their state and how many players entered. Works while the server runs.
+    Championships,
+    /// Schedule the Championship (#17): players enter from --entry-open (default now) to --entry-close by opening its lobby
+    /// (the map's Tournament tile); at --start the server draws up to 16 of them (at random, when more entered) and plays the
+    /// single-day knockout Final, byes filling empty seats; fewer than two entrants cancels it. Times as in create-event
+    /// (`2026-12-01 18:00` UTC, `+2h`, `now`), all within one day. --min-duels: duels a player must have played to enter
+    /// (default 0). Prizes in BP: --participation-bp to everyone drawn, --finalist-bp to both finalists, --winner-bp to the
+    /// winner, paid by D-Mail. Titles Y.O.C. QUALIFIER ... WINNER come with the rounds.
+    CreateChampionship {
+        name: String,
+        #[arg(long)] entry_open: Option<String>,
+        #[arg(long)] entry_close: String,
+        #[arg(long)] start: String,
+        #[arg(long, default_value_t = 0)] min_duels: u32,
+        #[arg(long, default_value_t = 0)] participation_bp: u32,
+        #[arg(long, default_value_t = 0)] finalist_bp: u32,
+        #[arg(long, default_value_t = 0)] winner_bp: u32,
+    },
+    /// Change a Championship that has not started (what is left out stays).
+    EditChampionship {
+        id: u32,
+        #[arg(long)] name: Option<String>,
+        #[arg(long)] entry_open: Option<String>,
+        #[arg(long)] entry_close: Option<String>,
+        #[arg(long)] start: Option<String>,
+        #[arg(long)] min_duels: Option<u32>,
+        #[arg(long)] participation_bp: Option<u32>,
+        #[arg(long)] finalist_bp: Option<u32>,
+        #[arg(long)] winner_bp: Option<u32>,
+    },
+    /// Cancel Championship ID before it starts: the game stops listing it.
+    CancelChampionship { id: u32 },
     /// Sign WHO out of every device and disconnect their game.
     SignOut { who: String, #[arg(long)] request_id: Option<String> },
     /// Delete WHO's account for good (an admin's): its players with their cards, decks, mail, friends, team, records and

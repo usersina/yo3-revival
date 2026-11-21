@@ -46,6 +46,7 @@ mod trade;
 mod deckcheck;
 mod rental;
 mod events;
+pub mod championship;
 pub mod official;
 pub mod clock;
 mod log;
@@ -570,6 +571,8 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
 
 /// How long a user event waits between two of its rounds: the winners get through the result screens to the lobby.
 const EVENT_ROUND_DELAY: std::time::Duration = std::time::Duration::from_secs(20);
+/// How long a Championship's entry draw shows "Selecting players for entry..." before the lots are drawn (**guess**).
+const CHAMPIONSHIP_DRAW_DELAY: std::time::Duration = std::time::Duration::from_secs(8);
 
 pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     anyhow::ensure!(cfg.dashboard_socket.is_none() || cfg.dashboard_port.is_none(), "Choose a dashboard socket or port, not both");
@@ -669,11 +672,13 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         hub.keep_teams(&dir.join("teams.json"));
         hub.keep_events(&dir.join("events.json"));
         hub.keep_official(dir);
+        hub.keep_championships(dir);
         hub.keep_rentals(&dir.join("rentals.json"));
         hub.keep_duel_logs(dir, http_addr.port());
         hub.reports = reports::Reports::at(dir);
     }
     hub.set_round_delay(EVENT_ROUND_DELAY);
+    hub.set_draw_delay(CHAMPIONSHIP_DRAW_DELAY);
     hub.set_directory(directory.clone());
     hub.set_titles(world.titles.clone());
     hub.set_prizes(world.prizes.clone());
@@ -717,6 +722,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
                     hub.match_computers(&world);
                     hub.tick_events(std::time::Instant::now());
                     hub.tick_official(chrono::Utc::now().timestamp());
+                    hub.tick_championships(chrono::Utc::now().timestamp(), std::time::Instant::now());
                     hub.tick_rentals(chrono::Utc::now().timestamp());
                 });
                 if let Err(e) = pass.await {

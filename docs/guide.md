@@ -204,6 +204,37 @@ A win adds one to the score; a Gunslinger's streak ends with a loss or a draw, b
 counts. Scores are kept in `server.db` and go with a deleted account. Tournament Points on My Profile are 5 for each
 event a player played plus their best score in it. The Stadium shows times in each player's time zone.
 
+## The Championship (the map's Tournament tile)
+
+The Championship is one single-day knockout you schedule: an entry window, then a start time on the same day. Players enter by
+opening the Tournament tile while entries are open (the client has no other way in: nothing to press, the lobby is the entry).
+At the start the server draws the entrants (more than 16: 16 of them at random, the others get a D-Mail saying the draw
+did not pick them; fewer than two: it is cancelled, with a D-Mail to the entrant) and plays the client's Final: 16 seats,
+four rounds (1st Round, Quarter-Final, Semi-Finals, Final). Empty seats are byes: with two entrants they meet in the Final, with
+more the byes are spread so nobody gets a second one where the four fixed rounds allow it. The commands work while the
+server runs, and the ones that change something also with it stopped; they are admin API operations (an admin's, audited),
+and the [dashboard](dashboard.md)'s Championship page does the same.
+
+```bash
+./yo3-server create-championship "Winter Cup" --entry-close "2026-12-05 17:30" --start "2026-12-05 18:00" \
+    --min-duels 10 --participation-bp 50 --finalist-bp 200 --winner-bp 1000   # UTC; or +2h, now; --entry-open defaults to now
+./yo3-server championships                                    # each Championship, its state and how many entered
+./yo3-server edit-championship 1 --start "2026-12-05 18:30"     # what is left out stays; only before it starts
+./yo3-server cancel-championship 1                             # it leaves the map; nothing is drawn
+```
+
+Entry opening, closing and the start fall within one day, and no two Championships may be within an hour of each other.
+`--min-duels` is the number of duels (against players or NPCs) a player must have played to enter; it defaults to 0, and
+premium, which the client's text asks for too, is not checked (everyone counts as premium). A drawn player who does not
+show up loses the round: a match nobody sits down at ends after three minutes with both out, and one whose opponent never
+comes ends after 90 seconds in favour of the player who is there; a player who leaves the janken, the turn order choice or the duel loses it. Duels use the server's `start-lp`, `turn-seconds`,
+`total-seconds` and `login-regulation`. Titles follow the rounds: Y.O.C. QUALIFIER when drawn, Y.O.C. Q-FINALIST through the
+first round (a bye counts), Y.O.C. S-FINALIST through the second, Y.O.C. FINALIST through the third, Y.O.C WINNER (the client's
+own spelling) for winning. Prizes are BP, paid by D-Mail when it ends: `--participation-bp` to everyone drawn,
+`--finalist-bp` more to both finalists, `--winner-bp` more to the winner. Each Championship is kept in `server.db` for Duel
+Log's list of past Championships (`year` is the Japan-time year, `season` its number that year); a server restart during the
+bracket ends it with no winner.
+
 ## Player reports and banlists
 
 Players send reports from the game's chat (`/p Server report PLAYER reason`, [playing](playing.md#chat-commands)), and

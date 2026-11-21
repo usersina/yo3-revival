@@ -46,6 +46,7 @@ pub mod observability;
 pub mod backups;
 pub mod reports;
 pub mod banlist;
+pub mod championship;
 pub mod official;
 pub use give_bp::{GiveBpRequest, GiveBpResult};
 pub use mutation::{Actor, MutationError, MutationErrorCode};
@@ -147,6 +148,19 @@ pub enum Op {
         #[serde(default)] threshold_bp: Option<u32> },
     /// Cancels an event: it leaves the game's list and nothing is paid.
     CancelEvent { id: u32 },
+    /// The Championships (#17) with their entries and results, newest first.
+    Championships,
+    /// Schedules the Championship: a name, when entries open (`entry_open`, now when omitted) and close, and the start
+    /// (`parse_time`), all within one day. `min_duels`: duels a player must have played to enter. BP prizes: to everyone
+    /// drawn, to both finalists, to the winner.
+    CreateChampionship { name: String, #[serde(default)] entry_open: Option<String>, entry_close: String, start: String, #[serde(default)] min_duels: u32,
+        #[serde(default)] participation_bp: u32, #[serde(default)] finalist_bp: u32, #[serde(default)] winner_bp: u32 },
+    /// Changes a Championship that has not started; what is left out stays.
+    EditChampionship { id: u32, #[serde(default)] name: Option<String>, #[serde(default)] entry_open: Option<String>, #[serde(default)] entry_close: Option<String>,
+        #[serde(default)] start: Option<String>, #[serde(default)] min_duels: Option<u32>, #[serde(default)] participation_bp: Option<u32>,
+        #[serde(default)] finalist_bp: Option<u32>, #[serde(default)] winner_bp: Option<u32> },
+    /// Cancels a Championship that has not started: the game stops listing it.
+    CancelChampionship { id: u32 },
     /// The server's newest log lines (`problems`: only warnings and errors), newest first.
     Logs { #[serde(default)] limit: Option<u32>, #[serde(default)] problems: bool },
 }
@@ -203,6 +217,8 @@ impl Op {
             Op::Account { who } | Op::DeleteAccount { who } | Op::SetBanlist { who, .. } => who.clone(),
             Op::HandleReport { id, .. } => format!("report {id}"),
             Op::EditEvent { id, .. } | Op::CancelEvent { id } => format!("event {id}"),
+            Op::EditChampionship { id, .. } | Op::CancelChampionship { id } => format!("Championship {id}"),
+            Op::CreateChampionship { name, .. } => name.clone(),
             Op::CreateEvent { name, .. } => name.clone(),
             _ => String::new(),
         }
@@ -274,13 +290,15 @@ pub struct Api {
     pub(crate) mfa_key: Mutex<Option<[u8; 32]>>,
     /// The official events when there is neither a hub nor a data folder (tests).
     official_memory: Mutex<crate::official::Official>,
+    /// The Championships when there is neither a hub nor a data folder (tests).
+    championship_memory: Mutex<crate::championship::Championships>,
 }
 
 type Done = Result<(Value, Option<Value>, Option<Value>), String>;
 
 impl Api {
     pub fn new(accounts: Arc<Mutex<Directory>>, settings: Arc<crate::settings::Live>, data_dir: Option<PathBuf>, game_dir: PathBuf, origin: &'static str) -> Api {
-        Api { accounts, settings, hub: None, sessions: None, shutdown: None, status: Status::default(), data_dir, game_dir, titles: None, world: None, gifts: Default::default(), card_images: Default::default(), origin, run_id: crate::logins::new_token(), memory: Mutex::default(), effects: Mutex::default(), receipts: Mutex::default(), mfa_key: Mutex::default(), official_memory: Mutex::default() }
+        Api { accounts, settings, hub: None, sessions: None, shutdown: None, status: Status::default(), data_dir, game_dir, titles: None, world: None, gifts: Default::default(), card_images: Default::default(), origin, run_id: crate::logins::new_token(), memory: Mutex::default(), effects: Mutex::default(), receipts: Mutex::default(), mfa_key: Mutex::default(), official_memory: Mutex::default(), championship_memory: Mutex::default() }
     }
 
     /// Runs `op` for `actor` and writes its audit row: its result, or why it was refused.
@@ -331,7 +349,8 @@ impl Api {
     /// The operations on player reports and banlists (#44, #63): each audits itself.
     fn player_feature(&self, op: &Op, actor: &str, origin: &str, role: Option<crate::logins::Role>) -> Option<Result<Value, String>> {
         use crate::reports::Status;
-        if !matches!(op, Op::Reports { .. } | Op::HandleReport { .. } | Op::SetBanlist { .. } | Op::Banlists | Op::Events | Op::CreateEvent { .. } | Op::EditEvent { .. } | Op::CancelEvent { .. }) { return None }
+        if !matches!(op, Op::Reports { .. } | Op::HandleReport { .. } | Op::SetBanlist { .. } | Op::Banlists | Op::Events | Op::CreateEvent { .. } | Op::EditEvent { .. } | Op::CancelEvent { .. }
+            | Op::Championships | Op::CreateChampionship { .. } | Op::EditChampionship { .. } | Op::CancelChampionship { .. }) { return None }
         let caller = if role.is_none() { Actor::Host { by: actor } } else {
             match self.accounts.locked().login_of(actor).map(|(id, _)| id) {
                 Some(user_id) => Actor::Staff { user_id },
@@ -401,6 +420,39 @@ impl Api {
                 Op::CancelEvent { id } => {
                     let done = self.cancel_event(&official::CancelEventRequest { event_id: *id }, caller, origin).map_err(|e| e.to_string())?;
                     Ok(json!({ "event": done.event, "message": done.message }))
+                }
+                Op::Championships => {
+                    let list = self.list_championships(caller).map_err(|e| e.to_string())?;
+                    let lines: Vec<String> = list.championships.iter().map(|c| format!("#{}\t{:?}\t{} to {} (start {})\t{} entrants\t\"{}\"", c.championship_id, c.state,
+                        c.entry_open.format("%Y-%m-%d %H:%M"), c.entry_close.format("%H:%M"), c.start.format("%H:%M"), c.entrants.len(), c.name)).collect();
+                    let message = if lines.is_empty() { "no Championships".to_string() } else { lines.join("\n") };
+                    Ok(json!({ "championships": list.championships, "message": message }))
+                }
+                Op::CreateChampionship { name, entry_open, entry_close, start, min_duels, participation_bp, finalist_bp, winner_bp } => {
+                    let now = chrono::Utc::now();
+                    let request = championship::CreateChampionshipRequest { name: name.clone(), entry_open: entry_open.as_deref().map(|t| official::parse_time(t, now)).transpose()?,
+                        entry_close: official::parse_time(entry_close, now)?, start: official::parse_time(start, now)?, min_duels: *min_duels,
+                        prize: crate::championship::ChampionshipPrize { participation_bp: *participation_bp, finalist_bp: *finalist_bp, winner_bp: *winner_bp } };
+                    let done = self.create_championship(&request, caller, origin).map_err(|e| e.to_string())?;
+                    Ok(json!({ "championship": done.championship, "message": done.message }))
+                }
+                Op::EditChampionship { id, name, entry_open, entry_close, start, min_duels, participation_bp, finalist_bp, winner_bp } => {
+                    let now = chrono::Utc::now();
+                    let time = |t: &Option<String>| t.as_deref().map(|t| official::parse_time(t, now)).transpose();
+                    let prize = if participation_bp.is_some() || finalist_bp.is_some() || winner_bp.is_some() {
+                        let old = self.list_championships(caller).map_err(|e| e.to_string())?.championships.into_iter().find(|c| c.championship_id == *id).map(|c| c.prize)
+                            .ok_or_else(|| format!("no Championship {id}"))?;
+                        Some(crate::championship::ChampionshipPrize { participation_bp: participation_bp.unwrap_or(old.participation_bp), finalist_bp: finalist_bp.unwrap_or(old.finalist_bp),
+                            winner_bp: winner_bp.unwrap_or(old.winner_bp) })
+                    } else { None };
+                    let request = championship::EditChampionshipRequest { championship_id: *id, name: name.clone(), entry_open: time(entry_open)?, entry_close: time(entry_close)?,
+                        start: time(start)?, min_duels: *min_duels, prize };
+                    let done = self.edit_championship(&request, caller, origin).map_err(|e| e.to_string())?;
+                    Ok(json!({ "championship": done.championship, "message": done.message }))
+                }
+                Op::CancelChampionship { id } => {
+                    let done = self.cancel_championship(&championship::CancelChampionshipRequest { championship_id: *id }, caller, origin).map_err(|e| e.to_string())?;
+                    Ok(json!({ "championship": done.championship, "message": done.message }))
                 }
                 Op::Banlists => {
                     let choices = self.banlist_choices(caller).map_err(|e| e.to_string())?;

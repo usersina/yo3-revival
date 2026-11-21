@@ -8,8 +8,21 @@ pub const OPEN: u32 = 12;
 pub const RUNNING: u32 = 13;
 pub const FINISHED: u32 = 14;
 
+/// A Championship's bracket (#17) is an event with this tag: the Championship's id, and the `year` and `season` the
+/// lobby's banner shows (`0x32FB`). Its seats may be empty (player 0), a bye for the other side of the pair.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Tag {
+    pub championship: u32,
+    pub year: u32,
+    pub season: u32,
+}
+
 #[derive(Clone, Debug)]
 pub struct Event {
+    /// The Championship this bracket is, if it is one.
+    pub champ: Option<Tag>,
+    /// The last round had a duel (a round of byes only gets no banner).
+    pub played: bool,
     pub id: u32,
     pub host: (u32, String),
     /// The Create form's fields (0x3390: event_name, comment, entry_max, prize_type, level_min, level_max, eval_level,
@@ -53,7 +66,7 @@ const LAST_LEVEL: u32 = 0x48;
 
 impl Event {
     pub fn new(id: u32, host: (u32, String), fields: Vec<(String, Value)>) -> Event {
-        Event { id, host, fields, status: OPEN, entrants: vec![], alive: vec![], round: vec![], round_number: 0, slots: vec![], wins: vec![], second: None, dueling: false, waiting: false, next_at: None }
+        Event { champ: None, played: true, id, host, fields, status: OPEN, entrants: vec![], alive: vec![], round: vec![], round_number: 0, slots: vec![], wins: vec![], second: None, dueling: false, waiting: false, next_at: None }
     }
 
     /// The lobby's status.
@@ -69,7 +82,7 @@ impl Event {
 
     /// Everyone who is in the event's lobby: its entrants and the seats it started with.
     pub fn players(&self) -> std::collections::BTreeSet<u32> {
-        self.slots.iter().chain(&self.entrants).map(|(p, _)| *p).collect()
+        self.slots.iter().chain(&self.entrants).map(|(p, _)| *p).filter(|p| *p != 0).collect()
     }
 
     pub fn winner(&self) -> Option<u32> {
@@ -84,6 +97,17 @@ impl Event {
     /// Who sits in the bracket: the entrants while the event is open, then the seats fixed at its start.
     pub fn seats(&self) -> &[(u32, String)] {
         if self.status == OPEN { &self.entrants } else { &self.slots }
+    }
+
+    /// The players in the seats, without the empty ones (a Championship's byes).
+    pub fn seated(&self) -> Vec<&(u32, String)> {
+        self.seats().iter().filter(|(p, _)| *p != 0).collect()
+    }
+
+    /// `0x32FD`'s `remain`: a Championship's seat is lit (1) while its player is still in, grey (0) once out (`0x4CEBE0`
+    /// draws `remain` 1 white and the rest grey); a user event sends 0.
+    pub fn remain(&self, player_id: u32) -> u32 {
+        (self.champ.is_some() && (self.status == OPEN || self.alive.contains(&player_id))) as u32
     }
 
     pub fn won(&self, player_id: u32) -> u32 {
@@ -107,7 +131,11 @@ impl Event {
     /// 8 Semi-Finals, 9 Final) and the banners `0x32D3` the matching "Starting ..." and "... has now finished" (`0x4CC5B0`).
     pub fn round_label(&self) -> u32 {
         // While the lobby waits it names the round to come.
-        let round = self.round_number + self.waiting as u32;
+        let round = self.next_round_number();
+        // The Final's four rounds: the 1st Round, the Quarter-Final, the Semi-Finals, the Final.
+        if self.champ.is_some() {
+            return match round.min(self.total_rounds()) { 0 => 0, 1 => 1, 2 => 7, 3 => 8, _ => 9 };
+        }
         match self.total_rounds().saturating_sub(round) {
             _ if round == 0 => 0,
             0 => 9,
@@ -115,6 +143,29 @@ impl Event {
             2 if self.total_rounds() > 2 => 7,
             _ => round.min(6),
         }
+    }
+
+    /// `0x32FB`'s `total_round` and `round`. A user event sends the round's name ([`Event::round_label`]); the Final (0x4CE670,
+    /// `tournament_id` 17 or more) names the rounds itself from the round's number, 1 to 4, but its banners (`0x32D3`)
+    /// still take the name.
+    pub fn lobby_round(&self) -> u32 {
+        match self.champ {
+            Some(_) => self.next_round_number().min(self.total_rounds()),
+            None => self.round_label(),
+        }
+    }
+
+    /// The round the lobby shows: the one under way, or while it waits the one to come. Before a Championship's first round
+    /// that is the first with a duel in it (the byes of the rounds before it are gone through at once).
+    fn next_round_number(&self) -> u32 {
+        if self.champ.is_none() || !self.waiting || self.round_number > 0 {
+            return self.round_number + self.waiting as u32;
+        }
+        let occupied = |from: usize, size: usize| self.slots.iter().skip(from).take(size).any(|(p, _)| *p != 0);
+        (1..=self.total_rounds()).find(|r| {
+            let size = 1usize << (r - 1);
+            (0..self.slots.len() / size / 2).any(|pair| occupied(2 * pair * size, size) && occupied((2 * pair + 1) * size, size))
+        }).unwrap_or(1)
     }
 
     /// The block (0x32CB `block_index`) a seat belongs to on a level.
@@ -216,7 +267,8 @@ impl Event {
         let pairs = |v: &[(u32, String)]| v.iter().map(|(p, n)| json!([p, n])).collect::<Vec<_>>();
         json!({ "id": self.id, "host": [self.host.0, self.host.1], "fields": fields, "status": self.status,
             "entrants": pairs(&self.entrants), "alive": self.alive, "round_number": self.round_number,
-            "slots": pairs(&self.slots), "wins": self.wins.iter().map(|(p, w)| json!([p, w])).collect::<Vec<_>>(), "second": self.second })
+            "slots": pairs(&self.slots), "wins": self.wins.iter().map(|(p, w)| json!([p, w])).collect::<Vec<_>>(), "second": self.second,
+            "champ": self.champ.map(|t| json!([t.championship, t.year, t.season])) })
     }
 
     pub fn from_json(j: &Json) -> Option<Event> {
@@ -237,6 +289,7 @@ impl Event {
         event.slots = j["slots"].as_array()?.iter().filter_map(pair).collect();
         event.wins = j["wins"].as_array()?.iter().filter_map(|w| Some((w[0].as_u64()? as u32, w[1].as_u64()? as u32))).collect();
         event.second = j["second"].as_u64().map(|p| p as u32);
+        event.champ = j["champ"].as_array().and_then(|t| Some(Tag { championship: t.first()?.as_u64()? as u32, year: t.get(1)?.as_u64()? as u32, season: t.get(2)?.as_u64()? as u32 }));
         Some(event)
     }
 

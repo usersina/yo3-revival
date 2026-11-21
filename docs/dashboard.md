@@ -99,6 +99,13 @@ optional banlist, BP for taking part and BP for reaching a score), edits one tha
 paid); a moderator only looks. Each change is audited. `dashboard/e2e/events.spec.ts` checks it, and `official_admin_contract.rs`
 the same operations from the command line ([guide](guide.md#official-events-the-stadium)).
 
+**Championship** (`/championship`) lists the Championships with their entry window, start, status, entrants, BP prizes and
+the winner. An admin schedules one with **Schedule Championship** (name, when entries open and close and the start, in the
+browser's time zone and within one day, the minimum duels and the BP prizes), edits one that has not started, or cancels it;
+a moderator only looks. Each change is audited. `championship_admin_contract.rs` and `dashboard_contract.rs` check the same
+operations; the page itself is checked by typecheck and lint, and `dashboard/e2e/navigation.spec.ts` and `ergonomics.spec.ts`
+list it, but its own browser test is not written yet ([guide](guide.md#the-championship-the-maps-tournament-tile)).
+
 **Give a gift → Cards** searches the host's catalogue and lists each artwork separately, with keyboard-selectable
 rows and original 50×72 thumbnails. A separate **Preview** button opens the original 200×290 card and readable
 2010–2012 game text without selecting or giving anything. Escape returns to the selected gift and copy count.

@@ -289,8 +289,20 @@ eyes, clothes, a duel disk and the BEGINNER DUELIST title.
   and CHAMPION GUNSLINGER, CHAMPION TRIALIST and EVOUTION CHAMPION for first place of a finished event.
 - **Deck recipes from NPCs:** the first time you beat an NPC, its deck's recipe is yours (Load Deck → Official tab; the
   cards are not included). See below.
+- **The Championship:** Y.O.C. QUALIFIER (drawn into its bracket), Y.O.C. Q-FINALIST, Y.O.C. S-FINALIST and Y.O.C. FINALIST
+  for the rounds you go through (a bye counts), and Y.O.C WINNER for winning it.
 
-The Championship's wait; your host can give the special titles (GAME MASTER…).
+Your host can give the special titles (GAME MASTER…).
+
+**The Championship** (the map's Tournament tile) is a single-day knockout your host schedules. While its entries are open the
+tile shows it: opening the Tournament tile enters you (your host may ask for a number of duels played first, and tells
+you in the chat if you have too few), and the lobby lists everyone who entered, with a countdown to the start. At the
+start "Selecting players for entry…" shows, then you are told whether you made it into the bracket (up to 16 players are
+drawn at random when more entered; fewer than two entries cancels it and you get a D-Mail). Stay in the lobby: the
+Final is 16 seats and four rounds (1st Round, Quarter-Final, Semi-Finals, Final), and where a seat is empty the player
+opposite goes through on a bye. Each round's duel starts by itself (pick your deck as for any duel); if you or your
+opponent doesn't turn up, the one who is there goes on after a short wait. Your host may also pay BP, sent as a D-Mail;
+the Y.O.C. titles come with the rounds. Duel Log lists past Championships.
 
 **The Stadium** (the map's Duelking Titlematch tile) lists your host's official events: Gunslinger (win streak), Duelist
 Trial and Anniversary Trial (wins), Evolution and Ultimate Match (stars, played as matches). Pick one to enter its lobby,

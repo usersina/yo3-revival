@@ -271,6 +271,14 @@ policy for friends' games, **not anti-cheat**: the check runs on the player's PC
 game opened [directly](launcher.md#open-the-game-directly) isn't held. Use it when stray mods have been breaking players'
 connections, and say so to your players: they are asked to remove files from their own game folder.
 
+### The Championship
+
+`yo3 create-championship NAME --entry-close TIME --start TIME` schedules the map's Tournament tile
+([guide](guide.md#the-championship-the-maps-tournament-tile), or the dashboard's **Championship** page): players enter by
+opening the tile while entries are open, and at the start the server draws up to 16 of them and plays a single-day
+knockout. Tell your players the day, the entry window and the minimum number of duels (`--min-duels`); give the server
+time to be running at the start (a Championship the server missed by more than an hour is cancelled). BP prizes are optional.
+
 ### Player reports, banlists and the shop's prices
 
 - **Reports.** Players report each other in the game's chat (`/p Server report PLAYER reason`;

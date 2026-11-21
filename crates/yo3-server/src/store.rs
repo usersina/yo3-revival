@@ -237,6 +237,7 @@ pub fn initialize(dir: &Path) -> io::Result<()> {
     tx.execute_batch(AUDIT_TABLE).map_err(sql)?;
     tx.execute_batch(crate::reports::TABLE).map_err(sql)?;
     tx.execute_batch(crate::official::TABLES).map_err(sql)?;
+    tx.execute_batch(crate::championship::TABLES).map_err(sql)?;
     tx.execute_batch(RECEIPTS_TABLE).map_err(sql)?;
     let effects_exist: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='operation_effects')", [], |r| r.get(0)).map_err(sql)?;
     if effects_exist {

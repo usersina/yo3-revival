@@ -707,6 +707,8 @@ impl Table {
     /// disconnection) wherever the match stood: in the janken, the turn order choice, Card Swap, a duel. Only a duel that
     /// began is counted; before that the other client gets its result screen with the records unchanged.
     pub fn leave(&mut self, seat: usize) {
+        // Who goes on in an event's round when the match ends here: the one who stayed, if the match had both seats.
+        let mut stayed = None;
         if !self.over && self.seats.len() == 2 {
             let other = 1 - seat;
             let _ = self.seats[other].outbox.send(command(cmd::DUEL_END, [result::WON, DISCONNECTED, 0, 0]));
@@ -717,14 +719,16 @@ impl Table {
                 results[seat] = result::LOST;
                 self.report(results);
             } else {
-                // Both seats taken and no duel yet: the other client is on the janken or turn order screen.
+                // Both seats taken and no duel yet: the other client is on the janken or turn order screen. It wins the
+                // round of an event (a leaver loses it, as a disconnection in the duel does).
                 self.hub.locked().left_at_janken(self.seats[other].player_id, self.seats[seat].player_id);
+                stayed = Some(self.seats[other].player_id);
             }
         }
         if !self.over {
             self.over = true;
             self.engine = None;
-            self.hub.locked().end_match(self.duel_id, None);
+            self.hub.locked().end_match(self.duel_id, stayed);
         }
     }
 

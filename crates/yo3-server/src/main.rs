@@ -118,6 +118,14 @@ fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
             id: *id, name: name.clone(), start: start.clone(), end: end.clone(), regulation: regulation.clone(),
             participation_bp: *participation_bp, threshold: *threshold, threshold_bp: *threshold_bp },
         Admin::CancelEvent { id } => Op::CancelEvent { id: *id },
+        Admin::Championships => Op::Championships,
+        Admin::CreateChampionship { name, entry_open, entry_close, start, min_duels, participation_bp, finalist_bp, winner_bp } => Op::CreateChampionship {
+            name: name.clone(), entry_open: entry_open.clone(), entry_close: entry_close.clone(), start: start.clone(), min_duels: *min_duels,
+            participation_bp: *participation_bp, finalist_bp: *finalist_bp, winner_bp: *winner_bp },
+        Admin::EditChampionship { id, name, entry_open, entry_close, start, min_duels, participation_bp, finalist_bp, winner_bp } => Op::EditChampionship {
+            id: *id, name: name.clone(), entry_open: entry_open.clone(), entry_close: entry_close.clone(), start: start.clone(), min_duels: *min_duels,
+            participation_bp: *participation_bp, finalist_bp: *finalist_bp, winner_bp: *winner_bp },
+        Admin::CancelChampionship { id } => Op::CancelChampionship { id: *id },
         Admin::DeleteAccount { who, yes, .. } => {
             anyhow::ensure!(*yes, "delete-account deletes {who:?} and everything kept for it for good: add --yes to go on");
             Op::DeleteAccount { who: who.clone() }
