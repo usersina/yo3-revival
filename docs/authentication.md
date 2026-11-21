@@ -205,7 +205,7 @@ with `min_launcher`.
 
 | op | Asks for | Replies |
 | --- | --- | --- |
-| `register` | `user`, `password`, `rules: true`, `invite` (on an invite-only server) | `recovery_code`, shown once |
+| `register` | `user`, `password`, `rules: true`, `invite` (on an invite-only server) | `recovery_code`, shown once. The same User ID and password sent again within 15 minutes of the sign-up (its reply was lost) get a new `recovery_code` in place of the first, with no second account; another password gets `user_id_taken` and counts as a failed sign-in |
 | `login` | `user`, `password`, `stay`, `device` (a label such as "Windows PC"), `device_id` (optional: the launcher's random install id, 8 to 128 characters) | `session`, `user`, and `device_token` when `stay` |
 | `resume` | `device_token`, `device_id` (optional) | `session`, `user` |
 | `sign_out` | `device_token`, `everywhere` | `ok`. With `everywhere`, every device and the game's session end |

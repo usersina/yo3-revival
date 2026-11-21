@@ -171,6 +171,9 @@ pub struct Device { pub token: String, pub label: String, pub created: i64, pub 
 pub const DEVICE_TTL: i64 = 90 * 24 * 3600;
 /// How many devices an account keeps signed in; the oldest goes first.
 pub const MAX_DEVICES: usize = 10;
+/// How long after a sign-up the same User ID and password may sign up again, for a new recovery code: a sign-up whose
+/// reply was lost on the way (the account made, the code never seen) is sent again rather than "User ID taken".
+pub const SIGN_UP_AGAIN: i64 = 15 * 60;
 /// How long a moderator's reset code works.
 pub const RESET_TTL: i64 = 24 * 3600;
 
@@ -201,7 +204,12 @@ pub struct Login {
     /// The staff dashboard's authenticator (TOTP) and recovery codes (`staff_mfa.rs`); none until enrolled.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mfa: Option<StaffMfa>,
+    /// When a player's own sign-up made it (0: made by the host, or before this was kept): for [`SIGN_UP_AGAIN`].
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub registered: i64,
 }
+
+fn is_zero(n: &i64) -> bool { *n == 0 }
 
 /// A staff account's second factor. The seeds are sealed with the server's `staff-mfa.key`, never kept in the clear.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -231,7 +239,7 @@ pub struct Mute { pub reason: String, pub until: Option<i64> }
 impl Login {
     /// A new password account: User ID `user`, its password's PHC hash and its recovery code's digest.
     pub fn new(user: &str, password: String, recovery: String) -> Login {
-        Login { user: user.into(), password, role: Role::default(), staff_epoch: 0, standing: Standing::default(), recovery, reset: None, devices: vec![], muted: None, mfa: None }
+        Login { user: user.into(), password, role: Role::default(), staff_epoch: 0, standing: Standing::default(), recovery, reset: None, devices: vec![], muted: None, mfa: None, registered: 0 }
     }
 
     /// Why a sign-in is refused, if it is (#26): a ban or a restriction still running at `now`. A ban also ended the

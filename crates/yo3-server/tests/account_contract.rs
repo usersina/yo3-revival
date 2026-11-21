@@ -84,7 +84,35 @@ async fn sign_up_checks_the_user_id_the_password_and_the_rules() {
     assert_eq!(error(s.register("Yugi", "password1").await), "password_too_common");
     assert_eq!(error(s.ask(json!({ "op": "register", "user": "Yugi", "password": PASSWORD })).await), "rules_not_accepted");
     assert_eq!(error(s.register("Yugi", PASSWORD).await), "ok");
-    assert_eq!(error(s.register("YUGI", PASSWORD).await), "user_id_taken", "unique ignoring case");
+    assert_eq!(error(s.register("YUGI", "OtherPass77").await), "user_id_taken", "unique ignoring case");
+}
+
+/// A sign-up whose reply was lost (both sides give up at their timeouts, the account made): the same User ID and
+/// password sign up again for a while and get a new recovery code, so the player isn't left with "User ID taken" and a
+/// code they never saw. The first code stops working; another password still finds the User ID taken.
+#[tokio::test]
+async fn a_sign_up_whose_reply_was_lost_can_be_sent_again() {
+    let s = server("sign-up-again").await;
+    let first = s.register("Yugi", PASSWORD).await;
+    let count = || Directory::open(vec![], &s.data.join("accounts.json")).unwrap().accounts().count();
+    let before = count();
+    let again = s.register("yugi", PASSWORD).await;
+    assert_eq!(again["ok"], true, "{again}");
+    assert_eq!(again["user"], "Yugi", "the account as it was made");
+    let code = again["recovery_code"].as_str().unwrap();
+    assert_ne!(Some(code), first["recovery_code"].as_str(), "a new code: the first was never seen");
+    assert_eq!(s.login_of("Yugi").recovery, logins::digest(&logins::normalize_code(code)));
+    assert_eq!(s.register("Yugi", "OtherPass77").await["error"], "user_id_taken");
+    assert_eq!(count(), before, "no second account");
+}
+
+/// Only a sign-up that has just happened can be sent again: an older account, or one the host made, is taken.
+#[tokio::test]
+async fn an_older_account_is_not_signed_up_again() {
+    let cfg = config("sign-up-old");
+    made(&accounts_file(&cfg), "Yugi", PASSWORD, |_, _| {});
+    let s = serve(cfg).await;
+    assert_eq!(s.register("Yugi", PASSWORD).await["error"], "user_id_taken");
 }
 
 #[tokio::test]

@@ -3,7 +3,7 @@
 //!
 //! | op | asks for | replies |
 //! | --- | --- | --- |
-//! | register | user, password, invite (when the server needs one), rules: true | recovery_code |
+//! | register | user, password, invite (when the server needs one), rules: true | recovery_code (sent again within 15 min: a new one) |
 //! | login | user, password, stay, device | session, device_token (when stay), user |
 //! | resume | device_token | session, user |
 //! | sign_out | device_token, everywhere | — |
@@ -67,15 +67,35 @@ async fn register(request: &Json, ctx: &Context<'_>) -> Json {
     if let Some(problem) = logins::password_problem(user, password) { return error(problem) }
     if request["rules"].as_bool() != Some(true) { return error("rules_not_accepted") }
     if ctx.settings.registration == Registration::Closed { return error("registration_closed") }
+    let fresh = ctx.accounts.locked().login_of(user).filter(|(_, l)| l.registered > 0 && logins::now() - l.registered < logins::SIGN_UP_AGAIN);
+    if let Some((user_id, made)) = fresh { return register_again(user_id, &made, password, ctx).await }
     let invite = request["invite"].as_str().filter(|c| !c.trim().is_empty());
     // The User ID and the invite before the costly hash (#39); `register` checks both again under its lock.
     if let Err(code) = ctx.accounts.locked().can_register(user, invite, ctx.settings.registration) { return error(&code) }
     let Ok(hash) = logins::hash_password(password.to_owned()).await else { return error("server_error") };
     let recovery = logins::new_code();
-    let login = Login::new(user, hash, logins::digest(&logins::normalize_code(&recovery)));
+    let mut login = Login::new(user, hash, logins::digest(&logins::normalize_code(&recovery)));
+    login.registered = logins::now();
     match ctx.accounts.locked().register(login, invite, ctx.settings.registration) {
         Ok(_) => json!({ "ok": true, "user": user, "recovery_code": recovery }),
         Err(code) if ["user_id_taken", "invite_required", "invite_invalid", "registration_closed"].contains(&code.as_str()) => error(&code),
+        Err(_) => error("server_error"),
+    }
+}
+
+/// A sign-up sent again shortly after it made the account (`SIGN_UP_AGAIN`): its reply was lost. The same password
+/// gets a new recovery code in place of the unseen one; another password finds the User ID taken, and counts as a
+/// failed sign-in for the backoff, so the window can't be used to guess a new account's password.
+async fn register_again(user_id: u32, made: &Login, password: &str, ctx: &Context<'_>) -> Json {
+    if let Err(refused) = check_password(&made.user, password, ctx).await {
+        return if refused["error"] == "throttled" { refused } else { error("user_id_taken") };
+    }
+    let recovery = logins::new_code();
+    let mut accounts = ctx.accounts.locked();
+    // The password checked without the lock: still the account's, not changed meanwhile.
+    if accounts.login_by_id(user_id).map(|l| &l.password) != Some(&made.password) { return error("user_id_taken") }
+    match accounts.set_recovery(user_id, logins::digest(&logins::normalize_code(&recovery))) {
+        Ok(()) => json!({ "ok": true, "user": made.user, "recovery_code": recovery }),
         Err(_) => error("server_error"),
     }
 }
