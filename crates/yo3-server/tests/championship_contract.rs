@@ -1,9 +1,11 @@
 //! The Championship (the map's Tournament tile, #17): TournamentScene (`0x4CB570`, `+0x2D8` 0) takes the first `0x177B`
-//! item with `event_type` 10 and `status` 12 as the Championship (`0x4CBD70`), joins its lobby (`0x1784`), and asks the
-//! bracket requests the user events use (`0x32C9`, `0x32CA`, `0x32CC`, `0x32CD`, `0x32D5`, `0x32CB`). `0x32FB` carries
+//! item with `event_type` 10 and `status` 12 as the Championship (`0x4CBD70`), asks `0x32C9` (`0x4D1770`; `status` 0 is the MC's
+//! "not started yet" and the end of the setup), then joins its lobby (`0x1784`, `0x4D1B30`) and asks the bracket requests the
+//! user events use (`0x32CA`, `0x32CC`, `0x32CD`, `0x32D5`, `0x32CB`). `0x32FB` carries
 //! `tournament_id` (17 or more: the Final, 16 seats, four rounds, `0x4CE670`, `0x4CEBE0`), `championship_id`, `year`
-//! and `season`. The entry draw is `0x32D0 {phase, status}` and `0x32D1 {lot}` (`0x4CC5B0`); duels are the match push with
-//! `duelData.event_type` 10 and `official` 1 (`0x4A3650`). Duel Log's `0x1793` lists the past Championships.
+//! and `season`. The entry draw is `0x32D0 {phase, status}` and `0x32D1 {lot}` (`0x4CC5B0`); duels are the match push, whose
+//! `duelData` must not carry `event_type` 10 and `official` 1 (the client crashed at the end of the duel; the lobby sets the
+//! mode and music itself, `0x4D1F90`). Duel Log's `0x1793` lists the past Championships.
 mod common;
 
 use std::net::{IpAddr, Ipv4Addr};
@@ -121,7 +123,8 @@ fn opening_the_lobby_while_entries_are_open_enters_and_the_lobby_shows_the_wait(
     assert!(told.iter().filter(|r| **r == 0x32D4).count() >= 2, "{told:?}");
     let state = ask(&mut kaiba, 0x32C9, event, &[]);
     assert_eq!(state.request(), Some(0x32FB));
-    assert_eq!((int(&state, "status"), int(&state, "tournament_id"), int(&state, "championship_id")), (Some(0), Some(17), Some(1)));
+    // Status 1 ("Tournament coming up"): with 0 the scene says "not started yet" and stops before joining (0x4D1770).
+    assert_eq!((int(&state, "status"), int(&state, "tournament_id"), int(&state, "championship_id")), (Some(1), Some(17), Some(1)));
     let year = int(&state, "year").unwrap();
     assert!((2020..2100).contains(&year) && int(&state, "season") == Some(1));
     let entries = ask(&mut kaiba, 0x32CA, event, &[("start_index", Value::U32(0))]);
@@ -241,10 +244,11 @@ fn more_than_sixteen_entrants_are_drawn_down_to_sixteen_and_the_rest_told() {
 }
 
 #[test]
-fn the_rounds_are_named_by_number_and_the_match_is_event_type_10_official() {
+fn the_rounds_are_named_by_number_and_the_match_push_leaves_event_type_and_official_out() {
     // `total_round` in 0x32FB is the round's number 1-4 for the Final (0x4CE670 turns it into 1st Round, Quarter-Final,
-    // Semi-Finals, Final); the banners 0x32D3 still take the name (text 0x3C05 + n: 1, 7, 8, 9). The match push carries
-    // duelData {event_type 10, official 1} (0x4A3650: watch mode 6, BGM 0x22).
+    // Semi-Finals, Final); the banners 0x32D3 still take the name (text 0x3C05 + n: 1, 7, 8, 9). The match push's duelData
+    // has neither event_type 10 nor official 1: with them the client crashed at the end of the duel (live), and the lobby
+    // sets the duel's mode 6 and music 0x22 itself (0x4D1F90).
     let server = Server::new();
     let mut c: Vec<Client> = (0..16).map(|i| server.join(3000 + i, &format!("P{i}"))).collect();
     let (event, start) = schedule(&server);
@@ -252,7 +256,7 @@ fn the_rounds_are_named_by_number_and_the_match_is_event_type_10_official() {
     tick(&server, start);
     let pushed = c[0].pushed();
     let data = pushed.iter().find(|m| m.request() == Some(0x1978)).and_then(|m| m.items.iter().find(|i| i.get("name").and_then(Value::as_str).as_deref() == Some("duelData"))).expect("duelData");
-    assert_eq!((int(data, "event_type"), int(data, "official"), int(data, "lp_start")), (Some(10), Some(1), Some(8000)));
+    assert_eq!((int(data, "event_type"), int(data, "official"), int(data, "lp_start")), (None, None, Some(8000)));
     let banner = pushed.iter().find(|m| m.request() == Some(0x32D3)).expect("banner");
     assert_eq!((int(banner, "status"), int(banner, "total_round")), (Some(1), Some(1)));
     // 16 players: eight duels in the first round, nobody on a bye.
@@ -265,6 +269,23 @@ fn the_rounds_are_named_by_number_and_the_match_is_event_type_10_official() {
     assert_eq!((int(&state, "status"), int(&state, "total_round")), (Some(8), Some(4)));
     assert!(int(&state, "winner").is_some_and(|w| w >= 3000));
     assert!(int(&state, "second").is_some_and(|w| w >= 3000));
+}
+
+#[test]
+fn a_seat_keeps_its_players_face_when_they_go_offline() {
+    // The client draws a seat blank without the player's avatar (0x4CEBE0): a player gone offline keeps the face they had
+    // at the draw in 0x32CA.
+    let server = Server::new();
+    let (mut yugi, kaiba) = (server.join(1001, "Yugi"), server.join(1002, "Kaiba"));
+    let (event, start) = schedule(&server);
+    let mut kaiba = kaiba;
+    enter(&mut yugi, event);
+    enter(&mut kaiba, event);
+    tick(&server, start);
+    let faces = |c: &mut Client| ask(c, 0x32CA, event, &[("start_index", Value::U32(0))]).items.iter().map(|i| (int(i, "player_id").unwrap(), i.get("avatar1").is_some())).collect::<Vec<_>>();
+    assert_eq!(faces(&mut yugi), [(1001, true), (1002, true)]);
+    drop(kaiba);
+    assert_eq!(faces(&mut yugi), [(1001, true), (1002, true)], "Kaiba's face stays");
 }
 
 #[test]

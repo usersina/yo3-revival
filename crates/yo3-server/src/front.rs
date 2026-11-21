@@ -827,6 +827,9 @@ pub struct Hub {
     champ_drawing: HashMap<u32, std::time::Instant>,
     /// How long the entry draw's "Selecting players for entry..." shows before the lots are drawn.
     champ_draw_delay: std::time::Duration,
+    /// The records (`avatar1`, `country`) of a Championship's players as they were when drawn, for a seat whose player went
+    /// offline: the client draws a seat blank without the avatar (0x4CEBE0).
+    champ_faces: HashMap<u32, Message>,
     /// How long the lobby waits between an event's rounds (the winners go through the result screens first).
     round_delay: std::time::Duration,
     /// Where the duel logs are kept, and the HTTP port clients download them from (none: no logs).
@@ -2518,8 +2521,8 @@ impl Hub {
                 let seats = event.seated();
                 let list = Message::reply(0x32FD).with("total_num", Value::U32(seats.len() as u32));
                 seats.iter().skip(int("start_index") as usize).fold(list, |m, (p, name)| {
-                    let online = self.online.values().find(|o| o.player_id == *p);
-                    let field = |k: &str| online.and_then(|o| o.record.get(k).cloned());
+                    let face = self.seat_face(*p);
+                    let field = |k: &str| face.as_ref().and_then(|r| r.get(k).cloned());
                     let item = Message::record().with("player_id", Value::U32(*p)).with("player_name", Value::text(name)).with("remain", Value::U32(event.remain(*p)));
                     let item = field("avatar1").into_iter().fold(item, |i, a| i.with("avatar1", a));
                     m.item(field("country").into_iter().fold(item, |i, c| i.with("country", c)))
@@ -3913,12 +3916,11 @@ impl FrontSession {
     fn watch(&self, msg: &Message) -> Message {
         let refused = Message::reply(0x183A);
         let Some(duel_id) = msg.get("duel_id").and_then(Value::as_u32) else { return refused };
-        let (table, match_type, event_type, official) = {
+        let (table, match_type) = {
             let hub = self.hub();
             let m = hub.matches.get(&duel_id);
-            let rule = |k: &str| m.and_then(|m| m.rule.iter().find(|(n, _)| n == k).and_then(|(_, v)| v.as_u32()));
-            // A Championship duel is `event_type` 10, `official` 1 (watch mode 6, BGM 0x22).
-            (hub.watchable_table(duel_id), rule("match_type").unwrap_or(SINGLE_MODE), rule("event_type").unwrap_or(0), rule("official").unwrap_or(0))
+            let rule = m.and_then(|m| m.rule.iter().find(|(k, _)| k == "match_type").and_then(|(_, v)| v.as_u32()));
+            (hub.watchable_table(duel_id), rule.unwrap_or(SINGLE_MODE))
         };
         let Some(table) = table else { return refused };
         // The hub is free while the table is locked (the table locks the hub when a duel ends).
@@ -3930,8 +3932,8 @@ impl FrontSession {
         let (host, port) = self.duel_server();
         let data = Message::record()
             .with("name", Value::text("duelData"))
-            .with("event_type", Value::U32(event_type))
-            .with("official", Value::U32(official))
+            .with("event_type", Value::U32(0))
+            .with("official", Value::U32(0))
             .with("duel_id", Value::U32(duel_id))
             .with("match_type", Value::U32(match_type));
         Message::reply(0x1839)

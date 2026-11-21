@@ -84,6 +84,11 @@ impl Hub {
         })
     }
 
+    /// A seat's player's record (their avatar and flag): the online one, else the one kept at the draw.
+    pub(super) fn seat_face(&self, player: u32) -> Option<Message> {
+        self.online.values().find(|o| o.player_id == player).map(|o| o.record.clone()).or_else(|| self.champ_faces.get(&player).cloned())
+    }
+
     /// How many duels a player has played (their records against players and NPCs together).
     fn duels_played(&self, player: u32) -> u32 {
         self.records.iter().filter(|((me, _), _)| *me == player).map(|(_, r)| r.iter().sum::<u32>()).sum()
@@ -136,7 +141,9 @@ impl Hub {
             0x177F => self.champ_row(event_id),
             0x32C9 => tournament(Message::reply(0x32FB)
                 .with("event_id", Value::U32(event_id))
-                .with("status", Value::U32(if c.state == State::Cancelled { 8 } else { 0 }))
+                // 1, never 0: with status 0 TournamentScene says "not started yet" and ends its setup (0x4D1770 calls the MC and
+                // queues the end), so it never joins the lobby (0x4D1B30: 0x1784) or asks for the bracket.
+                .with("status", Value::U32(if c.state == State::Cancelled { 8 } else { 1 }))
                 .with("phase", Value::U32(0))
                 .with("round", Value::U32(0))
                 .with("total_round", Value::U32(0))
@@ -145,8 +152,8 @@ impl Hub {
                 .with("second", Value::U32(0))
                 .with("second_name", Value::text(""))),
             0x32CA => c.entrants.iter().skip(start as usize).fold(Message::reply(0x32FD).with("total_num", Value::U32(c.entrants.len() as u32)), |m, (p, name)| {
-                let online = self.online.values().find(|o| o.player_id == *p);
-                let field = |k: &str| online.and_then(|o| o.record.get(k).cloned());
+                let face = self.seat_face(*p);
+                let field = |k: &str| face.as_ref().and_then(|r| r.get(k).cloned());
                 let item = Message::record().with("player_id", Value::U32(*p)).with("player_name", Value::text(name)).with("remain", Value::U32(1));
                 let item = field("avatar1").into_iter().fold(item, |i, a| i.with("avatar1", a));
                 m.item(field("country").into_iter().fold(item, |i, v| i.with("country", v)))
@@ -210,6 +217,11 @@ impl Hub {
     fn champ_draw(&mut self, id: u32) {
         let Some(c) = self.championships.get(id).cloned().filter(|c| c.state == State::Scheduled) else { return };
         let (drawn, out) = champ::draw(&c.entrants);
+        for (p, _) in &drawn {
+            if let Some(record) = self.online.values().find(|o| o.player_id == *p).map(|o| o.record.clone()) {
+                self.champ_faces.insert(*p, record);
+            }
+        }
         let closed = Message::reply(0x32D0).with("phase", Value::U32(1)).with("status", Value::U32(0));
         for (p, _) in &c.entrants {
             self.push(*p, &closed);
@@ -249,8 +261,8 @@ impl Hub {
 
     /// Pairs the Final's next round. The seats are a tree: in round r the seats form groups of 2^(r-1), neighbours
     /// meeting, and a group's player is the one of its seats still in. A pair with one side empty is a bye (the other
-    /// goes on unopposed and counts a round won); two players get the match push `0x1978` as in a user event, with
-    /// `event_type` 10 and `official` 1 in `duelData` (watch mode 6, BGM 0x22). A player no longer online forfeits.
+    /// goes on unopposed and counts a round won); two players get the match push `0x1978` as in a user event (its `duelData` without
+    /// `event_type` and `official`, which crash the client at the duel's end). A player no longer online forfeits.
     pub(super) fn start_champ_round(&mut self, at: usize) {
         self.events[at].round_number += 1;
         self.events[at].dueling = false;
@@ -272,7 +284,7 @@ impl Hub {
             }
         }
         let rule: Vec<(String, Value)> = [("match_type", "match_type"), ("regulation_id", "regulation_id"), ("lp_start", "duel_lp_start"), ("surrender", "duel_surrender"), ("time_turn", "duel_time_turn"), ("time_total", "duel_time_total")]
-            .into_iter().map(|(k, from)| (k.to_string(), Value::U32(event.int(from)))).chain([("event_type".to_string(), Value::U32(10)), ("official".to_string(), Value::U32(1))]).collect();
+            .into_iter().map(|(k, from)| (k.to_string(), Value::U32(event.int(from)))).collect();
         let times = Some((event.int("duel_time_turn"), event.int("duel_time_total"))).filter(|(turn, _)| *turn > 0);
         let mut duels = vec![];
         for (a, b) in pairs {
@@ -289,6 +301,8 @@ impl Hub {
             self.last_duel += 1;
             let duel_id = self.last_duel;
             let push = |vs: &Message| {
+                // `event_type` 10 and `official` 1 are not in `duelData`: with them the client crashed at the end of the duel
+                // (live, see docs/protocol.md), and the lobby sets the duel's mode (6) and music (0x22) itself (0x4D1F90).
                 let data = rule.iter().fold(Message::record().with("name", Value::text("duelData")), |m, (k, v)| m.with(k, v.clone()));
                 Message::reply(0x1978).item(vs.clone().with("name", Value::text("vsPlayerData"))).item(data.with("duel_id", Value::U32(duel_id)))
             };
