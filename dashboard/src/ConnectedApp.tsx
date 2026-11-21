@@ -45,6 +45,9 @@ const ConnectedAudit = lazy(() =>
 const ConnectedLogs = lazy(() =>
   import('./ConnectedLogs').then((m) => ({ default: m.ConnectedLogs })),
 )
+const ConnectedProblemReports = lazy(() =>
+  import('./ConnectedProblemReports').then((m) => ({ default: m.ConnectedProblemReports })),
+)
 const ConnectedBackups = lazy(() =>
   import('./ConnectedBackups').then((m) => ({ default: m.ConnectedBackups })),
 )
@@ -162,6 +165,10 @@ function Workspace() {
       ],
       '/audit': ['Audit log', 'Persisted administrative changes and saved outcomes.'],
       '/logs': ['Server logs', 'Recent output from this server process.'],
+      '/problem-reports': [
+        'Problem reports',
+        'Logs players’ launchers sent when a game broke, or with Report a problem.',
+      ],
       '/backups': ['Backups', 'Create snapshots and keep a private copy off the host.'],
       '/settings': ['Settings', 'Dashboard appearance and your server’s configuration.'],
     }
@@ -213,6 +220,7 @@ function Workspace() {
               {pathname === '/championship' && <ConnectedChampionships session={user} />}
               {pathname === '/audit' && <ConnectedAudit />}
               {pathname === '/logs' && <ConnectedLogs />}
+              {pathname === '/problem-reports' && <ConnectedProblemReports />}
               {pathname === '/backups' && <ConnectedBackups session={user} />}
             </>
           ) : (

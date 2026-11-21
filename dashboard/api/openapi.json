@@ -4926,6 +4926,273 @@
         ]
       }
     },
+    "/panel/api/v1/problem-reports": {
+      "get": {
+        "tags": [
+          "Problem reports"
+        ],
+        "operationId": "listProblemReports",
+        "parameters": [
+          {
+            "name": "who",
+            "in": "query",
+            "description": "A User ID or a player's name: only that account's reports.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "maximum": 500,
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Logs players' launchers sent, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemReportList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stored data could not be read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "staffSession": []
+          }
+        ]
+      }
+    },
+    "/panel/api/v1/problem-reports/{id}": {
+      "get": {
+        "tags": [
+          "Problem reports"
+        ],
+        "operationId": "getProblemReport",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "A report ID such as R-7K3Q-M2PA, in any case",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 11,
+              "minLength": 11,
+              "pattern": "^[Rr]-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One report with the server's lines and the launcher's log",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stored data could not be read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "staffSession": []
+          }
+        ]
+      }
+    },
     "/panel/api/v1/reports": {
       "get": {
         "tags": [
@@ -9293,6 +9560,112 @@
           }
         },
         "additionalProperties": false
+      },
+      "ProblemReport": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ProblemReportRow"
+          },
+          {
+            "type": "object",
+            "required": [
+              "server_log",
+              "logs",
+              "text"
+            ],
+            "properties": {
+              "logs": {
+                "type": "string",
+                "description": "The launcher's session log, credentials scrubbed."
+              },
+              "server_log": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "The server's own lines about this account from the minutes before."
+              },
+              "text": {
+                "type": "string",
+                "description": "The whole report as the text file staff download."
+              }
+            }
+          }
+        ],
+        "description": "One report with the server's lines and the launcher's log."
+      },
+      "ProblemReportList": {
+        "type": "object",
+        "required": [
+          "reports",
+          "checked_at"
+        ],
+        "properties": {
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reports": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProblemReportRow"
+            },
+            "description": "Newest first, without their logs."
+          }
+        }
+      },
+      "ProblemReportRow": {
+        "type": "object",
+        "description": "A report in a list: everything but its logs. (Own schema names: `Report` is the in-game player report.)",
+        "required": [
+          "id",
+          "at",
+          "user_id",
+          "account",
+          "kind",
+          "launcher",
+          "summary",
+          "bytes"
+        ],
+        "properties": {
+          "account": {
+            "type": "string",
+            "description": "The account's User ID, or its players' names for a key account."
+          },
+          "at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When it came, in Unix seconds."
+          },
+          "bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The size of its logs in bytes.",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string",
+            "description": "R-XXXX-XXXX"
+          },
+          "kind": {
+            "type": "string",
+            "description": "network, relay, server-lost, game-error or report."
+          },
+          "launcher": {
+            "type": "string",
+            "description": "The launcher's version."
+          },
+          "summary": {
+            "type": "string",
+            "description": "One line on what happened, from the launcher."
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          }
+        }
       },
       "RecipeChoice": {
         "type": "object",

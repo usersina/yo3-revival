@@ -24,6 +24,7 @@ use crate::api::keys::{KeyAccountRequest, KeyAccountResult};
 use crate::api::credentials::{IssueAccountCodeRequest, AccountCodeResponse};
 use crate::api::profiles::{AccountDetail, AccountEditRequest, AccountEditResult, CountryList};
 use crate::api::invites::{CreateInviteRequest, CreateInviteResult, InviteList};
+use crate::api::problem_reports::{ProblemReport, ProblemReportList, ProblemReportQuery};
 use crate::api::reports::{HandleReportRequest, HandleReportResult, ReportList, ReportQuery};
 use crate::api::banlist::{AccountBanlist, BanlistChoices, SetBanlistRequest};
 use crate::api::championship::{CancelChampionshipRequest, ChampionshipList, ChampionshipResult, CreateChampionshipRequest, EditChampionshipRequest};
@@ -171,7 +172,7 @@ fn documented_routes() -> OpenApiRouter<Dashboard> {
         .routes(routes!(start_enrollment)).routes(routes!(confirm_enrollment)).routes(routes!(step_up)).routes(routes!(regenerate_recovery_codes))
         .routes(routes!(accounts)).routes(routes!(give_bp)).routes(routes!(list_bp_codes))
         .routes(routes!(create_bp_code)).routes(routes!(remove_bp_code)).routes(routes!(list_invites)).routes(routes!(create_invite))
-        .routes(routes!(get_account)).routes(routes!(edit_account)).routes(routes!(country_choices)).routes(routes!(issue_account_code)).routes(routes!(key_account)).routes(routes!(give_gift)).routes(routes!(gift_choices)).routes(routes!(card_image)).routes(routes!(moderate)).routes(routes!(delete_account)).routes(routes!(server_status)).routes(routes!(audit_history)).routes(routes!(server_logs)).routes(routes!(backups)).routes(routes!(create_backup)).routes(routes!(download_backup)).routes(routes!(stop_server)).routes(routes!(live_settings)).routes(routes!(change_settings).layer(DefaultBodyLimit::max(256 * 1024))).routes(routes!(list_reports)).routes(routes!(handle_report)).routes(routes!(banlist_choices)).routes(routes!(set_banlist)).routes(routes!(list_events)).routes(routes!(create_event)).routes(routes!(edit_event)).routes(routes!(cancel_event)).routes(routes!(list_championships)).routes(routes!(create_championship)).routes(routes!(edit_championship)).routes(routes!(cancel_championship))
+        .routes(routes!(get_account)).routes(routes!(edit_account)).routes(routes!(country_choices)).routes(routes!(issue_account_code)).routes(routes!(key_account)).routes(routes!(give_gift)).routes(routes!(gift_choices)).routes(routes!(card_image)).routes(routes!(moderate)).routes(routes!(delete_account)).routes(routes!(server_status)).routes(routes!(audit_history)).routes(routes!(server_logs)).routes(routes!(backups)).routes(routes!(create_backup)).routes(routes!(download_backup)).routes(routes!(stop_server)).routes(routes!(live_settings)).routes(routes!(change_settings).layer(DefaultBodyLimit::max(256 * 1024))).routes(routes!(list_reports)).routes(routes!(handle_report)).routes(routes!(list_problem_reports)).routes(routes!(get_problem_report)).routes(routes!(banlist_choices)).routes(routes!(set_banlist)).routes(routes!(list_events)).routes(routes!(create_event)).routes(routes!(edit_event)).routes(routes!(cancel_event)).routes(routes!(list_championships)).routes(routes!(create_championship)).routes(routes!(edit_championship)).routes(routes!(cancel_championship))
 }
 
 pub fn openapi() -> OpenApi {
@@ -911,6 +912,28 @@ async fn list_reports(State(state): State<Dashboard>, Extension(viewer): Extensi
     let Query(query) = query.map_err(|_| ApiError::new(ApiErrorCode::InvalidRequest, "Use a status of open, handled or dismissed."))?;
     tokio::task::spawn_blocking(move || state.api.list_reports(&query, Actor::Staff { user_id: viewer.user_id }))
         .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The reports could not be read."))?.map(Json).map_err(Into::into)
+}
+
+#[utoipa::path(get, path = "/panel/api/v1/problem-reports", operation_id = "listProblemReports", tag = "Problem reports", params(ProblemReportQuery),
+    security(("staffSession" = [])), responses((status = 200, description = "Logs players' launchers sent, newest first", body = ProblemReportList),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 404, description = "Not found", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError),
+        (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError), (status = 503, description = "Stored data could not be read", body = ApiError), (status = 500, description = "Internal error", body = ApiError)))]
+async fn list_problem_reports(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, query: Result<Query<ProblemReportQuery>, QueryRejection>) -> Result<Json<ProblemReportList>, ApiError> {
+    let Query(query) = query.map_err(|_| ApiError::new(ApiErrorCode::InvalidRequest, "Invalid problem report query parameters."))?;
+    tokio::task::spawn_blocking(move || state.api.list_problem_reports(&query, Actor::Staff { user_id: viewer.user_id }))
+        .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The problem reports could not be read."))?.map(Json).map_err(Into::into)
+}
+
+#[utoipa::path(get, path = "/panel/api/v1/problem-reports/{id}", operation_id = "getProblemReport", tag = "Problem reports",
+    params(("id" = String, Path, min_length = 11, max_length = 11, pattern = "^[Rr]-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}$", description = "A report ID such as R-7K3Q-M2PA, in any case")),
+    security(("staffSession" = [])), responses((status = 200, description = "One report with the server's lines and the launcher's log", body = ProblemReport),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 404, description = "Not found", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError),
+        (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError), (status = 503, description = "Stored data could not be read", body = ApiError), (status = 500, description = "Internal error", body = ApiError)))]
+async fn get_problem_report(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, Path(id): Path<String>) -> Result<Json<ProblemReport>, ApiError> {
+    tokio::task::spawn_blocking(move || state.api.read_problem_report(&id, Actor::Staff { user_id: viewer.user_id }))
+        .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The problem report could not be read."))?.map(Json).map_err(Into::into)
 }
 
 #[utoipa::path(post, path = "/panel/api/v1/reports/handle", operation_id = "handleReport", tag = "Reports",

@@ -19,6 +19,7 @@ const pages = [
   ['Championship', '/championship'],
   ['Audit log', '/audit'],
   ['Server logs', '/logs'],
+  ['Problem reports', '/problem-reports'],
   ['Backups', '/backups'],
   ['Settings', '/settings'],
 ] as const

@@ -91,6 +91,7 @@ import type {
   KeyAccountRequest,
   KeyAccountResult,
   ListGiftChoicesParams,
+  ListProblemReportsParams,
   ListReportsParams,
   LogPage,
   ManageAccountKeyHeaders,
@@ -99,6 +100,8 @@ import type {
   ModerateAccountHeaders,
   ModerationRequest,
   ModerationResponse,
+  ProblemReport,
+  ProblemReportList,
   RecoveryCodes,
   RegenerateRecoveryCodesHeaders,
   RemoveBpCodeHeaders,
@@ -3024,6 +3027,201 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       > => {
       return useMutation(getModerateAccountMutationOptions(options), queryClient);
     }
+
+export const getListProblemReportsUrl = (params?: ListProblemReportsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/panel/api/v1/problem-reports?${stringifiedParams}` : `/panel/api/v1/problem-reports`
+}
+
+export const listProblemReports = async (params?: ListProblemReportsParams, options?: Parameters<typeof apiFetch>[1]): Promise<ProblemReportList> => {
+
+  return apiFetch<ProblemReportList>(getListProblemReportsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListProblemReportsQueryKey = (params?: ListProblemReportsParams,) => {
+    return [
+    `/panel/api/v1/problem-reports`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListProblemReportsQueryOptions = <TData = Awaited<ReturnType<typeof listProblemReports>>, TError = ErrorType<ApiError>>(params?: ListProblemReportsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listProblemReports>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListProblemReportsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listProblemReports>>> = ({ signal }) => listProblemReports(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listProblemReports>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListProblemReportsQueryResult = NonNullable<Awaited<ReturnType<typeof listProblemReports>>>
+export type ListProblemReportsQueryError = ErrorType<ApiError>
+
+
+export function useListProblemReports<TData = Awaited<ReturnType<typeof listProblemReports>>, TError = ErrorType<ApiError>>(
+ params: undefined |  ListProblemReportsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listProblemReports>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listProblemReports>>,
+          TError,
+          Awaited<ReturnType<typeof listProblemReports>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListProblemReports<TData = Awaited<ReturnType<typeof listProblemReports>>, TError = ErrorType<ApiError>>(
+ params?: ListProblemReportsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listProblemReports>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listProblemReports>>,
+          TError,
+          Awaited<ReturnType<typeof listProblemReports>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListProblemReports<TData = Awaited<ReturnType<typeof listProblemReports>>, TError = ErrorType<ApiError>>(
+ params?: ListProblemReportsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listProblemReports>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListProblemReports<TData = Awaited<ReturnType<typeof listProblemReports>>, TError = ErrorType<ApiError>>(
+ params?: ListProblemReportsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listProblemReports>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListProblemReportsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetProblemReportUrl = (id: string,) => {
+
+
+
+
+  return `/panel/api/v1/problem-reports/${id}`
+}
+
+export const getProblemReport = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<ProblemReport> => {
+
+  return apiFetch<ProblemReport>(getGetProblemReportUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetProblemReportQueryKey = (id: string,) => {
+    return [
+    `/panel/api/v1/problem-reports/${id}`
+    ] as const;
+    }
+
+
+export const getGetProblemReportQueryOptions = <TData = Awaited<ReturnType<typeof getProblemReport>>, TError = ErrorType<ApiError>>(id: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getProblemReport>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetProblemReportQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getProblemReport>>> = ({ signal }) => getProblemReport(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getProblemReport>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetProblemReportQueryResult = NonNullable<Awaited<ReturnType<typeof getProblemReport>>>
+export type GetProblemReportQueryError = ErrorType<ApiError>
+
+
+export function useGetProblemReport<TData = Awaited<ReturnType<typeof getProblemReport>>, TError = ErrorType<ApiError>>(
+ id: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getProblemReport>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getProblemReport>>,
+          TError,
+          Awaited<ReturnType<typeof getProblemReport>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetProblemReport<TData = Awaited<ReturnType<typeof getProblemReport>>, TError = ErrorType<ApiError>>(
+ id: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getProblemReport>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getProblemReport>>,
+          TError,
+          Awaited<ReturnType<typeof getProblemReport>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetProblemReport<TData = Awaited<ReturnType<typeof getProblemReport>>, TError = ErrorType<ApiError>>(
+ id: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getProblemReport>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetProblemReport<TData = Awaited<ReturnType<typeof getProblemReport>>, TError = ErrorType<ApiError>>(
+ id: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getProblemReport>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetProblemReportQueryOptions(id,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getListReportsUrl = (params?: ListReportsParams,) => {
   const normalizedParams = new URLSearchParams();

@@ -8,6 +8,7 @@ import {
   Trophy,
   DatabaseBackup,
   ExternalLink,
+  FileWarning,
   Flag,
   LayoutDashboard,
   ListChecks,
@@ -37,6 +38,7 @@ const navigation = [
   { label: 'Championship', path: '/championship', icon: Trophy, group: 'Manage' },
   { label: 'Audit log', path: '/audit', icon: ListChecks, group: 'Manage' },
   { label: 'Server logs', path: '/logs', icon: Terminal, group: 'Manage' },
+  { label: 'Problem reports', path: '/problem-reports', icon: FileWarning, group: 'Manage' },
   { label: 'Backups', path: '/backups', icon: DatabaseBackup, group: 'Manage' },
   { label: 'Settings', path: '/settings', icon: Settings2, group: 'Manage' },
 ]

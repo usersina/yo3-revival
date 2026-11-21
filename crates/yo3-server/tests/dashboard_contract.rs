@@ -50,6 +50,8 @@ fn committed_openapi_matches_the_router_without_starting_a_server() {
         ("/panel/api/v1/cards/{row}/{size}", "get", "getCardImage"),
         ("/panel/api/v1/reports", "get", "listReports"),
         ("/panel/api/v1/reports/handle", "post", "handleReport"),
+        ("/panel/api/v1/problem-reports", "get", "listProblemReports"),
+        ("/panel/api/v1/problem-reports/{id}", "get", "getProblemReport"),
         ("/panel/api/v1/banlists", "get", "listBanlists"),
         ("/panel/api/v1/accounts/banlist", "post", "setAccountBanlist"),
         ("/panel/api/v1/events", "get", "listEvents"),
@@ -61,7 +63,7 @@ fn committed_openapi_matches_the_router_without_starting_a_server() {
         ("/panel/api/v1/championships/edit", "post", "editChampionship"),
         ("/panel/api/v1/championships/cancel", "post", "cancelChampionship"),
     ];
-    assert_eq!(paths.len(), 43);
+    assert_eq!(paths.len(), 45);
     for (path, method, id) in expected {
         let op = &generated["paths"][path][method];
         assert_eq!(op["operationId"], id);
@@ -851,4 +853,28 @@ async fn an_admin_schedules_edits_and_cancels_the_championship_and_a_moderator_o
     let audit = b.call("GET", "/panel/api/v1/audit", json!(null)).await;
     let ops: Vec<&str> = audit.body["entries"].as_array().unwrap().iter().filter_map(|e| e["operation"].as_str()).filter(|o| o.ends_with("-championship")).collect();
     assert_eq!(ops, ["cancel-championship", "edit-championship", "create-championship"], "newest first, each once: {}", audit.body);
+}
+
+#[tokio::test]
+async fn staff_read_the_logs_players_launchers_sent() {
+    let mut b = Browser::new("problem-reports").await;
+    let problems = yo3_server::problems::Problems::new(Some(&b.data));
+    let request = json!({ "kind": "network", "launcher": "0.1.9", "summary": "the game lost the server", "logs": "line one\nline two" });
+    let id = problems.accept(7, "Yugi", &request, vec!["server saw it".into()], 1_800_000_000).unwrap();
+
+    assert_eq!(b.call("GET", "/panel/api/v1/problem-reports", json!(null)).await.status, 401, "no session, no reports");
+    b.sign_in("Croquet").await;
+    let list = b.call("GET", "/panel/api/v1/problem-reports?limit=10", json!(null)).await;
+    assert_eq!(list.status, 200, "{}", list.body);
+    assert_eq!((list.body["reports"][0]["id"].as_str(), list.body["reports"][0]["account"].as_str(), list.body["reports"][0]["kind"].as_str()), (Some(id.as_str()), Some("Yugi"), Some("network")));
+    assert!(list.body["reports"][0].get("logs").is_none(), "a list carries no logs");
+    assert_eq!(b.call("GET", "/panel/api/v1/problem-reports?limit=0", json!(null)).await.status, 400);
+    assert_eq!(b.call("GET", "/panel/api/v1/problem-reports?who=NoSuchPlayer", json!(null)).await.status, 404);
+
+    let one = b.call("GET", &format!("/panel/api/v1/problem-reports/{}", id.to_lowercase()), json!(null)).await;
+    assert_eq!(one.status, 200, "{}", one.body);
+    assert_eq!((one.body["logs"].as_str(), one.body["server_log"][0].as_str()), (Some("line one\nline two"), Some("server saw it")));
+    assert!(one.body["text"].as_str().unwrap().contains("server saw it"));
+    assert_eq!(b.call("GET", "/panel/api/v1/problem-reports/R-AAAA-BBBB", json!(null)).await.status, 404);
+    assert_eq!(b.call("GET", "/panel/api/v1/problem-reports/not-an-id", json!(null)).await.status, 400);
 }

@@ -1504,6 +1504,44 @@ export const OnlinePlayer = zod.object({
 export type OnlinePlayer = zod.input<typeof OnlinePlayer>;
 export type OnlinePlayerOutput = zod.output<typeof OnlinePlayer>;
 
+export const problemReportRowBytesMin = 0;
+
+export const problemReportRowUserIdMin = 0;
+export const problemReportRowUserIdMax = 4294967295;
+
+
+
+export const ProblemReportRow = zod.object({
+  "account": zod.string().describe('The account\'s User ID, or its players\' names for a key account.'),
+  "at": zod.int().describe('When it came, in Unix seconds.'),
+  "bytes": zod.int().min(problemReportRowBytesMin).describe('The size of its logs in bytes.'),
+  "id": zod.string().describe('R-XXXX-XXXX'),
+  "kind": zod.string().describe('network, relay, server-lost, game-error or report.'),
+  "launcher": zod.string().describe('The launcher\'s version.'),
+  "summary": zod.string().describe('One line on what happened, from the launcher.'),
+  "user_id": zod.int().min(problemReportRowUserIdMin).max(problemReportRowUserIdMax)
+}).describe('A report in a list: everything but its logs. (Own schema names: `Report` is the in-game player report.)');
+
+export type ProblemReportRow = zod.input<typeof ProblemReportRow>;
+export type ProblemReportRowOutput = zod.output<typeof ProblemReportRow>;
+
+export const ProblemReport = ProblemReportRow.and(zod.object({
+  "logs": zod.string().describe('The launcher\'s session log, credentials scrubbed.'),
+  "server_log": zod.array(zod.string()).describe('The server\'s own lines about this account from the minutes before.'),
+  "text": zod.string().describe('The whole report as the text file staff download.')
+})).describe('One report with the server\'s lines and the launcher\'s log.');
+
+export type ProblemReport = zod.input<typeof ProblemReport>;
+export type ProblemReportOutput = zod.output<typeof ProblemReport>;
+
+export const ProblemReportList = zod.object({
+  "checked_at": zod.iso.datetime({"offset":true}),
+  "reports": zod.array(ProblemReportRow).describe('Newest first, without their logs.')
+});
+
+export type ProblemReportList = zod.input<typeof ProblemReportList>;
+export type ProblemReportListOutput = zod.output<typeof ProblemReportList>;
+
 export const RecoveryCodes = zod.object({
   "recovery_codes": zod.array(zod.string())
 });
@@ -2905,6 +2943,70 @@ export const ModerateAccount415Response = ApiError
 export const ModerateAccount500Response = ApiError
 
 export const ModerateAccount503Response = ApiError
+
+
+export const listProblemReportsQueryWhoMax = 64;
+
+export const listProblemReportsQueryLimitMax = 500;
+
+
+
+export const ListProblemReportsQueryParams = zod.object({
+  "who": zod.string().max(listProblemReportsQueryWhoMax).optional().describe('A User ID or a player\'s name: only that account\'s reports.'),
+  "limit": zod.int().min(1).max(listProblemReportsQueryLimitMax).optional()
+})
+
+export const ListProblemReports200Response = ProblemReportList
+
+export const ListProblemReports400Response = ApiError
+
+export const ListProblemReports401Response = ApiError
+
+export const ListProblemReports403Response = ApiError
+
+export const ListProblemReports404Response = ApiError
+
+export const ListProblemReports405Response = ApiError
+
+export const ListProblemReports413Response = ApiError
+
+export const ListProblemReports415Response = ApiError
+
+export const ListProblemReports500Response = ApiError
+
+export const ListProblemReports503Response = ApiError
+
+
+export const getProblemReportPathIdMin = 11;
+export const getProblemReportPathIdMax = 11;
+
+
+export const getProblemReportPathIdRegExp = new RegExp('^[Rr]-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}$');
+
+
+export const GetProblemReportParams = zod.object({
+  "id": zod.string().min(getProblemReportPathIdMin).max(getProblemReportPathIdMax).regex(getProblemReportPathIdRegExp).describe('A report ID such as R-7K3Q-M2PA, in any case')
+})
+
+export const GetProblemReport200Response = ProblemReport
+
+export const GetProblemReport400Response = ApiError
+
+export const GetProblemReport401Response = ApiError
+
+export const GetProblemReport403Response = ApiError
+
+export const GetProblemReport404Response = ApiError
+
+export const GetProblemReport405Response = ApiError
+
+export const GetProblemReport413Response = ApiError
+
+export const GetProblemReport415Response = ApiError
+
+export const GetProblemReport500Response = ApiError
+
+export const GetProblemReport503Response = ApiError
 
 
 export const listReportsQueryLimitMax = 500;
