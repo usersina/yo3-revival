@@ -13,7 +13,9 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.1.15 (2026-11-21)
+
+Multiplayer: update to v0.1.15 to join the hosted server after deployment.
 
 - The Tribute list now shows the opponent's face-up monsters you may Tribute (Soul Exchange) with their faces, not as
   card backs.
