@@ -209,6 +209,8 @@ impl Proxy {
             let (relays, lost) = (relays.clone(), lost.clone());
             tasks.push(tokio::spawn(async move {
                 while let Ok((mut local, _)) = listener.accept().await {
+                    // Room for the largest frame the game takes (its 1 MiB packet buffer) in one send: see `relay`.
+                    let _ = socket2::SockRef::from(&local).set_send_buffer_size(GAME_SEND_BUFFER);
                     let endpoint = endpoint.clone();
                     let mut active = active.subscribe();
                     let (relays, mut lost) = (relays.clone(), lost.subscribe());
@@ -260,6 +262,10 @@ impl Proxy {
     }
 }
 
+/// The send buffer of the helper's side of the game's front and duel connections: a whole frame of the game's largest
+/// (`MAX_FRAME`, its packet buffer) and its header fit, so one frame never waits half sent for the game to read.
+const GAME_SEND_BUFFER: usize = 2 * MAX_FRAME;
+
 /// How long the game's connections wait for the sign-in: direct start may be starting your own server meanwhile.
 const SIGN_IN_WAIT: Duration = Duration::from_secs(60);
 
@@ -295,22 +301,43 @@ where G: AsyncRead + tokio::io::AsyncWrite + Unpin, S: AsyncRead + tokio::io::As
                 if held > 0 { format!(" ({held} bytes in flight)") } else { String::new() }, self.started.elapsed().as_secs_f32(), self.name)
         }
     }
-    async fn pump(from: &mut (impl AsyncRead + Unpin), to: &mut (impl tokio::io::AsyncWrite + Unpin), way: Way<'_>) -> anyhow::Result<()> {
+    /// `framed`: hand the target whole game frames, one write each (the server's side, towards the game). The game
+    /// takes a frame only once a peek (`MSG_PEEK`) sees all of it (recv_nonblock `0x535190`), and Microsoft warns that
+    /// code peeking for a complete message on Winsock "might never succeed" (KB 192599); TLS gives us a reply in 16 KiB
+    /// records, so without this the game saw its larger replies (the shop's avatar items, about 60 KB) arrive in pieces.
+    /// Bytes that don't parse as frames are passed on as they come, from then on.
+    async fn pump(from: &mut (impl AsyncRead + Unpin), to: &mut (impl tokio::io::AsyncWrite + Unpin), way: Way<'_>, mut framed: bool) -> anyhow::Result<()> {
         use anyhow::Context;
         use std::sync::atomic::Ordering::Relaxed;
         let mut buffer = vec![0; 16 * 1024];
+        let mut pending: Vec<u8> = Vec::new();
         loop {
             let n = match from.read(&mut buffer).await {
                 Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
                 result => result.with_context(|| way.failure(way.source, "while reading from it", 0))?,
             };
             if n == 0 {
+                // A frame cut short by the end goes on as it is: the game decides what to make of it.
+                if !pending.is_empty() {
+                    to.write_all(&pending).await.with_context(|| way.failure(way.target, "while writing to it", pending.len()))?;
+                }
                 // One side finished: tell the other, as copy_bidirectional does, and keep the other direction going.
                 to.shutdown().await.with_context(|| way.failure(way.target, "while closing it", 0))?;
                 return Ok(());
             }
             way.flow.bytes.fetch_add(n as u64, Relaxed); way.flow.chunks.fetch_add(1, Relaxed);
-            to.write_all(&buffer[..n]).await.with_context(|| way.failure(way.target, "while writing to it", n))?;
+            pending.extend_from_slice(&buffer[..n]);
+            let mut sent = 0;
+            while framed && pending.len() - sent >= 4 {
+                let length = frame_len(pending[sent..sent + 4].try_into().unwrap());
+                if length == 0 || length > MAX_FRAME { framed = false; break }
+                if pending.len() - sent < 4 + length { break }
+                let whole = &pending[sent..sent + 4 + length];
+                to.write_all(whole).await.with_context(|| way.failure(way.target, "while writing to it", whole.len()))?;
+                sent += whole.len();
+            }
+            if !framed { sent = pending.len(); if sent > 0 { to.write_all(&pending).await.with_context(|| way.failure(way.target, "while writing to it", pending.len()))?; } }
+            pending.drain(..sent);
             to.flush().await.with_context(|| way.failure(way.target, "while flushing it", n))?;
         }
     }
@@ -319,8 +346,8 @@ where G: AsyncRead + tokio::io::AsyncWrite + Unpin, S: AsyncRead + tokio::io::As
     let (up, down) = (Flow::default(), Flow::default());
     let started = tokio::time::Instant::now();
     tokio::try_join!(
-        pump(&mut game_read, &mut server_write, Way { source: GAME, target: SERVER, name: "the game's side", flow: &up, other: &down, started }),
-        pump(&mut server_read, &mut game_write, Way { source: SERVER, target: GAME, name: "the server's side", flow: &down, other: &up, started }))?;
+        pump(&mut game_read, &mut server_write, Way { source: GAME, target: SERVER, name: "the game's side", flow: &up, other: &down, started }, false),
+        pump(&mut server_read, &mut game_write, Way { source: SERVER, target: GAME, name: "the server's side", flow: &down, other: &up, started }, true))?;
     Ok(())
 }
 
@@ -646,6 +673,72 @@ mod tests {
         let text = format!("{error:#}");
         assert!(text.starts_with("the game's connection: failed while writing to it (100 bytes in flight)"), "{text}");
         assert!(text.contains("the server's side carried 100 bytes in 1 reads"), "{text}");
+    }
+
+    /// Records each write the relay makes towards the game; reads nothing.
+    #[derive(Default)]
+    struct Writes(std::sync::Arc<std::sync::Mutex<Vec<Vec<u8>>>>);
+    impl tokio::io::AsyncRead for Writes {
+        fn poll_read(self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>, _: &mut tokio::io::ReadBuf<'_>) -> std::task::Poll<std::io::Result<()>> { std::task::Poll::Ready(Ok(())) }
+    }
+    impl tokio::io::AsyncWrite for Writes {
+        fn poll_write(self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>, buf: &[u8]) -> std::task::Poll<std::io::Result<usize>> {
+            self.0.lock().unwrap().push(buf.to_vec()); std::task::Poll::Ready(Ok(buf.len()))
+        }
+        fn poll_flush(self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> { std::task::Poll::Ready(Ok(())) }
+        fn poll_shutdown(self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> { std::task::Poll::Ready(Ok(())) }
+    }
+
+    /// The server's side handing out what it holds `piece` bytes at a time, as TLS records do.
+    struct Pieces { data: Vec<u8>, at: usize, piece: usize }
+    impl tokio::io::AsyncRead for Pieces {
+        fn poll_read(mut self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>, buf: &mut tokio::io::ReadBuf<'_>) -> std::task::Poll<std::io::Result<()>> {
+            let end = (self.at + self.piece).min(self.data.len()).min(self.at + buf.remaining());
+            let (at, data) = (self.at, std::mem::take(&mut self.data));
+            buf.put_slice(&data[at..end]); self.data = data; self.at = end;
+            std::task::Poll::Ready(Ok(()))
+        }
+    }
+    impl tokio::io::AsyncWrite for Pieces {
+        fn poll_write(self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>, buf: &[u8]) -> std::task::Poll<std::io::Result<usize>> { std::task::Poll::Ready(Ok(buf.len())) }
+        fn poll_flush(self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> { std::task::Poll::Ready(Ok(())) }
+        fn poll_shutdown(self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> { std::task::Poll::Ready(Ok(())) }
+    }
+
+    #[tokio::test]
+    async fn the_game_gets_each_server_frame_in_one_write_however_the_server_side_split_it() {
+        // #65: the game takes a frame only once a peek sees all of it (0x535190), and Winsock peeks can come up short
+        // (KB 192599). The shop's avatar items (about 60 KB) came through TLS in 16 KiB records: four writes to the game.
+        let big = Message::reply(0x1C2A).with("blob", Value::Bin(vec![7; 60_000]));
+        let replies = [frame(&Message::reply(0x2D75).encode()), frame(&big.encode()), frame(&Message::reply(0x1C36).encode())];
+        for piece in [1, 5, 4096, 16 * 1024, 1 << 20] {
+            let writes = Writes::default();
+            let seen = writes.0.clone();
+            let mut game = writes;
+            let mut server = Pieces { data: replies.concat(), at: 0, piece };
+            relay(&mut game, &mut server).await.unwrap();
+            let seen = seen.lock().unwrap();
+            assert_eq!(*seen, replies.to_vec(), "pieces of {piece} bytes: one write per frame, in order, nothing else");
+        }
+    }
+
+    #[tokio::test]
+    async fn bytes_that_are_not_frames_still_reach_the_game_as_they_come() {
+        // A frame length the game can't take (0, or past its 1 MiB buffer): no framing from there on, nothing held back.
+        let mut data = frame(&Message::reply(0x2D75).encode());
+        data.extend_from_slice(b"not a frame at all");
+        let writes = Writes::default();
+        let seen = writes.0.clone();
+        let mut game = writes;
+        relay(&mut game, &mut Pieces { data: data.clone(), at: 0, piece: 7 }).await.unwrap();
+        assert_eq!(seen.lock().unwrap().concat(), data);
+        // A frame cut short by the end goes on as it is.
+        let cut = frame(&Message::reply(0x1C2A).with("blob", Value::Bin(vec![1; 500])).encode())[..300].to_vec();
+        let writes = Writes::default();
+        let seen = writes.0.clone();
+        let mut game = writes;
+        relay(&mut game, &mut Pieces { data: cut.clone(), at: 0, piece: 64 }).await.unwrap();
+        assert_eq!(seen.lock().unwrap().concat(), cut);
     }
 
     #[tokio::test]
