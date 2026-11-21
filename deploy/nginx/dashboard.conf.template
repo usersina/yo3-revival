@@ -46,7 +46,7 @@ server {
         include /etc/nginx/yo3-proxy.conf;
     }
     # Closed list of actual staff routes. No generic /panel/ or /api/ proxy.
-    location ~ ^/panel/api/v1/(session|sign-out|sign-out-everywhere|mfa/enrollment|mfa/recovery-codes|accounts|accounts/[0-9]+|accounts/edit|accounts/credentials|accounts/keys|accounts/banlist|accounts/delete|banlists|reports|reports/handle|events|events/create|events/edit|events/cancel|give-bp|bp-codes|bp-codes/remove|invites|countries|gifts|gifts/choices|cards/[0-9]+/(mini|full)|moderation|server|server/stop|settings|audit|logs|backups)$ {
+    location ~ ^/panel/api/v1/(session|sign-out|sign-out-everywhere|mfa/enrollment|mfa/recovery-codes|accounts|accounts/[0-9]+|accounts/edit|accounts/credentials|accounts/keys|accounts/banlist|accounts/delete|banlists|reports|reports/handle|events|events/create|events/edit|events/cancel|championships|championships/create|championships/edit|championships/cancel|give-bp|bp-codes|bp-codes/remove|invites|countries|gifts|gifts/choices|cards/[0-9]+/(mini|full)|moderation|server|server/stop|settings|audit|logs|backups)$ {
         include /etc/nginx/yo3-proxy.conf;
     }
     location = /panel/openapi.json { include /etc/nginx/yo3-proxy.conf; }

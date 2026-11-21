@@ -193,6 +193,13 @@ export function ConnectedChampionships({ session }: { session: StaffSession }) {
                   </tr>
                 </thead>
                 <tbody>
+                  {list.data.championships.length === 0 && (
+                    <tr>
+                      <td className="connected-state" colSpan={8}>
+                        No Championship yet. Schedule one and the map's Tournament tile lists it.
+                      </td>
+                    </tr>
+                  )}
                   {list.data.championships.map((c) => (
                     <tr key={c.championship_id}>
                       <td className="row-heading" data-label="Championship">
@@ -262,11 +269,6 @@ export function ConnectedChampionships({ session }: { session: StaffSession }) {
                 </tbody>
               </table>
             </div>
-            {list.data.championships.length === 0 && (
-              <p className="connected-state">
-                No Championship yet. Schedule one and the map's Tournament tile lists it.
-              </p>
-            )}
           </>
         )}
       </Panel>
