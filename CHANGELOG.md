@@ -13,7 +13,9 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.1.10 (2026-11-21)
+
+Multiplayer: update to v0.1.10 to join the hosted server after deployment.
 
 - The game now gets each reply from the server in one piece. This aims at the shop disconnecting some players
   (#65): the game waits for a whole reply before reading it, and on some Windows PCs it could give up on the shop's
@@ -26,6 +28,12 @@ Older entries describe their release at the time. For current setup, use the [RE
 - A sign-in that can't reach the server says so within about 12 seconds, not 40.
 - One lost answer no longer shows a server as Offline until you click RETRY.
 - An old website page that stops loading now ends after 30 seconds.
+- When a game's connection breaks or it closes with an error, its logs now go to the server you played on by
+  themselves, so the host can see what went wrong without asking you for files. Setup asks about it (on unless you
+  untick it); Settings → Advanced → **Send logs when something breaks** turns it off. Passwords and keys are never in
+  them.
+- **Report a problem** sends your logs the same way and puts their report ID in the GitHub form: there is nothing to
+  attach any more. In Singleplayer it still saves a file for you to attach.
 
 ## v0.1.9 (2026-11-21)
 
