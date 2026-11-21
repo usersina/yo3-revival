@@ -13,6 +13,19 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## v0.1.12 (2026-11-21)
+
+Multiplayer: update to v0.1.12 to join the hosted server after deployment.
+
+- **See a pack's cards before you buy it.** The game's website links (the title screen's Official Website, Main Menu →
+  Leaderboard) now have a **Packs** page: every booster pack on sale with every card it can give, by rarity, and the odds
+  of each rarity. In the chat, `/p Server pack NAME` lists a pack's cards, rarest first; `pack` alone lists the packs.
+- The website pages show the server's name and a bar to every page: Home, Leaderboard, Teams, Packs, BP and Events. BP
+  says how points come in on the server, Events where tournaments and official events are on the map.
+- When a page can't load, you now see why (you're not signed in, the game is still signing in, the server didn't answer
+  or took too long) instead of the browser's "connection reset".
+- `where CARD` names packs as the shop does ("Pack 1", not "Booster Pack 1").
+
 ## v0.1.11 (2026-11-21)
 
 Multiplayer: update to v0.1.11 to join the hosted server after deployment.
