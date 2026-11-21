@@ -19,6 +19,9 @@ const PROTECTOR: u32 = 6;
 const AVATAR_ITEM: u32 = 3;
 /// Shelf dates for goods without a file of their own.
 const ITEM_DATE: &str = "2010-03-23 00:00:00";
+/// A card a pack gives is, one time in this many, another artwork of the card instead (#19; **guess**: the original's
+/// odds are unknown), when the card has an artwork no pack or free deck gives.
+pub const ALT_ART_ODDS: u32 = 20;
 /// A pack holds this many cards of its first rarity tier, then one of a higher tier (**guess**).
 const COMMONS: usize = 4;
 /// Card exchange (Blister's "Trade Card"): the client's exchange pools are its pack files 264-268 (pack_type 4), one
@@ -26,6 +29,9 @@ const COMMONS: usize = 4;
 /// player's own cards (item_cost, "Cards Required:"; **guess**: the original costs are unknown).
 pub const EXCHANGE_POOLS: std::ops::RangeInclusive<u32> = 264..=268;
 pub const EXCHANGE_COST: u32 = 10;
+/// One more pool (#19): the client's "card list" pack file 232 (`pack_type` 3, 4,110 cards), the nearest the client has to
+/// a list of cards to trade for beyond those five; it holds 435 of the cards the packs never give for keeps.
+pub const EXTRA_POOL: u32 = 232;
 /// The exchange's item_type: Purchase Pack shelves 0 and 3 (packs), 1 and 4 (decks), 6 (protectors), 10 and 11, and
 /// leaves any other out (0x48E240). 2 is one it leaves out (**guess**: the original's value is unknown).
 const EXCHANGE_TYPE: u32 = 2;
@@ -43,6 +49,31 @@ pub fn duel_bp(result: u32) -> u32 {
         1 => 100,
         3 => 50,
         _ => 30,
+    }
+}
+
+/// The other artworks of cards (CARD_Prop row -> the rows of its card no pack gives) and the odds of one coming up in
+/// place of the card pulled: one in `odds` (0 never, 1 always).
+#[derive(Clone, Debug)]
+pub struct Arts {
+    pub alts: std::collections::HashMap<u16, Vec<u16>>,
+    pub odds: u32,
+}
+
+impl Default for Arts {
+    fn default() -> Arts {
+        Arts { alts: Default::default(), odds: ALT_ART_ODDS }
+    }
+}
+
+impl Arts {
+    /// The card that comes up for a pulled `row`: usually itself, rarely another artwork of the card.
+    pub fn pull(&self, row: u16, rng: &mut u64) -> u16 {
+        let Some(alts) = self.alts.get(&row).filter(|a| !a.is_empty() && self.odds > 0) else { return row };
+        if crate::duel::next(rng) % u64::from(self.odds) != 0 {
+            return row;
+        }
+        alts[(crate::duel::next(rng) % alts.len() as u64) as usize]
     }
 }
 
@@ -120,9 +151,9 @@ impl<'a> Goods<'a> {
     }
 
     /// One of it, as the present it arrives as: a pack opened now, the deck, or the item.
-    pub fn take(&self, rng: &mut u64) -> Present {
+    pub fn take(&self, rng: &mut u64, arts: &Arts) -> Present {
         match self {
-            Goods::Pack(pack) => Present::Pack { id: pack.id, cards: open(pack, rng) },
+            Goods::Pack(pack) => Present::Pack { id: pack.id, cards: open(&pack.tiers, arts, rng) },
             Goods::Deck(deck) => Present::Deck { id: deck.deck.id, cards: deck.deck.cards().collect() },
             Goods::Protector(id) => Present::Protector(*id),
             Goods::AvatarItem(id, name) => Present::AvatarItem(*id, *name),
@@ -201,11 +232,14 @@ pub fn tiers(cards: &[u16]) -> Vec<Vec<u16>> {
 
 /// The cards of one pack: four of the first tier, then one of a higher tier, each tier half as likely as the one
 /// below it (**guess**); a pack of one tier gives five of it.
-pub fn open(pack: &ShopPack, rng: &mut u64) -> Vec<u16> {
-    let Some(first) = pack.tiers.first().filter(|t| !t.is_empty()) else { return vec![] };
-    let pick = |tier: &[u16], rng: &mut u64| tier[(crate::duel::next(rng) % tier.len() as u64) as usize];
+pub fn open(tiers: &[Vec<u16>], arts: &Arts, rng: &mut u64) -> Vec<u16> {
+    let Some(first) = tiers.first().filter(|t| !t.is_empty()) else { return vec![] };
+    let pick = |tier: &[u16], rng: &mut u64| {
+        let row = tier[(crate::duel::next(rng) % tier.len() as u64) as usize];
+        arts.pull(row, rng)
+    };
     let mut cards: Vec<u16> = (0..COMMONS).map(|_| pick(first, rng)).collect();
-    let higher: Vec<&Vec<u16>> = pack.tiers[1..].iter().filter(|t| !t.is_empty()).collect();
+    let higher: Vec<&Vec<u16>> = tiers[1..].iter().filter(|t| !t.is_empty()).collect();
     let weight = |i: usize| 1u64 << (higher.len() - 1 - i);
     let mut roll = crate::duel::next(rng) % (0..higher.len()).map(weight).sum::<u64>().max(1);
     let mut last = first;

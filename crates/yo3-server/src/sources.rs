@@ -25,6 +25,9 @@ pub struct CardSource {
 /// The booster packs a Trade Card pool covers, by the pool's pack file (264-268; `shop::EXCHANGE_POOLS`).
 pub fn trade_pool_name(pool: u32) -> String {
     const RUNS: [(u32, u32); 5] = [(1, 14), (15, 23), (24, 32), (33, 40), (41, 48)];
+    if pool == crate::shop::EXTRA_POOL {
+        return "Blister's Trade Card (the extra card list)".to_string();
+    }
     let at = pool.saturating_sub(*crate::shop::EXCHANGE_POOLS.start()) as usize;
     match RUNS.get(at) {
         Some((first, last)) => format!("Blister's Trade Card (cards from Booster Packs {first}-{last})"),

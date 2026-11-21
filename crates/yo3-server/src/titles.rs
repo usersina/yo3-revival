@@ -3,7 +3,8 @@
 //! player wears one. BEGINNER DUELIST is every player's (`GameData::free_items`); this module decides the others the
 //! server can measure. Their lines say what each rewards ("A token of friendship with Yami Yugi", "summoned many high
 //! level monsters"), never how many: the numbers here are ours. Titles of the official events, the rankings and the
-//! Championship wait for those (issue #16); the staff and promotion titles are granted by the host
+//! Championship wait for those (issue #16); the official events' titles (the Stadium, #18) count each win and star
+//! as it happens, with the numbers the client's lines state; the staff and promotion titles are granted by the host
 //! (`yo3-server grant-title`).
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -15,6 +16,16 @@ pub const SYNCHROS: &str = "synchro_summons";
 pub const SPELLS: &str = "spells_activated";
 pub const TRAPS: &str = "traps_activated";
 pub const COMEBACKS: &str = "comeback_wins";
+
+/// What the Stadium's events add: the best Gunslinger win streak, the Duelist Trial wins, the Evolution and Ultimate
+/// Match stars (both feed the EVOLUTION ladder), the Anniversary Trial wins, and the events won (first place).
+pub const STREAK: &str = "official_streak";
+pub const TRIAL_WINS: &str = "official_trial_wins";
+pub const STARS: &str = "official_stars";
+pub const ANNIVERSARY_WINS: &str = "official_anniversary_wins";
+pub const CHAMPION_GUNSLINGER: &str = "official_champion_gunslinger";
+pub const CHAMPION_TRIAL: &str = "official_champion_trial";
+pub const CHAMPION_EVOLUTION: &str = "official_champion_evolution";
 
 /// A high-level monster: level 7 or more.
 pub const HIGH: u32 = 7;
@@ -32,6 +43,17 @@ const COUNTED: &[(&str, &[(u32, &str)])] = &[
     (TRAPS, &[(20, "BRONZE TRAP ARTIST"), (100, "SILVER TRAP ARTIST"), (500, "GOLDEN TRAP ARTIST")]),
     (SPELLS, &[(20, "BRONZE SPELLCASTER"), (100, "SILVER SPELLCASTER"), (500, "GOLDEN SPELLCASTER")]),
     (COMEBACKS, &[(1, "NEVER SAY DIE WARRIOR"), (10, "NEVER SAY DIE CHAMPION"), (30, "NEVER SAY DIE HERO")]),
+    // The numbers are the client's own lines: "3 win streak in GUNSLINGER", "7", "10", "15"; "3 wins in the DUELIST
+    // TRIAL", "10", "30"; "collected 30 stars in EVOLUTION MATCH", "100", "300", "500".
+    (STREAK, &[(3, "GUNSLINGER"), (7, "SUPER GUNSLINGER"), (10, "ULTRA GUNSLINGER"), (15, "ULTIMATE GUNSLINGER")]),
+    (TRIAL_WINS, &[(3, "TRIALIST"), (10, "ULTRA TRIALIST"), (30, "ULTIMATE TRIALIST")]),
+    (STARS, &[(30, "EVOLUTION"), (100, "SUPER EVOLUTION"), (300, "ULTRA EVOLUTION"), (500, "ULTIMATE EVOLUTION")]),
+    // "completed the ANNIVERSARY TRIAL Event" (a win: **guess**); "ranked no.1" in each kind's ranking (the title is
+    // spelled EVOUTION CHAMPION in the client).
+    (ANNIVERSARY_WINS, &[(1, "THE ANNIVERSARIAN")]),
+    (CHAMPION_GUNSLINGER, &[(1, "CHAMPION GUNSLINGER")]),
+    (CHAMPION_TRIAL, &[(1, "CHAMPION TRIALIST")]),
+    (CHAMPION_EVOLUTION, &[(1, "EVOUTION CHAMPION")]),
 ];
 
 /// Distinct cards a player got beyond the starter deck, for the collection titles.
@@ -194,6 +216,37 @@ pub fn count(counters: &mut BTreeMap<String, u32>, stats: &DuelStats, result: u3
     add(COMEBACKS, (result == 1 && start_lp + stats.lowest_change <= COMEBACK_LP) as u32);
 }
 
+/// The counters after one result (1 won, 2 lost, 3 draw) of an Official Event of `kind`, where `best` is the player's
+/// best score in that event now (a Gunslinger's longest streak).
+pub fn count_official(counters: &mut BTreeMap<String, u32>, kind: crate::official::Kind, result: u32, best: u32) {
+    use crate::official::Kind;
+    let won = result == 1;
+    let (key, add) = match kind {
+        Kind::Gunslinger => {
+            let top = counters.entry(STREAK.to_string()).or_default();
+            *top = (*top).max(best);
+            return;
+        }
+        Kind::DuelistTrial => (TRIAL_WINS, won),
+        Kind::Evolution | Kind::Ultimate => (STARS, won),
+        Kind::Anniversary => (ANNIVERSARY_WINS, won),
+    };
+    if add {
+        *counters.entry(key.to_string()).or_default() += 1;
+    }
+}
+
+/// The counter that records an event of `kind` won (first place): Evolution and Ultimate share the EVOLUTION ladder.
+pub fn champion_counter(kind: crate::official::Kind) -> Option<&'static str> {
+    use crate::official::Kind;
+    match kind {
+        Kind::Gunslinger => Some(CHAMPION_GUNSLINGER),
+        Kind::DuelistTrial => Some(CHAMPION_TRIAL),
+        Kind::Evolution | Kind::Ultimate => Some(CHAMPION_EVOLUTION),
+        Kind::Anniversary => None,
+    }
+}
+
 /// What a player has to show for titles.
 pub struct Progress<'a> {
     pub counters: &'a BTreeMap<String, u32>,
@@ -259,6 +312,7 @@ mod tests {
 
     fn data() -> TitleData {
         let names = [
+            "GUNSLINGER", "ULTIMATE GUNSLINGER", "TRIALIST", "EVOLUTION", "THE ANNIVERSARIAN", "CHAMPION TRIALIST",
             "BRONZE DUELIST", "SILVER DUELIST", "BRONZE SUMMONER", "BRONZE TUNER", "NEVER SAY DIE WARRIOR", "THE CARD ENTHUSIAST",
             "THE AFRO KAISER", "KING OF DOMINO CITY", "YUGI FAN", "ASPIRING DUELIST", EVERYBODY, "SUMMONER OF EXODIA",
             "MASTER OF THE SUN", "GAME MASTER",
@@ -294,6 +348,33 @@ mod tests {
         let d = data();
         let progress = Progress { counters: &counters, collection: 0, wearing: vec![], npcs: HashMap::new() };
         assert_eq!(named(&d, &earned(&d, &progress, None)), ["BRONZE DUELIST", "BRONZE SUMMONER", "BRONZE TUNER", "NEVER SAY DIE WARRIOR"]);
+    }
+
+    #[test]
+    fn official_events_count_streaks_wins_and_stars_towards_their_titles() {
+        use crate::official::Kind;
+        let d = data();
+        let mut c = BTreeMap::new();
+        // A Gunslinger's streak counts at its best, whatever the streak is now.
+        count_official(&mut c, Kind::Gunslinger, 1, 3);
+        count_official(&mut c, Kind::Gunslinger, 2, 3);
+        count_official(&mut c, Kind::Gunslinger, 1, 1);
+        assert_eq!(c[STREAK], 3);
+        // Trial wins, stars and Anniversary wins add up across events; a loss adds nothing.
+        for _ in 0..3 { count_official(&mut c, Kind::DuelistTrial, 1, 0) }
+        count_official(&mut c, Kind::DuelistTrial, 2, 0);
+        for n in 0..30 { count_official(&mut c, if n % 2 == 0 { Kind::Evolution } else { Kind::Ultimate }, 1, 0) }
+        count_official(&mut c, Kind::Anniversary, 1, 0);
+        assert_eq!((c[TRIAL_WINS], c[STARS], c[ANNIVERSARY_WINS]), (3, 30, 1));
+        let progress = Progress { counters: &c, collection: 0, wearing: vec![], npcs: HashMap::new() };
+        assert_eq!(named(&d, &earned(&d, &progress, None)), ["EVOLUTION", "GUNSLINGER", "THE ANNIVERSARIAN", "TRIALIST"]);
+        c.insert(STREAK.into(), 15);
+        c.insert(CHAMPION_TRIAL.into(), 1);
+        let progress = Progress { counters: &c, collection: 0, wearing: vec![], npcs: HashMap::new() };
+        let names = named(&d, &earned(&d, &progress, None));
+        assert!(names.contains(&"ULTIMATE GUNSLINGER".to_string()) && names.contains(&"CHAMPION TRIALIST".to_string()), "{names:?}");
+        assert_eq!(champion_counter(Kind::Ultimate), champion_counter(Kind::Evolution));
+        assert_eq!(champion_counter(Kind::Anniversary), None);
     }
 
     #[test]

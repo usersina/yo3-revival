@@ -224,6 +224,19 @@ impl Event {
         (bp, why.join(" and "))
     }
 
+    /// Who finished first (the title CHAMPION of the kind goes to them): everyone tied at the top of the standings
+    /// (the best score, then the wins), when at least two players took part and the top score is above 0. Ties share
+    /// the title (**guess**: the client has no tie-break).
+    pub fn champions(&self) -> Vec<&Entry> {
+        let played: Vec<&Entry> = self.standings().into_iter().filter(|e| e.played() > 0).collect();
+        match played.first() {
+            Some(top) if played.len() >= 2 && top.best > 0 => {
+                played.iter().copied().take_while(|e| (e.best, e.wins) == (top.best, top.wins)).collect()
+            }
+            _ => vec![],
+        }
+    }
+
     /// The entries by score, the best first (ties by the earlier wins, then name).
     pub fn standings(&self) -> Vec<&Entry> {
         let mut all: Vec<&Entry> = self.entries.iter().collect();
@@ -470,6 +483,11 @@ impl Official {
         payouts
     }
 
+    /// The events that have ended (not cancelled) and whose champions are not crowned yet, by `done`.
+    pub fn ended_without_champions(&self, now: i64, done: &std::collections::HashSet<u32>) -> Vec<&Event> {
+        self.events.iter().filter(|e| e.state != State::Cancelled && now >= e.end && !done.contains(&e.id)).collect()
+    }
+
     /// A prize was paid.
     pub fn mark_paid(&mut self, id: u32, player: u32) {
         if let Some(e) = self.events.iter_mut().find(|e| e.id == id).and_then(|e| e.entries.iter_mut().find(|e| e.player_id == player)) { e.paid = true }
@@ -586,6 +604,23 @@ mod tests {
         o.mark_paid(e.id, 1);
         let again: Vec<u32> = o.settle(300).iter().map(|p| p.player_id).collect();
         assert_eq!(again, [2, 3], "a prize not marked paid comes again; a paid one doesn't");
+    }
+
+    #[test]
+    fn the_champion_is_first_place_of_an_event_with_two_players_and_ties_share_it() {
+        let mut o = Official::default();
+        let e = o.create(new(Kind::DuelistTrial, 100, 200)).unwrap();
+        o.join(e.id, 1, "A", 150);
+        o.record(e.id, 1, "A", 1, 150);
+        assert!(o.get(e.id).unwrap().champions().is_empty(), "one entrant is no contest");
+        o.join(e.id, 2, "B", 150);
+        o.record(e.id, 2, "B", 2, 150);
+        assert_eq!(o.get(e.id).unwrap().champions().iter().map(|c| c.player_id).collect::<Vec<_>>(), [1]);
+        o.record(e.id, 2, "B", 1, 150);
+        assert_eq!(o.get(e.id).unwrap().champions().iter().map(|c| c.player_id).collect::<Vec<_>>(), [1, 2], "one win each");
+        let done: std::collections::HashSet<u32> = [e.id].into();
+        assert!(o.ended_without_champions(300, &done).is_empty() && o.ended_without_champions(150, &Default::default()).is_empty());
+        assert_eq!(o.ended_without_champions(300, &Default::default()).len(), 1);
     }
 
     #[test]

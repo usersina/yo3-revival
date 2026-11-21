@@ -635,6 +635,8 @@ pub struct World {
     pub rental_pool: std::collections::HashSet<u16>,
     /// Where each card comes from, for `/where` (#55).
     pub card_sources: Vec<crate::sources::CardSource>,
+    /// The Special Pack, the alternate artworks and the NPCs' recipes (`crate::prizes`).
+    pub prizes: Arc<crate::prizes::Prizes>,
 }
 
 /// The Information list (0x21FC, read by the global dispatcher `0x4F4700` whenever it arrives, so the server may push
@@ -754,6 +756,7 @@ impl World {
             exchange_pools: vec![],
             rental_pool: Default::default(),
             card_sources: vec![],
+            prizes: Default::default(),
         }
     }
 
@@ -783,6 +786,11 @@ pub struct Hub {
     directory: Option<Arc<Mutex<crate::accounts::Directory>>>,
     /// The client's titles, for those players earn (`crate::titles`).
     titles: Option<Arc<crate::titles::TitleData>>,
+    /// What duels and Official Events hand out (`crate::prizes`), the random state its packs are pulled with, and the
+    /// finished events whose champions were crowned this run.
+    prizes: Option<Arc<crate::prizes::Prizes>>,
+    prize_rng: u64,
+    crowned: std::collections::HashSet<u32>,
     /// The live settings, for the duel cap (#27); none in tests that don't set them (no cap).
     settings: Option<Arc<crate::settings::Live>>,
     /// Players waiting for an automatic match, in order, and the matched duels.
@@ -912,6 +920,11 @@ impl Hub {
     /// The client's titles: players earn them from here on (`award_titles`).
     pub fn set_titles(&mut self, titles: Arc<crate::titles::TitleData>) {
         self.titles = Some(titles);
+    }
+
+    /// What duels and Official Events hand out from here on: Special Packs, recipes (`crate::prizes`).
+    pub fn set_prizes(&mut self, prizes: Arc<crate::prizes::Prizes>) {
+        self.prizes = Some(prizes);
     }
 
     /// The duels matched now (started or not), by id.
@@ -1074,6 +1087,7 @@ impl Hub {
         let record = if linked { self.records.get(&(ended.player_id, ended.opponent)).copied().unwrap_or_default() } else { self.record_result(ended.player_id, ended.opponent, ended.result) };
         let stats = ended.stats.clone().unwrap_or_default();
         if !linked { self.award_titles(ended.player_id, Some((&stats, ended.result, ended.start_lp))); }
+        if !linked && ended.npc && ended.result == 1 { self.give_npc_recipe(ended.player_id, ended.opponent); }
         let me = self.online.values().find(|o| o.player_id == ended.player_id);
         let (host, name, level) = me.map(|o| (o.host.clone(), o.name.clone(), o.level)).unwrap_or_default();
         let (opponent_name, opponent_level) = match self.online.values().find(|o| !ended.npc && o.player_id == ended.opponent) {
@@ -1199,7 +1213,67 @@ impl Hub {
         }
         let name = self.online.values().find(|o| o.player_id == ended.player_id).map(|o| o.name.clone()).unwrap_or_default();
         let score = self.official.record(event_id, ended.player_id, &name, ended.result, chrono::Utc::now().timestamp())?;
+        self.official_awards(ended.player_id, event_id, ended.result);
         Some(score.min(crate::official::SCORE_SHOWN))
+    }
+
+    /// What a counted result of an Official Event earns at once: the event titles' counts (`titles::count_official`)
+    /// and, for a win, a Special Pack while the player has won no more than `SPECIAL_PACK_CAP` times in the event.
+    fn official_awards(&mut self, player_id: u32, event_id: u32, result: u32) {
+        let Some(event) = self.official.get(event_id) else { return };
+        let Some(entry) = event.entry(player_id) else { return };
+        let (kind, best, wins, name) = (event.kind, entry.best, entry.wins, event.name.clone());
+        self.award_titles_with(player_id, None, |c| crate::titles::count_official(c, kind, result, best));
+        if result == 1 && wins <= crate::prizes::SPECIAL_PACK_CAP {
+            self.grant_special_pack(player_id, &name);
+        }
+    }
+
+    /// A win against an NPC gives the recipe of the deck it played, the first time (#19): the item that puts the deck on
+    /// Load Deck's Official tab (the cards are not included), a D-Mail from the Host and a line in the chat window.
+    fn give_npc_recipe(&mut self, player_id: u32, npc_id: u32) {
+        let (Some(prizes), Some(directory)) = (self.prizes.clone(), self.directory.clone()) else { return };
+        let Some(recipe) = prizes.npc_recipes.get(&npc_id) else { return };
+        let mut new = false;
+        if let Err(why) = directory.locked().update_player(player_id, |p| new = p.items.insert(recipe.item)) {
+            tracing::warn!("recipe of {} for player {player_id} not kept: {why}", recipe.deck);
+            return;
+        }
+        if !new { return }
+        let name = self.online.values().find(|o| o.player_id == player_id).map(|o| o.name.clone()).unwrap_or_default();
+        let sent = (chrono::Utc::now() + chrono::Duration::hours(9)).format("%Y-%m-%d %H:%M:%S").to_string();
+        let body = format!("You beat {} with their deck {}. Its recipe is yours now: find it on Load Deck's Official tab (the cards are not included).", recipe.npc, recipe.deck);
+        self.mail.post(Mail { from: (0, "Host".into()), to: (player_id, name), title: format!("{} recipe", recipe.deck), body, sent, ..Mail::default() });
+        self.push(player_id, &Message::reply(0x2581));
+        self.push(player_id, &chat_note("Server", &format!("You earned the deck recipe {} from {}. It is on Load Deck's Official tab.", recipe.deck, recipe.npc)));
+    }
+
+    /// A Special Pack for a player (#18/#19): opened now, its cards in their collection, shown as a present and told in
+    /// a D-Mail from the Host. Nothing without the Special Pack's cards (no game data) or an account for the player.
+    fn grant_special_pack(&mut self, player_id: u32, event: &str) {
+        let (Some(prizes), Some(directory)) = (self.prizes.clone().filter(|p| !p.special.is_empty()), self.directory.clone()) else { return };
+        if self.prize_rng == 0 {
+            self.prize_rng = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(1) as u64 | 1;
+        }
+        let cards = crate::shop::open(&prizes.special, &prizes.arts, &mut self.prize_rng);
+        let saved = directory.locked().update_player(player_id, |p| {
+            for &row in &cards {
+                *p.cards.entry(row).or_default() += 1;
+            }
+        });
+        if let Err(why) = saved {
+            tracing::warn!("Special Pack for player {player_id} from {event} not kept: {why}");
+            return;
+        }
+        let name = self.online.values().find(|o| o.player_id == player_id).map(|o| o.name.clone()).unwrap_or_default();
+        let sent = (chrono::Utc::now() + chrono::Duration::hours(9)).format("%Y-%m-%d %H:%M:%S").to_string();
+        let body = format!("A win in {event} earned you a Special Pack. Its {} cards are in your collection: open the present from the map, or find them in Edit Deck.", cards.len());
+        self.mail.post(Mail { from: (0, "Host".into()), to: (player_id, name), title: "Special Pack".into(), body, sent, ..Mail::default() });
+        self.push(player_id, &Message::reply(0x2581));
+        let waiting = self.host_presents.entry(player_id).or_default();
+        waiting.push_back(crate::shop::Present::Gift { cards });
+        let count = waiting.len() as u32;
+        self.push(player_id, &Message::reply(0x2774).with("present_count", Value::U32(count)));
     }
 
     /// Ends the official events whose time is up and pays their prizes (called every second): the BP into the player's
@@ -1221,12 +1295,33 @@ impl Hub {
             self.push(p.player_id, &Message::reply(0x2581));
             self.official.mark_paid(p.event_id, p.player_id);
         }
+        self.crown_champions(now);
+    }
+
+    /// The events that have ended crown their champions once per run: first place in a Gunslinger, Duelist Trial,
+    /// Evolution or Ultimate Match event of at least two players earns the kind's CHAMPION title (`official::Event::champions`).
+    fn crown_champions(&mut self, now: i64) {
+        let ended: Vec<(u32, Option<&'static str>, Vec<u32>)> = self.official.ended_without_champions(now, &self.crowned).into_iter()
+            .map(|e| (e.id, crate::titles::champion_counter(e.kind), e.champions().iter().map(|c| c.player_id).collect())).collect();
+        for (id, counter, champions) in ended {
+            self.crowned.insert(id);
+            let Some(counter) = counter else { continue };
+            for player in champions {
+                self.award_titles_with(player, None, |c| { c.insert(counter.to_string(), 1); });
+            }
+        }
     }
 
     /// The titles a player has earned and doesn't own yet (`crate::titles`): added to their items (Avatar Settings
     /// lists them) and announced in their chat window. `stats`: a duel just played, counted first. None without the
     /// client's titles or an account for the player.
     pub fn award_titles(&mut self, player_id: u32, stats: Option<(&crate::titles::DuelStats, u32, u32)>) -> Vec<u16> {
+        self.award_titles_with(player_id, stats, |_| {})
+    }
+
+    /// [`Hub::award_titles`] after `count` changed the player's counters too (an Official Event's win or star).
+    fn award_titles_with(&mut self, player_id: u32, stats: Option<(&crate::titles::DuelStats, u32, u32)>,
+        count: impl FnOnce(&mut BTreeMap<String, u32>)) -> Vec<u16> {
         let (Some(titles), Some(directory)) = (self.titles.clone(), self.directory.clone()) else { return vec![] };
         let records: HashMap<u32, [u32; 3]> =
             self.records.iter().filter(|((me, them), _)| *me == player_id && *them <= 256).map(|((_, them), r)| (*them, *r)).collect();
@@ -1236,6 +1331,7 @@ impl Hub {
             if let Some((s, result, lp)) = stats {
                 crate::titles::count(&mut p.counters, s, result, lp as i64);
             }
+            count(&mut p.counters);
             let collection: std::collections::HashSet<u16> = p.cards.keys().filter_map(|r| titles.row_cids.get(r)).copied().collect();
             let wearing: Vec<u16> = p.avatar.chunks(2).map(|c| u16::from_be_bytes([c[0], *c.get(1).unwrap_or(&0)])).collect();
             let progress = crate::titles::Progress { counters: &p.counters, collection: collection.len(), wearing, npcs };
@@ -3128,7 +3224,7 @@ impl FrontSession {
         if item.is_some_and(|id| self.account.players[at].items.contains(&id)) {
             return Err("already owned".into());
         }
-        let bought: Vec<crate::shop::Present> = (0..count).map(|_| goods.take(&mut self.rng)).collect();
+        let bought: Vec<crate::shop::Present> = (0..count).map(|_| goods.take(&mut self.rng, &world.prizes.arts)).collect();
         let add = |p: &mut Player| {
             if let Some(id) = item {
                 p.items.insert(id);
@@ -3202,8 +3298,12 @@ impl FrontSession {
                 change(&mut self.account.players[at]);
             }
         }
-        let pack = world.packs.iter().find(|p| p.tiers.iter().flatten().any(|&c| c == card)).map_or(pool.id, |p| p.id);
-        self.presents.push_back(crate::shop::Present::Card { pack, card });
+        // A card no booster pack holds (the extra pool's rentals) has no pack to name: it arrives as a gift of one card.
+        let present = match world.packs.iter().find(|p| p.tiers.iter().flatten().any(|&c| c == card)) {
+            Some(p) => crate::shop::Present::Card { pack: p.id, card },
+            None => crate::shop::Present::Gift { cards: vec![card] },
+        };
+        self.presents.push_back(present);
         self.trunk_due = true;
         Message::reply(0x1C28)
     }
@@ -3807,7 +3907,10 @@ impl FrontSession {
             // The session's own presents (a purchase, an exchange) first, then the host's gifts (#19).
             0x2775 => match self.presents.pop_front().or_else(|| {
                 let me = self.account.players.get(self.selected?)?.player_id;
-                self.hub().next_host_present(me)
+                let present = self.hub().next_host_present(me);
+                // The host's and the events' cards are in the collection already, not in the client's trunk.
+                self.trunk_due |= present.as_ref().is_some_and(|p| !p.cards().is_empty());
+                present
             }) {
                 Some(present) => {
                     self.last_present += 1;
