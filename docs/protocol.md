@@ -685,7 +685,10 @@ them has a global case. Every list case checks its item count (`0x410D90`) befor
 **Card exchange.** Blister's Trade Card lists the cards of each `0x1C26` item's pack file. The client has five pack
 files made for it: 264–268 (`pack_type` 4, no art or name) with 625, 470, 483, 474 and 560 cards, disjoint, which are
 exactly the cards that first came in booster packs 1–14, 15–23, 24–32, 33–40 and 41–48. The server lists those five,
-at 10 cards each (the original costs are unknown). The player picks a card, the trade screen asks for exactly
+at 10 cards each (the original costs are unknown), and a sixth pool (#19): the card list, pack file 232 (`pack_type` 3,
+4,110 cards, "what it was for is open"), the nearest the client has to a list of cards beyond them. The client expands any
+pack file the `0x1C26` item names into its rows, so a list of our own is not possible: file 232's rows, accepted at the same
+cost. A card no booster pack holds comes as a present with `pack_id` 0 (no pack name to show). The player picks a card, the trade screen asks for exactly
 `item_cost` trunk cards (dragged, double-clicked or Auto Select), and "Trade selected cards with ... OK?" sends
 `0x1B6A`. The server checks the cards against the stored player under the accounts' lock (lent cards can't be given,
 borrowed ones aren't the player's), takes them and adds the picked card. The present window titles a one-card present
@@ -698,10 +701,33 @@ BP. The cards are lent like a rental between players (`rental.rs`): the records 
 term ends, they count in the borrower's decks, and they can't be traded or exchanged away.
 
 **Special Packs.** The client's texts make them event prizes: a present ("Right to purchase Special Pack", 15125) that
-unlocks a pack at Blister's for BP until a date, earned by event wins, streaks and stars. The client has names and art
-for about 100 of them but not their contents ("For pack content, check the official website", 28000–28007), and the
-server holds no events. Any contents would be invented, so the list stays empty and the button disabled (decided
-2026-11-14, issue #8).
+unlocks a pack at Blister's for BP until a date, earned by event wins, streaks and stars. The client has art for about
+100 of them (`data/img/pack/EV_*`, `EX_*`, `PST-*`, `PTM-*`, `PBS-*`, `sppack_num_g*`) but no pack file with their
+contents (the 82 files of `data/pack/` are the 75 booster packs, the five Trade Card pools 264-268, the card list 232
+and the rental pool 10000: researched again 2026-11-21 for #19) and says "For pack content, check the official website"
+(28000–28007). The shop's list therefore stays empty and Purchase Special Packs disabled (decided 2026-11-14, issue #8).
+**Event prizes (#18, #19, 2026-11-21):** one Special Pack of our own per Official Event win (see "Event prizes" under
+the Stadium below), delivered as a present like the host's gifts, not through this list. **Status: guess** (the pack's
+contents, tiers and the cap; no client evidence).
+
+**Alternate artworks (#19).** Each artwork is its own CARD_Prop row (art = bits 27-29 of the second word, `0x537420`).
+When a booster pack or the Special Pack gives a card, one time in 20 (**guess**, `ALT_ART_ODDS`) the
+present holds another row of the same Konami id instead, one no booster pack, structure deck, starter or character deck
+gives (`prizes::alternate_arts`: 60 rows of 39 cards in the v1.153 files, the issue's 45 arts counted without the second
+artworks of cards that are not in any pack; Launcher Spider's art 1 included). The present is the same `0x2777` with the
+other row among `item`; the client shows whichever row it is. Test hook: the environment variable `YO3_ALT_ART_ODDS` (1 =
+always) on the server.
+
+**Deck recipes (#19).** The 22 theme decks (`deck_type` 2) and the two starters that aren't the free one (`deck_type` 1)
+have no `deck_image` (`noImage`). Put on the STRUCTURE DECK shelf as `0x1C22` items of `item_type` 1, they are **invisible
+slots** (live, 2026-11-21: `AddStruct` loads the box art by that name, nothing is drawn or clickable, and the real boxes
+sit between the gaps), so the client can't show them. They are sold as recipes with their cards by the chat command
+`recipes` instead (`/p Server recipes` lists them, `recipes NAME` buys one for the structure decks' price): the same
+purchase code (sale id 20000 + deck id, `World::recipe_decks`), a present of type 1 announced with `0x2774`. An NPC's win gives the recipe of the deck it played, once:
+the deck's `pbin_no` item goes into the player's items (the bit Load Deck's Official tab tests, `0x43D8D0`), with a D-Mail
+and a chat line, and the cards are not included. 66 recipes: the 25 selectable NPCs' three levels, less the nine character
+decks every player has. The other 57 `deck_type` 3 recipes belong to NPC ids 0-52 and 195-197 that the client's roster
+doesn't list: nobody to beat for them (open).
 
 **No presents between players.** PresentWindow (`PresentWindow.cpp`, `0x476240`-`0x4784F0`) only ever builds `0x2775`
 (`0x4F3A00`, "give me the next present"): it receives presents and sends none. No other screen has a send-present
@@ -861,6 +887,22 @@ Auto Duel's (2) and the user events' (from 100).
 | the Ultimate Match's computer | the same push `0x1978`, sent by the server once an entrant has waited `ultimate-cpu-wait` seconds (default 30; 0 turns it off) with nobody of the event to pair with | `vsPlayerData` is an NPC of the client's roster (`player_id` its npc id, `pname` its name from the text table, `GameData::npc_name`); `duelData` `match_type` 1 and a `duel_id`. Select Deck `0x1F4F {duel_id}` then brings the NPC to the duel connection (not a table), which plays it as any NPC duel and ends it with `0x2009` and `score_<player_id>` | text 15261 "PvP or PvCPU Match Duel event." (only the Ultimate Match's; the others say PvP) | evidence: the text; the rest (a fallback after a wait, one duel for the match, the random NPC) are guesses |
 | a duel's end | push `0x2009` | top-level `score_<player_id>` becomes `event_score` (the dispatcher `0x4F4C9E`); a non-zero score adds the star effect on the result screen (`0x5128B0`), shown up to 9999 | `0x4F4C9E` | live |
 | My Profile / player records | `0x2260` item | `tp` (Tournament Points, ProfileGet `0x4705D0`) and `tprank` | `0x4705D0`, `0x475A20` | shape |
+
+**Event prizes and titles (#18, 2026-11-21).** A counted win (a duel, or a match) earns one **Special Pack**: 5 cards of the
+96 promo-style cards no pack, deck or rental route gives (#19's 101 less Obelisk, Ra, Spirit Elimination, Secret Pass to
+the Treasures and Pole Position; found by name: a second print of a card a pack gives is no gap), four of the first rarity
+tier and one of a higher one (tiers by card type: Spells, Traps and Normal monsters, then the other monsters, then Fusion
+and Synchro, **guess**), each pull possibly another artwork. At most 10 packs a player per event (**guess**). It arrives
+as a host-style present: the cards join the collection at once, `0x2774 {present_count}` is pushed (the client then asks
+`0x2775`), the present is a `0x2777` of type 0 with `pack_id` 0, a D-Mail from the Host says so, and the trunk follows
+the last present. Titles count as results come in, with the numbers the client's own lines state (`yo3pbininfo.bin`):
+GUNSLINGER, SUPER, ULTRA and ULTIMATE GUNSLINGER at a best win streak of 3, 7, 10 and 15; TRIALIST, ULTRA and ULTIMATE
+TRIALIST at 3, 10 and 30 Duelist Trial wins; EVOLUTION, SUPER, ULTRA and ULTIMATE EVOLUTION at 30, 100, 300 and 500 stars
+("collected": the Evolution and Ultimate Match stars added up across events); THE ANNIVERSARIAN for a win in an
+Anniversary Trial (**guess**: the line says "completed"). The CHAMPION GUNSLINGER, CHAMPION TRIALIST and EVOUTION CHAMPION
+(sic) titles go to first place of an event that ended, with at least two players who played (ties share it, **guess**);
+Ultimate Match counts for the Evolution champion. Counters: `Player::counters` (`official_streak`, `official_trial_wins`,
+`official_stars`, `official_anniversary_wins`, `official_champion_*`). A title appears in Avatar Settings and as a chat line.
 
 What counts (ours; the client only shows numbers, see the guesses in the [roadmap](roadmap.md#open-questions-and-guesses-revisit)): a win adds one to
 the score (a win, a streak step or a star); a loss or a draw ends a Gunslinger's streak and changes nothing else; the

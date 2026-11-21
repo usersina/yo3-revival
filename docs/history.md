@@ -63,6 +63,32 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   v0.1.6's `restore latest` into a scratch folder: integrity ok, the same row counts in all 9 tables, the accounts command
   reads it, and a scratch server booted from it cleanly. The copies were deleted. Load with real clients is still open.
 
+## 2026-11-21 — Special Packs, event titles and normal ways to the missing cards and recipes (#18, #19)
+
+- **Research (client files only):** the 82 files of `data/pack/` are the 75 booster packs, the Trade Card pools 264-268,
+  the card list 232 and the rental pool 10000: no Special Pack has a file of its contents, although the client has about 70
+  of their pictures (`data/img/pack/EV_*`, `EX_*`, `PST-*`, `PTM-*`). The title lines of `yo3pbininfo.bin` state their own
+  numbers (GUNSLINGER "3 win streak", SUPER 7, ULTRA 10, ULTIMATE 15; TRIALIST 3 wins, ULTRA 10, ULTIMATE 30; EVOLUTION
+  "collected 30 stars", SUPER 100, ULTRA 300, ULTIMATE 500), which replaced the guessed 3/5/10/20 and 5/10/20/30. The exchange
+  list can only name a pack file (the client expands it into its rows), so the extra pool is file 232. The 132 NPC deck
+  recipes are 75 of the 25 selectable NPCs (ids 120-194), plus 57 of NPC ids 0-52 and 195-197 the roster doesn't list.
+- **Built:** a Special Pack for each win of an official event (cap 10 an event), the event titles (counters in
+  `Player::counters`, the CHAMPION titles at the end of an event), the first win against an NPC giving its deck's recipe,
+  the 22 theme decks and 2 other starters on the structure deck shelf, another artwork as a rare pull from packs and the
+  Special Pack, and pool 232 on Blister's list. `prizes.rs` holds the data from the client's files, `prizes_contract.rs` and
+  `prizes_data.rs` the contracts.
+- **Live (scratch server, two headless clients, 2026-11-21):** an Anniversary Trial with one player leaving mid-duel gave the
+  other the result screen, the chat line "You earned the title THE ANNIVERSARIAN!", a Special Pack present (opened in the
+  Stadium: Z-ONE NEW! among five cards, the trunk after it), Avatar Settings' Title list with the title, and 6 Tournament
+  Points on My Profile. Blister's list ended with file 232's cards and a trade of Dice Try! worked. With
+  `YO3_ALT_ART_ODDS=1` nine Pack 2 presents held other artworks (rows 4498 and 4499). **Theme decks on the shelf failed:**
+  the STRUCTURE DECK tab drew them as empty, unclickable slots between the real boxes (no box art), so they are sold by the
+  chat command `recipes` instead (bought ADVENT OF THE EMPERORS: its 40 cards as a present, the recipe on Load Deck's
+  Official tab). A win against an NPC (for its recipe) was not reached by hand; the contract test covers it. Two clients on
+  one PC are "linked accounts": the first duel counted nothing until `set linked-accounts off`.
+- **Guesses** (roadmap): the Special Pack's contents, tiers and cap, the artwork odds (1 in 20), the theme decks' price, the
+  champion rule and THE ANNIVERSARIAN's win.
+
 ## 2026-11-20 — The Ultimate Match against the computer (#18)
 
 - **What the client says:** one text, 15261: "PvP or PvCPU Match Duel event. Special Pack unlocked according to the number
