@@ -196,7 +196,11 @@ the [dashboard](dashboard.md)'s Events page does the same.
 `--regulation` makes entrants log in with that banlist (`banlists` lists them; players choose theirs with `/banlist`):
 Ready tells them so in the chat instead of matching. Prizes are BP, paid by D-Mail from "Host" when the event ends:
 `--participation-bp` to everyone who played a duel of it, and `--threshold-bp` more to everyone whose best score reached
-`--threshold`. A win adds one to the score; a Gunslinger's streak ends with a loss or a draw, but the best streak is what
+`--threshold`. Every win (a duel, or a match) also earns the player one **Special Pack** from the server itself (up to 10 in
+one event; five of the 96 promo-style cards no pack, deck or rental gives), a present with a D-Mail from Host: nothing to
+set. Wins, streaks and stars count towards the event titles (TRIALIST, GUNSLINGER, EVOLUTION and their upgrades) and first
+place of an ended event with two players or more earns the kind's CHAMPION title, as the [playing guide](playing.md) lists.
+A win adds one to the score; a Gunslinger's streak ends with a loss or a draw, but the best streak is what
 counts. Scores are kept in `server.db` and go with a deleted account. Tournament Points on My Profile are 5 for each
 event a player played plus their best score in it. The Stadium shows times in each player's time zone.
 

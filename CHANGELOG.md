@@ -19,6 +19,19 @@ Older entries describe their release at the time. For current setup, use the [RE
   1000 LP or less, the game asks whether to use Destiny Draw; if you do, you pick any card left in your Deck and draw it.
   Say no and you are asked again at a later draw, until you use it. Turn it on in Settings → Singleplayer → Cards, or, as
   a host, with `yo3 set destiny-draw on` (it applies from the next duel). Duels between players and events never have it.
+- **The Stadium pays in Special Packs.** Every win in an official event (a duel, or a match) earns a Special Pack of five
+  promo cards no other pack gives (the Malefic monsters, Dragunity Arma Leyvaten, Blackwing - Zephyrus, Masked Heroes and
+  more), up to 10 in one event, as a present with a D-Mail from the Host. Your host's BP prizes still arrive when an
+  event ends.
+- **Event titles.** TRIALIST, ULTRA and ULTIMATE TRIALIST (3, 10, 30 Duelist Trial wins), GUNSLINGER to ULTIMATE GUNSLINGER
+  (a best streak of 3, 7, 10, 15), EVOLUTION to ULTIMATE EVOLUTION (30, 100, 300, 500 stars), THE ANNIVERSARIAN, and the
+  three CHAMPION titles for first place in a finished event: the numbers are the game's own title texts.
+- **Deck recipes.** Beat an NPC for the first time and you get the recipe of the deck it played (Load Deck → Official). The
+  22 theme decks and the two other starter decks (the shop's shelf can't show them) are sold by a chat command: whisper
+  `recipes` to the server to see them and `recipes NAME` to buy one with its cards.
+- **Other artworks.** Booster packs and Special Packs now sometimes (about one pull in twenty) give another artwork of a
+  card, such as Blue-Eyes White Dragon's other pictures.
+- **More trades.** Blister's Trade Card list has one more pool, the game's own card list, with cards no booster pack gives.
 
 ## v0.1.8 (2026-11-20)
 

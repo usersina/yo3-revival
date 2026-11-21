@@ -36,6 +36,7 @@ pub mod translate;
 mod card_options;
 pub mod front;
 pub mod shop;
+pub mod prizes;
 mod social;
 mod mail;
 pub mod reports;
@@ -323,7 +324,7 @@ pub fn token_rows(cards: &yo3_data::CardDb) -> std::collections::HashMap<String,
 
 /// Where each card comes from, for `/where` (#55): the booster packs, structure decks, Trade Card pools, the shop's
 /// rental and the decks every player starts with.
-fn card_sources(data: &yo3_data::GameData) -> Vec<sources::CardSource> {
+fn card_sources(data: &yo3_data::GameData, with_extras: bool) -> Vec<sources::CardSource> {
     use sources::{CardSource, Kind};
     let cid = |row: &u16| data.cards.by_row(*row).map(|c| c.cid);
     let of = |rows: &mut dyn Iterator<Item = u16>| -> std::collections::HashSet<u16> { rows.filter_map(|r| cid(&r)).collect() };
@@ -334,6 +335,7 @@ fn card_sources(data: &yo3_data::GameData) -> Vec<sources::CardSource> {
             (1, Some(name)) => (Kind::Pack, name.to_string()),
             (1, None) => (Kind::Pack, format!("Booster Pack {}", p.id)),
             _ if shop::EXCHANGE_POOLS.contains(&p.id) => (Kind::TradePool, sources::trade_pool_name(p.id)),
+            _ if with_extras && p.id == shop::EXTRA_POOL => (Kind::TradePool, sources::trade_pool_name(p.id)),
             _ if p.id == shop::RENTAL_POOL => (Kind::Rental, "Blister's Rental (the shop lends it)".to_string()),
             _ => continue,
         };
@@ -343,6 +345,13 @@ fn card_sources(data: &yo3_data::GameData) -> Vec<sources::CardSource> {
     for d in data.decks.iter().filter(|d| d.kind == 1 && d.record.get("deck_image").and_then(Value::as_str).is_some_and(|i| i != "noImage")) {
         let name = d.name_id().and_then(|id| data.text(id)).unwrap_or("Structure Deck").to_string();
         all.push(CardSource { kind: Kind::StructureDeck, name, cards: of(&mut d.cards()) });
+    }
+    if with_extras {
+        for d in data.decks.iter().filter(|d| recipe_deck(data, d)) {
+            let name = d.name_id().and_then(|id| data.text(id)).unwrap_or("Theme Deck").to_string();
+            let name = format!("{name} (a deck recipe: the recipes command)");
+            all.push(CardSource { kind: Kind::StructureDeck, name, cards: of(&mut d.cards()) });
+        }
     }
     if let Some(d) = data.starter_deck(STARTER_REGULATION) {
         all.push(CardSource { kind: Kind::FreeDeck, name: "the Starter Deck (every player starts with it)".into(), cards: of(&mut d.cards()) });
@@ -355,10 +364,74 @@ fn card_sources(data: &yo3_data::GameData) -> Vec<sources::CardSource> {
     all
 }
 
+/// Whether a preset deck has box art of its own (a structure deck).
+fn has_art(d: &yo3_data::Deck) -> bool {
+    d.record.get("deck_image").and_then(Value::as_str).is_some_and(|i| i != "noImage")
+}
+
+/// Whether a preset deck is sold as a recipe with its cards by the `recipes` chat command (#19): the 22 theme decks
+/// (deck_type 2) and the starter recipes besides the free one (deck_type 1 without art). The shop's own shelf can't show
+/// them: a deck without `deck_image` is an invisible slot there (checked live), so only the structure decks go on it.
+pub fn recipe_deck(data: &yo3_data::GameData, d: &yo3_data::Deck) -> bool {
+    match d.kind {
+        1 if has_art(d) => false,
+        1 => data.starter_deck(STARTER_REGULATION).is_some_and(|free| free.id != d.id) && d.pbin_no().is_some(),
+        2 => d.pbin_no().is_some(),
+        _ => false,
+    }
+}
+
+/// The shop's structure decks (deck_type 1 with box art: SD001-SD005).
+fn shelf_deck(d: &yo3_data::Deck) -> bool {
+    d.kind == 1 && has_art(d)
+}
+
+fn shop_deck(data: &yo3_data::GameData, d: &yo3_data::Deck) -> shop::ShopDeck {
+    let date = |k: &str| d.record.get(k).and_then(Value::as_str).unwrap_or_default();
+    let name = d.name_id().and_then(|id| data.text(id)).unwrap_or("Structure Deck").to_string();
+    let deck = Deck { id: d.id, name, main: d.main.clone(), extra: d.extra.clone(), side: d.side.clone() };
+    shop::ShopDeck { released: date("created"), modified: date("modified"), deck, item: d.pbin_no() }
+}
+
+/// The Special Pack's cards, the alternate artworks and the NPCs' recipes from the client's files, for the tests.
+pub fn game_prizes(data: &yo3_data::GameData) -> prizes::Prizes {
+    let items: Vec<u16> = data.starter_deck(STARTER_REGULATION).into_iter()
+        .chain(OFFICIAL_DECKS.iter().filter_map(|&(npc, _)| data.npc_deck(npc))).filter_map(yo3_data::Deck::pbin_no).collect();
+    prizes(data, &items)
+}
+
+/// The Special Pack's cards, the alternate artworks and the NPCs' recipes (`prizes::Prizes`), from the client's files.
+fn prizes(data: &yo3_data::GameData, official_items: &[u16]) -> prizes::Prizes {
+    use std::collections::HashSet;
+    // Where a card had a route in the original: the sources without the theme decks, which this server sells too.
+    let routed: HashSet<u16> = card_sources(data, false).iter().flat_map(|s| s.cards.iter().copied()).collect();
+    let special_rows = prizes::special_cards(data.cards.iter(), &routed);
+    // The rows the packs and the free and structure decks give: any other artwork of their cards is an alternate.
+    let mut routed_rows: HashSet<u16> = data.packs.iter().filter(|p| p.kind == 1).flat_map(|p| p.cards.iter().copied()).collect();
+    routed_rows.extend(data.starter_deck(STARTER_REGULATION).into_iter().flat_map(|d| d.cards()));
+    routed_rows.extend(OFFICIAL_DECKS.iter().filter_map(|&(npc, _)| data.npc_deck(npc)).flat_map(|d| d.cards()));
+    routed_rows.extend(data.decks.iter().filter(|d| d.kind == 1 && has_art(d)).flat_map(|d| d.cards()));
+    let odds = std::env::var("YO3_ALT_ART_ODDS").ok().and_then(|v| v.parse().ok()).unwrap_or(shop::ALT_ART_ODDS);
+    let npc_recipes = data.npc_ids().into_iter().filter_map(|id| {
+        let deck = data.npc_deck(id)?;
+        let item = deck.pbin_no().filter(|i| !official_items.contains(i))?;
+        let title = data.npc_deck_title(id).unwrap_or_default().trim().to_string();
+        Some((id, prizes::NpcRecipe { item, npc: data.npc_name(id)?.to_string(), deck: title }))
+    }).collect();
+    prizes::Prizes {
+        special: prizes::special_tiers(&special_rows),
+        arts: shop::Arts { alts: prizes::alternate_arts(data.cards.iter(), &routed_rows), odds },
+        npc_recipes,
+    }
+}
+
 fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> {
     let duel_server = (cfg.advertise.clone().unwrap_or_default(), duel_port);
     let world = match yo3_data::GameData::load(&cfg.game_dir) {
-        Ok(data) => { let mut world = World {
+        Ok(data) => {
+            let official_items: Vec<u16> = data.starter_deck(STARTER_REGULATION).into_iter()
+                .chain(OFFICIAL_DECKS.iter().filter_map(|&(npc, _)| data.npc_deck(npc))).filter_map(yo3_data::Deck::pbin_no).collect();
+            let mut world = World {
             card_rows: data.cards.iter().map(|c| c.row as usize).max().unwrap_or(0),
             // The first deck_type 1 preset (they look like starter decks) the login regulation allows.
             starter_deck: data.starter_deck(STARTER_REGULATION).map(|d| Deck {
@@ -379,12 +452,7 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
                 .collect(),
             // Every player's Official tab in Load Deck: the starter preset's recipe and the official decks' (their
             // pbin_no items, catalogue kinds 5 and 8).
-            official_items: data
-                .starter_deck(STARTER_REGULATION)
-                .into_iter()
-                .chain(OFFICIAL_DECKS.iter().filter_map(|&(npc, _)| data.npc_deck(npc)))
-                .filter_map(yo3_data::Deck::pbin_no)
-                .collect(),
+            official_items: official_items.clone(),
             cards: data
                 .cards
                 .iter()
@@ -433,21 +501,12 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
                 })
                 .collect(),
             // Structure decks: the deck_type 1 presets with their own art (SD001-SD005; the others are starters).
-            structure_decks: data
-                .decks
-                .iter()
-                .filter(|d| d.kind == 1 && d.record.get("deck_image").and_then(Value::as_str).is_some_and(|i| i != "noImage"))
-                .map(|d| {
-                    let date = |k: &str| d.record.get(k).and_then(Value::as_str).unwrap_or_default();
-                    let name = d.name_id().and_then(|id| data.text(id)).unwrap_or("Structure Deck").to_string();
-                    let deck = Deck { id: d.id, name, main: d.main.clone(), extra: d.extra.clone(), side: d.side.clone() };
-                    shop::ShopDeck { released: date("created"), modified: date("modified"), deck, item: d.pbin_no() }
-                })
-                .collect(),
+            structure_decks: data.decks.iter().filter(|d| shelf_deck(d)).map(|d| shop_deck(&data, d)).collect(),
+            recipe_decks: data.decks.iter().filter(|d| recipe_deck(&data, d)).map(|d| shop_deck(&data, d)).collect(),
             exchange_pools: data
                 .packs
                 .iter()
-                .filter(|p| shop::EXCHANGE_POOLS.contains(&p.id) && !p.cards.is_empty())
+                .filter(|p| (shop::EXCHANGE_POOLS.contains(&p.id) || p.id == shop::EXTRA_POOL) && !p.cards.is_empty())
                 .map(|p| {
                     let date = |k: &str| p.record.get(k).and_then(Value::as_str).unwrap_or_default();
                     shop::ExchangePool { id: p.id, released: date("created"), modified: date("modified"), cards: p.cards.clone() }
@@ -459,7 +518,8 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
             free_items: data.free_items().iter().map(|e| e.id).collect(),
             banlists: data.regulations.iter().map(|r| (r.id, data.text(r.name_id).unwrap_or_default().to_string())).collect(),
             regulations: data.regulations.iter().map(|r| (r.id, r.clone())).collect(),
-            card_sources: card_sources(&data),
+            card_sources: card_sources(&data, true),
+            prizes: Arc::new(prizes(&data, &official_items)),
             ..World::new(data.regulations.iter().map(|r| r.id as u16).collect())
         };
             // The card profiles (#60), over the game's own cards.
@@ -590,6 +650,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     hub.set_round_delay(EVENT_ROUND_DELAY);
     hub.set_directory(directory.clone());
     hub.set_titles(world.titles.clone());
+    hub.set_prizes(world.prizes.clone());
     hub.set_settings(world.settings.clone());
     let hub = Arc::new(Mutex::new(hub));
     // The certificate is checked while running too, not only at start (#25).

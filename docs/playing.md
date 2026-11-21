@@ -218,6 +218,7 @@ Anything else, such as `!lol`, is ordinary chat.
 | `banlist default` | Goes back to the host's banlist. |
 | `draw` or `draw5` | Draws 5 random cards from your newest deck (the one you last saved in Edit Deck or picked for a duel; the starter deck before that), to see what an opening hand could look like. `draw 7` draws 7 (up to 10); add part of a deck's name to use another: `draw 5 starter`. |
 | `where CARD` | Where a card comes from: which booster packs hold it, a structure deck, Blister's Trade Card, the shop's Rental, or a deck every player starts with. A part of the name is enough (`where red-eyes`); a few cards at most are listed, so be specific. The game's chat filter hides some words as stars (`red-eyes black` arrives as `red-eyes *****`): stars match anything, so `where red-eyes` and `where red-eyes *****` both work. "No normal route" means the shop and decks don't hold it. |
+| `recipes` or `recipes NAME` | Lists the theme deck recipes the shop's shelf can't show, or buys one for the structure decks' price: the recipe on Load Deck's Official tab and its cards, as a present you open from the map. |
 | `report PLAYER reason` | Tells the host's staff about a player (cheating, abuse in chat). Use quotes for a name with spaces: `report "Joey Wheeler" spamming the chat`. The reported player is not told. You can send a few an hour. |
 
 ![The chat commands in the game's chat window](../screenshots/chat-commands.png)
@@ -282,14 +283,23 @@ eyes, clothes, a duel disk and the BEGINNER DUELIST title.
 - **Collection and looks:** THE CARD ENTHUSIAST / COLLECTOR / HOARDER for 100, 500 and 1000 different cards from packs
   and trades, THE AFRO KAISER and THE KING OF QUIFFS for wearing that hair.
 
-The official event titles (TRIALIST … ULTIMATE GUNSLINGER) and the Championship's wait; your host can give the special ones (GAME MASTER…).
+- **The Stadium's events:** GUNSLINGER, SUPER, ULTRA and ULTIMATE GUNSLINGER for a best win streak of 3, 7, 10 and 15;
+  TRIALIST, ULTRA and ULTIMATE TRIALIST for 3, 10 and 30 Duelist Trial wins; EVOLUTION, SUPER, ULTRA and ULTIMATE EVOLUTION for
+  30, 100, 300 and 500 stars (Evolution and Ultimate Match together); THE ANNIVERSARIAN for a win in an Anniversary Trial;
+  and CHAMPION GUNSLINGER, CHAMPION TRIALIST and EVOUTION CHAMPION for first place of a finished event.
+- **Deck recipes from NPCs:** the first time you beat an NPC, its deck's recipe is yours (Load Deck → Official tab; the
+  cards are not included). See below.
+
+The Championship's wait; your host can give the special titles (GAME MASTER…).
 
 **The Stadium** (the map's Duelking Titlematch tile) lists your host's official events: Gunslinger (win streak), Duelist
 Trial and Anniversary Trial (wins), Evolution and Ultimate Match (stars, played as matches). Pick one to enter its lobby,
 press **Ready** and you are paired with another entrant (in the Ultimate Match, if nobody joins you for a while, the computer
 plays you instead: one duel that counts as the match); after each duel you are matched again until you press **Not Ready**.
-Your score for the event shows in the lobby and the result screen. When an event ends your host's prize (BP) arrives as a
-D-Mail, and Tournament Points (My Profile) add up from the events you played. If an event needs a particular banlist, Ready
+Your score for the event shows in the lobby and the result screen. Every win (a duel, or a match) also earns a **Special
+Pack**, up to 10 in one event: five of the promo cards no other pack gives (the Malefic monsters, Dragunity Arma Leyvaten,
+the Blackwing and Masked Heroes and more), which arrives as a present you open from the map, with a D-Mail from the Host.
+When an event ends your host's prize (BP) arrives as a D-Mail, and Tournament Points (My Profile) add up from the events you played. If an event needs a particular banlist, Ready
 tells you in the chat: use `/p Server banlist NAME` and log in again. Main Menu → Leaderboard and the team ranking open
 your host's pages with everyone's wins and losses against other players.
 
@@ -297,7 +307,17 @@ In the shop, Trade Card swaps cards you don't need for one you want: pick a card
 first 48 booster packs), then choose 10 of your own cards (or press Auto Select) and confirm. Rented cards and cards
 you've lent out can't be given. Rental lends you 5 cards of your choice for 100 BP for 7 days: drag them into the list
 and confirm. They count as borrowed, like a rental from a friend, and a new rental from the shop returns the last one.
-Purchase Special Packs stays greyed out: those packs were event prizes and their contents are lost.
+The shelf of Blister's list has one more pool (the game's own card list) that holds cards no booster pack gives; 10 cards
+buy one of them, like the others. Packs rarely (about one pull in twenty) give another artwork of a card than the usual one.
+Purchase Special Packs stays greyed out: those packs were event prizes whose contents are lost; the Stadium's Special Packs
+(above) are ours.
+
+**More decks:** the 22 theme decks (E-HERO EVOLUTION DECK, DRAGON'S DOMINION, STARDUST RISING, DRAGUNITY STORM and the
+others) and the two other starter decks (EQUIP TO BEAT DOWN, RESIDENT OF DARKNESS) have no box art in the game's files, so the
+shop can't show them. Whisper `recipes` to the server (`/p Server recipes`) to list them and `recipes NAME` to buy one for
+the structure decks' price: you get its recipe (Load Deck's Official tab) and its cards, as a present from the map. Beating an
+NPC for the first time gives you the recipe of the deck it played (no cards: build it from yours, or buy cards in the
+shop), with a D-Mail from the Host.
 
 To trade cards, open a player's Player Information and press Send Trade Request; once they accept, drag cards from
 your trunk into your half of the table, press Ready to Trade., and answer Yes to "Execute Trade?". A deck that used a

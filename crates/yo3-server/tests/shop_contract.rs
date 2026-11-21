@@ -180,14 +180,14 @@ fn a_pack_holds_four_of_its_first_tier_and_one_rarer_card() {
     let mut rng = 7;
     let mut higher = std::collections::HashSet::new();
     for _ in 0..200 {
-        let cards = shop::open(&pack, &mut rng);
+        let cards = shop::open(&pack.tiers, &shop::Arts::default(), &mut rng);
         assert_eq!(cards.len(), 5);
         assert!(cards[..4].iter().all(|r| [1, 2].contains(r)), "{cards:?}");
         higher.insert(cards[4]);
     }
     assert_eq!(higher, [3, 4].into(), "every higher tier comes up");
     let one_tier = ShopPack { tiers: vec![vec![5, 6]], ..pack };
-    assert!(shop::open(&one_tier, &mut rng).iter().all(|r| [5, 6].contains(r)));
+    assert!(shop::open(&one_tier.tiers, &shop::Arts::default(), &mut rng).iter().all(|r| [5, 6].contains(r)));
 }
 
 #[test]

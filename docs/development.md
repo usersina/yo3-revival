@@ -119,6 +119,7 @@ A new Python test goes in `tools/<area>/test_*.py` (unittest, standard library) 
 | `task check:decks` (`tests/deck_coverage.rs`, `coverage.py --decks`) | Every preset deck the client ships (starter, structure, character and NPC decks) self-played; the report lists their effect cards that no duel, these or the duel check's, exercised, with the decks holding each (`--deck Yusei`, `--limit N`). `tools/engine/cardtext.py ID...` prints a card's text from the engine's data |
 | `task vm -- …` (`tools/vm/vm.py`) | The Windows VMs in `tools/vm/vms.toml` (`~/.config/yo3-revival/vms.toml` overrides): `list`, power and snapshots, `shot`, `click`, `type`, `key`, `run VM -- CMD` (output and exit code back), `put`, `wait` |
 | `task build:dev` | Release builds of the server, launchers, Desktop and engine, and the connection DLL, as dev builds: it clears a stale `YO3_VERSION`, which would make the launcher refuse them |
+| `YO3_ALT_ART_ODDS=1 yo3-server` | Test hook on the server (not a setting): one pull in N of a pack gives another artwork of the card (1: every pull that has one), for live checks of #19 |
 | `task build:mod:ci` (`tools/mod/build-ci.sh`) | The connection DLL as releases build it (Ubuntu's mingw-w64, `msvcrt.dll`), for tests on real Windows; set `YO3_BUILD_VERSION`/`YO3_BUILD_COMMIT` to a release's to swap a file into that release |
 | `task release` (`tools/release/release.sh`) | The Desktop, Scripts and Server bundles into `dist/` |
 

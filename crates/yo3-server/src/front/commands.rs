@@ -14,7 +14,7 @@ use crate::lock::Locked;
 pub const SERVER: &str = "Server";
 
 /// The commands, by the word that starts them.
-const COMMANDS: [&str; 7] = ["help", "banlist", "draw", "draw5", "where", "report", "h"];
+const COMMANDS: [&str; 8] = ["help", "banlist", "draw", "draw5", "where", "report", "recipes", "h"];
 
 /// The longest reason a command's help line and answers may run: the game's chat window wraps longer lines.
 const LINE: usize = 110;
@@ -59,6 +59,7 @@ impl FrontSession {
             "draw" | "draw5" => self.draw_command(&rest, word == "draw5"),
             "where" => crate::sources::answer(&rest, &self.world.card_names, &self.world.card_sources),
             "report" => self.report_command(&rest),
+            "recipes" => self.recipes_command(&rest),
             _ => help(),
         })
     }
@@ -142,6 +143,58 @@ impl FrontSession {
         wrap(&format!("Draw {count} from \"{}\" ({} cards): ", deck.name, deck.main.len()), &names, ", ")
     }
 
+    /// `recipes` lists the deck recipes the shop's shelf can't show (the 22 theme decks and the two other starter decks, #19)
+    /// with their price; `recipes NAME` buys one for the host's deck price: the recipe (Load Deck's Official tab) and its
+    /// cards, as a present like a structure deck's.
+    fn recipes_command(&mut self, arg: &str) -> Vec<String> {
+        let world = self.world.clone();
+        let cost = world.settings.now().shop.deck_cost;
+        let owned = world.granted_items(self.player());
+        let has = |d: &crate::shop::ShopDeck| d.item.is_some_and(|i| owned.contains(&i));
+        let mine: Vec<&crate::shop::ShopDeck> = world.recipe_decks.iter().filter(|d| !has(d)).collect();
+        let arg = arg.trim().to_lowercase();
+        if world.recipe_decks.is_empty() { return vec!["This server has no deck recipes for sale.".into()] }
+        let list = |lead: String| {
+            let names: Vec<String> = mine.iter().map(|d| d.deck.name.clone()).collect();
+            let mut lines = wrap(&format!("{lead} "), &names, ", ");
+            lines.push(format!("Type recipes NAME to buy one ({cost} BP, with its cards)."));
+            lines
+        };
+        if arg.is_empty() {
+            return if mine.is_empty() { vec!["You have every deck recipe on sale.".into()] } else { list(format!("Deck recipes for sale ({}):", mine.len())) };
+        }
+        let exact: Vec<&&crate::shop::ShopDeck> = mine.iter().filter(|d| d.deck.name.to_lowercase() == arg).collect();
+        // The game's chat filter stars some words ("dragon" arrives as "****on"): stars match anything, as in `where`.
+        let like = |d: &crate::shop::ShopDeck| crate::sources::matches(&d.deck.name.to_lowercase(), &arg);
+        let found: Vec<&&crate::shop::ShopDeck> = if exact.len() == 1 { exact } else { mine.iter().filter(|d| like(d)).collect() };
+        let shown: String = arg.chars().take(40).collect();
+        let deck = match found.as_slice() {
+            [one] => **one,
+            [] if world.recipe_decks.iter().any(like) => return vec![format!("You have the recipe \"{shown}\" already.")],
+            [] => return list(format!("No deck recipe is named like \"{shown}\".")),
+            many => return list(format!("{} recipes match \"{shown}\": be more specific.", many.len())),
+        };
+        match self.purchase(crate::shop::DECK_SALE + deck.deck.id, 1) {
+            Ok(left) => {
+                let me = self.player().player_id;
+                let players: Vec<u32> = self.account.players.iter().map(|p| p.player_id).collect();
+                let waiting = self.presents.len() as u32;
+                let hub = self.hub();
+                hub.push_bp(&players, left);
+                hub.push(me, &Message::reply(0x2774).with("present_count", yo3_proto::Value::U32(waiting)));
+                vec![
+                    format!("You bought the deck recipe {} with its {} cards for {cost} BP: {left} BP left.", deck.deck.name, deck.deck.cards().count()),
+                    "Open the present from the map; the recipe is on Load Deck's Official tab.".into(),
+                ]
+            }
+            Err(why) if why.contains("enough BP") => vec![format!("You need {cost} BP to buy {} (you have {}).", deck.deck.name, self.account.dpoint)],
+            Err(why) => {
+                tracing::warn!("[chat] recipe {} not bought: {why}", deck.deck.name);
+                vec!["The recipe could not be bought: try again.".into()]
+            }
+        }
+    }
+
     /// `report PLAYER reason` tells the staff about a player (#44): kept for them, at most `report-limit` an hour from
     /// one player. The player's name is the longest start of the line that names a player, or one in quotes.
     fn report_command(&mut self, arg: &str) -> Vec<String> {
@@ -194,6 +247,7 @@ fn help() -> Vec<String> {
         "banlist [NAME|default]: the banlist your Auto Duel and NPC duels use".into(),
         "draw [N] [DECK]: draw N (5) random cards from your newest deck, or draw5".into(),
         "where CARD: where a card comes from (packs, decks, Trade Card, rental)".into(),
+        "recipes [NAME]: the theme deck recipes for sale, or buy one with BP".into(),
         "report PLAYER reason: tell the staff about a player".into(),
     ]
 }
