@@ -13,6 +13,18 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- The map's **Championship** (Tournament tile) works: your host schedules one with `create-championship` (or the staff
+  dashboard's new Championship page) with an entry window and a start time. Opening the tile while entries are open enters
+  you (the host may ask for a number of duels played). At the start the lobby shows "Selecting players for entry…", draws
+  up to 16 players, and plays a single-day knockout Final (1st Round, Quarter-Final, Semi-Finals, Final) with byes where
+  seats are empty; fewer than two entrants cancels it with a D-Mail. The titles Y.O.C. QUALIFIER, Q-FINALIST, S-FINALIST,
+  FINALIST and WINNER follow the rounds, the host's BP prizes arrive by D-Mail, and Duel Log lists past Championships
+  (its viewer of one shows an empty tree: no replays are kept).
+- In a user event or Championship, a player who leaves the janken or the turn order choice now loses the round to the one
+  who stayed (both used to be out).
+
 ## v0.1.8 (2026-11-20)
 
 Multiplayer: update to v0.1.8 to join the hosted server after deployment.
