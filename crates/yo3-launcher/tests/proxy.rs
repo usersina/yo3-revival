@@ -188,3 +188,47 @@ async fn a_server_that_stops_answering_drops_the_games_connections() {
     assert!(matches!(closed, Ok(0) | Err(_)), "{closed:?}");
     std::fs::remove_dir_all(dir).ok();
 }
+
+/// One of the server's pages through a launcher's proxy, as the browser asks for it: status line and body.
+async fn page(p: &Proxy, path: &str) -> (String, String) {
+    let reply = String::from_utf8(http_get(p, path).await).unwrap();
+    let (head, body) = reply.split_once("\r\n\r\n").unwrap_or((&reply, ""));
+    (head.lines().next().unwrap_or_default().to_string(), body.to_string())
+}
+
+/// #74: the game's website links open the joined server's own pages, under its name, and when the server can't send
+/// one the browser gets a page that says so (the game's own requests still just end).
+#[tokio::test]
+async fn each_launcher_shows_its_own_servers_pages_and_says_when_the_server_cant_answer() {
+    let dir = std::env::temp_dir().join(format!("yo3-proxy-pages-{}", std::process::id()));
+    let mut proxies = vec![];
+    let mut servers = vec![];
+    for name in ["Kaiba Land", "Duel <Academy>"] {
+        let data = dir.join(name.replace(['<', '>', ' '], ""));
+        let mut cfg = yo3_server::Config::ephemeral(data.clone());
+        cfg.settings.push(("server-name".into(), name.into()));
+        let cert = cfg.tls.certificate.clone();
+        let key = std::fs::read_to_string(data.join("test-auth/client.key")).unwrap();
+        let server = yo3_server::start(cfg).await.unwrap();
+        let e = Endpoint::new(server.auth.to_string(), "localhost".into(), &cert).unwrap();
+        let session = e.login(&key).await.unwrap();
+        proxies.push(Proxy::start(e, session, Ports::default()).await.unwrap());
+        servers.push(server);
+    }
+    let (status, kaiba) = page(&proxies[0], "web/").await;
+    assert!(status.starts_with("HTTP/1.1 200") && kaiba.contains("<b>Kaiba Land</b>") && !kaiba.contains("Academy"), "{kaiba}");
+    let (_, academy) = page(&proxies[1], "web/v3/events/rank_info?country=GB").await;
+    assert!(academy.contains("<b>Duel &lt;Academy&gt;</b>") && academy.contains("<title>Leaderboard - "), "{academy}");
+    assert!(academy.contains("href=\"../../packs\""), "the bar's links are relative: {academy}");
+    // The first server goes away: its page says the server didn't answer, a duel log just ends.
+    let first = servers.remove(0);
+    first.stopper().send_replace(true);
+    tokio::time::timeout(Duration::from_secs(10), first.wait()).await.expect("the server stops");
+    let (status, gone) = page(&proxies[0], "web/v3/bpass/index/").await;
+    assert!(status.starts_with("HTTP/1.1 502") && gone.contains("The server didn't answer"), "{status} {gone}");
+    assert!(http_get(&proxies[0], "duellogs/x.dlog").await.is_empty(), "the game's own request gets no page");
+    // The other launcher's server is still there.
+    assert!(page(&proxies[1], "web/packs").await.0.starts_with("HTTP/1.1 200"));
+    drop(proxies); drop(servers);
+    let _ = std::fs::remove_dir_all(dir);
+}

@@ -665,6 +665,14 @@ fn the_pack_lists_match_what_the_shops_packs_give() {
     let shop: Vec<&yo3_data::Pack> = data.packs.iter().filter(|p| p.kind == 1 && !p.cards.is_empty()).collect();
     assert_eq!(lists.iter().map(|l| l.id).collect::<Vec<_>>(), shop.iter().map(|p| p.id).collect::<Vec<_>>(), "one list per pack on sale");
     assert!(lists.len() > 40, "{} packs", lists.len());
+    // Every page fits well inside the launcher's 1 MiB page cap.
+    let site = yo3_server::web::Site { name: "Test", ranking: None, packs: &lists, pack_cost: 100 };
+    let index = yo3_server::web::page("packs", &site);
+    assert!(index.len() < 64 * 1024, "{} B", index.len());
+    for list in &lists {
+        let page = yo3_server::web::page(&format!("packs/{}", list.id), &site);
+        assert!(page.len() < 128 * 1024 && !page.contains("Rarity "), "{}: {} B", list.name, page.len());
+    }
     for (list, pack) in lists.iter().zip(&shop) {
         assert!(!list.name.starts_with("Booster Pack ") && !list.about.is_empty(), "{}: the shop's own name and description", list.name);
         let tiers = shop::tiers(&pack.cards);

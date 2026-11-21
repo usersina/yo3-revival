@@ -124,7 +124,7 @@ impl PackList {
 
 /// The rarity names of a pack's tiers (**guess**: the OCG's, [`tiers`]).
 pub fn rarity(tier: usize, tiers: usize) -> String {
-    const NAMES: [&str; 5] = ["Common", "Rare", "Super Rare", "Ultra Rare", "Secret Rare"];
+    const NAMES: [&str; 6] = ["Common", "Rare", "Super Rare", "Ultra Rare", "Secret Rare", "Ultimate Rare"];
     match NAMES.get(tier) { Some(name) if tiers <= NAMES.len() => (*name).to_string(), _ => format!("Rarity {}", tier + 1) }
 }
 

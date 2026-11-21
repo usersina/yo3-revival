@@ -528,16 +528,74 @@ async fn relay_http(mut local: TcpStream, endpoint: &Endpoint, mut active: tokio
         local.write_all(&body).await?;
         return Ok(local.shutdown().await?)
     }
-    let session = match wait_for_outcome(&mut active).await? {
-        Outcome::Session(session) => session,
-        Outcome::Refused(_) => anyhow::bail!("the sign-in was refused"),
+    // A page for the player's browser says what went wrong (#74); the game's own requests (duel logs, its info link)
+    // keep ending without an answer, as the game expects of a server that's gone.
+    let web = path.starts_with("web/");
+    let session = match wait_for_outcome(&mut active).await {
+        Ok(Outcome::Session(session)) => session,
+        Ok(Outcome::Refused(_)) => return web_failed(&mut local, web, WebFailure::Refused, anyhow::anyhow!("the sign-in was refused")).await,
+        Err(error) => return web_failed(&mut local, web, WebFailure::NotReady, error).await,
     };
-    let ticket = endpoint.ticket(&session, Role::Http).await?;
-    let mut remote = endpoint.connect(&ticket, Role::Http, 0).await?;
-    remote.write_all(format!("GET /{path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n").as_bytes()).await?;
-    relay_answer(&mut remote, &mut local, path.starts_with("web/"), RELAY_HTTP_WAIT).await?;
+    let connected = tokio::time::timeout(RELAY_HTTP_WAIT, async {
+        let ticket = endpoint.ticket(&session, Role::Http).await?;
+        let mut remote = endpoint.connect(&ticket, Role::Http, 0).await?;
+        remote.write_all(format!("GET /{path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n").as_bytes()).await?;
+        Ok::<_, anyhow::Error>(remote)
+    }).await.unwrap_or_else(|_| Err(anyhow::anyhow!("the server didn't answer in time")));
+    let mut remote = match connected {
+        Ok(remote) => remote,
+        Err(error) => return web_failed(&mut local, web, WebFailure::Unreachable, error).await,
+    };
+    relay_answer(&mut remote, &mut local, web, RELAY_HTTP_WAIT).await?;
     local.shutdown().await?;
     Ok(())
+}
+
+/// A relayed request that failed with `error`: a browser's page (`web`) gets the page saying why, the game's own
+/// requests nothing.
+async fn web_failed(local: &mut TcpStream, web: bool, failure: WebFailure, error: anyhow::Error) -> anyhow::Result<()> {
+    if web {
+        local.write_all(&failure.page()).await?;
+        local.shutdown().await?;
+    }
+    Err(error)
+}
+
+/// Why a page couldn't be fetched for the player's browser (#74).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WebFailure {
+    /// The sign-in to the server was refused or has ended.
+    Refused,
+    /// The game hasn't finished signing in.
+    NotReady,
+    /// The server couldn't be reached, or refused this connection (an ended session among them).
+    Unreachable,
+    /// The server connected but didn't send the page in time.
+    Timeout,
+}
+
+impl WebFailure {
+    /// The local page that says so, shown like a server's page (sandboxed, [`web_page`]).
+    fn page(self) -> Vec<u8> {
+        let (status, title, text) = match self {
+            WebFailure::Refused => (403, "You're not signed in to the server",
+                "Your sign-in to the server you joined was refused or has ended, so its pages can't be shown. Sign in again \
+                 from the launcher, then open the page from the game again."),
+            WebFailure::NotReady => (503, "Still signing in",
+                "The game hasn't finished signing in to the server yet. Wait until you're on the map, then open the page \
+                 again."),
+            WebFailure::Unreachable => (502, "The server didn't answer",
+                "This page couldn't be fetched from the server you joined: it may be down or restarting, or your connection \
+                 dropped. Try again in a moment. If the game lost its connection too, check the server in the launcher."),
+            WebFailure::Timeout => (504, "The server took too long",
+                "The server you joined connected but didn't send this page in time. Try again in a moment."),
+        };
+        let html = format!("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>{title}</title><style>\
+            body{{font-family:sans-serif;max-width:40em;margin:3em auto;padding:0 1em;line-height:1.5;color:#1b2340;background:#f4f6fb}}\
+            h1{{font-size:1.4em}}small{{color:#56607a}}</style></head><body><h1>{title}</h1><p>{text}</p>\
+            <p><small>Shown by the Yu-Gi-Oh! ONLINE 3 revival launcher. These pages work while your game is open.</small></p></body></html>");
+        web_page(format!("HTTP/1.1 {status} Error\r\n\r\n{html}").as_bytes())
+    }
 }
 
 /// How long the server's answer to a relayed page, duel log or info link may take, once connected: a server that
@@ -549,11 +607,11 @@ async fn relay_answer<R, W>(remote: &mut R, local: &mut W, web: bool, wait: Dura
 where R: AsyncRead + Unpin, W: tokio::io::AsyncWrite + Unpin {
     if web {
         // A page for the player's browser: whatever the server sent, it is shown sandboxed (#39). A page that doesn't
-        // come in time is a timeout page, not a request left hanging.
+        // come in time is a page saying so (#74), not a request left hanging.
         let mut answer = vec![];
         match tokio::time::timeout(wait, remote.take(WEB_PAGE_MAX).read_to_end(&mut answer)).await {
             Ok(read) => { read?; local.write_all(&web_page(&answer)).await? }
-            Err(_) => local.write_all(b"HTTP/1.1 504 Gateway Timeout\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await?,
+            Err(_) => local.write_all(&WebFailure::Timeout.page()).await?,
         }
         return Ok(())
     }
@@ -573,6 +631,7 @@ mod tests {
         let mut page = vec![];
         relay_answer(&mut remote, &mut page, true, Duration::from_millis(50)).await.unwrap();
         assert!(page.starts_with(b"HTTP/1.1 504 "), "{}", String::from_utf8_lossy(&page));
+        assert!(String::from_utf8_lossy(&page).contains("The server took too long"), "a page that says so (#74)");
         let mut log = vec![];
         let stalled = relay_answer(&mut remote, &mut log, false, Duration::from_millis(50)).await;
         assert!(stalled.unwrap_err().to_string().contains("stalled"));
@@ -809,6 +868,19 @@ mod tests {
         // need an active Internet connection", Windows 11 VM, 2026-11-16). Sign out in the launcher ends that one.
         assert!(Credential::Key("k".into()).owns_session());
         assert!(!Credential::Session([7; 32]).owns_session());
+    }
+
+    /// #74: each way a page can fail has its own status and words, shown in the same sandbox as a server's page.
+    #[test]
+    fn a_page_that_cant_be_fetched_says_why_in_the_sandbox() {
+        for (failure, status, words) in [(WebFailure::Refused, "403", "Sign in again"), (WebFailure::NotReady, "503", "Still signing in"),
+            (WebFailure::Unreachable, "502", "didn't answer"), (WebFailure::Timeout, "504", "took too long")] {
+            let page = String::from_utf8(failure.page()).unwrap();
+            assert!(page.starts_with(&format!("HTTP/1.1 {status} ")), "{page}");
+            assert!(page.contains("Content-Security-Policy: sandbox; default-src 'none'") && page.contains(words), "{failure:?}: {page}");
+            let (head, body) = page.split_once("\r\n\r\n").unwrap();
+            assert!(head.contains(&format!("Content-Length: {}", body.len())), "{failure:?}");
+        }
     }
 
     #[test]

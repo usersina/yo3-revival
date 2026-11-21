@@ -52,7 +52,7 @@ pub mod official;
 pub mod clock;
 mod log;
 mod net;
-mod web;
+pub mod web;
 pub mod ranking;
 pub mod titles;
 pub mod gifts;

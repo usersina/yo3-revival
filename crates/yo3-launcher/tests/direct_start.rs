@@ -174,7 +174,11 @@ async fn a_refused_start_answers_the_patch_check_with_the_games_own_index() {
         proxy.refuse(refusal);
         let reply = http(&proxy, index.clone()).await;
         assert!(reply.starts_with("HTTP/1.1 200") && reply.ends_with("\r\n\r\nthe game's own index"), "{refusal:?}: {reply}");
-        assert!(http(&proxy, other.clone()).await.is_empty(), "{refusal:?}: nothing else is answered without a sign-in");
+        // Nothing of the server's is fetched without a sign-in: a browser's page says so (#74), the game's requests end.
+        let page = http(&proxy, other.clone()).await;
+        assert!(page.starts_with("HTTP/1.1 403") && page.contains("not signed in") && !page.contains("Konami"), "{refusal:?}: {page}");
+        let log = format!("GET /session/{cookie}/duellogs/x.dlog HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        assert!(http(&proxy, log).await.is_empty(), "{refusal:?}: nothing else is answered without a sign-in");
     }
     let _ = std::fs::remove_dir_all(dir);
 }
