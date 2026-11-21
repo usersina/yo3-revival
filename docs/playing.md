@@ -218,6 +218,7 @@ Anything else, such as `!lol`, is ordinary chat.
 | `banlist default` | Goes back to the host's banlist. |
 | `draw` or `draw5` | Draws 5 random cards from your newest deck (the one you last saved in Edit Deck or picked for a duel; the starter deck before that), to see what an opening hand could look like. `draw 7` draws 7 (up to 10); add part of a deck's name to use another: `draw 5 starter`. |
 | `where CARD` | Where a card comes from: which booster packs hold it, a structure deck, Blister's Trade Card, the shop's Rental, or a deck every player starts with. A part of the name is enough (`where red-eyes`); a few cards at most are listed, so be specific. The game's chat filter hides some words as stars (`red-eyes black` arrives as `red-eyes *****`): stars match anything, so `where red-eyes` and `where red-eyes *****` both work. "No normal route" means the shop and decks don't hold it. |
+| `pack` or `pack NAME` | Every card a booster pack can give, the rarest first, and its price: `pack 12`, `pack beginner`. A long list (a beginner's pack has 155 commons) is given as a count. `pack` alone lists the packs on sale. The same lists are on the Packs page ([website pages](#website-pages)). |
 | `recipes` or `recipes NAME` | Lists the theme deck recipes the shop's shelf can't show, or buys one for the structure decks' price: the recipe on Load Deck's Official tab and its cards, as a present you open from the map. |
 | `report PLAYER reason` | Tells the host's staff about a player (cheating, abuse in chat). Use quotes for a name with spaces: `report "Joey Wheeler" spamming the chat`. The reported player is not told. You can send a few an hour. |
 
@@ -314,6 +315,23 @@ the Blackwing and Masked Heroes and more), which arrives as a present you open f
 When an event ends your host's prize (BP) arrives as a D-Mail, and Tournament Points (My Profile) add up from the events you played. If an event needs a particular banlist, Ready
 tells you in the chat: use `/p Server banlist NAME` and log in again. Main Menu → Leaderboard and the team ranking open
 your host's pages with everyone's wins and losses against other players.
+
+### Website pages
+
+The game's links to Konami's old website (the title screen's Official Website, Main Menu → Leaderboard and the team
+ranking, BOOSTERPASS's purchase link and User Events) open your host's own pages in your browser. Each page names the
+server you joined and has a bar to the others:
+
+- **Home**, **Leaderboard** and **Teams**: everyone's wins and losses against other players.
+- **Packs**: every booster pack on sale with every card it can give, by rarity, and the odds of each rarity, so you
+  can see a pack's cards before you buy it.
+- **BP**: how BOOSTERPASS Points come in on this server (they can't be bought with money), and **Events**: where
+  tournaments and official events are on the map.
+
+The address starts with `http://127.0.0.1`: the launcher fetches each page from your server over its secure
+connection, so it isn't your own computer's page. These pages work **while your game is open**: once it closes, an old
+tab can't load anything and just shows the browser's own error. If the server can't send a page, the launcher shows a
+short page saying why (you're not signed in, the game is still signing in, the server didn't answer or took too long).
 
 In the shop, Trade Card swaps cards you don't need for one you want: pick a card from Blister's list (cards from the
 first 48 booster packs), then choose 10 of your own cards (or press Auto Select) and confirm. Rented cards and cards

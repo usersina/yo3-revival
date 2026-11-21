@@ -9,6 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-21 — Player website pages and pack contents (#74, #73)](#2026-11-21--player-website-pages-and-pack-contents-74-73)
   - [2026-11-21 — Problem reports: a broken game's logs go to the host](#2026-11-21--problem-reports-a-broken-games-logs-go-to-the-host)
   - [2026-11-21 — Network review: whole frames to the game, and its disconnect reasons logged (#65)](#2026-11-21--network-review-whole-frames-to-the-game-and-its-disconnect-reasons-logged-65)
   - [2026-11-21 — The Championship (#17)](#2026-11-21--the-championship-17)
@@ -91,6 +92,28 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   one PC are "linked accounts": the first duel counted nothing until `set linked-accounts off`.
 - **Guesses** (roadmap): the Special Pack's contents, tiers and cap, the artwork odds (1 in 20), the theme decks' price, the
   champion rule and THE ANNIVERSARIAN's win.
+
+## 2026-11-21 — Player website pages and pack contents (#74, #73)
+
+A player asked to see a pack's cards before buying (#73); #74 asked for the pages behind the game's old website links
+to be clearer and to explain failures. Checked in the code first: the helper closed the browser's connection on a
+refused sign-in, a game still signing in or an unreachable server, and a timeout was an empty 504; the pages had no
+navigation or server name; their links were already relative.
+
+- [x] One layout (`web.rs`): the server's name (`server-name`) and a bar to Home, Leaderboard, Teams, Packs, BP and
+      Events on every page. Links are relative at any depth (`../` per directory), so they keep the browser's
+      `/session/COOKIE/web/` prefix; a test resolves every link of every page against it. Nothing redirects.
+- [x] Packs (#73): `packs` lists the booster packs on sale, `packs/ID` one pack with the shop's description, its cards
+      by rarity tier and the odds `shop::open` deals them at; `pack NAME` in the chat lists the same, rarest first. The
+      lists come from the same pack files as the shop (`pack_lists`), checked against the game. Pack names were read
+      with `as_u32` from a field the pack file stores as text, so `where` said "Booster Pack 1" for the shop's "Pack 1";
+      fixed (`Pack::name_id`).
+- [x] BP and Events say how points come in (start, duels, prizes, codes, never money) and where events are.
+- [x] The helper's own pages (launcher `lib.rs`, `WebFailure`): not signed in (403), still signing in (503), the
+      server didn't answer (502), took too long (504), sandboxed like a server's page. The game's own requests still
+      end without an answer.
+- [x] Two launchers on two scratch servers each showed their own server's name and pages; a stopped server's page
+      said it didn't answer (`proxy.rs`).
 
 ## 2026-11-21 — Problem reports: a broken game's logs go to the host
 

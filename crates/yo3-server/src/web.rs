@@ -97,7 +97,7 @@ fn pack_index(site: &Site) -> String {
     if site.packs.is_empty() { return "<p>This server has no booster packs on sale.</p>".into() }
     let rows: String = site.packs.iter().map(|p| format!("<li><a href=\"packs/{}\">{}</a> ({} cards)</li>", p.id, escape(&p.name),
         p.tiers.iter().map(Vec::len).sum::<usize>())).collect();
-    format!("<p>The booster packs in the shop (Main Menu &rarr; Card Shop &rarr; Purchase Pack), {} BP each. Open one to see \
+    format!("<p>The booster packs in the shop (the map's top-left tile &rarr; Purchase Pack), {} BP each. Open one to see \
         every card it can give. In the game's chat, <code>!pack NAME</code> lists a pack's cards and <code>!where CARD</code> \
         names the packs a card is in.</p><ul>{rows}</ul>", site.pack_cost)
 }

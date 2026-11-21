@@ -50,10 +50,12 @@ fn wrap(head: &str, items: &[String], separator: &str) -> Vec<String> {
     lines
 }
 
-/// `pack NAME` (#73): every card of the booster pack whose name has NAME in it, by rarity, the rarest first; `pack` alone
-/// lists the packs on sale.
+/// `pack NAME` (#73): every card of the booster pack whose name has NAME in it, by rarity, the rarest first (a long tier
+/// by its count); `pack` alone lists the packs on sale.
 pub fn pack_command(query: &str, packs: &[crate::shop::PackList], cost: u32) -> Vec<String> {
-    let page = "The full list is on the Packs page: the title screen's Official Website, then Packs.";
+    // A long tier (a beginner's pack holds 155 commons) would fill the chat window: its count, and the page lists it.
+    const TIER_MAX: usize = 30;
+    let page = "Every card is on the Packs page: Main Menu, Leaderboard, then Packs in the bar.";
     if packs.is_empty() { return vec!["This server has no booster packs on sale.".into()] }
     let query = query.trim().to_lowercase();
     if query.is_empty() {
@@ -72,7 +74,9 @@ pub fn pack_command(query: &str, packs: &[crate::shop::PackList], cost: u32) -> 
         [pack] => {
             let mut lines = vec![format!("{} ({cost} BP for 5 cards):", pack.name)];
             for (i, cards) in pack.tiers.iter().enumerate().rev() {
-                lines.extend(wrap(&format!("{}: ", crate::shop::rarity(i, pack.tiers.len())), cards, ", "));
+                let rarity = crate::shop::rarity(i, pack.tiers.len());
+                if cards.len() > TIER_MAX { lines.push(format!("{rarity}: {} cards (see the Packs page)", cards.len())) }
+                else { lines.extend(wrap(&format!("{rarity}: "), cards, ", ")) }
             }
             lines.push(page.into());
             lines

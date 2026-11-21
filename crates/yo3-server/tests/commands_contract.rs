@@ -286,11 +286,18 @@ fn pack_lists_a_packs_cards_by_rarity() {
     let mut c = s.join(1001, "Yugi");
     let three = ask(&mut c, "pack booster pack 3");
     assert_eq!(three, "Booster Pack 3 (100 BP for 5 cards):\nSuper Rare: Card 1008\nRare: Card 1007\nCommon: Card 1001, Card 1002\n\
-        The full list is on the Packs page: the title screen's Official Website, then Packs.", "an exact name, any case");
+        Every card is on the Packs page: Main Menu, Leaderboard, then Packs in the bar.", "an exact name, any case");
     assert!(ask(&mut c, "pack").starts_with("Packs: Booster Pack 3, Booster Pack 4"), "the list");
     assert!(ask(&mut c, "pack booster").contains("2 packs match"), "a part of two names");
     assert!(ask(&mut c, "!pack 4").contains("Common: Card 1009"), "one match");
     assert!(ask(&mut c, "pack zzz").contains("No pack is named like"));
+    // A tier too long for the chat window is counted, and the page lists it.
+    let mut big = world();
+    big.pack_lists = vec![PackList::new(9, "Beginner's Pack".into(), String::new(), &[(1..=40).collect(), vec![50]], |row| Some(format!("Card {}", 1000 + row)))];
+    let s = Server::with_world(big);
+    let mut c = s.join(1001, "Yugi");
+    let beginner = ask(&mut c, "pack beginner");
+    assert!(beginner.contains("Rare: Card 1050\nCommon: 40 cards (see the Packs page)") && !beginner.contains("Card 1001"), "{beginner}");
 }
 
 fn report_world() -> (Server, Arc<Mutex<Directory>>) {
