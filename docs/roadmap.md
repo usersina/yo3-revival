@@ -53,7 +53,7 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
 
 - [ ] Titles not earned yet: KING OF DESTRUCTION (meaning unclear), MR. 1 TURN SURRENDER, MARITIME PILOT (invites), the
       second Jaden titles (TRUE JADEN FAN, MAGNET FOR DESTRUCTION, THE SEEKER OF TRUTH), Téa's and Jim's (not NPCs
-      here), and the event and Championship ones (below).
+      here).
 
 **Windows and hosting verification**
 

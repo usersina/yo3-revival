@@ -2,9 +2,9 @@
 //! a line saying what it is for). Avatar Settings lists the owned ones (their pbin bits, the player's `items`), and the
 //! player wears one. BEGINNER DUELIST is every player's (`GameData::free_items`); this module decides the others the
 //! server can measure. Their lines say what each rewards ("A token of friendship with Yami Yugi", "summoned many high
-//! level monsters"), never how many: the numbers here are ours. Titles of the official events, the rankings and the
-//! Championship wait for those (issue #16); the official events' titles (the Stadium, #18) count each win and star
-//! as it happens, with the numbers the client's lines state; the staff and promotion titles are granted by the host
+//! level monsters"), never how many: the numbers here are ours. The official events' titles (the Stadium, #18) count
+//! each win and star as it happens, with the numbers the client's lines state; the Championship's Y.O.C. titles (#17)
+//! come with its rounds (`championship.rs`); the staff and promotion titles are granted by the host
 //! (`yo3-server grant-title`).
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
