@@ -41,26 +41,26 @@ pub const WINNER: &str = "Y.O.C WINNER";
 /// Where a Championship is: waiting for its start time (entries open from `entry_open`), being played, or over.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "kebab-case")]
-pub enum State {
+pub enum ChampionshipState {
     Scheduled,
     Cancelled,
     Running,
     Finished,
 }
 
-impl State {
+impl ChampionshipState {
     pub fn text(self) -> &'static str {
-        match self { State::Scheduled => "scheduled", State::Cancelled => "cancelled", State::Running => "running", State::Finished => "finished" }
+        match self { ChampionshipState::Scheduled => "scheduled", ChampionshipState::Cancelled => "cancelled", ChampionshipState::Running => "running", ChampionshipState::Finished => "finished" }
     }
-    fn of(text: &str) -> State {
-        match text { "cancelled" => State::Cancelled, "running" => State::Running, "finished" => State::Finished, _ => State::Scheduled }
+    fn of(text: &str) -> ChampionshipState {
+        match text { "cancelled" => ChampionshipState::Cancelled, "running" => ChampionshipState::Running, "finished" => ChampionshipState::Finished, _ => ChampionshipState::Scheduled }
     }
 }
 
 /// What a Championship pays, in BP: to everyone drawn into the Final, to the finalists (both) and to the winner, which add up.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
-pub struct Prize {
+pub struct ChampionshipPrize {
     #[serde(default)]
     #[schema(maximum = 1000000)]
     pub participation_bp: u32,
@@ -72,7 +72,7 @@ pub struct Prize {
     pub winner_bp: u32,
 }
 
-impl Prize {
+impl ChampionshipPrize {
     /// BP owed for having got to `wins` rounds won (a bye counts) of the four; `drawn`: in the bracket at all.
     pub fn owed(&self, drawn: bool, wins: u32) -> u32 {
         if !drawn { return 0 }
@@ -101,8 +101,8 @@ pub struct Championship {
     pub start: i64,
     /// Duels a player must have played to enter (text 15302; the client doesn't check).
     pub min_duels: u32,
-    pub prize: Prize,
-    pub state: State,
+    pub prize: ChampionshipPrize,
+    pub state: ChampionshipState,
     /// When it ended (unix seconds), 0 until then.
     pub finished: i64,
     /// The entrants in the order they entered, and the winner and runner-up once it is over.
@@ -120,37 +120,36 @@ impl Championship {
     pub fn has_entered(&self, player: u32) -> bool { self.entrants.iter().any(|(p, _)| *p == player) }
 
     /// Whether entries are taken now.
-    pub fn is_open(&self, now: i64) -> bool { self.state == State::Scheduled && now >= self.entry_open && now < self.entry_close }
+    pub fn is_open(&self, now: i64) -> bool { self.state == ChampionshipState::Scheduled && now >= self.entry_open && now < self.entry_close }
 
     /// Whether the map lists it (`0x177A`): from the start of its entry window until a day after it ended; never a
     /// cancelled one.
     pub fn listed(&self, now: i64) -> bool {
         match self.state {
-            State::Cancelled => false,
-            State::Scheduled | State::Running => now >= self.entry_open,
-            State::Finished => now - self.finished < LISTED_AFTER_END,
+            ChampionshipState::Cancelled => false,
+            ChampionshipState::Scheduled | ChampionshipState::Running => now >= self.entry_open,
+            ChampionshipState::Finished => now - self.finished < LISTED_AFTER_END,
         }
     }
 }
 
 /// A new Championship, as the host gives it.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct New {
-    #[schema(min_length = 1, max_length = 60)]
     pub name: String,
-    /// Unix seconds; `entry_open` defaults to now.
+    /// Unix seconds.
     pub entry_open: i64,
     pub entry_close: i64,
     pub start: i64,
     #[serde(default)]
     pub min_duels: u32,
     #[serde(default)]
-    pub prize: Prize,
+    pub prize: ChampionshipPrize,
 }
 
 /// Changes to a Championship still waiting for its start; what is left out stays.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Changes {
     #[serde(default)]
@@ -164,7 +163,7 @@ pub struct Changes {
     #[serde(default)]
     pub min_duels: Option<u32>,
     #[serde(default)]
-    pub prize: Option<Prize>,
+    pub prize: Option<ChampionshipPrize>,
 }
 
 /// What entering the lobby did.
@@ -209,8 +208,8 @@ impl Championships {
             let pair = |id: Option<u32>, name: Option<String>| id.map(|i| (i, name.unwrap_or_default()));
             Ok(Championship {
                 id: r.get(0)?, name: r.get(1)?, year: r.get(2)?, season: r.get(3)?, entry_open: r.get(4)?, entry_close: r.get(5)?, start: r.get(6)?,
-                min_duels: r.get(7)?, prize: Prize { participation_bp: r.get(8)?, finalist_bp: r.get(9)?, winner_bp: r.get(10)? },
-                state: State::of(&r.get::<_, String>(11)?), finished: r.get(12)?, entrants: vec![],
+                min_duels: r.get(7)?, prize: ChampionshipPrize { participation_bp: r.get(8)?, finalist_bp: r.get(9)?, winner_bp: r.get(10)? },
+                state: ChampionshipState::of(&r.get::<_, String>(11)?), finished: r.get(12)?, entrants: vec![],
                 winner: pair(r.get(13)?, r.get(14)?), second: pair(r.get(15)?, r.get(16)?),
                 bracket: r.get::<_, Option<String>>(17)?.and_then(|t| serde_json::from_str(&t).ok()),
             })
@@ -266,16 +265,16 @@ impl Championships {
     pub fn create(&mut self, new: New) -> Result<Championship, String> {
         let name = clean(&new.name);
         self.check(&name, &new)?;
-        let waiting = self.list.iter().filter(|c| matches!(c.state, State::Scheduled | State::Running)).collect::<Vec<_>>();
+        let waiting = self.list.iter().filter(|c| matches!(c.state, ChampionshipState::Scheduled | ChampionshipState::Running)).collect::<Vec<_>>();
         if waiting.len() >= MAX_ACTIVE { return Err(format!("at most {MAX_ACTIVE} Championships may be scheduled at once")) }
         if waiting.iter().any(|c| new.entry_open < c.start + 3600 && c.entry_open < new.start + 3600) {
             return Err("another Championship is scheduled around then (an hour apart at least)".into())
         }
         let id = self.list.iter().map(|c| c.id).max().unwrap_or(0) + 1;
         let year = jst_year(new.start);
-        let season = 1 + self.list.iter().filter(|c| c.year == year && c.state != State::Cancelled).count() as u32;
+        let season = 1 + self.list.iter().filter(|c| c.year == year && c.state != ChampionshipState::Cancelled).count() as u32;
         self.list.push(Championship { id, name, year, season, entry_open: new.entry_open, entry_close: new.entry_close, start: new.start, min_duels: new.min_duels,
-            prize: new.prize, state: State::Scheduled, finished: 0, entrants: vec![], winner: None, second: None, bracket: None });
+            prize: new.prize, state: ChampionshipState::Scheduled, finished: 0, entrants: vec![], winner: None, second: None, bracket: None });
         self.save(id).map_err(|e| e.to_string())?;
         Ok(self.get(id).cloned().expect("just made"))
     }
@@ -283,7 +282,7 @@ impl Championships {
     pub fn edit(&mut self, id: u32, changes: &Changes) -> Result<(Championship, Championship), String> {
         let at = self.list.iter().position(|c| c.id == id).ok_or_else(|| format!("no Championship {id}"))?;
         let before = self.list[at].clone();
-        if before.state != State::Scheduled { return Err(format!("Championship {id} is already {}", before.state.text())) }
+        if before.state != ChampionshipState::Scheduled { return Err(format!("Championship {id} is already {}", before.state.text())) }
         let name = changes.name.as_deref().map_or_else(|| before.name.clone(), clean);
         let new = New { name: name.clone(), entry_open: changes.entry_open.unwrap_or(before.entry_open), entry_close: changes.entry_close.unwrap_or(before.entry_close),
             start: changes.start.unwrap_or(before.start), min_duels: changes.min_duels.unwrap_or(before.min_duels), prize: changes.prize.unwrap_or(before.prize) };
@@ -298,8 +297,8 @@ impl Championships {
     pub fn cancel(&mut self, id: u32) -> Result<Championship, String> {
         let at = self.list.iter().position(|c| c.id == id).ok_or_else(|| format!("no Championship {id}"))?;
         let before = self.list[at].clone();
-        if before.state != State::Scheduled { return Err(format!("Championship {id} is already {}", before.state.text())) }
-        self.list[at].state = State::Cancelled;
+        if before.state != ChampionshipState::Scheduled { return Err(format!("Championship {id} is already {}", before.state.text())) }
+        self.list[at].state = ChampionshipState::Cancelled;
         self.save(id).map_err(|e| e.to_string())?;
         Ok(before)
     }
@@ -311,7 +310,7 @@ impl Championships {
 
     /// Duel Log's past Championships (`0x1793`): the finished ones, the newest first.
     pub fn past(&self) -> Vec<&Championship> {
-        let mut past: Vec<&Championship> = self.list.iter().filter(|c| c.state == State::Finished).collect();
+        let mut past: Vec<&Championship> = self.list.iter().filter(|c| c.state == ChampionshipState::Finished).collect();
         past.sort_by(|a, b| b.start.cmp(&a.start).then(b.id.cmp(&a.id)));
         past.truncate(PAST_LISTED);
         past
@@ -427,7 +426,7 @@ pub fn seat(drawn: &[(u32, String)]) -> Vec<(u32, String)> {
 mod tests {
     use super::*;
 
-    fn new(open: i64, close: i64, start: i64) -> New { New { name: "Y.O.C.".into(), entry_open: open, entry_close: close, start, min_duels: 0, prize: Prize::default() } }
+    fn new(open: i64, close: i64, start: i64) -> New { New { name: "Y.O.C.".into(), entry_open: open, entry_close: close, start, min_duels: 0, prize: ChampionshipPrize::default() } }
 
     /// The byes each player gets in a 16-seat bracket with `seats` taken, the worst case (the higher count wins a duel).
     fn byes(seats: &[bool; SEATS]) -> u32 {
@@ -481,7 +480,7 @@ mod tests {
         assert_eq!(titles_for(1), [QUALIFIER, Q_FINALIST]);
         assert_eq!(titles_for(3), [QUALIFIER, Q_FINALIST, S_FINALIST, FINALIST]);
         assert_eq!(titles_for(4).last(), Some(&WINNER));
-        let prize = Prize { participation_bp: 10, finalist_bp: 100, winner_bp: 1000 };
+        let prize = ChampionshipPrize { participation_bp: 10, finalist_bp: 100, winner_bp: 1000 };
         assert_eq!((prize.owed(false, 4), prize.owed(true, 0), prize.owed(true, 3), prize.owed(true, 4)), (0, 10, 110, 1110));
     }
 

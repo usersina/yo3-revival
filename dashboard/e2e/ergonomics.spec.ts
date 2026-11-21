@@ -162,6 +162,7 @@ test('every workspace keeps table data and actions readable without sideways scr
       '/moderation',
       '/reports',
       '/events',
+      '/championship',
       '/audit',
       '/logs',
       '/backups',
@@ -176,6 +177,7 @@ test('every workspace keeps table data and actions readable without sideways scr
         '/invites': 'Registration invites table',
         '/reports': 'Reports table',
         '/events': 'Events table',
+        '/championship': 'Championships table',
         '/audit': 'Audit entries',
         '/backups': 'Available database backups',
       }

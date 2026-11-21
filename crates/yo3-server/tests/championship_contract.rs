@@ -14,7 +14,7 @@ use common::{Client, Server, one, req, req_with};
 use yo3_proto::{Message, Value};
 use yo3_server::accounts::Directory;
 use yo3_server::front::Ended;
-use yo3_server::championship::{FIRST_EVENT, New, Prize, State};
+use yo3_server::championship::{ChampionshipPrize as Prize, ChampionshipState as State, FIRST_EVENT, New};
 use yo3_server::titles::TitleData;
 
 fn int(m: &Message, k: &str) -> Option<u32> { m.get(k).and_then(Value::as_u32) }

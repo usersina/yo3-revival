@@ -432,7 +432,7 @@ impl Api {
                     let now = chrono::Utc::now();
                     let request = championship::CreateChampionshipRequest { name: name.clone(), entry_open: entry_open.as_deref().map(|t| official::parse_time(t, now)).transpose()?,
                         entry_close: official::parse_time(entry_close, now)?, start: official::parse_time(start, now)?, min_duels: *min_duels,
-                        prize: crate::championship::Prize { participation_bp: *participation_bp, finalist_bp: *finalist_bp, winner_bp: *winner_bp } };
+                        prize: crate::championship::ChampionshipPrize { participation_bp: *participation_bp, finalist_bp: *finalist_bp, winner_bp: *winner_bp } };
                     let done = self.create_championship(&request, caller, origin).map_err(|e| e.to_string())?;
                     Ok(json!({ "championship": done.championship, "message": done.message }))
                 }
@@ -442,7 +442,7 @@ impl Api {
                     let prize = if participation_bp.is_some() || finalist_bp.is_some() || winner_bp.is_some() {
                         let old = self.list_championships(caller).map_err(|e| e.to_string())?.championships.into_iter().find(|c| c.championship_id == *id).map(|c| c.prize)
                             .ok_or_else(|| format!("no Championship {id}"))?;
-                        Some(crate::championship::Prize { participation_bp: participation_bp.unwrap_or(old.participation_bp), finalist_bp: finalist_bp.unwrap_or(old.finalist_bp),
+                        Some(crate::championship::ChampionshipPrize { participation_bp: participation_bp.unwrap_or(old.participation_bp), finalist_bp: finalist_bp.unwrap_or(old.finalist_bp),
                             winner_bp: winner_bp.unwrap_or(old.winner_bp) })
                     } else { None };
                     let request = championship::EditChampionshipRequest { championship_id: *id, name: name.clone(), entry_open: time(entry_open)?, entry_close: time(entry_close)?,

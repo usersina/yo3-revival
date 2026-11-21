@@ -16,6 +16,7 @@ const pages = [
   ['Moderation', '/moderation'],
   ['Reports', '/reports'],
   ['Events', '/events'],
+  ['Championship', '/championship'],
   ['Audit log', '/audit'],
   ['Server logs', '/logs'],
   ['Backups', '/backups'],

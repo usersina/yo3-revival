@@ -33,9 +33,13 @@ import type {
   BackupList,
   BanlistChoices,
   BpCodeList,
+  CancelChampionshipHeaders,
+  CancelChampionshipRequest,
   CancelEventHeaders,
   CancelEventRequest,
   CardImageSize,
+  ChampionshipList,
+  ChampionshipResult,
   ChangeSettingsHeaders,
   CodeRequest,
   ConfirmMfaEnrollmentHeaders,
@@ -47,6 +51,8 @@ import type {
   CreateBpCodeHeaders,
   CreateBpCodeRequest,
   CreateBpCodeResult,
+  CreateChampionshipHeaders,
+  CreateChampionshipRequest,
   CreateEventHeaders,
   CreateEventRequest,
   CreateInviteHeaders,
@@ -58,6 +64,8 @@ import type {
   DownloadBackupHeaders,
   DownloadBackupRequest,
   EditAccountHeaders,
+  EditChampionshipHeaders,
+  EditChampionshipRequest,
   EditEventHeaders,
   EditEventRequest,
   EmptyRequest,
@@ -1473,6 +1481,307 @@ export function useGetCardImage<TData = Awaited<ReturnType<typeof getCardImage>>
 
 
 
+
+export const getListChampionshipsUrl = () => {
+
+
+
+
+  return `/panel/api/v1/championships`
+}
+
+export const listChampionships = async ( options?: Parameters<typeof apiFetch>[1]): Promise<ChampionshipList> => {
+
+  return apiFetch<ChampionshipList>(getListChampionshipsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListChampionshipsQueryKey = () => {
+    return [
+    `/panel/api/v1/championships`
+    ] as const;
+    }
+
+
+export const getListChampionshipsQueryOptions = <TData = Awaited<ReturnType<typeof listChampionships>>, TError = ErrorType<ApiError>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listChampionships>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListChampionshipsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listChampionships>>> = ({ signal }) => listChampionships({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listChampionships>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListChampionshipsQueryResult = NonNullable<Awaited<ReturnType<typeof listChampionships>>>
+export type ListChampionshipsQueryError = ErrorType<ApiError>
+
+
+export function useListChampionships<TData = Awaited<ReturnType<typeof listChampionships>>, TError = ErrorType<ApiError>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listChampionships>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listChampionships>>,
+          TError,
+          Awaited<ReturnType<typeof listChampionships>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListChampionships<TData = Awaited<ReturnType<typeof listChampionships>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listChampionships>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listChampionships>>,
+          TError,
+          Awaited<ReturnType<typeof listChampionships>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListChampionships<TData = Awaited<ReturnType<typeof listChampionships>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listChampionships>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListChampionships<TData = Awaited<ReturnType<typeof listChampionships>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listChampionships>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListChampionshipsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCancelChampionshipUrl = () => {
+
+
+
+
+  return `/panel/api/v1/championships/cancel`
+}
+
+export const cancelChampionship = async (cancelChampionshipRequest: CancelChampionshipRequest,
+    headers: CancelChampionshipHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<ChampionshipResult> => {
+
+  return apiFetch<ChampionshipResult>(getCancelChampionshipUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(cancelChampionshipRequest)
+  }
+);}
+
+
+
+
+
+export const getCancelChampionshipMutationKey = () => ['cancelChampionship'] as const;
+
+export const getCancelChampionshipMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelChampionship>>, TError,CancelChampionshipMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelChampionship>>, TError,CancelChampionshipMutationVariables, TContext> => {
+
+const mutationKey = getCancelChampionshipMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelChampionship>>, CancelChampionshipMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  cancelChampionship(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelChampionshipMutationResult = NonNullable<Awaited<ReturnType<typeof cancelChampionship>>>
+    export type CancelChampionshipMutationBody = CancelChampionshipRequest
+    export type CancelChampionshipMutationError = ErrorType<ApiError>
+    export type CancelChampionshipMutationVariables = {data: CancelChampionshipRequest;headers: CancelChampionshipHeaders}
+
+    export const useCancelChampionship = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelChampionship>>, TError,CancelChampionshipMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof cancelChampionship>>,
+        TError,
+        CancelChampionshipMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCancelChampionshipMutationOptions(options), queryClient);
+    }
+
+export const getCreateChampionshipUrl = () => {
+
+
+
+
+  return `/panel/api/v1/championships/create`
+}
+
+export const createChampionship = async (createChampionshipRequest: CreateChampionshipRequest,
+    headers: CreateChampionshipHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<ChampionshipResult> => {
+
+  return apiFetch<ChampionshipResult>(getCreateChampionshipUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(createChampionshipRequest)
+  }
+);}
+
+
+
+
+
+export const getCreateChampionshipMutationKey = () => ['createChampionship'] as const;
+
+export const getCreateChampionshipMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createChampionship>>, TError,CreateChampionshipMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createChampionship>>, TError,CreateChampionshipMutationVariables, TContext> => {
+
+const mutationKey = getCreateChampionshipMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createChampionship>>, CreateChampionshipMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  createChampionship(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateChampionshipMutationResult = NonNullable<Awaited<ReturnType<typeof createChampionship>>>
+    export type CreateChampionshipMutationBody = CreateChampionshipRequest
+    export type CreateChampionshipMutationError = ErrorType<ApiError>
+    export type CreateChampionshipMutationVariables = {data: CreateChampionshipRequest;headers: CreateChampionshipHeaders}
+
+    export const useCreateChampionship = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createChampionship>>, TError,CreateChampionshipMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof createChampionship>>,
+        TError,
+        CreateChampionshipMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateChampionshipMutationOptions(options), queryClient);
+    }
+
+export const getEditChampionshipUrl = () => {
+
+
+
+
+  return `/panel/api/v1/championships/edit`
+}
+
+export const editChampionship = async (editChampionshipRequest: EditChampionshipRequest,
+    headers: EditChampionshipHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<ChampionshipResult> => {
+
+  return apiFetch<ChampionshipResult>(getEditChampionshipUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(editChampionshipRequest)
+  }
+);}
+
+
+
+
+
+export const getEditChampionshipMutationKey = () => ['editChampionship'] as const;
+
+export const getEditChampionshipMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof editChampionship>>, TError,EditChampionshipMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof editChampionship>>, TError,EditChampionshipMutationVariables, TContext> => {
+
+const mutationKey = getEditChampionshipMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof editChampionship>>, EditChampionshipMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  editChampionship(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EditChampionshipMutationResult = NonNullable<Awaited<ReturnType<typeof editChampionship>>>
+    export type EditChampionshipMutationBody = EditChampionshipRequest
+    export type EditChampionshipMutationError = ErrorType<ApiError>
+    export type EditChampionshipMutationVariables = {data: EditChampionshipRequest;headers: EditChampionshipHeaders}
+
+    export const useEditChampionship = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof editChampionship>>, TError,EditChampionshipMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof editChampionship>>,
+        TError,
+        EditChampionshipMutationVariables,
+        TContext
+      > => {
+      return useMutation(getEditChampionshipMutationOptions(options), queryClient);
+    }
 
 export const getListCountriesUrl = () => {
 

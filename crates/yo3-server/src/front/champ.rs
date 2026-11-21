@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use yo3_proto::{Message, Value};
 
 use super::{Hub, Match, SINGLE_MODE, chat_note};
-use crate::championship::{self as champ, Championship, Entry, FINAL_ID, SEATS, State};
+use crate::championship::{self as champ, Championship, ChampionshipState as State, Entry, FINAL_ID, SEATS};
 use crate::events::{Event, FINISHED, RUNNING, Tag};
 use crate::lock::Locked;
 use crate::mail::Mail;

@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import {
   ArrowUpRight,
   CalendarDays,
+  Trophy,
   DatabaseBackup,
   ExternalLink,
   Flag,
@@ -33,6 +34,7 @@ const navigation = [
   { label: 'Moderation', path: '/moderation', icon: ShieldCheck, group: 'Manage' },
   { label: 'Reports', path: '/reports', icon: Flag, group: 'Manage' },
   { label: 'Events', path: '/events', icon: CalendarDays, group: 'Manage' },
+  { label: 'Championship', path: '/championship', icon: Trophy, group: 'Manage' },
   { label: 'Audit log', path: '/audit', icon: ListChecks, group: 'Manage' },
   { label: 'Server logs', path: '/logs', icon: Terminal, group: 'Manage' },
   { label: 'Backups', path: '/backups', icon: DatabaseBackup, group: 'Manage' },

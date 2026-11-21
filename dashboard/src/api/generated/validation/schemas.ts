@@ -454,6 +454,18 @@ export const BpCodeList = zod.object({
 export type BpCodeList = zod.input<typeof BpCodeList>;
 export type BpCodeListOutput = zod.output<typeof BpCodeList>;
 
+export const cancelChampionshipRequestChampionshipIdMin = 0;
+export const cancelChampionshipRequestChampionshipIdMax = 4294967295;
+
+
+
+export const CancelChampionshipRequest = zod.object({
+  "championship_id": zod.int().min(cancelChampionshipRequestChampionshipIdMin).max(cancelChampionshipRequestChampionshipIdMax)
+});
+
+export type CancelChampionshipRequest = zod.input<typeof CancelChampionshipRequest>;
+export type CancelChampionshipRequestOutput = zod.output<typeof CancelChampionshipRequest>;
+
 export const cancelEventRequestEventIdMin = 0;
 export const cancelEventRequestEventIdMax = 4294967295;
 
@@ -497,6 +509,97 @@ export const CardPng = zod.instanceof(Blob);
 
 export type CardPng = zod.input<typeof CardPng>;
 export type CardPngOutput = zod.output<typeof CardPng>;
+
+export const entrantViewPlayerIdMin = 0;
+export const entrantViewPlayerIdMax = 4294967295;
+
+
+
+export const EntrantView = zod.object({
+  "name": zod.string(),
+  "player_id": zod.int().min(entrantViewPlayerIdMin).max(entrantViewPlayerIdMax)
+}).describe('One entrant, in the order they entered.');
+
+export type EntrantView = zod.input<typeof EntrantView>;
+export type EntrantViewOutput = zod.output<typeof EntrantView>;
+
+export const championshipPrizeFinalistBpMin = 0;
+export const championshipPrizeFinalistBpMax = 1000000;
+
+export const championshipPrizeParticipationBpMin = 0;
+export const championshipPrizeParticipationBpMax = 1000000;
+
+export const championshipPrizeWinnerBpMin = 0;
+export const championshipPrizeWinnerBpMax = 1000000;
+
+
+
+export const ChampionshipPrize = zod.object({
+  "finalist_bp": zod.int().min(championshipPrizeFinalistBpMin).max(championshipPrizeFinalistBpMax).optional(),
+  "participation_bp": zod.int().min(championshipPrizeParticipationBpMin).max(championshipPrizeParticipationBpMax).optional(),
+  "winner_bp": zod.int().min(championshipPrizeWinnerBpMin).max(championshipPrizeWinnerBpMax).optional()
+}).describe('What a Championship pays, in BP: to everyone drawn into the Final, to the finalists (both) and to the winner, which add up.');
+
+export type ChampionshipPrize = zod.input<typeof ChampionshipPrize>;
+export type ChampionshipPrizeOutput = zod.output<typeof ChampionshipPrize>;
+
+export const ChampionshipState = zod.enum(['scheduled', 'cancelled', 'running', 'finished']).describe('Where a Championship is: waiting for its start time (entries open from `entry_open`), being played, or over.');
+
+export type ChampionshipState = zod.input<typeof ChampionshipState>;
+export type ChampionshipStateOutput = zod.output<typeof ChampionshipState>;
+
+export const championshipViewChampionshipIdMin = 0;
+export const championshipViewChampionshipIdMax = 4294967295;
+
+export const championshipViewEventIdMin = 0;
+export const championshipViewEventIdMax = 4294967295;
+
+export const championshipViewMinDuelsMin = 0;
+export const championshipViewMinDuelsMax = 4294967295;
+
+export const championshipViewSeasonMin = 0;
+export const championshipViewSeasonMax = 4294967295;
+
+export const championshipViewYearMin = 0;
+export const championshipViewYearMax = 4294967295;
+
+
+
+export const ChampionshipView = zod.object({
+  "championship_id": zod.int().min(championshipViewChampionshipIdMin).max(championshipViewChampionshipIdMax),
+  "entrants": zod.array(EntrantView),
+  "entry_close": zod.iso.datetime({"offset":true}),
+  "entry_open": zod.iso.datetime({"offset":true}),
+  "event_id": zod.int().min(championshipViewEventIdMin).max(championshipViewEventIdMax).describe('The lobby\'s `event_id`, which the game\'s requests carry.'),
+  "min_duels": zod.int().min(championshipViewMinDuelsMin).max(championshipViewMinDuelsMax).describe('Duels a player must have played to enter.'),
+  "name": zod.string(),
+  "prize": ChampionshipPrize,
+  "season": zod.int().min(championshipViewSeasonMin).max(championshipViewSeasonMax),
+  "second": zod.union([EntrantView,zod.null()]).optional(),
+  "start": zod.iso.datetime({"offset":true}),
+  "state": ChampionshipState,
+  "winner": zod.union([EntrantView,zod.null()]).optional(),
+  "year": zod.int().min(championshipViewYearMin).max(championshipViewYearMax).describe('The banner\'s year (Japan time) and the Championship\'s number in it.')
+});
+
+export type ChampionshipView = zod.input<typeof ChampionshipView>;
+export type ChampionshipViewOutput = zod.output<typeof ChampionshipView>;
+
+export const ChampionshipList = zod.object({
+  "championships": zod.array(ChampionshipView),
+  "checked_at": zod.iso.datetime({"offset":true})
+});
+
+export type ChampionshipList = zod.input<typeof ChampionshipList>;
+export type ChampionshipListOutput = zod.output<typeof ChampionshipList>;
+
+export const ChampionshipResult = zod.object({
+  "championship": ChampionshipView,
+  "message": zod.string()
+});
+
+export type ChampionshipResult = zod.input<typeof ChampionshipResult>;
+export type ChampionshipResultOutput = zod.output<typeof ChampionshipResult>;
 
 export const codeRequestCodeMin = 6;
 export const codeRequestCodeMax = 32;
@@ -585,6 +688,25 @@ export const CreateBpCodeResult = zod.object({
 
 export type CreateBpCodeResult = zod.input<typeof CreateBpCodeResult>;
 export type CreateBpCodeResultOutput = zod.output<typeof CreateBpCodeResult>;
+
+export const createChampionshipRequestMinDuelsMin = 0;
+export const createChampionshipRequestMinDuelsMax = 4294967295;
+
+export const createChampionshipRequestNameMax = 60;
+
+
+
+export const CreateChampionshipRequest = zod.object({
+  "entry_close": zod.iso.datetime({"offset":true}),
+  "entry_open": zod.iso.datetime({"offset":true}).nullish().describe('When entries open (omitted: now); they close at `entry_close` and the draw is at `start`, all on one day.'),
+  "min_duels": zod.int().min(createChampionshipRequestMinDuelsMin).max(createChampionshipRequestMinDuelsMax).optional(),
+  "name": zod.string().min(1).max(createChampionshipRequestNameMax),
+  "prize": ChampionshipPrize.optional(),
+  "start": zod.iso.datetime({"offset":true})
+});
+
+export type CreateChampionshipRequest = zod.input<typeof CreateChampionshipRequest>;
+export type CreateChampionshipRequestOutput = zod.output<typeof CreateChampionshipRequest>;
 
 export const Kind = zod.enum(['gunslinger', 'duelist-trial', 'evolution', 'ultimate', 'anniversary']);
 
@@ -714,6 +836,29 @@ export const DownloadBackupRequest = zod.object({
 
 export type DownloadBackupRequest = zod.input<typeof DownloadBackupRequest>;
 export type DownloadBackupRequestOutput = zod.output<typeof DownloadBackupRequest>;
+
+export const editChampionshipRequestChampionshipIdMin = 0;
+export const editChampionshipRequestChampionshipIdMax = 4294967295;
+
+export const editChampionshipRequestMinDuelsMin = 0;
+export const editChampionshipRequestMinDuelsMax = 4294967295;
+
+export const editChampionshipRequestNameMax = 60;
+
+
+
+export const EditChampionshipRequest = zod.object({
+  "championship_id": zod.int().min(editChampionshipRequestChampionshipIdMin).max(editChampionshipRequestChampionshipIdMax),
+  "entry_close": zod.iso.datetime({"offset":true}).nullish(),
+  "entry_open": zod.iso.datetime({"offset":true}).nullish(),
+  "min_duels": zod.int().min(editChampionshipRequestMinDuelsMin).max(editChampionshipRequestMinDuelsMax).nullish(),
+  "name": zod.string().min(1).max(editChampionshipRequestNameMax).nullish(),
+  "prize": zod.union([ChampionshipPrize,zod.null()]).optional(),
+  "start": zod.iso.datetime({"offset":true}).nullish()
+}).describe('What to change in a Championship still waiting for its start; what is left out stays.');
+
+export type EditChampionshipRequest = zod.input<typeof EditChampionshipRequest>;
+export type EditChampionshipRequestOutput = zod.output<typeof EditChampionshipRequest>;
 
 export const editEventRequestEventIdMin = 0;
 export const editEventRequestEventIdMax = 4294967295;
@@ -2135,6 +2280,137 @@ export const GetCardImage413Response = ApiError
 export const GetCardImage415Response = ApiError
 
 export const GetCardImage500Response = ApiError
+
+
+export const ListChampionships200Response = ChampionshipList
+
+export const ListChampionships400Response = ApiError
+
+export const ListChampionships401Response = ApiError
+
+export const ListChampionships403Response = ApiError
+
+export const ListChampionships404Response = ApiError
+
+export const ListChampionships405Response = ApiError
+
+export const ListChampionships409Response = ApiError
+
+export const ListChampionships413Response = ApiError
+
+export const ListChampionships415Response = ApiError
+
+export const ListChampionships500Response = ApiError
+
+export const ListChampionships503Response = ApiError
+
+
+export const cancelChampionshipHeaderIdempotencyKeyMin = 16;
+export const cancelChampionshipHeaderIdempotencyKeyMax = 128;
+
+
+export const cancelChampionshipHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const CancelChampionshipHeader = zod.object({
+  "Idempotency-Key": zod.string().min(cancelChampionshipHeaderIdempotencyKeyMin).max(cancelChampionshipHeaderIdempotencyKeyMax).regex(cancelChampionshipHeaderIdempotencyKeyRegExp).describe('One ID per change; the same change again is answered as done.')
+})
+
+export const CancelChampionshipBody = CancelChampionshipRequest
+
+export const CancelChampionship200Response = ChampionshipResult
+
+export const CancelChampionship400Response = ApiError
+
+export const CancelChampionship401Response = ApiError
+
+export const CancelChampionship403Response = ApiError
+
+export const CancelChampionship404Response = ApiError
+
+export const CancelChampionship405Response = ApiError
+
+export const CancelChampionship409Response = ApiError
+
+export const CancelChampionship413Response = ApiError
+
+export const CancelChampionship415Response = ApiError
+
+export const CancelChampionship500Response = ApiError
+
+export const CancelChampionship503Response = ApiError
+
+
+export const createChampionshipHeaderIdempotencyKeyMin = 16;
+export const createChampionshipHeaderIdempotencyKeyMax = 128;
+
+
+export const createChampionshipHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const CreateChampionshipHeader = zod.object({
+  "Idempotency-Key": zod.string().min(createChampionshipHeaderIdempotencyKeyMin).max(createChampionshipHeaderIdempotencyKeyMax).regex(createChampionshipHeaderIdempotencyKeyRegExp).describe('One ID per change; the same change again is answered as done.')
+})
+
+export const CreateChampionshipBody = CreateChampionshipRequest
+
+export const CreateChampionship200Response = ChampionshipResult
+
+export const CreateChampionship400Response = ApiError
+
+export const CreateChampionship401Response = ApiError
+
+export const CreateChampionship403Response = ApiError
+
+export const CreateChampionship404Response = ApiError
+
+export const CreateChampionship405Response = ApiError
+
+export const CreateChampionship409Response = ApiError
+
+export const CreateChampionship413Response = ApiError
+
+export const CreateChampionship415Response = ApiError
+
+export const CreateChampionship500Response = ApiError
+
+export const CreateChampionship503Response = ApiError
+
+
+export const editChampionshipHeaderIdempotencyKeyMin = 16;
+export const editChampionshipHeaderIdempotencyKeyMax = 128;
+
+
+export const editChampionshipHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const EditChampionshipHeader = zod.object({
+  "Idempotency-Key": zod.string().min(editChampionshipHeaderIdempotencyKeyMin).max(editChampionshipHeaderIdempotencyKeyMax).regex(editChampionshipHeaderIdempotencyKeyRegExp).describe('One ID per change; the same change again is answered as done.')
+})
+
+export const EditChampionshipBody = EditChampionshipRequest
+
+export const EditChampionship200Response = ChampionshipResult
+
+export const EditChampionship400Response = ApiError
+
+export const EditChampionship401Response = ApiError
+
+export const EditChampionship403Response = ApiError
+
+export const EditChampionship404Response = ApiError
+
+export const EditChampionship405Response = ApiError
+
+export const EditChampionship409Response = ApiError
+
+export const EditChampionship413Response = ApiError
+
+export const EditChampionship415Response = ApiError
+
+export const EditChampionship500Response = ApiError
+
+export const EditChampionship503Response = ApiError
 
 
 export const ListCountries200Response = CountryList

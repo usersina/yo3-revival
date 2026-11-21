@@ -56,8 +56,12 @@ fn committed_openapi_matches_the_router_without_starting_a_server() {
         ("/panel/api/v1/events/create", "post", "createEvent"),
         ("/panel/api/v1/events/edit", "post", "editEvent"),
         ("/panel/api/v1/events/cancel", "post", "cancelEvent"),
+        ("/panel/api/v1/championships", "get", "listChampionships"),
+        ("/panel/api/v1/championships/create", "post", "createChampionship"),
+        ("/panel/api/v1/championships/edit", "post", "editChampionship"),
+        ("/panel/api/v1/championships/cancel", "post", "cancelChampionship"),
     ];
-    assert_eq!(paths.len(), 39);
+    assert_eq!(paths.len(), 43);
     for (path, method, id) in expected {
         let op = &generated["paths"][path][method];
         assert_eq!(op["operationId"], id);
@@ -815,4 +819,36 @@ async fn an_admin_schedules_edits_and_cancels_official_events_and_a_moderator_on
     let audit = b.call("GET", "/panel/api/v1/audit", json!(null)).await;
     let ops: Vec<&str> = audit.body["entries"].as_array().unwrap().iter().filter_map(|e| e["operation"].as_str()).filter(|o| o.ends_with("-event")).collect();
     assert_eq!(ops, ["cancel-event", "edit-event", "create-event"], "newest first, each once: {}", audit.body);
+}
+
+#[tokio::test]
+async fn an_admin_schedules_edits_and_cancels_the_championship_and_a_moderator_only_looks() {
+    let mut b = Browser::new("championship").await;
+    assert_eq!(b.call("GET", "/panel/api/v1/championships", json!(null)).await.status, 401, "no session, no list");
+    b.sign_in("Croquet").await;
+    let now = chrono::Utc::now();
+    let at = |hours: i64| (now + chrono::Duration::hours(hours)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let new = json!({ "name": "Dashboard Cup", "entry_close": at(2), "start": at(3), "min_duels": 1, "prize": { "winner_bp": 500 } });
+    assert_eq!(b.call("POST", "/panel/api/v1/championships/create", new.clone()).await.status, 403, "a moderator doesn't schedule");
+    assert_eq!(b.call("GET", "/panel/api/v1/championships", json!(null)).await.body["championships"].as_array().unwrap().len(), 0);
+    b.sign_in("Pegasus").await;
+    let made = b.call("POST", "/panel/api/v1/championships/create", new.clone()).await;
+    assert_eq!(made.status, 200, "{}", made.body);
+    let (id, c) = (made.body["championship"]["championship_id"].as_u64().unwrap(), &made.body["championship"]);
+    assert_eq!((c["state"].as_str(), c["min_duels"].as_u64(), c["prize"]["winner_bp"].as_u64()), (Some("scheduled"), Some(1), Some(500)));
+    assert_eq!(b.call("POST", "/panel/api/v1/championships/create", new).await.body["championship"]["championship_id"].as_u64(), Some(id), "a retry is the same one");
+    // Invalid: the start before entries close, unknown fields, an unknown Championship.
+    let bad = json!({ "name": "Backwards", "entry_close": at(10), "start": at(9) });
+    assert_eq!(b.call("POST", "/panel/api/v1/championships/create", bad).await.status, 400);
+    assert_eq!(b.call("POST", "/panel/api/v1/championships/create", json!({ "name": "x", "entry_close": at(20), "start": at(21), "extra": 1 })).await.status, 400);
+    assert_eq!(b.call("POST", "/panel/api/v1/championships/edit", json!({ "championship_id": 99 })).await.status, 404);
+    let edited = b.call("POST", "/panel/api/v1/championships/edit", json!({ "championship_id": id, "name": "Renamed", "min_duels": 0 })).await;
+    assert_eq!(edited.status, 200, "{}", edited.body);
+    assert_eq!((edited.body["championship"]["name"].as_str(), edited.body["championship"]["prize"]["winner_bp"].as_u64()), (Some("Renamed"), Some(500)));
+    let cancelled = b.call("POST", "/panel/api/v1/championships/cancel", json!({ "championship_id": id })).await;
+    assert_eq!((cancelled.status, cancelled.body["championship"]["state"].as_str()), (200, Some("cancelled")), "{}", cancelled.body);
+    assert_eq!(b.call("POST", "/panel/api/v1/championships/cancel", json!({ "championship_id": id })).await.status, 409, "already cancelled");
+    let audit = b.call("GET", "/panel/api/v1/audit", json!(null)).await;
+    let ops: Vec<&str> = audit.body["entries"].as_array().unwrap().iter().filter_map(|e| e["operation"].as_str()).filter(|o| o.ends_with("-championship")).collect();
+    assert_eq!(ops, ["cancel-championship", "edit-championship", "create-championship"], "newest first, each once: {}", audit.body);
 }

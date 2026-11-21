@@ -7,7 +7,7 @@ use serde_json::json;
 use utoipa::ToSchema;
 
 use super::{Actor, Api, MutationError, MutationErrorCode};
-use crate::championship::{Championship, Championships, Changes, New, Prize, State};
+use crate::championship::{Championship, ChampionshipPrize, ChampionshipState, Championships, Changes, New};
 use crate::lock::Locked;
 use crate::logins::Role;
 use crate::store::AuditRow;
@@ -39,8 +39,8 @@ pub struct ChampionshipView {
     /// Duels a player must have played to enter.
     #[schema(maximum = 4294967295_u32)]
     pub min_duels: u32,
-    pub prize: Prize,
-    pub state: State,
+    pub prize: ChampionshipPrize,
+    pub state: ChampionshipState,
     pub entrants: Vec<EntrantView>,
     pub winner: Option<EntrantView>,
     pub second: Option<EntrantView>,
@@ -66,7 +66,7 @@ pub struct CreateChampionshipRequest {
     #[schema(maximum = 4294967295_u32)]
     pub min_duels: u32,
     #[serde(default)]
-    pub prize: Prize,
+    pub prize: ChampionshipPrize,
 }
 
 /// What to change in a Championship still waiting for its start; what is left out stays.
@@ -88,7 +88,7 @@ pub struct EditChampionshipRequest {
     #[schema(maximum = 4294967295_u32)]
     pub min_duels: Option<u32>,
     #[serde(default)]
-    pub prize: Option<Prize>,
+    pub prize: Option<ChampionshipPrize>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
@@ -148,7 +148,7 @@ impl Api {
         let new = New { name: request.name.clone(), entry_open: request.entry_open.unwrap_or_else(Utc::now).timestamp(), entry_close: request.entry_close.timestamp(),
             start: request.start.timestamp(), min_duels: request.min_duels, prize: request.prize };
         let (c, fresh) = self.with_championships(|all| {
-            let same = all.list.iter().find(|c| c.state == State::Scheduled && c.name == new.name.trim() && c.entry_close == new.entry_close && c.start == new.start
+            let same = all.list.iter().find(|c| c.state == ChampionshipState::Scheduled && c.name == new.name.trim() && c.entry_close == new.entry_close && c.start == new.start
                 && c.min_duels == new.min_duels && c.prize == new.prize).cloned();
             match same { Some(c) => Ok((c, false)), None => all.create(new).map(|c| (c, true)) }
         }).map_err(refuse)?;
@@ -171,7 +171,7 @@ impl Api {
     pub fn cancel_championship(&self, request: &CancelChampionshipRequest, actor: Actor<'_>, origin: &str) -> Result<ChampionshipResult, MutationError> {
         let identity = actor.resolve(&self.accounts.locked(), Role::Admin)?;
         let before = self.with_championships(|all| all.cancel(request.championship_id)).map_err(refuse)?;
-        let after = Championship { state: State::Cancelled, ..before.clone() };
+        let after = Championship { state: ChampionshipState::Cancelled, ..before.clone() };
         self.audit_championship(identity.by, origin, "cancel-championship", &after, Some(&before));
         Ok(ChampionshipResult { championship: view(&after), message: format!("Championship {} is cancelled.", after.id) })
     }
