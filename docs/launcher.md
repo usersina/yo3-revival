@@ -195,7 +195,7 @@ press **I saved it**), then Settings. In a text box the first Escape only leaves
 | --- | --- |
 | Game | The game folder (**Change…** opens Setup), **Verify** (checks the game and YO3 Revival's own files in full, and says how to fix what isn't right), the [screen size](#screen-size), [opening the game without the launcher](#open-the-game-directly) (a tick: pressing it sets it up at once, asking Windows for permission when the game folder needs it), and **Add** for a desktop shortcut |
 | Accounts | Each server you're signed in to on this PC: **Sign out**, **Sign out everywhere** (every PC signed in to the account must sign in again; asks for the password when this PC didn't stay signed in) and **Change password** (signs every PC out, this one too) |
-| Singleplayer | **Anime cards** (your own server's `anime-cards` setting, [see below](#anime-cards)) with, right under it while it is on, **Anime pictures** ("N of M", [**Get pictures**, **Add pictures from a file…** and **Save pictures to a file…**](anime-cards.md#artwork)), the [banlist](#banlist), **Back up now**, **Restore…** (a backup from a recent start), **Unlock all cards** (three of every card, in every artwork, for every player of your own server; it asks first), **Reset…** (starts your Singleplayer data again; the old data is kept beside it, renamed) and **Open data folder** |
+| Singleplayer | **Anime cards** (your own server's `anime-cards` setting, [see below](#anime-cards)) with, right under it while it is on, **Anime pictures** ("N of M", [**Get pictures**, **Add pictures from a file…** and **Save pictures to a file…**](anime-cards.md#artwork)), **Destiny Draw** (your own server's `destiny-draw` setting, [see below](#destiny-draw)), the [banlist](#banlist), **Back up now**, **Restore…** (a backup from a recent start), **Unlock all cards** (three of every card, in every artwork, for every player of your own server; it asks first), **Reset…** (starts your Singleplayer data again; the old data is kept beside it, renamed) and **Open data folder** |
 | Advanced | On Linux, the Wine prefix and the Wine program (empty for Wine's defaults; **Save** checks it); **Detailed logs** for your servers; **Export logs…** and **Open logs folder**; [Reset local game data](#reset-local-game-data) |
 | About | The version, **Check for updates**, release notes, the project, licences and credits |
 
@@ -232,6 +232,13 @@ downloaded (about 10 MB from ProjectIgnis' picture server, how many of the cards
 the game's artwork), **Get pictures** (the dialog closes and the bar under the switch shows the download; the result is a toast) or **Not now**. The switch stays on
 whatever you choose, and **Anime pictures**, right under the switch, downloads later. A server you join never shows this switch: its host
 decides.
+
+### Destiny Draw
+
+Settings → Singleplayer → **Destiny Draw** (off by default) is your own server's `destiny-draw` setting, read from and written to it
+the same way as Anime cards. It takes effect at your next duel against the computer, with no restart: once per duel, at your Draw
+Phase with 1000 LP or less, the game asks whether to pick the card you draw ([playing](playing.md#destiny-draw)). A server you join
+never shows this switch: its host decides.
 
 ### Banlist
 

@@ -192,6 +192,16 @@ Deck card.
 The anime effects are ProjectIgnis' scripts. They load and play, but only a few have been checked against the episodes: if
 one looks wrong, [report it](launcher.md#logs-and-support) with the card and the steps.
 
+## Destiny Draw
+
+Off by default. Playing alone, turn on **Destiny Draw** in Desktop's Settings → Singleplayer → Cards (your own server's
+`destiny-draw` setting, no restart: it starts at your next duel); a host of a server sets `destiny-draw` to `on`
+([the setting](guide.md#live-settings)). It exists only in duels against the computer (NPC duels): never in duels between
+players, events or the Ultimate Match. Once per duel, at the start of your Draw Phase, when you have 1000 LP or less and
+cards in your Deck, a Yes/No window asks whether to use Destiny Draw. Yes opens the list of your Deck (one of each name)
+and the card you pick is the card you draw that turn. No, and you are asked again at a later draw until you use it. The duel's
+chat window says at the start that it is on.
+
 ## Chat commands
 
 The server answers a few commands **only to you**, in your chat window, so they never reach the room. The game's own

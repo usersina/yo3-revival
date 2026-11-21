@@ -124,6 +124,9 @@ pub fn problem(dir: Option<&Path>, program: &Path) -> Option<String> {
 /// What a duel tells its players when it plays the anime card versions: the card panel shows the game's text.
 pub const ANIME_NOTE: &str = "Anime card versions are on: cards with one play by their anime effects, whatever their card text says.";
 
+/// What an NPC duel tells the player when Destiny Draw is on (#71).
+pub const DESTINY_NOTE: &str = "Destiny Draw is on: once this duel, at your Draw Phase with 1000 LP or less, you may choose the card you draw.";
+
 /// What a game is told when it may not duel because its card versions are not the server's (#60): refused at every way
 /// into a duel (Auto Duel, NPC duels, Create Duel and challenges, official and user events, Select Deck).
 pub const STALE_GAME_NOTE: &str = "Your game is not showing the card versions this server plays now (the host changed them, or your game started without them): close the game and press Play again to duel.";

@@ -13,6 +13,13 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- **Destiny Draw** (off by default): in a duel against the computer, once per duel, at the start of your Draw Phase with
+  1000 LP or less, the game asks whether to use Destiny Draw; if you do, you pick any card left in your Deck and draw it.
+  Say no and you are asked again at a later draw, until you use it. Turn it on in Settings → Singleplayer → Cards, or, as
+  a host, with `yo3 set destiny-draw on` (it applies from the next duel). Duels between players and events never have it.
+
 ## v0.1.8 (2026-11-20)
 
 Multiplayer: update to v0.1.8 to join the hosted server after deployment.

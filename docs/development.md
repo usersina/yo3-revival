@@ -554,7 +554,7 @@ The NPCs' duel bot (`crates/yo3-engine/src/bot`, the engine's `think` request) i
 CPU on the client's own NPC decks (`tests/npc_bot.rs`, 6 duels in the normal run). After changing it, play more, with
 the same deck on both sides too (skill alone), against the bot's first version (`YO3_BOT_RIVAL=action`) or itself
 (`bot`), with a style of its own (`YO3_BOT_STYLE='{"sees":true}'`) or the heroes' Heart of the Cards (`YO3_BOT_SKILL=1`;
-`YO3_CHECK_SKILLS=1` gives it to the duel check's opponent), and read a duel's look-ahead decisions with
+`YO3_CHECK_SKILLS=1` gives it to the duel check's opponent and Destiny Draw to its own side), and read a duel's look-ahead decisions with
 `YO3_BOT_TRACE`:
 
 ```bash
