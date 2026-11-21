@@ -25,6 +25,7 @@ Multiplayer: update to v0.1.12 to join the hosted server after deployment.
 - When a page can't load, you now see why (you're not signed in, the game is still signing in, the server didn't answer
   or took too long) instead of the browser's "connection reset".
 - `where CARD` names packs as the shop does ("Pack 1", not "Booster Pack 1").
+- Anime cards: each anime card's text now starts with **[Anime]**, so you can see which cards play as their anime versions.
 - Anime cards: The Winged Dragon of Ra now shows its anime text. It played the anime effect, but its text was too long for
   the game, which showed the normal card's text instead.
 

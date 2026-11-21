@@ -398,6 +398,12 @@ YO3_CARD_SWEEP=all cargo nextest run --release -p yo3-server --test card_sweep -
 ```
 
 Commit `engine/fetch.sh` and `engine/card-ids.json` only when all of these pass.
+Then `tools/engine/anime-map.py --candidates` lists any new ProjectIgnis anime card that may be a game card's anime version
+while its row in `engine/anime/cards.tsv` has no `anime_id` (exit 1): review it into the table, or name it in the row's note.
+
+For a card a player reports, `tools/engine/anime-map.py --card NAME` prints its row, what the map decided and why, the
+script that plays it and its text (and its length against the connection DLL's limit). `--compare EDOPRO_APP` lists the
+anime cards whose name, text or script differ between the pins and an EDOPro install (its `app` folder).
 
 **Card script overrides.** `engine/overrides/` holds our own card scripts, AGPL like ProjectIgnis' scripts they start
 from: the engine loads `engine/overrides/c<passcode>.lua` instead of ProjectIgnis' script of that name. One is for a

@@ -136,6 +136,12 @@ A player reported anime cards showing the wrong text: The Winged Dragon of Ra an
       cards) and `retained.tsv`, so a card nobody reviewed can't hide: `card_profile.rs` fails on a game card without a
       row. One anime_id per card: where the anime had several versions (Crush Card Virus), it is the one ProjectIgnis
       scripts. A card whose anime version is the game's own (Deck Devastation Virus) has no anime_id and a note.
+- [x] An `[Anime]` first line on every anime card's text (`profile::ANIME_TAG`, the owner's wording), so players see which
+      cards play as their anime versions; a single `\n` (the game draws `\r\n` as a blank line). Live: the reveal panel
+      showed "[Anime]" above Crush Card Virus's anime text.
+- [x] `anime-map.py --card NAME` (one card's row, decision, script and text), `--compare EDOPRO_APP` (375 anime cards
+      the same as EDOPro 41.0.2, 37 with another script or text, the rest our own records) and `--candidates` (none;
+      Action Cards and Skills are not anime versions), tested in `test_anime_map.py`.
 
 ## 2026-11-21 — Problem reports: a broken game's logs go to the host
 

@@ -157,6 +157,7 @@ keep the game's version.
 
 The game shows those cards as their anime versions too (the **card profile**, [how it works](anime-cards.md#the-card-profile)):
 the card's type, Level, ATK, DEF, attribute and race, its effect text, and whether it belongs in the Main or the Extra Deck.
+An anime card's text starts with an **[Anime]** line, so you can tell which cards play as their anime versions.
 Your card keeps its place: Flame Swordsman is still the Flame Swordsman you own, and becomes the anime's Normal Monster, a Main
 Deck card.
 

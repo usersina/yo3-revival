@@ -41,6 +41,8 @@ TABLE = os.path.join(ENGINE, "anime", "cards.tsv")
 COLUMNS = ["cid", "name", "edopro_id", "anime_id", "status", "note"]
 WITH_ANIME = {"Anime", "Anime / Normal", "Reconstruction"}
 STATUSES = WITH_ANIME | {"Held", "Kept", ""}
+# The longest card text the connection DLL shows (YO3_PROFILE_TEXT_CHARS in tools/mod/card-profile-logic.h).
+DLL_TEXT_CHARS = 4096
 
 
 def read(path):
@@ -80,6 +82,122 @@ def table():
     if bad:
         sys.exit("engine/anime/cards.tsv:\n  " + "\n  ".join(bad))
     return rows
+
+
+def unofficial_card(code):
+    """The pinned unofficial database's row of an anime passcode, or our corrected record of it: name, text, type, alias."""
+    rec = records().get(code)
+    if rec:
+        return {"name": rec["name"], "text": rec.get("text", ""), "type": rec["type"], "alias": rec["alias"]}
+    db = sqlite3.connect(os.path.join(ENGINE, "vendor", "BabelCDB", "cards-unofficial.cdb"))
+    row = db.execute("select t.name, t.desc, d.type, d.alias from datas d join texts t on t.id = d.id where d.id = ?", (code,)).fetchone()
+    return row and {"name": row[0], "text": row[1], "type": row[2], "alias": row[3]}
+
+
+def card_report(query, data):
+    """--card: one card's row, what the map decided and why, the script that plays it and its text, as lines."""
+    q = query.strip().lower()
+    rows = [r for r in table() if r["cid"] == q or q in r["name"].lower()]
+    exact = [r for r in rows if r["name"].lower() == q]
+    rows = exact or rows
+    if not rows:
+        return ["No card of the game is named like %r." % query]
+    if len(rows) > 8:
+        return ["%d cards match %r: %s, ... Be more specific." % (len(rows), query, ", ".join(r["name"] for r in rows[:8]))]
+    entries = {e["cid"]: e for e in data["cards"]}
+    out = []
+    for r in rows:
+        out.append("%s (Konami id %s): EDOPro %s, anime_id %s, status %s" % (r["name"], r["cid"], r["edopro_id"] or "none",
+                   r["anime_id"] or "none", r["status"] or "none"))
+        if r["note"]:
+            out.append("  note: " + r["note"])
+        e = entries.get(int(r["cid"]))
+        if not e:
+            out.append("  plays and shows as the game's card")
+        else:
+            out.append("  map: %s" % e["status"] + ("; script %s" % e["script"] if e.get("script") else ""))
+            for why in [e.get("reason")] + e.get("holds", []):
+                if why:
+                    out.append("  why: " + why)
+            for shown in e.get("profile", []):
+                out.append("  the game shows: " + shown)
+            card = e.get("anime") and unofficial_card(e["anime"])
+            if card:
+                units = len(card["text"].encode("utf-16-le")) // 2
+                out.append("  anime text: %d characters%s" % (units, " (over the connection DLL's %d: the game would show its own)" % DLL_TEXT_CHARS if units > DLL_TEXT_CHARS else ""))
+                out.append("    " + card["text"].replace("\r", "").replace("\n", "\n    "))
+    return out
+
+
+def compare_report(edopro):
+    """--compare: each anime card the map uses whose name, text or script differs between the pinned data and an EDOPro install
+    (its `expansions/cards-unofficial.cdb` and `script/unofficial/`), as lines."""
+    db = os.path.join(edopro, "expansions", "cards-unofficial.cdb")
+    if not os.path.isfile(db):
+        sys.exit("%s has no expansions/cards-unofficial.cdb: give EDOPro's app folder" % edopro)
+    theirs = sqlite3.connect(db)
+    version = os.path.join(edopro, "..", "VERSION")
+    out = ["EDOPro %s against the pins (scripts %s, database %s)" % (read(version).strip() if os.path.isfile(version) else "(version unknown)",
+           pins()["scripts"][:7], pins()["database"][:7])]
+    same = 0
+    for r in table():
+        if not r["anime_id"]:
+            continue
+        code = int(r["anime_id"])
+        ours = unofficial_card(code)
+        row = theirs.execute("select t.name, t.desc from texts t where t.id = ?", (code,)).fetchone()
+        diffs = []
+        if code in records():
+            diffs.append("ours is our own record (engine/anime/records.json)")
+        elif not row:
+            diffs.append("EDOPro has no entry %d" % code)
+        else:
+            if row[0] != ours["name"]:
+                diffs.append("name: EDOPro %r, ours %r" % (row[0], ours["name"]))
+            if row[1].replace("\r", "") != ours["text"].replace("\r", ""):
+                diffs.append("text differs")
+        mine = os.path.join(ENGINE, "vendor", "CardScripts", "unofficial", "c%d.lua" % code)
+        their = os.path.join(edopro, "script", "unofficial", "c%d.lua" % code)
+        if os.path.isfile(os.path.join(ENGINE, "overrides", "c%d.lua" % code)):
+            diffs.append("ours plays engine/overrides/c%d.lua" % code)
+        elif os.path.isfile(mine) and os.path.isfile(their) and read(mine).rstrip() != read(their).rstrip():
+            diffs.append("script differs (diff %s %s)" % (their, os.path.relpath(mine)))
+        if diffs:
+            out.append("%s (%s, anime %d): %s" % (r["name"], r["cid"], code, "; ".join(diffs)))
+        else:
+            same += 1
+    out.append("%d anime cards the same in both" % same)
+    return out
+
+
+def candidates():
+    """--candidates: anime cards in the pinned unofficial database that may be a game card's anime version while its row has no
+    anime_id: the same name (" (Anime)" aside) or an alias to its EDOPro passcode. A passcode the table already uses or a
+    row's note names (reviewed as another card) is left out. Run after moving the pins (engine/fetch.sh --update)."""
+    rows = table()
+    used = {r["anime_id"] for r in rows if r["anime_id"]}
+    db = sqlite3.connect(os.path.join(ENGINE, "vendor", "BabelCDB", "cards-unofficial.cdb"))
+    # Anime cards, not the Action Cards (0x10000000) or Skills (0x8000000) of later series, which share names with real cards.
+    anime = db.execute("select d.id, d.alias, t.name from datas d join texts t on t.id = d.id where d.ot & 4 and d.type & 0x18000000 = 0").fetchall()
+    by_name, by_alias = {}, {}
+    for code, alias, name in anime:
+        if str(code) in used:
+            continue
+        base = re.sub(r"\s*\(anime\)$", "", name, flags=re.I).strip().lower()
+        if base == name.strip().lower() and name.endswith(")"):
+            continue  # another medium's version: (Manga), (VG), (Pre-Errata)...
+        by_name.setdefault(base, []).append((code, name))
+        if alias:
+            by_alias.setdefault(alias, []).append((code, name))
+    out = []
+    for r in rows:
+        if r["anime_id"]:
+            continue
+        found = by_name.get(r["name"].lower(), []) + (by_alias.get(int(r["edopro_id"]), []) if r["edopro_id"] else [])
+        found = [(c, n) for c, n in dict(found).items() if str(c) not in r["note"]]
+        for code, name in found:
+            out.append("%s (%s): %s %d" % (r["name"], r["cid"], name, code))
+    return out
 
 
 def official_passcodes(alias):
@@ -482,7 +600,7 @@ def doc(data):
            "| Part | What changes |", "| --- | --- |",
            "| Rules engine | The anime card's script: its effects, stats, types and summoning procedures |",
            "| Client metadata | The client's own card table is rewritten in memory by the connection DLL: kind (Normal, Effect, Spell, Trap...), Spell/Trap kind, Level, ATK and DEF (also numbers that are not multiples of ten, and `?`), attribute, race, and whether the card is a Main or an Extra Deck card |",
-           "| Card display | The anime card's effect text and, when you provide it, its artwork ([below](#artwork)) |",
+           "| Card display | The anime card's effect text under an **[Anime]** line and, when you provide it, its artwork ([below](#artwork)) |",
            "| Saved decks | Cards keep their place in the collection and their quantities in every deck; a card whose class changes (Flame Swordsman: Extra Deck in the game, Main Deck in the anime) moves to the list the profile puts it in, in the server's decks (list, uploads, checks, NPC and official decks) and in your own local deck files (the launcher places them before the game starts, [below](#local-deck-files)), with no manual editing |",
            "| Duel check | `--duel-check` compares the client's view with the engine, and holds the profile's cards to what the profile changes of them (what is the game's own is the client's data, which `card_data.rs` holds equal to the engine's for every card): the first time a profile monster is face-up on the field its base ATK and DEF (a `?` too) must be the profile's, and the self-play (`tests/duel_check.rs`, anime decks of 30 duels by default, 300 in a full run, and decks made of the cards the profile changes) also checks each deck card's Level, race and attribute against the engine's card data (on the field those are the effects' as much as the card's), so a profile that disagrees with what the engine plays fails the check (`a_profile_that_differs_from_the_engine_fails_the_duel_check` proves it fails). The native checkpoints (`[YO3 EXPECT]`) hash the stats the client actually received, which come from the profile's row and the engine's field reports |",
            "", "The server picks the profile (the `anime-cards` setting, later an event) and pins it: the game fetches it once, when it starts"
@@ -642,7 +760,20 @@ def main():
     ap.add_argument("--check", action="store_true", help="fail if engine/anime-cards.json is not what the table builds")
     ap.add_argument("--releases", action="store_true", help="print how many held cards each category of the card profile would release")
     ap.add_argument("--list", action="store_true", help="print the held cards and why")
+    ap.add_argument("--card", metavar="NAME", help="print one card's row (a Konami id or part of a name): its status, why, script and anime text")
+    ap.add_argument("--compare", metavar="EDOPRO_APP", help="list the anime cards whose name, text or script differ from an EDOPro install's (its app folder)")
+    ap.add_argument("--candidates", action="store_true", help="list anime cards that may be a game card's anime version while its row has no anime_id; exit 1 if any")
     args = ap.parse_args()
+    if args.compare:
+        print("\n".join(compare_report(args.compare)))
+        return
+    if args.candidates:
+        found = candidates()
+        print("\n".join(found) if found else "No candidates: every same-named or aliased anime card is in the table or noted.")
+        sys.exit(1 if found else 0)
+    if args.card:
+        print("\n".join(card_report(args.card, json.loads(read(os.path.join(ENGINE, "anime-cards.json"))))))
+        return
     data = build()
     out = os.path.join(ENGINE, "anime-cards.json")
     if args.releases:

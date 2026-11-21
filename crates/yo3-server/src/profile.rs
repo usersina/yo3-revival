@@ -29,6 +29,9 @@ use yo3_data::Card;
 
 /// The format's first line.
 pub const MAGIC: &str = "yo3-card-profile 1";
+/// The first line of an anime card's text in the game (Edit Deck, the Card Album, a duel's card panel), so a player sees
+/// which cards play as their anime versions.
+pub const ANIME_TAG: &str = "[Anime]";
 /// The longest card text the connection DLL takes, in UTF-16 units (`YO3_PROFILE_TEXT_CHARS` in
 /// `tools/mod/card-profile-logic.h`): a longer one is skipped and the game shows its own text (anime Ra's, 2406, was
 /// skipped at 2048 until v0.1.12).
@@ -378,7 +381,8 @@ impl Profile {
                 b = b & !(MASK_ATTRIBUTE | MASK_RACE) | (8 + class) << 8 | (23 + class) << 19;
                 a &= !MASK_STAT;
             }
-            let text = (!data.text.is_empty()).then(|| data.text.clone());
+            // The game's text panel names an anime card as one: its own line above the anime text.
+            let text = (!data.text.is_empty()).then(|| format!("{ANIME_TAG}\n{}", data.text));
             targets.insert(card.row, Target { row: card.row, cid: card.cid, anime: data.code, words: [a, b], original: card.words, genre: card.genre, atk, def, text, differs: data.differs.clone() });
         }
         skipped.sort_unstable();
@@ -688,7 +692,7 @@ mod tests {
         let (profile, _) = Profile::build("anime", &game, &data);
         let file = profile.render();
         assert!(file.starts_with("yo3-card-profile 1\nprofile anime\nhash "), "{file}");
-        assert!(file.contains("text 1 \"Anime text.\"\nart 4000\n"));
+        assert!(file.contains("text 1 \"[Anime]\\nAnime text.\"\nart 4000\n"), "the anime line first: {file}");
         assert_eq!(Profile::identify(&file), Some(("anime".into(), profile.hash())));
         assert_eq!(Profile::build("anime", &game, &data).0.render(), file);
         assert_eq!(Profile::official().render(), "", "the official profile is an empty file");

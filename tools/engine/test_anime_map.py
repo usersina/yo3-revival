@@ -229,5 +229,40 @@ class AnimeMap(unittest.TestCase):
         self.assertEqual((ROOT / 'docs/anime-cards.md').read_text(encoding='utf-8'), anime_map.doc(data))
 
 
+    # The three helpers for a reported card (--card), an EDOPro install (--compare) and a move of the pins (--candidates).
+
+    def test_a_card_is_looked_up_by_name_or_konami_id(self):
+        ra = '\n'.join(anime_map.card_report('winged dragon of ra', MAP))
+        self.assertIn('anime_id 511600400', ra)
+        self.assertIn('map: mapped; script unofficial/c511600400.lua', ra)
+        self.assertIn('anime text: 2406 characters', ra)
+        virus = '\n'.join(anime_map.card_report('6284', MAP))
+        self.assertIn('anime_id none', virus)
+        self.assertIn("plays and shows as the game's card", virus)
+        self.assertIn('Be more specific', anime_map.card_report('dragon', MAP)[0])
+        self.assertIn('No card', anime_map.card_report('zzzz', MAP)[0])
+
+    def test_no_anime_card_waits_outside_the_table(self):
+        self.assertEqual(anime_map.candidates(), [], 'review it into engine/anime/cards.tsv, or name it in its row note')
+
+    def test_an_edopro_install_is_compared_card_by_card(self):
+        import shutil, sqlite3, tempfile
+        with tempfile.TemporaryDirectory() as app:
+            os_app = Path(app)
+            (os_app / 'expansions').mkdir()
+            (os_app / 'script/unofficial').mkdir(parents=True)
+            db = os_app / 'expansions/cards-unofficial.cdb'
+            shutil.copy(ROOT / 'engine/vendor/BabelCDB/cards-unofficial.cdb', db)
+            with sqlite3.connect(db) as c:
+                c.execute("update texts set desc = 'changed' where id = 513000009")
+            shutil.copy(ROOT / 'engine/vendor/CardScripts/unofficial/c511600400.lua', os_app / 'script/unofficial/c511600400.lua')
+            with open(os_app / 'script/unofficial/c511600400.lua', 'a', encoding='utf-8') as f:
+                f.write('\n-- changed\n')
+            report = '\n'.join(anime_map.compare_report(app))
+        self.assertIn('Crush Card Virus (4667, anime 513000009): text differs', report)
+        self.assertIn('The Winged Dragon of Ra (5000, anime 511600400): script differs', report)
+        self.assertIn('Dark Strike Fighter (8035, anime 513000079): ours is our own record', report)
+
+
 if __name__ == '__main__':
     unittest.main()
