@@ -21,7 +21,10 @@
 #define YO3_PROFILE_MAX_CARDS 2048
 #define YO3_PROFILE_MAX_TEXTS 1024
 #define YO3_PROFILE_MAX_ART 2048
-#define YO3_PROFILE_TEXT_CHARS 2048
+/* The longest card text, in UTF-16 units: anime Ra's is 2406 (#60). The game copies the text into a growing
+ * std::wstring at each of its readers of 0x537510, so no buffer of the game's bounds it. Keep yo3-server's
+ * profile::CLIENT_TEXT_CHARS equal. */
+#define YO3_PROFILE_TEXT_CHARS 4096
 #define YO3_PROFILE_MAX_BYTES (4u << 20)
 #define YO3_STAT_KEEP 0     /* the a word's own value */
 #define YO3_STAT_EXACT 1    /* `value` is shown */

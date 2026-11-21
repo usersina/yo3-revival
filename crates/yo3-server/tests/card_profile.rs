@@ -154,6 +154,20 @@ fn the_anime_data_the_profile_reads_matches_the_map() {
     assert!(anime.len() >= 300 && anime.contains_key(&FLAME_SWORDSMAN) && anime[&NEGATE_ATTACK].ty & 2 != 0);
 }
 
+/// Every anime text fits the connection DLL (`profile::CLIENT_TEXT_CHARS`, `YO3_PROFILE_TEXT_CHARS` in the DLL), which
+/// skips a longer one and leaves the game's text: anime Ra's 2406 characters were over the old 2048 (a player saw Ra's
+/// normal text while it played the anime effect).
+#[test]
+fn every_anime_text_fits_the_connection_dll() {
+    let Some(dir) = engine_dir() else { return };
+    let anime = read_anime(&dir).expect("the map and the database read");
+    let longest = anime.iter().map(|(cid, a)| (a.text.encode_utf16().count(), *cid)).max().expect("anime cards");
+    assert!(longest.0 <= yo3_server::profile::CLIENT_TEXT_CHARS, "Konami id {}: {} UTF-16 units", longest.1, longest.0);
+    assert!(anime[&5000].text.encode_utf16().count() > 2048, "Ra's text is the long one this protects");
+    let dll = std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tools/mod/card-profile-logic.h")).unwrap();
+    assert!(dll.contains(&format!("#define YO3_PROFILE_TEXT_CHARS {}", yo3_server::profile::CLIENT_TEXT_CHARS)), "the DLL's limit is the server's");
+}
+
 // One card of each released category (issue #60, `PROFILE_COVERS`): what the client's row says before and under the profile,
 // and where a deck keeps the card. The category's real-core scenario is in tests/anime_cards.rs, and the self-play duel check
 // holds the engine's field to the profile (tests/duel_check.rs).

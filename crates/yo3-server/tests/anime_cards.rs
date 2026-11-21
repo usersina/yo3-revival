@@ -557,3 +557,25 @@ fn aurora_is_a_question_mark_in_hand_and_takes_the_banished_synchros_atk() {
     assert_eq!(s.count(0, "removed", ARMOR_MASTER), 1);
     clean(&s);
 }
+
+const CRUSH_CARD_VIRUS: u16 = 4667;
+
+/// Crush Card Virus (4667): ProjectIgnis' anime card (513000009) targets a DARK monster with 1000 or less ATK, and when
+/// that monster is destroyed destroys every monster with 1500 or more ATK the opponent controls and holds, and every one
+/// in their Deck; the game's card Tributes the monster and lets the opponent destroy at most 3 from their Deck. Set
+/// beside Sangan, chained to Warwolf's attack on it. Returns the Warwolves in the opponent's Graveyard.
+fn warwolves_destroyed_by_crush_card_virus(anime: bool) -> Option<usize> {
+    let deck: Vec<u16> = [SANGAN, CRUSH_CARD_VIRUS].iter().copied().cycle().take(40).collect();
+    let mut s = start(anime, [(&deck, &[]), (&[WARWOLF; 40], &[])])?;
+    s.run_both([&[Summon(SANGAN), SetSpell(CRUSH_CARD_VIRUS), EndTurn, ChainOnAttack(CRUSH_CARD_VIRUS)], &[Summon(WARWOLF), Attack(WARWOLF)]]).unwrap();
+    clean(&s);
+    Some(s.count(1, "grave", WARWOLF))
+}
+
+#[test]
+fn anime_crush_card_virus_destroys_every_strong_monster_in_the_deck() {
+    let (Some(anime), Some(game)) = (warwolves_destroyed_by_crush_card_virus(true), warwolves_destroyed_by_crush_card_virus(false)) else { return };
+    eprintln!("anime {anime} game {game}");
+    assert!(anime >= 30, "the anime card destroys every Warwolf on the field, in the hand and in the Deck: {anime}");
+    assert!(game < 10, "the game's card destroys only those it sees: {game}");
+}

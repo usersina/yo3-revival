@@ -9,7 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
-  - [2026-11-21 — Player website pages and pack contents (#74, #73)](#2026-11-21--player-website-pages-and-pack-contents-74-73)
+  - [2026-11-21 — Player website pages and pack contents (#74, #73), anime Ra's text](#2026-11-21--player-website-pages-and-pack-contents-74-73-anime-ras-text)
   - [2026-11-21 — Problem reports: a broken game's logs go to the host](#2026-11-21--problem-reports-a-broken-games-logs-go-to-the-host)
   - [2026-11-21 — Network review: whole frames to the game, and its disconnect reasons logged (#65)](#2026-11-21--network-review-whole-frames-to-the-game-and-its-disconnect-reasons-logged-65)
   - [2026-11-21 — The Championship (#17)](#2026-11-21--the-championship-17)
@@ -93,7 +93,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 - **Guesses** (roadmap): the Special Pack's contents, tiers and cap, the artwork odds (1 in 20), the theme decks' price, the
   champion rule and THE ANNIVERSARIAN's win.
 
-## 2026-11-21 — Player website pages and pack contents (#74, #73)
+## 2026-11-21 — Player website pages and pack contents (#74, #73), anime Ra's text
 
 A player asked to see a pack's cards before buying (#73); #74 asked for the pages behind the game's old website links
 to be clearer and to explain failures. Checked in the code first: the helper closed the browser's connection on a
@@ -114,6 +114,22 @@ navigation or server name; their links were already relative.
       end without an answer.
 - [x] Two launchers on two scratch servers each showed their own server's name and pages; a stopped server's page
       said it didn't answer (`proxy.rs`).
+
+A player reported anime cards showing the wrong text: The Winged Dragon of Ra and Crush Card Virus.
+
+- [x] Ra: the engine played ProjectIgnis' anime Ra (511600400) but the game showed the normal text. Its text is 2406
+      characters and the connection DLL took at most 2048, skipping a longer one (the game copies the text into a
+      growing `std::wstring` at each reader of `0x537510`, so nothing of the game's bounds it). Raised to 4096; a test
+      holds every anime text under the DLL's limit and the server's `profile::CLIENT_TEXT_CHARS` equal to it. Live
+      (headless client, anime profile): `421 texts, 0 lines skipped`, the reveal panel scrolled Ra's whole anime text.
+- [x] Crush Card Virus was right: both of the game's rows show the anime text, and a real-core scenario
+      (`anime_crush_card_virus_destroys_every_strong_monster_in_the_deck`) destroyed all 40 Warwolves of the opponent's
+      field, hand and Deck (the game's card: 6). Only the artwork's printed text box is the game's, until the player
+      gets the anime pictures. EDOPro 41.0.2's own files hold the same text and script.
+- [x] Deck Devastation Virus has no anime version to map: its anime appearance (ZEXAL) has the game's text, and
+      ProjectIgnis' "Deck Destruction Virus" (511001119) is a different card from the Pyramid of Light film. A sweep of
+      the client's cards with no reviewed entry against ProjectIgnis' anime cards found no other missed counterpart
+      (no same-named anime version; the renamed candidates were different cards).
 
 ## 2026-11-21 — Problem reports: a broken game's logs go to the host
 

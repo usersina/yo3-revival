@@ -29,6 +29,10 @@ use yo3_data::Card;
 
 /// The format's first line.
 pub const MAGIC: &str = "yo3-card-profile 1";
+/// The longest card text the connection DLL takes, in UTF-16 units (`YO3_PROFILE_TEXT_CHARS` in
+/// `tools/mod/card-profile-logic.h`): a longer one is skipped and the game shows its own text (anime Ra's, 2406, was
+/// skipped at 2048 until v0.1.12).
+pub const CLIENT_TEXT_CHARS: usize = 4096;
 /// The profile of the game's own cards: nothing is rewritten.
 pub const OFFICIAL: &str = "official";
 /// The profile of the reviewed anime card versions (`engine/anime-cards.json`).
