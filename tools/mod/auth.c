@@ -36,7 +36,7 @@ static unsigned short gate_port, front_port, duel_port, http_port;
 static unsigned char cookie[32];
 static char cookie_hex[65];
 static CRITICAL_SECTION guard;
-static struct { SOCKET socket; unsigned sent; } connections[64];
+static struct { SOCKET socket; unsigned sent; unsigned short port; } connections[64];
 
 static unsigned short port_from(const char *name) {
     char text[16], *end;
@@ -110,7 +110,11 @@ static int WSAAPI hooked_connect(SOCKET socket, const struct sockaddr *to, int s
     if (i == 64) for (i = 0; i < 64; ++i) if (connections[i].socket == INVALID_SOCKET) break;
     if (i == 64) { LeaveCriticalSection(&guard); WSASetLastError(WSAENOBUFS); return SOCKET_ERROR; }
     if (connections[i].socket != socket) { connections[i].socket = socket; connections[i].sent = 0; }
+    connections[i].port = port;
     LeaveCriticalSection(&guard);
+    /* The game takes a frame only once a peek sees all of it (recv_nonblock 0x535190; Microsoft: peeking for a whole
+     * message "might never succeed", KB 192599). Room for its largest (its 1 MiB packet buffer) before it connects. */
+    if (port != gate_port) { int room = 2 << 20; setsockopt(socket, SOL_SOCKET, SO_RCVBUF, (const char *)&room, sizeof room); }
     if (port == front_port) login_before_front();
     return socket_connect(socket, to, size);
 }
@@ -133,11 +137,44 @@ static int WSAAPI hooked_send(SOCKET socket, const char *data, int length, int f
     return socket_send(socket, data, length, flags);
 }
 
+static void close_report(SOCKET socket, unsigned short port);
 static int WSAAPI hooked_close(SOCKET socket) {
+    unsigned short port = 0;
     EnterCriticalSection(&guard);
-    for (unsigned i = 0; i < 64; ++i) if (connections[i].socket == socket) connections[i].socket = INVALID_SOCKET;
+    for (unsigned i = 0; i < 64; ++i) if (connections[i].socket == socket) { port = connections[i].port; connections[i].socket = INVALID_SOCKET; }
     LeaveCriticalSection(&guard);
+    if (port && port != gate_port) close_report(socket, port);
     return socket_close(socket);
+}
+
+/* #65: who closed the game's front or duel connection. One line on standard error (the game's session log): the
+ * connection, the bytes the game left unread (a reply it never took), the last socket error and the game code that
+ * called closesocket, as addresses at the executable's preferred base (0x400000), so they match the docs. */
+static void close_report(SOCKET socket, unsigned short port) {
+    int error = WSAGetLastError();
+    u_long unread = 0; ioctlsocket(socket, FIONREAD, &unread);
+    char line[320]; int at = snprintf(line, sizeof line, "[YO3 MOD] The game closed its %s connection: %lu bytes unread, last socket error %d; called from",
+        port == front_port ? "front" : "duel", (unsigned long)unread, error);
+    /* The game is built without frame pointers, so its callers are found by scanning this thread's stack for return
+     * addresses into its code: values just after a call instruction (E8 rel32, FF /2 through a register or memory). */
+    IMAGE_NT_HEADERS32 *nt = (IMAGE_NT_HEADERS32 *)(yo3_game_image_base + ((IMAGE_DOS_HEADER *)yo3_game_image_base)->e_lfanew);
+    uintptr_t code = yo3_game_image_base + nt->OptionalHeader.BaseOfCode, code_end = code + nt->OptionalHeader.SizeOfCode;
+    NT_TIB *tib = (NT_TIB *)NtCurrentTeb();
+    const uintptr_t *slot = (const uintptr_t *)__builtin_frame_address(0), *top = (const uintptr_t *)tib->StackBase;
+    unsigned shown = 0;
+    for (unsigned looked = 0; slot < top && looked < 1024 && shown < 6 && at < (int)sizeof line - 16; ++slot, ++looked) {
+        uintptr_t a = *slot;
+        if (a < code + 8 || a >= code_end) continue;
+        const BYTE *b = (const BYTE *)a;
+        int call = b[-5] == 0xE8 || (b[-2] == 0xFF && (b[-1] & 0x38) == 0x10) || (b[-3] == 0xFF && (b[-2] & 0x38) == 0x10)
+            || (b[-6] == 0xFF && (b[-5] & 0x38) == 0x10);
+        if (!call) continue;
+        at += snprintf(line + at, sizeof line - at, " 0x%06lx", (unsigned long)(a - yo3_game_image_base + 0x400000u)); ++shown;
+    }
+    if (!shown) at += snprintf(line + at, sizeof line - at, " (no game frames)");
+    at += snprintf(line + at, sizeof line - at, "\r\n");
+    DWORD written; WriteFile(GetStdHandle(STD_ERROR_HANDLE), line, (DWORD)at, &written, NULL);
+    WSASetLastError(error);
 }
 
 #include "hooks.h"
