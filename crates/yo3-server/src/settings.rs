@@ -91,6 +91,9 @@ pub const REGISTRY: &[Setting] = &[
         the client could not show right keep theirs: docs/playing.md). A game that started before a change cannot duel \
         until it is restarted (Play again)", kind: Kind::Choice(&["off", "on"]), applies: Applies::NextDuel,
         default: || json!("off") },
+    Setting { name: "destiny-draw", help: "Casual duels against the computer (NPC duels): once per duel, at the start of your Draw Phase with \
+        1000 LP or less, you may pick any card left in your Deck as the card you draw (off: no)",
+        kind: Kind::Choice(&["off", "on"]), applies: Applies::NextDuel, default: || json!("off") },
     Setting { name: "pack-cost", help: "BP a booster pack costs in Blister's shop (the game shows it when you pick the pack)",
         kind: Kind::Number { min: 1, max: 100_000 }, applies: Applies::NextRequest, default: || json!(crate::shop::PACK_COST) },
     Setting { name: "deck-cost", help: "BP a structure deck costs in Blister's shop",
@@ -182,6 +185,8 @@ pub struct Settings {
     pub start_lp: u32,
     /// Duels play the reviewed anime card versions (issue #60).
     pub anime_cards: bool,
+    /// Destiny Draw in NPC duels (issue #71).
+    pub destiny_draw: bool,
     pub turn_seconds: u32,
     pub total_seconds: u32,
     pub news: Vec<(String, String)>,
@@ -237,6 +242,7 @@ impl Settings {
             login_regulation: regulation(&text("login-regulation"), banlists)?,
             start_lp: number("start-lp"),
             anime_cards: text("anime-cards") == "on",
+            destiny_draw: text("destiny-draw") == "on",
             turn_seconds: number("turn-seconds"),
             total_seconds: number("total-seconds"),
             news,
@@ -483,6 +489,11 @@ mod tests {
         assert!(live.now().anime_cards);
         live.reset("anime-cards").unwrap();
         assert!(!live.now().anime_cards);
+        assert!(!live.now().destiny_draw, "Destiny Draw is off until a host turns it on");
+        live.set("destiny-draw", "on").unwrap();
+        assert!(live.now().destiny_draw);
+        live.reset("destiny-draw").unwrap();
+        assert!(!live.now().destiny_draw);
         assert_eq!(live.set("Registration", "OPEN").unwrap(), "registration is now open (applies at once)");
         assert_eq!(live.set("login-regulation", "season 16").unwrap(), "login-regulation is now season 16 (applies at each player's next login)");
         assert_eq!(live.now().login_regulation, 20);

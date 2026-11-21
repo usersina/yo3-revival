@@ -116,6 +116,7 @@ pub const SKILLS: &str = include_str!("../skills.lua");
 pub fn skill_call(name: &str, team: u8) -> Option<String> {
     let function = match name {
         "heart_of_the_cards" => "HeartOfTheCards",
+        "destiny_draw" => "DestinyDraw",
         _ => return None,
     };
     Some(format!("YO3Skill.{function}({team})"))

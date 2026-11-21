@@ -588,8 +588,14 @@ impl DuelSession {
         self.npc_style = crate::npc::against(&base, &avatar);
         let blind = base["sees"] == true && self.npc_style["sees"] == false;
         let style = Some(&self.npc_style);
-        let skills: Vec<(u32, String)> = style.and_then(|s| s["skills"].as_array()).into_iter().flatten()
+        let mut skills: Vec<(u32, String)> = style.and_then(|s| s["skills"].as_array()).into_iter().flatten()
             .filter_map(|s| s.as_str()).map(|s| (npc_team, s.to_string())).collect();
+        // Destiny Draw (#71): the host's option, for the player in a casual duel against the computer only (not an
+        // Ultimate Match's computer match, not a duel with an event's id).
+        let destiny = destiny_draw_applies(self.world.settings.now().destiny_draw, &entry);
+        if destiny {
+            skills.push((1 - npc_team, "destiny_draw".to_string()));
+        }
         let answer = engine.new_duel_with(seed, lp, [(&m0, &e0), (&m1, &e1)], &self.world.card_names, &skills);
         let view = self.world.card_view();
         let (mut translator, mut table) = npc_translator(first, [&entry.deck.main, &npc.main], view.cards.clone());
@@ -606,6 +612,7 @@ impl DuelSession {
             self.check = Some(model);
         }
         translator.tokens(self.world.token_rows.clone());
+        if destiny { translator.note(crate::engine::DESTINY_NOTE); }
         if engine.plays_anime() { translator.note(crate::engine::ANIME_NOTE); }
         if let Some(id) = self.identity.filter(|i| !self.world.profiles.current_for(*i, anime)) {
             tracing::info!("user {}'s game runs another card profile than the server's now", id.user_id);
@@ -855,10 +862,28 @@ impl DuelSession {
     }
 }
 
+/// Whether the player's duel has Destiny Draw (#71): the host's `destiny-draw` is on and the duel is a casual one against
+/// the computer (an NPC duel), not a duel between players (they never start through `engine_opening`), an official
+/// or user event's match (it has a duel id) or an Ultimate Match's computer match.
+pub fn destiny_draw_applies(on: bool, entry: &DuelEntry) -> bool {
+    on && entry.npc_id.is_some() && entry.cpu_match.is_none() && entry.duel_id.is_none() && entry.opponent.is_none()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use tokio::sync::mpsc::unbounded_channel;
+
+    #[test]
+    fn destiny_draw_is_for_casual_duels_against_the_computer_only() {
+        let npc = DuelEntry { npc_id: Some(3), ..DuelEntry::default() };
+        assert!(destiny_draw_applies(true, &npc));
+        assert!(!destiny_draw_applies(false, &npc), "off by default");
+        assert!(!destiny_draw_applies(true, &DuelEntry { cpu_match: Some(9), ..npc.clone() }), "an Ultimate Match's computer");
+        assert!(!destiny_draw_applies(true, &DuelEntry { duel_id: Some(9), ..npc.clone() }), "an event's duel");
+        assert!(!destiny_draw_applies(true, &DuelEntry { opponent: Some(2), ..DuelEntry::default() }), "a duel between players");
+        assert!(!destiny_draw_applies(true, &DuelEntry::default()), "Auto Duel");
+    }
 
     fn message(id: u32, fields: &[(&str, u32)]) -> Packet {
         Packet::Message(fields.iter().fold(Message::reply(id), |m, (k, v)| m.with(k, Value::U32(*v))))

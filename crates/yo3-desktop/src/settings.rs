@@ -114,6 +114,10 @@ pub enum Message {
     AnimeRead(Result<bool, String>),
     AnimeCards(bool),
     AnimeSet(bool, Result<bool, String>),
+    /// The Destiny Draw switch (#71): the server's value, the player's click, and the server's answer.
+    DestinyRead(Result<bool, String>),
+    DestinyDraw(bool),
+    DestinySet(bool, Result<bool, String>),
     /// Close the pictures dialog (during a download: stops it too).
     PicturesDialogClose,
     /// Unlock all cards: asked first (`confirm_unlock`), then done on your own server.
@@ -186,6 +190,8 @@ pub struct State {
     art_busy: Option<&'static str>,
     /// Your own server's anime-cards value, as the server says (`None` until read, or when it can't be).
     anime: Option<bool>,
+    /// Your own server's destiny-draw value, as the server says (`None` until read, or when it can't be).
+    destiny: Option<bool>,
     /// The pictures dialog, opened by turning Anime cards on while pictures are missing.
     dialog: Option<Dialog>,
     /// The switch went on before the pictures were counted: offer them when the count is in.
@@ -201,7 +207,7 @@ impl State {
     pub fn new(ctx: &Ctx, section: Section) -> Self {
         Self { section, note: None, busy: None, direct: Direct::Unknown, prefix: ctx.settings.wine_prefix.clone(), wine: ctx.settings.wine_binary.clone(),
             confirm_reset: false, confirm_game_reset: false, confirm_unlock: false, licences: false, update: None, shortcut: yo3_desktop::shortcut::exists(),
-            moved: yo3_desktop::foreign::moved_aside(std::path::Path::new(&ctx.settings.game_dir)), pictures: None, getting: None, art_problem: None, art_busy: None, anime: None, dialog: None, offer_when_counted: false }
+            moved: yo3_desktop::foreign::moved_aside(std::path::Path::new(&ctx.settings.game_dir)), pictures: None, getting: None, art_problem: None, art_busy: None, anime: None, destiny: None, dialog: None, offer_when_counted: false }
     }
 
     /// The pictures download in progress, taken out as Settings closes: the window keeps it (and its messages) until
@@ -215,7 +221,13 @@ impl State {
     pub fn has_dialog(&self) -> bool { self.dialog.is_some() }
 
     /// The first tasks: what direct start is like now, and how many anime pictures there are.
-    pub fn start(&self, ctx: &Ctx) -> Task<Message> { Task::batch([self.check_direct(ctx), self.count_pictures(ctx), self.read_anime(ctx)]) }
+    pub fn start(&self, ctx: &Ctx) -> Task<Message> { Task::batch([self.check_direct(ctx), self.count_pictures(ctx), self.read_anime(ctx), self.read_destiny(ctx)]) }
+
+    fn read_destiny(&self, ctx: &Ctx) -> Task<Message> {
+        let Some(backend) = ctx.backend.clone() else { return Task::none() };
+        let settings = ctx.settings.clone();
+        Task::perform(async move { tokio::task::spawn_blocking(move || backend.destiny_draw(&settings).map_err(|e| format!("{e:#}"))).await.unwrap_or_else(|e| Err(e.to_string())) }, Message::DestinyRead)
+    }
 
     fn read_anime(&self, ctx: &Ctx) -> Task<Message> {
         let Some(backend) = ctx.backend.clone() else { return Task::none() };
@@ -444,6 +456,21 @@ impl State {
                 }
             }
             Message::AnimeSet(_, Err(error)) => { self.busy = None; self.fail(ctx, &error) }
+            Message::DestinyRead(Ok(on)) => self.destiny = Some(on),
+            Message::DestinyRead(Err(_)) => self.destiny = None,
+            Message::DestinyDraw(on) => {
+                let Some(backend) = ctx.backend.clone() else { return Task::none() };
+                let settings = ctx.settings.clone();
+                self.busy = Some(if on { "Turning Destiny Draw on…" } else { "Turning Destiny Draw off…" });
+                return job(move || backend.set_destiny_draw(&settings, on), move |result| Message::DestinySet(on, result));
+            }
+            Message::DestinySet(on, Ok(now)) => {
+                self.busy = None;
+                self.destiny = Some(now);
+                if now != on { self.fail(ctx, "The server didn't take the change."); return Task::none() }
+                self.good(if on { "Destiny Draw is on. It starts from your next duel against the computer." } else { "Destiny Draw is off from your next duel." });
+            }
+            Message::DestinySet(_, Err(error)) => { self.busy = None; self.fail(ctx, &error) }
             // Closing the offer never stops a download: it goes on with its bar in Settings and its toast at the end.
             Message::PicturesDialogClose => self.dialog = None,
             Message::GetPictures => {
@@ -649,6 +676,17 @@ impl State {
         yo3_skin::setting("Anime cards", line, Some(switch.into()), below)
     }
 
+    /// The Destiny Draw switch of Settings → Singleplayer (#71): your own server's value, which the server owns.
+    fn destiny_draw_view(&self) -> Element<'_, Message> {
+        let idle = self.busy.is_none() && self.getting.is_none();
+        let line = match self.destiny {
+            None => "The setting can't be read right now.",
+            Some(_) => "Once a duel against the computer, at your Draw Phase with 1000 LP or less, you may pick the card you draw. From your next duel.",
+        };
+        let switch = toggler(self.destiny == Some(true)).on_toggle_maybe((idle && self.destiny.is_some()).then_some(Message::DestinyDraw)).style(yo3_skin::switch).size(22);
+        yo3_skin::setting("Destiny Draw", line, Some(switch.into()), None)
+    }
+
     /// The anime card pictures (#60): how many there are and the three ways to get more.
     /// The bar of the anime pictures (#60) and its words: the download's progress, a wait of unknown length while a zip is
     /// read or written, what the last download stopped on, or how many pictures there are.
@@ -708,6 +746,7 @@ impl State {
         column![
             yo3_skin::setting_group("Cards", vec![
                 self.anime_cards_view(playing),
+                self.destiny_draw_view(),
                 yo3_skin::setting("Banlist", if playing { "Your own server checks decks against it. It can change while the game is closed." }
                     else { "Your own server checks decks against it. From the next PLAY." }, Some(banlist), None),
             ]),
@@ -891,6 +930,22 @@ mod tests {
         assert_eq!(missing_words(167, 418), "251 of the 418 cards have no picture yet.");
         assert_eq!(missing_words(417, 418), "1 of the 418 cards has no picture yet.");
         assert_eq!(missing_words(418, 418), "Every card has a picture.");
+    }
+
+    #[test]
+    fn the_destiny_draw_switch_follows_the_servers_answer_and_needs_no_restart() {
+        let mut ctx = ctx();
+        let mut state = State::new(&ctx, Section::Singleplayer);
+        assert_eq!(state.destiny, None, "unread until the server answers");
+        let _ = state.update(Message::DestinyRead(Ok(false)), &mut ctx, true);
+        assert_eq!(state.destiny, Some(false));
+        let _ = state.update(Message::DestinySet(true, Ok(true)), &mut ctx, true);
+        assert_eq!(state.destiny, Some(true));
+        assert!(state.note.as_ref().is_some_and(|n| n.good && !n.sentence.contains("RESTART")), "it starts at the next duel, with the game open too");
+        let _ = state.update(Message::DestinySet(true, Ok(false)), &mut ctx, false);
+        assert!(state.note.as_ref().is_some_and(|n| !n.good), "a server that didn't take it is an error");
+        let _ = state.update(Message::DestinyRead(Err("x".into())), &mut ctx, false);
+        assert_eq!(state.destiny, None);
     }
 
     #[test]

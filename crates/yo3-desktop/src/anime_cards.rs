@@ -1,4 +1,4 @@
-//! The Anime cards switch (#60) of Settings → Singleplayer: your own server's live `anime-cards` setting. The value is always
+//! The Anime cards (#60) and Destiny Draw (#71) switches of Settings → Singleplayer: your own server's live `anime-cards` setting. The value is always
 //! the server's: read from the running server (its admin API), else from the saved settings in its data folder, and written
 //! the same two ways, so there is no copy in the launcher that could drift. A running server applies it at the next duel and
 //! its card profile then differs from the one an open game loaded, which is what makes Desktop offer RESTART THE GAME; a
@@ -10,28 +10,42 @@ use crate::{Backend, Settings};
 /// The setting's name in the server's registry.
 pub const NAME: &str = "anime-cards";
 
+/// The Destiny Draw switch's setting (#71), kept the same way.
+pub const DESTINY_DRAW: &str = "destiny-draw";
+
 impl Backend {
     /// Whether your own server plays the anime card versions: asked of the running server, else read from its saved settings.
-    pub fn anime_cards(&self, settings: &Settings) -> anyhow::Result<bool> {
-        if let Some(live) = self.live(settings) {
-            let answer = api::call(&live, &Op::Settings).map_err(anyhow::Error::msg)?;
-            let row = answer["settings"].as_array().and_then(|rows| rows.iter().find(|r| r["name"] == NAME)).context("The server doesn't know this setting.")?;
-            return Ok(row["value"] == "on");
-        }
-        Ok(self.saved_settings(settings)?.now().anime_cards)
-    }
+    pub fn anime_cards(&self, settings: &Settings) -> anyhow::Result<bool> { self.flag(settings, NAME) }
 
     /// Turns the anime card versions on or off (off is the default) on your own server, and returns the value the server now has.
-    pub fn set_anime_cards(&self, settings: &Settings, on: bool) -> anyhow::Result<bool> {
+    pub fn set_anime_cards(&self, settings: &Settings, on: bool) -> anyhow::Result<bool> { self.set_flag(settings, NAME, on) }
+
+    /// Whether your own server offers Destiny Draw (#71) in duels against the computer: read the same two ways.
+    pub fn destiny_draw(&self, settings: &Settings) -> anyhow::Result<bool> { self.flag(settings, DESTINY_DRAW) }
+
+    /// Turns Destiny Draw on or off (off is the default) on your own server; it applies at the next duel, no restart.
+    pub fn set_destiny_draw(&self, settings: &Settings, on: bool) -> anyhow::Result<bool> { self.set_flag(settings, DESTINY_DRAW, on) }
+
+    /// An on/off setting of your own server: asked of the running server, else read from its saved settings.
+    fn flag(&self, settings: &Settings, name: &str) -> anyhow::Result<bool> {
         if let Some(live) = self.live(settings) {
-            let op = if on { Op::Set { name: NAME.into(), value: "on".into() } } else { Op::Reset { name: NAME.into() } };
+            let answer = api::call(&live, &Op::Settings).map_err(anyhow::Error::msg)?;
+            let row = answer["settings"].as_array().and_then(|rows| rows.iter().find(|r| r["name"] == name)).context("The server doesn't know this setting.")?;
+            return Ok(row["value"] == "on");
+        }
+        Ok(*self.saved_settings(settings)?.now().value(name) == "on")
+    }
+
+    fn set_flag(&self, settings: &Settings, name: &str, on: bool) -> anyhow::Result<bool> {
+        if let Some(live) = self.live(settings) {
+            let op = if on { Op::Set { name: name.into(), value: "on".into() } } else { Op::Reset { name: name.into() } };
             api::call(&live, &op).map_err(anyhow::Error::msg)?;
         } else {
             let saved = self.saved_settings(settings)?;
-            let done = if on { saved.set(NAME, "on") } else { saved.reset(NAME) };
+            let done = if on { saved.set(name, "on") } else { saved.reset(name) };
             done.map_err(anyhow::Error::msg)?;
         }
-        self.anime_cards(settings)
+        self.flag(settings, name)
     }
 
     fn saved_settings(&self, settings: &Settings) -> anyhow::Result<yo3_server::settings::Live> {
@@ -97,6 +111,20 @@ mod tests {
         assert!(Backend::new(root.clone()).unwrap().anime_cards(&settings).unwrap());
         assert!(!backend.set_anime_cards(&settings, false).unwrap());
         assert!(!yo3_server::settings::Live::open(Some(&file), Vec::new()).unwrap().now().anime_cards, "off is the default again");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn destiny_draw_is_kept_the_same_way_beside_anime_cards() {
+        let root = scratch("destiny");
+        let backend = Backend::new(root.clone()).unwrap();
+        let settings = Settings::default();
+        assert!(!backend.destiny_draw(&settings).unwrap(), "off until a player turns it on");
+        assert!(backend.set_destiny_draw(&settings, true).unwrap());
+        assert!(!backend.anime_cards(&settings).unwrap(), "the other switch is untouched");
+        let data = backend.data_dir(&settings);
+        assert!(yo3_server::settings::Live::open(Some(&data.join("settings.json")), Vec::new()).unwrap().now().destiny_draw, "the server's start finds it on");
+        assert!(!backend.set_destiny_draw(&settings, false).unwrap());
         let _ = std::fs::remove_dir_all(root);
     }
 

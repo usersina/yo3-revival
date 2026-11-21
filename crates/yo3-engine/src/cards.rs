@@ -11,6 +11,19 @@ use crate::core::Card;
 
 /// The folders a card's script (`c<passcode>.lua`) may be in, in order: a few cards' current scripts sit outside
 /// `official/` (Red-Eyes Darkness Metal Dragon's in `pre-errata/`). Any other script is at the top.
+/// The pseudo card code the engine's own skills (skills.lua) put their texts under: a description or hint of
+/// `SKILL_STRINGS << 20 | n` is [`skill_string`] `n`, as a card's script string would be.
+pub const SKILL_STRINGS: u32 = 0x7FF0_0000;
+
+/// A skill's text (see [`SKILL_STRINGS`]): 0 Destiny Draw's question, 1 its card choice's title.
+pub fn skill_string(n: u32) -> Option<&'static str> {
+    match n {
+        0 => Some("Destiny Draw: choose the card you draw this turn?"),
+        1 => Some("Select the card to draw with Destiny Draw."),
+        _ => None,
+    }
+}
+
 const CARD_SCRIPT_FOLDERS: [&str; 3] = ["official", "pre-errata", "pre-release"];
 /// With the anime card versions on, the unofficial scripts (ProjectIgnis' anime cards, `unofficial/c<passcode>.lua`) too,
 /// after the others: an official script is never shadowed by an anime one.
@@ -335,6 +348,9 @@ impl Cards {
 
     /// A card's script string `n` (0-15: the database's str1-str16), as its option descriptions (code << 20 | n) name.
     pub fn string(&self, code: u32, n: u32) -> Option<String> {
+        if code == SKILL_STRINGS {
+            return skill_string(n).map(str::to_string);
+        }
         if n > 15 {
             return None;
         }

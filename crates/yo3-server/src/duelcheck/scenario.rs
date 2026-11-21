@@ -87,6 +87,8 @@ pub struct Scenario {
     number: Option<u64>,
     /// The client's dialogs shown for the planned side's numbers, one per step.
     pub dialogs: usize,
+    /// Every prompt answered so far as (team, engine message type), oldest first.
+    pub prompts: Vec<(usize, u64)>,
     /// Every difference between a seat's client model and the engine, with the seat and the step.
     pub problems: Vec<String>,
 }
@@ -98,15 +100,20 @@ const MAX_WAIT_TURNS: u32 = 8;
 impl Scenario {
     /// Starts the duel: `decks` by engine team, (main deck, extra deck) in Konami ids, team 0 planned.
     pub fn start(dir: &Path, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2]) -> Result<Scenario, String> {
-        Scenario::start_with(dir, false, seed, lp, decks)
+        Scenario::start_with(dir, false, seed, lp, decks, &[])
+    }
+
+    /// `start` with hidden skills given to a team (the engine's `skills`: (team, name), as an NPC's or Destiny Draw, #71).
+    pub fn start_skills(dir: &Path, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2], skills: &[(u32, String)]) -> Result<Scenario, String> {
+        Scenario::start_with(dir, false, seed, lp, decks, skills)
     }
 
     /// `start` with the anime card versions on (the `anime-cards` setting): the reviewed cards play by their anime effects.
     pub fn start_anime(dir: &Path, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2]) -> Result<Scenario, String> {
-        Scenario::start_with(dir, true, seed, lp, decks)
+        Scenario::start_with(dir, true, seed, lp, decks, &[])
     }
 
-    fn start_with(dir: &Path, anime: bool, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2]) -> Result<Scenario, String> {
+    fn start_with(dir: &Path, anime: bool, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2], skills: &[(u32, String)]) -> Result<Scenario, String> {
         let mut engine = Engine::start_with(dir, anime).map_err(|e| format!("engine: {e}"))?;
         if anime && !engine.anime_on().map_err(|e| format!("engine: {e}"))? {
             return Err("the anime card versions are not available: engine/fetch.sh and engine/anime-cards.json".into());
@@ -148,8 +155,8 @@ impl Scenario {
                 (translator, model)
             })
             .collect();
-        let answer = engine.new_duel(seed, lp, decks).map_err(|e| format!("engine: {e}"))?;
-        let mut s = Scenario { engine, views, answer, state: Json::Null, steps: 0, trail: vec![], attacking: false, prefer: vec![], position: None, number: None, dialogs: 0, problems: vec![] };
+        let answer = engine.new_duel_with(seed, lp, decks, &HashMap::new(), skills).map_err(|e| format!("engine: {e}"))?;
+        let mut s = Scenario { engine, views, answer, state: Json::Null, steps: 0, trail: vec![], attacking: false, prefer: vec![], position: None, number: None, dialogs: 0, prompts: vec![], problems: vec![] };
         s.observe()?;
         Ok(s)
     }
@@ -188,6 +195,8 @@ impl Scenario {
             return Err(format!("the duel is over ({}) at step {}", self.answer.status, self.steps));
         }
         self.steps += 1;
+        let asked = self.prompt();
+        self.prompts.push((asked["player"].as_u64().unwrap_or(0) as usize & 1, asked["type"].as_u64().unwrap_or(0)));
         if self.steps > MAX_STEPS {
             return Err(format!("no end after {MAX_STEPS} steps"));
         }
@@ -277,6 +286,32 @@ impl Scenario {
     /// range holds it) or the number dialog set to it, the client's model fed every window. `None`: the CPU's answer.
     pub fn declare_number(&mut self, number: Option<u64>) {
         self.number = number;
+    }
+
+    /// The pending prompt through the translator's windows for `seat`, as the client gets them: the messages (the client's
+    /// model fed them and checked), or None when the translator answers by itself.
+    pub fn windows(&mut self, seat: usize) -> Option<Vec<yo3_proto::Message>> {
+        let p = self.prompt().clone();
+        let (translator, model) = &mut self.views[seat];
+        let crate::translate::Prompt::Client(out) = translator.prompt(&p) else { return None };
+        model.apply_all(&out);
+        for problem in model.check(&self.state) {
+            self.problems.push(format!("seat {seat}, step {}: {problem}", self.steps));
+        }
+        Some(out)
+    }
+
+    /// Answers the pending prompt the way the client does: `picks` in the card list (indexes), then the dialog's `result`
+    /// (a Yes/No's 1 or 0, a list's pick count); the translator's answer goes to the engine.
+    pub fn answer_in_windows(&mut self, seat: usize, picks: &[u32], result: u32) -> Result<(), String> {
+        let translator = &mut self.views[seat].0;
+        for &i in picks {
+            translator.pick(i);
+        }
+        match translator.dialog_result(result) {
+            Some(crate::translate::Prompt::Answer(a)) => self.respond(a),
+            _ => Err("the window's result was not an answer".into()),
+        }
     }
 
     /// The answer to the number question now pending, played through the translator's windows.

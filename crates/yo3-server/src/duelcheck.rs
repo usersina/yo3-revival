@@ -1247,10 +1247,12 @@ pub mod selfplay {
         }
         let ids = |rows: &[u16]| rows.iter().map(cid).collect::<Vec<u16>>();
         let (m0, e0, m1, e1) = (ids(&shuffled[0]), ids(decks[0].1), ids(&shuffled[1]), ids(decks[1].1));
-        // `YO3_CHECK_SKILLS=1`: the side the client faces has the heroes' Heart of the Cards (crate::npc), which moves
+        // `YO3_CHECK_SKILLS=1`: the side the client faces has the heroes' Heart of the Cards (crate::npc), and the client's side Destiny Draw, which move
         // cards within the Deck without a message: the client's view must still follow.
         let skills: Vec<(u32, String)> = if std::env::var_os("YO3_CHECK_SKILLS").is_some() {
-            vec![(1 - client_team as u32, "heart_of_the_cards".into())]
+            // The client's own side has Destiny Draw (#71): its question and card choice go through the translator's
+            // windows, the chosen card moves to the Deck's top without a message.
+            vec![(1 - client_team as u32, "heart_of_the_cards".into()), (client_team as u32, "destiny_draw".into())]
         } else {
             vec![]
         };
