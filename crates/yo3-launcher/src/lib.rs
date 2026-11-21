@@ -534,21 +534,55 @@ async fn relay_http(mut local: TcpStream, endpoint: &Endpoint, mut active: tokio
     let ticket = endpoint.ticket(&session, Role::Http).await?;
     let mut remote = endpoint.connect(&ticket, Role::Http, 0).await?;
     remote.write_all(format!("GET /{path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n").as_bytes()).await?;
-    if path.starts_with("web/") {
-        // A page for the player's browser: whatever the server sent, it is shown sandboxed (#39).
-        let mut answer = vec![];
-        (&mut remote).take(WEB_PAGE_MAX).read_to_end(&mut answer).await?;
-        local.write_all(&web_page(&answer)).await?;
-    } else {
-        tokio::io::copy(&mut remote, &mut local).await?;
-    }
+    relay_answer(&mut remote, &mut local, path.starts_with("web/"), RELAY_HTTP_WAIT).await?;
     local.shutdown().await?;
+    Ok(())
+}
+
+/// How long the server's answer to a relayed page, duel log or info link may take, once connected: a server that
+/// stops sending mid-answer would otherwise hold the browser's request until TCP keepalive gives up.
+const RELAY_HTTP_WAIT: Duration = Duration::from_secs(30);
+
+/// The server's answer, from `remote` to the browser or the game on `local`, within `wait`.
+async fn relay_answer<R, W>(remote: &mut R, local: &mut W, web: bool, wait: Duration) -> anyhow::Result<()>
+where R: AsyncRead + Unpin, W: tokio::io::AsyncWrite + Unpin {
+    if web {
+        // A page for the player's browser: whatever the server sent, it is shown sandboxed (#39). A page that doesn't
+        // come in time is a timeout page, not a request left hanging.
+        let mut answer = vec![];
+        match tokio::time::timeout(wait, remote.take(WEB_PAGE_MAX).read_to_end(&mut answer)).await {
+            Ok(read) => { read?; local.write_all(&web_page(&answer)).await? }
+            Err(_) => local.write_all(b"HTTP/1.1 504 Gateway Timeout\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await?,
+        }
+        return Ok(())
+    }
+    tokio::time::timeout(wait, tokio::io::copy(remote, local)).await.map_err(|_| anyhow::anyhow!("the server's answer stalled"))??;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A server that connects and then sends nothing (#65's review): a page ends as a timeout page, a duel log or info
+    /// link as an error, each at the relay's wait instead of hanging on the browser's request.
+    #[tokio::test]
+    async fn a_stalled_answer_from_the_server_ends_at_the_relays_wait() {
+        let (mut remote, _server) = tokio::io::duplex(64);
+        let mut page = vec![];
+        relay_answer(&mut remote, &mut page, true, Duration::from_millis(50)).await.unwrap();
+        assert!(page.starts_with(b"HTTP/1.1 504 "), "{}", String::from_utf8_lossy(&page));
+        let mut log = vec![];
+        let stalled = relay_answer(&mut remote, &mut log, false, Duration::from_millis(50)).await;
+        assert!(stalled.unwrap_err().to_string().contains("stalled"));
+        // An answer that comes is relayed as before.
+        let (mut remote, mut server) = tokio::io::duplex(64);
+        server.write_all(b"HTTP/1.1 200 OK\r\n\r\nlog").await.unwrap();
+        drop(server);
+        let mut log = vec![];
+        relay_answer(&mut remote, &mut log, false, Duration::from_millis(50)).await.unwrap();
+        assert_eq!(log, b"HTTP/1.1 200 OK\r\n\r\nlog");
+    }
     #[test]
     fn an_extra_games_data_id_is_16_hex_digits_stable_per_account_and_not_the_servers() {
         let (server, id) = ("35b82924973c0938", game_data_id("35b82924973c0938", "Alice"));
