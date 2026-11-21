@@ -385,6 +385,12 @@ check** too: any uptime service's TCP check on `<server-address>:7443`, alerting
   traces (which carry chat lines and names) in the session logs. Turn them on only to investigate a problem, and off
   again after.
 - The panel's **Logs** page shows the newest lines since the server started, with credentials masked.
+- **Problem reports.** When a player's game breaks (its connection drops, or it closes with an error) their launcher
+  sends that game's log here, and Report a problem does too, with a report ID the player quotes on GitHub. Each one is
+  kept in `reports/` in the data folder with the server's own lines about that account from the 15 minutes before.
+  `problem-reports [--who WHO]` lists them, `problem-report ID [--out FILE]` shows one; the dashboard's **Problem
+  reports** page has both. Kept 30 days (2,000 reports, 256 MB at most); 20 a day per account. `set problem-reports
+  off` refuses them. Each game connection's end is now logged with what it carried and its last messages each way.
 
 ## Updates
 

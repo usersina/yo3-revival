@@ -48,9 +48,10 @@ host removes it.
 | Admin audit log: who changed what, including moderation | The server's database | 365 days, then removed (the host's `audit-keep-days` setting; 0 keeps it for ever) |
 | BP grant retry receipts: request ID, host or staff account number, input fingerprint, target account number, resulting BP and time | The server's database | No expiry, independent of audit pruning, so a retry cannot pay twice. No player names, passwords or recovery codes. |
 | Recent server log lines (admin panel) | Server memory | The last 2,000 lines, until the server restarts |
+| **Problem reports** (**Since v0.1.10 (2026-11-21)**): your launcher's log of a game whose connection broke or that closed with an error, or sent with Report a problem; the server's own log lines about your account from the 15 minutes before | The server's `reports/` folder, under your account number | 30 days, at most 2,000 reports or 256 MB in all, the oldest first; 20 a day per account. Passwords, keys and tokens are removed before sending and again on the server. Turn it off in the launcher's Setup or Settings → Advanced; the host can refuse them all (`problem-reports`). |
 | Backups of the database | The server's `backups/` folder | The newest 24, taken hourly and at each start and stop |
 | Off-site backups (if the host sets them up) | The host's storage | restic: 14 daily and 8 weekly copies (about 2 months). rclone: 30 days by default. |
-| Your PC: the launcher's settings, logs and device token | Your own PC. The token is in the system's credential store. | Launcher logs: 14 days or 100 MB. Report a problem uploads nothing on its own. |
+| Your PC: the launcher's settings, logs and device token | Your own PC. The token is in the system's credential store. | Launcher logs: 14 days or 100 MB. They leave your PC only as problem reports, to the server you play on (above). |
 
 ## Who can see what
 
@@ -62,6 +63,7 @@ host removes it.
 - **Moderators** see, in the admin panel: your User ID, your players, BP and cards, your standing and mutes, how many
   devices are signed in, the audit log, and the recent server log lines (which hold IP addresses). They can't see your
   password or your recovery code.
+- **Moderators and the host** can read problem reports (the dashboard's Problem reports page, `problem-reports`).
 - **The host** runs the machine and can read everything the server keeps, including the logs and backups.
 
 ## Deleting your account

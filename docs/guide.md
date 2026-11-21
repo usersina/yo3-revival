@@ -114,6 +114,7 @@ while the server runs or stopped, and each applies at its own moment:
 | `report-limit` | 5 | At the game's next request | Reports (`/report` in the chat) one player may send in an hour; 0 turns them off |
 | `games-per-device` | 1 | At once | Games one PC may run at once (the launcher's Play as another account): a launcher sends a random install id with its sign-ins, and a second game from the same one is refused past this number (admins and moderators are exempt). The default changes nothing until a host raises it ([linked accounts](hosting.md#linked-accounts-and-fair-play)) |
 | `linked-accounts` | `fair` | At once | `fair`: accounts seen on one PC or address are linked, and a duel between them pays no BP and counts no record, rating or title, and they can't trade or rent to each other. `off`: they are strangers |
+| `problem-reports` | `on` | At once | `on`: players' launchers send a game's log here when it breaks, and with Report a problem; `problem-reports` and `problem-report ID` read them ([hosting](hosting.md#logs-and-privacy)). `off`: none are taken or kept |
 | `clean-game` | `off` | At once | `on`: the launcher refuses to start the game here while another program's file or network software is inside it ([hosting](hosting.md#clean-game)) |
 | `news` | A welcome | At the game's next request | The Information list: `TITLE \| BODY` for one entry, or a JSON list of `{title, body}` (1 to 10) |
 | `address-burst`, `address-refill-seconds`, `backoff-max-seconds` | 10, 3, 900 | At once | The [throttle](authentication.md#passwords-and-throttling) on account requests |
@@ -299,7 +300,8 @@ On the `beta` branch every command works while the server runs (#25): it goes to
 (loopback, with the private token in `data/admin.json`) and changes it at once. With no server running, the command
 works on the data folder itself, holding its lock (`server.lock`) meanwhile. `init-auth`, `bootstrap-admin`, `restore` and
 `backups` always work on the files. Every change is recorded in the audit log: `audit` lists the newest, with who,
-from where, what, on what, and the values before and after. Released versions still need the server stopped for all
+from where, what, on what, and the values before and after. `problem-reports [--who WHO] [--limit N]` lists players'
+problem reports and `problem-report ID [--out FILE]` shows one ([hosting](hosting.md#logs-and-privacy)). Released versions still need the server stopped for all
 but the BP and code commands. Add `--data-dir PATH` to target a non-default setup. Players sign in with password
 accounts (`invite`, `add-user`); `share` prints the invite link to send them. `add-account` and `profile` make key
 accounts for the Scripts edition on your own PC. Keep each key profile private ([accounts](authentication.md#accounts)).

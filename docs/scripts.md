@@ -193,6 +193,12 @@ Desktop's [export dialog](launcher.md#logs-and-support) offers optional personal
 sessions; manually shared Scripts logs should be reviewed before sharing. [Duel diagnostics](development.md#duel-diagnostics)
 explains the optional `--duel-check` flag and replay tools.
 
+When a game's connection breaks or it exits with an error, `play` sends that game's session log to the server it played
+on, before signing out, and writes the report ID in the log (`Problem report R-XXXX-XXXX sent`): quote it in a bug
+report instead of attaching the log ([problem reports](launcher.md#problem-reports)). Passwords, keys and tokens are
+never in it. `play --no-problem-reports`, or an empty `problem-reports.off` file beside the profile (which also covers a
+game opened without `play`), turns it off.
+
 ## When something fails
 
 - **Missing helper or DLL:** restore the complete matching Scripts bundle, including `yo3-auth-launch.exe` and

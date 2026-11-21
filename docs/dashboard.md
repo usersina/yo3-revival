@@ -93,6 +93,13 @@ row links both players to their account pages; **Handle** and **Dismiss** open a
 account page, **Banlist** shows the list the account logs in with (its own choice with `/banlist`, or the server's) and
 lets staff choose another or go back to the server's; it applies at the player's next login. `dashboard/e2e/reports.spec.ts` checks both.
 
+**Problem reports** (`/problem-reports`, since v0.1.10) lists the logs players' launchers sent when a game broke, or with
+Report a problem: when, the account, the kind and its summary, by the report ID players quote on GitHub, with an
+account filter. A row opens the report: the server's own lines about the account, then the launcher's log, and
+**Download** saves it as `<id>.txt`. Read only; moderators may. Routes `GET /panel/api/v1/problem-reports` and
+`/problem-reports/{id}` (`api/problem_reports.rs`); `dashboard_contract.rs` (`staff_read_the_logs_players_launchers_sent`)
+and `ConnectedProblemReports.test.tsx` check them.
+
 **Events** (`/events`) lists the Stadium's official events with their kind, times, status, entrants, prize and the best
 scores so far. An admin schedules one with **Schedule event** (kind, name, start and end in the browser's time zone, an
 optional banlist, BP for taking part and BP for reaching a score), edits one that has not ended, or cancels it (nothing is

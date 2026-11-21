@@ -9,6 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-21 — Problem reports: a broken game's logs go to the host](#2026-11-21--problem-reports-a-broken-games-logs-go-to-the-host)
   - [2026-11-21 — Network review: whole frames to the game, and its disconnect reasons logged (#65)](#2026-11-21--network-review-whole-frames-to-the-game-and-its-disconnect-reasons-logged-65)
   - [2026-11-21 — The Championship (#17)](#2026-11-21--the-championship-17)
   - [2026-11-20 — Preset-deck scenarios, paged effect choices and lasting-effect markers (#67, #16)](#2026-11-20--preset-deck-scenarios-paged-effect-choices-and-lasting-effect-markers-67-16)
@@ -90,6 +91,31 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   one PC are "linked accounts": the first duel counted nothing until `set linked-accounts off`.
 - **Guesses** (roadmap): the Special Pack's contents, tiers and cap, the artwork odds (1 in 20), the theme decks' price, the
   champion rule and THE ANNIVERSARIAN's win.
+
+## 2026-11-21 — Problem reports: a broken game's logs go to the host
+
+Players' reports on GitHub came without logs: the form can't require an attachment, and Desktop's two ways to send them
+asked for a GitHub sign-in (the gist publish path) or a ZIP dragged into the form. Now the launcher sends them to the
+server it plays on, TLS operation 7, under the game's session (`problems.rs`).
+
+- **The helper** (Play and direct start, Desktop and Scripts) reads the end of its session log when the game ends,
+  before it signs out. A relay error, the server going quiet, the game's own network errors (the DLL's EasyMultiPlay
+  lines, #65) or an exit with an error sends up to 768 KB of it, deflated. A normal quit sends nothing (checked live:
+  the DLL logs the front connection's close, and no network error).
+- **Report a problem**, signed in on Multiplayer, sends the app's and the latest game's logs and gets a report ID for
+  the GitHub form, with the IDs the helper got for recent games. Without a session (Singleplayer, or turned off) it
+  saves the ZIP as before. The GitHub sign-in and gist path (`github_report`, `bug_publish`, `bug_evidence`,
+  `github_credentials`) is removed.
+- **The server** files each report under the account with its own lines about it from the 15 minutes before, and each
+  game connection's end now names what it carried and its last messages each way (`net::Trail`). 20 a day per
+  account, 30 days, 2,000 reports or 256 MB; `problem-reports` setting. `problem-reports`, `problem-report ID` and the
+  dashboard's Problem reports page read them.
+- **Players' choice:** Setup's Ready step has a tick, on by default, and Settings → Advanced a switch. It writes
+  `profiles/problem-reports.off`, which direct start's helper also reads; Play passes `--no-problem-reports` as well.
+
+Live (headless client on a scratch server): a QUIT from the title sent nothing; the game killed on the map sent
+`game-error` report `R-A1SW-WVXS`, and `problem-report` showed the account, the summary, the server's lines (with the
+new end-of-connection line) and 67 KB of the game's log.
 
 ## 2026-11-21 — Network review: whole frames to the game, and its disconnect reasons logged (#65)
 

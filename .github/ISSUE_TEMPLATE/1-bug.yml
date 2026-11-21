@@ -44,10 +44,10 @@ body:
   - type: textarea
     id: logs
     attributes:
-      label: Diagnostic logs (optional)
-      description: "Desktop: Help & support → Report a problem publishes an issue with linked diagnostics after your confirmation. For a manual report, attach an exported ZIP or relevant Scripts session logs here. Review first; never attach invitations, keys or databases."
+      label: Report ID or logs (optional)
+      description: "Desktop's Help → Report a problem fills in a report ID (R-XXXX-XXXX): the logs went to the server's host, nothing to attach. A game that broke sends one by itself: its ID is in the game's session log (Problem report R-… sent). Otherwise attach an exported ZIP or Scripts session logs here. Never attach invitations, keys or databases."
   - type: textarea
     id: pc
     attributes:
       label: System details
-      description: "Desktop includes these details automatically when publishing from Report a problem. For a manual report, include your Windows or Linux version, architecture, and Wine version if used."
+      description: "Desktop fills these in from Report a problem. Otherwise, include your Windows or Linux version, architecture, and Wine version if used."

@@ -42,8 +42,9 @@ macOS does not have a supported build. [Game installation help](#getting-the-ori
    holds `yo3.exe`. On Linux, **More options** sets the Wine prefix.
 5. Wait for the checklist. Each line is green, amber (a warning) or red, with one sentence on how to fix it and
    **Details** for the technical text. **Next** opens once nothing is red.
-6. On **Ready**, choose whether the game may open without the launcher, and whether to put a shortcut on your
-   desktop, then click **Done**.
+6. On **Ready**, choose whether the game may open without the launcher, whether to put a shortcut on your
+   desktop, and whether to **send logs when something breaks** (on unless you untick it:
+   [problem reports](#problem-reports)), then click **Done**.
 7. Click **PLAY**. In the game, choose **ONLINE**, then select your player. [Start your first duel](playing.md#your-first-duel).
 
 ![Setup's Game step: the copy found in Program Files and its checklist](../screenshots/setup-game.png)
@@ -196,7 +197,7 @@ press **I saved it**), then Settings. In a text box the first Escape only leaves
 | Game | The game folder (**Change…** opens Setup), **Verify** (checks the game and YO3 Revival's own files in full, and says how to fix what isn't right), the [screen size](#screen-size), [opening the game without the launcher](#open-the-game-directly) (a tick: pressing it sets it up at once, asking Windows for permission when the game folder needs it), and **Add** for a desktop shortcut |
 | Accounts | Each server you're signed in to on this PC: **Sign out**, **Sign out everywhere** (every PC signed in to the account must sign in again; asks for the password when this PC didn't stay signed in) and **Change password** (signs every PC out, this one too) |
 | Singleplayer | **Anime cards** (your own server's `anime-cards` setting, [see below](#anime-cards)) with, right under it while it is on, **Anime pictures** ("N of M", [**Get pictures**, **Add pictures from a file…** and **Save pictures to a file…**](anime-cards.md#artwork)), **Destiny Draw** (your own server's `destiny-draw` setting, [see below](#destiny-draw)), the [banlist](#banlist), **Back up now**, **Restore…** (a backup from a recent start), **Unlock all cards** (three of every card, in every artwork, for every player of your own server; it asks first), **Reset…** (starts your Singleplayer data again; the old data is kept beside it, renamed) and **Open data folder** |
-| Advanced | On Linux, the Wine prefix and the Wine program (empty for Wine's defaults; **Save** checks it); **Detailed logs** for your servers; **Export logs…** and **Open logs folder**; [Reset local game data](#reset-local-game-data) |
+| Advanced | On Linux, the Wine prefix and the Wine program (empty for Wine's defaults; **Save** checks it); **Detailed logs** for your servers; **Send logs when something breaks** ([problem reports](#problem-reports)); **Export logs…** and **Open logs folder**; [Reset local game data](#reset-local-game-data) |
 | About | The version, **Check for updates**, release notes, the project, licences and credits |
 
 **Anime pictures (since v0.1.5 (2026-11-20); under the Anime cards tick in Settings → Singleplayer, since v0.1.6 (2026-11-20)):** it lists how many of the anime cards have a picture. **Get pictures** downloads the missing ones (about 10 MB) from ProjectIgnis' picture server when you press it, with a progress count and **Cancel**; a second press carries on. The download goes on while you use the rest of the launcher and ends in a toast; each picture is tried three times (a timeout, a refused request or a picture that arrived broken) before it counts as not fetched (since v0.1.8 (2026-11-20)). **Add pictures from a file…** adds a zip of pictures and **Save pictures to a file…** makes one. Pictures show from the next PLAY, and your own pictures are never replaced.
@@ -310,13 +311,27 @@ folders written as names such as `<game>` or `<app data>`, and **Copy** puts it 
 **Report a problem** (in **Help** at the bottom right, in the guide, or on a problem's toast):
 
 1. Say what you were doing and what went wrong.
-2. Click **Continue on GitHub**. YO3 Revival saves this session's logs in a ZIP, with personal details removed, opens
-   the folder that holds it, and opens the project's report form in your browser, filled in with your words, the
-   version and the error.
-3. Drag the ZIP into the form and submit it. Nothing is sent until you submit the form yourself.
+2. Click **Continue on GitHub**. Signed in to a server on Multiplayer, YO3 Revival sends your recent logs (this
+   session's and the latest game's) to that server's host and gets back a **report ID** such as `R-7K3Q-M2PA`. It
+   opens the project's report form in your browser, filled in with your words, the version, the error and the report
+   ID, plus the IDs of reports sent after recent games that broke.
+3. Submit the form. There is nothing to attach.
 
-The logs leave out credentials, databases, private profiles and game files. Reports are public: the ZIP can still hold
-player names, chat and decks, so look through it if that matters to you.
+Without a server to send to (Singleplayer, or with problem reports off), YO3 Revival saves the logs in a ZIP instead,
+with personal details removed, and opens its folder: drag the ZIP into the form. Reports on GitHub are public, and such
+a ZIP can still hold player names, chat and decks, so look through it if that matters to you.
+
+### Problem reports
+
+When a game's connection breaks or the game closes with an error, YO3 Revival's helper sends that game's log to the
+server you played on, before signing out. The host reads it by its report ID, beside the server's own log of the same
+minutes, without asking you for anything. The game's log says the ID (`Problem report R-… sent`), and Report a problem
+puts it in the form. A game that ended well sends nothing.
+
+The logs never hold your password, keys or tokens: they are removed when written, and again by the server. They do
+hold your player names and what the game did. Untick it in Setup, or turn off Settings → Advanced → **Send logs when
+something breaks**: it applies to the next game, and to a game opened [without the launcher](#open-the-game-directly)
+too. A host can refuse them all (the server's `problem-reports` setting).
 
 Settings → Advanced → **Export logs…** saves the logs in a ZIP of your choosing, also with personal details removed;
 **Open logs folder** shows them. **Detailed logs** makes your servers write more (their debug level) from their next
@@ -378,7 +393,7 @@ Settings → Singleplayer → **Open data folder** and Settings → Advanced →
 | `singleplayer/` | Your own server: `server.db` (accounts, cards, decks, BP, mail, duel logs), `server.crt` and `server.key` (its identity), `backups/` |
 | `hosting/` | Host for friends' server, the same files as `singleplayer/` |
 | `logs/`, `profiles/` | Diagnostics, and the private files the game's helper reads (no keys or passwords: those are in the system's credential store) |
-| `reports/` | ZIPs saved by Report a problem |
+| `reports/` | ZIPs saved by Report a problem when no report ID could be had |
 
 Each server start makes a consistent database backup under its folder's `backups/`. These backups exclude the identity
 key: to keep everything, back up the **whole folder** with the server stopped. Players should also back up their local
