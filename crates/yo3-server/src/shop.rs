@@ -70,7 +70,7 @@ impl Arts {
     /// The card that comes up for a pulled `row`: usually itself, rarely another artwork of the card.
     pub fn pull(&self, row: u16, rng: &mut u64) -> u16 {
         let Some(alts) = self.alts.get(&row).filter(|a| !a.is_empty() && self.odds > 0) else { return row };
-        if crate::duel::next(rng) % u64::from(self.odds) != 0 {
+        if !crate::duel::next(rng).is_multiple_of(u64::from(self.odds)) {
             return row;
         }
         alts[(crate::duel::next(rng) % alts.len() as u64) as usize]
@@ -129,7 +129,7 @@ impl<'a> Goods<'a> {
             }
             return world.avatar_items.iter().find(|(a, _)| *a == id).map(|&(id, name)| Goods::AvatarItem(id, name));
         }
-        world.structure_decks.iter().find(|d| Some(d.deck.id) == sale_id.checked_sub(DECK_SALE)).map(Goods::Deck)
+        world.structure_decks.iter().chain(&world.recipe_decks).find(|d| Some(d.deck.id) == sale_id.checked_sub(DECK_SALE)).map(Goods::Deck)
     }
 
     /// Its price in BP (a pack's and a deck's are the host's settings) and the most one purchase may take.
@@ -173,6 +173,9 @@ pub enum Present {
     Card { pack: u32, card: u16 },
     /// The host's gift of cards (#19): no pack (pack_id 0).
     Gift { cards: Vec<u16> },
+    /// A Special Pack won in an Official Event (#18): shown as a gift is, but its cards are given while the player may be
+    /// in a duel, so the trunk follows the last present (as after a purchase).
+    Prize { cards: Vec<u16> },
 }
 
 impl Present {
@@ -181,7 +184,7 @@ impl Present {
         match self {
             Present::Pack { cards, .. } | Present::Deck { cards, .. } => cards,
             Present::Card { card, .. } => std::slice::from_ref(card),
-            Present::Gift { cards } => cards,
+            Present::Gift { cards } | Present::Prize { cards } => cards,
             Present::Protector(_) | Present::AvatarItem(..) => &[],
         }
     }
@@ -205,7 +208,7 @@ impl Present {
             Present::Card { pack, card } => {
                 m.with("type", Value::U32(0)).with("item", Value::u16_be_array(&[*card])).with("pack_id", Value::U32(*pack))
             }
-            Present::Gift { cards } => m.with("type", Value::U32(0)).with("item", Value::u16_be_array(cards)).with("pack_id", Value::U32(0)),
+            Present::Gift { cards } | Present::Prize { cards } => m.with("type", Value::U32(0)).with("item", Value::u16_be_array(cards)).with("pack_id", Value::U32(0)),
             Present::Deck { id, .. } => {
                 m.with("type", Value::U32(1)).with("item", Value::u16_be_array(&[*id as u16])).with("desc", Value::text("-1"))
             }

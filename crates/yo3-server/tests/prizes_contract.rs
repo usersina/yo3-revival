@@ -265,3 +265,88 @@ fn the_first_win_against_an_npc_gives_the_recipe_of_its_deck_and_a_mail() {
     server.hub.lock().unwrap().finish_duel(&npc(4, 1, 130));
     assert!(!c.pushed().iter().any(|m| m.request() == Some(0x2581)));
 }
+
+// Theme deck recipes (#19): the shop's shelf can't show a deck without box art (an invisible slot, checked live), so the
+// `recipes` chat command sells them, with their cards, for the host's deck price.
+
+fn whisper(text: &str) -> yo3_proto::Packet {
+    let body = Message { tag: 10, fields: vec![("chat_str".into(), Value::text(text)), ("chat_type".into(), Value::U32(0)), ("to_name".into(), Value::text("Server"))], items: vec![] };
+    yo3_proto::Packet::Message(Message::reply(0x2134).item(body))
+}
+
+fn ask(c: &mut Client, text: &str) -> String {
+    let replies = c.send(whisper(text));
+    replies.iter().skip(1).filter_map(|m| m.items.first()?.get("chat_str")?.as_str().map(|s| s.to_string())).collect::<Vec<_>>().join("\n")
+}
+
+#[test]
+fn the_recipes_command_sells_theme_decks_with_their_cards_and_the_recipe() {
+    use yo3_server::front::Deck;
+    use yo3_server::shop::ShopDeck;
+    let deck = |id, name: &str, item| ShopDeck {
+        released: String::new(), modified: String::new(), item: Some(item),
+        deck: Deck { id, name: name.into(), main: vec![40, 41, 41], extra: vec![42], side: vec![] },
+    };
+    let server = Server::with_world(World {
+        recipe_decks: vec![deck(7, "E-HERO EVOLUTION DECK", 769), deck(8, "DRAGON'S DOMINION", 793)],
+        card_rows: 50,
+        ..World::new((1..=20).collect())
+    });
+    let d = Arc::new(Mutex::new(Directory::new(vec!["Yugi".into()])));
+    let mut c = server.join_from(&d, ADDR_A);
+    let before = d.lock().unwrap().accounts().next().unwrap().1.dpoint;
+    let listed = ask(&mut c, "recipes");
+    assert!(listed.contains("E-HERO EVOLUTION DECK") && listed.contains("DRAGON'S DOMINION") && listed.contains("500 BP"), "{listed}");
+    assert!(ask(&mut c, "recipes nothing here").contains("No deck recipe"), "an unknown name lists them");
+    assert!(ask(&mut c, "recipes d").contains("be more specific"), "two match 'd'");
+    let bought = ask(&mut c, "recipes dragon");
+    assert!(bought.contains("You bought the deck recipe DRAGON'S DOMINION with its 4 cards for 500 BP"), "{bought}");
+    // The recipe is the player's, the cards are in the collection, the BP are spent.
+    let (items, cards, left) = {
+        let d = d.lock().unwrap();
+        let (_, account) = d.accounts().next().unwrap();
+        (account.players[0].items.clone(), account.players[0].cards.clone(), account.dpoint)
+    };
+    assert_eq!(left, before - 500);
+    assert!(cards.get(&41) == Some(&2) && cards.get(&40) == Some(&1) && cards.get(&42) == Some(&1), "{cards:?}");
+    let _ = items;
+    // The present arrives like a structure deck's (type 1) and the pbin carries the recipe's bit.
+    assert!(c.pushed().iter().any(|m| m.request() == Some(0x2774)), "the present notice");
+    let p = one(c.send(req(0x2775)));
+    assert_eq!((p.request(), int(&p, "type")), (Some(0x2777), Some(1)));
+    assert_eq!(rows(&p), [8], "the deck id");
+    let me = one(c.send(req(0x2CEE))).items.remove(0);
+    assert!(me.get("pbin").and_then(Value::as_bytes).is_some_and(|b| b[793 >> 3] & 1 << (793 & 7) != 0), "on Load Deck's Official tab");
+    // Not twice, and the list no longer offers it.
+    assert!(ask(&mut c, "recipes dragon").contains("already"), "owned");
+    assert!(!ask(&mut c, "recipes").contains("DRAGON'S DOMINION"));
+}
+
+#[test]
+fn a_recipe_costs_bp_the_player_has() {
+    use yo3_server::front::Deck;
+    use yo3_server::shop::ShopDeck;
+    let deck = ShopDeck { released: String::new(), modified: String::new(), item: Some(769),
+        deck: Deck { id: 7, name: "STARDUST RISING".into(), main: vec![40], extra: vec![], side: vec![] } };
+    let server = Server::with_world(World { recipe_decks: vec![deck], card_rows: 50, ..World::new((1..=20).collect()) });
+    let d = Arc::new(Mutex::new(Directory::new(vec!["Yugi".into()])));
+    let mut c = server.join_from(&d, ADDR_A);
+    let dpoint = d.lock().unwrap().accounts().next().unwrap().1.dpoint;
+    server.hub.lock().unwrap().set_directory(d.clone());
+    let spent = d.lock().unwrap().purchase(1001, dpoint, None, |_| {});
+    assert!(spent.is_ok(), "{spent:?}");
+    assert!(ask(&mut c, "recipes stardust").contains("You need 500 BP"), "no BP, no recipe");
+    assert!(d.lock().unwrap().accounts().next().unwrap().1.players[0].items.is_empty());
+}
+
+#[test]
+fn the_games_chat_filter_stars_in_a_recipe_name_match_anything() {
+    use yo3_server::front::Deck;
+    use yo3_server::shop::ShopDeck;
+    let deck = ShopDeck { released: String::new(), modified: String::new(), item: Some(793),
+        deck: Deck { id: 8, name: "DRAGON'S DOMINION".into(), main: vec![40], extra: vec![], side: vec![] } };
+    let server = Server::with_world(World { recipe_decks: vec![deck], card_rows: 50, ..World::new((1..=20).collect()) });
+    let d = Arc::new(Mutex::new(Directory::new(vec!["Yugi".into()])));
+    let mut c = server.join_from(&d, ADDR_A);
+    assert!(ask(&mut c, "recipes ****on").contains("You bought the deck recipe DRAGON'S DOMINION"), "the filter's stars stand for letters");
+}

@@ -347,8 +347,9 @@ fn card_sources(data: &yo3_data::GameData, with_extras: bool) -> Vec<sources::Ca
         all.push(CardSource { kind: Kind::StructureDeck, name, cards: of(&mut d.cards()) });
     }
     if with_extras {
-        for d in data.decks.iter().filter(|d| sold_deck(data, d) && !has_art(d)) {
+        for d in data.decks.iter().filter(|d| recipe_deck(data, d)) {
             let name = d.name_id().and_then(|id| data.text(id)).unwrap_or("Theme Deck").to_string();
+            let name = format!("{name} (a deck recipe: the recipes command)");
             all.push(CardSource { kind: Kind::StructureDeck, name, cards: of(&mut d.cards()) });
         }
     }
@@ -368,15 +369,28 @@ fn has_art(d: &yo3_data::Deck) -> bool {
     d.record.get("deck_image").and_then(Value::as_str).is_some_and(|i| i != "noImage")
 }
 
-/// Whether the shop sells a preset deck as a recipe with its cards (#19): the structure decks (own art), the 22 theme
-/// decks (deck_type 2) and the starter recipes besides the free one (deck_type 1 without art).
-pub fn sold_deck(data: &yo3_data::GameData, d: &yo3_data::Deck) -> bool {
+/// Whether a preset deck is sold as a recipe with its cards by the `recipes` chat command (#19): the 22 theme decks
+/// (deck_type 2) and the starter recipes besides the free one (deck_type 1 without art). The shop's own shelf can't show
+/// them: a deck without `deck_image` is an invisible slot there (checked live), so only the structure decks go on it.
+pub fn recipe_deck(data: &yo3_data::GameData, d: &yo3_data::Deck) -> bool {
     match d.kind {
-        1 if has_art(d) => true,
+        1 if has_art(d) => false,
         1 => data.starter_deck(STARTER_REGULATION).is_some_and(|free| free.id != d.id) && d.pbin_no().is_some(),
         2 => d.pbin_no().is_some(),
         _ => false,
     }
+}
+
+/// The shop's structure decks (deck_type 1 with box art: SD001-SD005).
+fn shelf_deck(d: &yo3_data::Deck) -> bool {
+    d.kind == 1 && has_art(d)
+}
+
+fn shop_deck(data: &yo3_data::GameData, d: &yo3_data::Deck) -> shop::ShopDeck {
+    let date = |k: &str| d.record.get(k).and_then(Value::as_str).unwrap_or_default();
+    let name = d.name_id().and_then(|id| data.text(id)).unwrap_or("Structure Deck").to_string();
+    let deck = Deck { id: d.id, name, main: d.main.clone(), extra: d.extra.clone(), side: d.side.clone() };
+    shop::ShopDeck { released: date("created"), modified: date("modified"), deck, item: d.pbin_no() }
 }
 
 /// The Special Pack's cards, the alternate artworks and the NPCs' recipes from the client's files, for the tests.
@@ -487,17 +501,8 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
                 })
                 .collect(),
             // Structure decks: the deck_type 1 presets with their own art (SD001-SD005; the others are starters).
-            structure_decks: data
-                .decks
-                .iter()
-                .filter(|d| sold_deck(&data, d))
-                .map(|d| {
-                    let date = |k: &str| d.record.get(k).and_then(Value::as_str).unwrap_or_default();
-                    let name = d.name_id().and_then(|id| data.text(id)).unwrap_or("Structure Deck").to_string();
-                    let deck = Deck { id: d.id, name, main: d.main.clone(), extra: d.extra.clone(), side: d.side.clone() };
-                    shop::ShopDeck { released: date("created"), modified: date("modified"), deck, item: d.pbin_no() }
-                })
-                .collect(),
+            structure_decks: data.decks.iter().filter(|d| shelf_deck(d)).map(|d| shop_deck(&data, d)).collect(),
+            recipe_decks: data.decks.iter().filter(|d| recipe_deck(&data, d)).map(|d| shop_deck(&data, d)).collect(),
             exchange_pools: data
                 .packs
                 .iter()

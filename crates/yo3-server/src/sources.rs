@@ -42,7 +42,7 @@ pub const MAX_PLACES: usize = 8;
 /// Whether `name` (lowercase) matches `query` (lowercase): the query's text inside it, where a run of `*` stands for
 /// anything. The game's chat filter masks some words with stars before a line is sent ("red-eyes black" arrives as
 /// "red-eyes *****"), so the stars are what a player's word could have been.
-fn matches(name: &str, query: &str) -> bool {
+pub(crate) fn matches(name: &str, query: &str) -> bool {
     let mut rest = name;
     // The first text may be anywhere in the name; each later one follows the one before.
     for part in query.split('*').filter(|p| !p.is_empty()) {

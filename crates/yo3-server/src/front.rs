@@ -627,6 +627,8 @@ pub struct World {
     /// The booster packs and structure decks on the shop's shelves (from the client's pack and recipe files).
     pub packs: Vec<crate::shop::ShopPack>,
     pub structure_decks: Vec<crate::shop::ShopDeck>,
+    /// The theme decks and the other starters, sold by the `recipes` chat command (#19): the shelf can't show a deck without art.
+    pub recipe_decks: Vec<crate::shop::ShopDeck>,
     /// The card protectors and avatar items (with their name text) on sale, by pbin id.
     pub protectors: Vec<u16>,
     pub avatar_items: Vec<(u16, u16)>,
@@ -751,6 +753,7 @@ impl World {
             ],
             packs: vec![],
             structure_decks: vec![],
+            recipe_decks: vec![],
             protectors: vec![],
             avatar_items: vec![],
             exchange_pools: vec![],
@@ -764,7 +767,7 @@ impl World {
     /// (`free_items`), and the deck recipes on their Official tab in Load Deck (0x43D8D0), every player's
     /// (`official_items`) and the structure decks they bought.
     pub fn granted_items(&self, player: &Player) -> Vec<u16> {
-        let bought = player.decks.iter().filter_map(|&id| self.structure_decks.iter().find(|s| s.deck.id == id)?.item);
+        let bought = player.decks.iter().filter_map(|&id| self.structure_decks.iter().chain(&self.recipe_decks).find(|s| s.deck.id == id)?.item);
         self.free_items.iter().chain(&self.official_items).copied().chain(bought).collect()
     }
 }
@@ -1271,7 +1274,7 @@ impl Hub {
         self.mail.post(Mail { from: (0, "Host".into()), to: (player_id, name), title: "Special Pack".into(), body, sent, ..Mail::default() });
         self.push(player_id, &Message::reply(0x2581));
         let waiting = self.host_presents.entry(player_id).or_default();
-        waiting.push_back(crate::shop::Present::Gift { cards });
+        waiting.push_back(crate::shop::Present::Prize { cards });
         let count = waiting.len() as u32;
         self.push(player_id, &Message::reply(0x2774).with("present_count", Value::U32(count)));
     }
@@ -3908,8 +3911,8 @@ impl FrontSession {
             0x2775 => match self.presents.pop_front().or_else(|| {
                 let me = self.account.players.get(self.selected?)?.player_id;
                 let present = self.hub().next_host_present(me);
-                // The host's and the events' cards are in the collection already, not in the client's trunk.
-                self.trunk_due |= present.as_ref().is_some_and(|p| !p.cards().is_empty());
+                // An event's cards were given during a duel perhaps: the trunk follows the last present.
+                self.trunk_due |= matches!(present, Some(crate::shop::Present::Prize { .. }));
                 present
             }) {
                 Some(present) => {

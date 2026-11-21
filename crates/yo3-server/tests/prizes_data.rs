@@ -54,7 +54,7 @@ fn the_npcs_give_66_recipes_and_the_shop_sells_the_theme_decks_and_the_other_sta
     // nine character decks every player owns, leaves 66. The other 57 belong to NPC ids 0-52 and 195-197 that the
     // client's NPC roster doesn't list: no one to beat for them.
     assert_eq!(prizes.npc_recipes.len(), 66, "the playable NPCs' decks less the nine every player has");
-    let sold: Vec<&yo3_data::Deck> = data.decks.iter().filter(|d| yo3_server::sold_deck(&data, d)).collect();
+    let sold: Vec<&yo3_data::Deck> = data.decks.iter().filter(|d| yo3_server::recipe_deck(&data, d)).collect();
     assert_eq!(sold.iter().filter(|d| d.kind == 2).count(), 22, "the theme decks");
-    assert_eq!(sold.iter().filter(|d| d.kind == 1).count(), 5 + 2, "the five structure decks and the two other starters");
+    assert_eq!(sold.iter().filter(|d| d.kind == 1).count(), 2, "the two other starters");
 }
