@@ -98,6 +98,8 @@ fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
         Admin::Set { name, value, .. } => Op::Set { name: name.clone(), value: value.clone() },
         Admin::Reset { name, .. } => Op::Reset { name: name.clone() },
         Admin::Audit { limit } => Op::Audit { limit: Some(*limit) },
+        Admin::ProblemReports { who, limit } => Op::ProblemReports { who: who.clone(), limit: Some(*limit) },
+        Admin::ProblemReport { id, .. } => Op::ProblemReport { id: id.clone() },
         Admin::Stop { .. } => return Ok(None),
         Admin::Kick { who, .. } => Op::Kick { who: who.clone() },
         Admin::Ban { who, reason, days, .. } => Op::Ban { who: who.clone(), reason: reason.clone(), days: *days },
@@ -288,6 +290,10 @@ fn show(a: &Args, command: &Admin, result: &Value, handed: Option<String>) -> an
                     println!("  claimed by user {} ({}) at {at}", claim["user_id"], players.join(", "));
                 }
             }
+        }
+        Admin::ProblemReport { out: Some(file), .. } => {
+            std::fs::write(file, result["message"].as_str().unwrap_or_default())?;
+            println!("saved in {}", file.display());
         }
         Admin::Audit { .. } => {
             let rows = result["rows"].as_array().cloned().unwrap_or_default();

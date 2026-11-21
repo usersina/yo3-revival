@@ -222,6 +222,12 @@ impl Sessions {
         Some(token)
     }
 
+    /// The account a still-valid `session` belongs to.
+    pub fn user_of(&mut self, session: &Token, now: Instant) -> Option<u32> {
+        self.prune(now);
+        self.sessions.get(session).map(|s| s.identity.user_id)
+    }
+
     pub fn ticket(&mut self, session: &Token, role: Role, now: Instant) -> Option<Token> {
         self.prune(now);
         if !self.sessions.contains_key(session) || self.tickets.len() >= 4096 { return None }

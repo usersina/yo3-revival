@@ -53,6 +53,42 @@ pub const CLIENT_FRAME_MAX: usize = MAX_FRAME - 4;
 /// How long one write to a client may wait (the client reads nothing) before its connection ends.
 pub const WRITE_STALL: Duration = Duration::from_secs(60);
 
+/// What a connection carried, for the line the server logs when it ends: a player's problem report gets that line
+/// (problems.rs), so the last messages each way before a disconnect are read beside the game's own log.
+#[derive(Default)]
+pub struct Trail(std::sync::Mutex<TrailInner>);
+
+#[derive(Default)]
+struct TrailInner { started: Option<tokio::time::Instant>, incoming: u64, outgoing: u64, last_in: Option<Step>, last_out: Option<Step>, largest_out: Option<Step> }
+
+#[derive(Clone, Copy)]
+struct Step { id: u32, bytes: usize, at: tokio::time::Instant }
+
+impl Trail {
+    fn note(&self, incoming: bool, id: u32, bytes: usize) {
+        let mut t = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let step = Step { id, bytes, at: tokio::time::Instant::now() };
+        t.started.get_or_insert(step.at);
+        if incoming { t.incoming += 1; t.last_in = Some(step) } else {
+            t.outgoing += 1; t.last_out = Some(step);
+            if t.largest_out.is_none_or(|l| bytes > l.bytes) { t.largest_out = Some(step) }
+        }
+    }
+
+    /// "after 5m12s; 812 in, 790 out; last in 0x1c29 (24 B) 2.1s before, last out 0x1c2a (59676 B) 2.0s before; largest out ..."
+    pub fn summary(&self) -> String {
+        let t = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let now = tokio::time::Instant::now();
+        let Some(started) = t.started else { return "nothing carried".into() };
+        let step = |s: &Option<Step>, ago: bool| s.map_or("none".to_string(), |s| {
+            let before = if ago { format!(" {:.1}s before", now.duration_since(s.at).as_secs_f64()) } else { String::new() };
+            format!("{:#x} ({} B){before}", s.id, s.bytes)
+        });
+        format!("after {}s; {} in, {} out; last in {}, last out {}; largest out {}", now.duration_since(started).as_secs(), t.incoming, t.outgoing,
+            step(&t.last_in, true), step(&t.last_out, true), step(&t.largest_out, false))
+    }
+}
+
 /// A token bucket over virtual time: `take` waits until `cost` tokens are there.
 struct Bucket { tokens: f64, at: tokio::time::Instant, pace: Pace }
 
@@ -89,7 +125,7 @@ pub(crate) fn blocking<R>(work: impl FnOnce() -> R) -> R {
 /// Sends everything queued for one connection, in order, until every outbox clone is gone. Returns false when it
 /// gave up on the client: a write failed, stalled for [`WRITE_STALL`], or more than `outbox_max` messages waited.
 async fn write_loop<W: AsyncWrite + Unpin>(mut stream: W, mut queue: UnboundedReceiver<Message>, who: &str, log: Arc<PacketLog>,
-    mut stop: tokio::sync::oneshot::Receiver<()>, outbox_max: usize) -> bool {
+    mut stop: tokio::sync::oneshot::Receiver<()>, outbox_max: usize, trail: Arc<Trail>) -> bool {
     let mut kept = true;
     'messages: loop {
         let msg = tokio::select! { biased; msg = queue.recv() => msg, _ = &mut stop => None };
@@ -108,7 +144,7 @@ async fn write_loop<W: AsyncWrite + Unpin>(mut stream: W, mut queue: UnboundedRe
         tokio::pin!(write);
         loop {
             tokio::select! {
-                written = &mut write => if written.is_ok() { break } else { kept = false; break 'messages },
+                written = &mut write => if written.is_ok() { trail.note(false, msg.request().unwrap_or(0), bytes.len() - 4); break } else { kept = false; break 'messages },
                 _ = check.tick() => {
                     // The queue only grows while a write waits: a client reading nothing.
                     if queue.len() > outbox_max {
@@ -127,7 +163,8 @@ async fn write_loop<W: AsyncWrite + Unpin>(mut stream: W, mut queue: UnboundedRe
     kept
 }
 
-async fn serve<R, H>(mut stream: R, who: &str, log: &PacketLog, idle: Idle, pace: Pace, mut handler: H, outbox: Outbox) -> std::io::Result<()>
+#[expect(clippy::too_many_arguments, reason = "A connection's stream, its name, log, limits, handler, outbox and trail.")]
+async fn serve<R, H>(mut stream: R, who: &str, log: &PacketLog, idle: Idle, pace: Pace, mut handler: H, outbox: Outbox, trail: &Trail) -> std::io::Result<()>
 where
     R: AsyncRead + Unpin,
     H: FnMut(&Packet) -> Vec<Message>,
@@ -181,6 +218,7 @@ where
         let packet = match Packet::decode(&plain) {
             Ok(p) => {
                 log.incoming(who, &plain, Some(&p), None);
+                if let Packet::Message(m) = &p { trail.note(true, m.request().unwrap_or(0), n) }
                 // The opener alone doesn't count: a socket that sends it and then nothing is still closed.
                 spoken |= matches!(p, Packet::Message(_));
                 p
@@ -216,7 +254,7 @@ where
 
 /// The same framing and session lifecycle on an authenticated TLS stream. The session ends when the client does, or
 /// when its writer gives up on a client that doesn't read.
-pub(crate) async fn secured<S, H, M>(stream: S, who: &'static str, log: Arc<PacketLog>, idle: Idle, pace: Pace, make: M) -> std::io::Result<()>
+pub(crate) async fn secured<S, H, M>(stream: S, who: &'static str, log: Arc<PacketLog>, idle: Idle, pace: Pace, trail: Arc<Trail>, make: M) -> std::io::Result<()>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     H: FnMut(&Packet) -> Vec<Message>,
@@ -226,9 +264,9 @@ where
     let handler = make(outbox.clone());
     let (reader, writer) = tokio::io::split(stream);
     let (stop, stopped) = tokio::sync::oneshot::channel();
-    let mut writer = tokio::spawn(write_loop(writer, queue, who, log.clone(), stopped, pace.outbox_max));
+    let mut writer = tokio::spawn(write_loop(writer, queue, who, log.clone(), stopped, pace.outbox_max, trail.clone()));
     let served = tokio::select! {
-        result = serve(reader, who, &log, idle, pace, handler, outbox) => Some(result),
+        result = serve(reader, who, &log, idle, pace, handler, outbox, &trail) => Some(result),
         // The writer gave up (or failed): the session ends here, its handler (and the player's place) with it.
         _ = &mut writer => None,
     };
@@ -348,6 +386,19 @@ async fn legacy_http(
 
 #[cfg(test)]
 mod tests {
+
+    /// The line a game connection's end logs: what it carried and its last and largest messages (problem reports bring it).
+    #[tokio::test(start_paused = true)]
+    async fn a_connections_trail_names_its_last_and_largest_messages() {
+        let trail = Trail::default();
+        assert_eq!(trail.summary(), "nothing carried");
+        trail.note(true, 0x1c29, 24);
+        trail.note(false, 0x1c2a, 59_676);
+        tokio::time::advance(Duration::from_secs(3)).await;
+        trail.note(false, 0x2398, 40);
+        let summary = trail.summary();
+        assert_eq!(summary, "after 3s; 1 in, 2 out; last in 0x1c29 (24 B) 3.0s before, last out 0x2398 (40 B) 0.0s before; largest out 0x1c2a (59676 B)");
+    }
     use super::*;
 
     fn heartbeat() -> Vec<u8> { frame(&Message::reply(crate::front::HEARTBEAT).encode()) }
@@ -364,7 +415,7 @@ mod tests {
         let handled = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let count = handled.clone();
         let start = tokio::time::Instant::now();
-        let session = tokio::spawn(secured(server, "front", log, idle, pace, move |_| move |_: &Packet| {
+        let session = tokio::spawn(secured(server, "front", log, idle, pace, Arc::default(), move |_| move |_: &Packet| {
             count.fetch_add(1, std::sync::atomic::Ordering::SeqCst); vec![]
         }));
         for _ in 0..25 { client.write_all(&heartbeat()).await.unwrap(); }
@@ -384,7 +435,7 @@ mod tests {
         let pace = Pace { burst: 200, per_second: 20, outbox_max: 100 };
         let idle = Idle { limit: IDLE_TIMEOUT };
         let (mut read_half, mut write_half) = tokio::io::split(client);
-        let session = tokio::spawn(secured(server, "front", log, idle, pace, move |outbox: Outbox| move |_: &Packet| {
+        let session = tokio::spawn(secured(server, "front", log, idle, pace, Arc::default(), move |outbox: Outbox| move |_: &Packet| {
             for _ in 0..500 { let _ = outbox.send(Message::reply(0x21FC).with("news", yo3_proto::Value::text(&"x".repeat(100)))); }
             vec![]
         }));
@@ -399,7 +450,7 @@ mod tests {
         // The client drops its connection for a frame past its 1 MiB buffer (0x535190): skip it, send what follows.
         let (client, server) = tokio::io::duplex(4 << 20);
         let log = Arc::new(PacketLog::disabled().unwrap());
-        let session = tokio::spawn(secured(server, "front", log, Idle { limit: IDLE_TIMEOUT }, Pace::UNLIMITED, move |_| move |_: &Packet| {
+        let session = tokio::spawn(secured(server, "front", log, Idle { limit: IDLE_TIMEOUT }, Pace::UNLIMITED, Arc::default(), move |_| move |_: &Packet| {
             vec![Message::reply(0x1C2A).with("blob", yo3_proto::Value::Bin(vec![0; CLIENT_FRAME_MAX])), Message::reply(0x1C36)]
         }));
         let (mut read_half, mut write_half) = tokio::io::split(client);
@@ -423,7 +474,7 @@ mod tests {
         let idle = Idle { limit: IDLE_TIMEOUT };
         let (_read_half, mut write_half) = tokio::io::split(client);
         let start = tokio::time::Instant::now();
-        let session = tokio::spawn(secured(server, "front", log, idle, pace, move |outbox: Outbox| move |_: &Packet| {
+        let session = tokio::spawn(secured(server, "front", log, idle, pace, Arc::default(), move |outbox: Outbox| move |_: &Packet| {
             for _ in 0..5 { let _ = outbox.send(Message::reply(0x21FC).with("news", yo3_proto::Value::text(&"x".repeat(100)))); }
             vec![]
         }));

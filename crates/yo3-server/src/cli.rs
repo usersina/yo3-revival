@@ -242,6 +242,11 @@ pub enum Admin {
     Set { name: String, value: String, #[arg(long)] request_id: Option<String> },
     /// Put a live setting back to its default. Works while the server runs.
     Reset { name: String, #[arg(long)] request_id: Option<String> },
+    /// Players' problem reports, newest first: the logs their launchers sent when a game broke, or with Report a problem.
+    /// The ID is the one a player quotes on GitHub.
+    ProblemReports { #[arg(long)] who: Option<String>, #[arg(long, default_value_t = 50)] limit: u32 },
+    /// One problem report: its details, the server's lines about the account, then the launcher's log (`--out FILE` saves it).
+    ProblemReport { id: String, #[arg(long)] out: Option<std::path::PathBuf> },
     /// The newest administrative changes: when, who, from where, what, on what, before and after.
     Audit {
         #[arg(long, default_value_t = 50)]

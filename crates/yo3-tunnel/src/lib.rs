@@ -26,6 +26,42 @@ pub const BUILD_COMMIT: &str = env!("YO3_COMMIT");
 pub const MAX_INFO: usize = 4096;
 /// The largest account request or reply (operation 6).
 pub const MAX_ACCOUNT_REQUEST: usize = 4096;
+/// A problem report (operation 7) as sent: deflate-compressed JSON, at most this many bytes...
+pub const MAX_PROBLEM_REPORT: usize = 256 * 1024;
+/// ...and at most this many once inflated.
+pub const MAX_PROBLEM_PLAIN: usize = 1024 * 1024;
+
+/// Why the server didn't take a problem report (operation 7's answer).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReportRefused {
+    /// The session ended (signed out, or signed in elsewhere): nothing to file the report under.
+    Session,
+    /// The account sent its day's reports already.
+    Limit,
+    /// The host turned problem reports off (`problem-reports`).
+    Off,
+    /// The report wasn't one the server takes (too large, not JSON, an unknown kind).
+    Invalid,
+}
+
+impl std::fmt::Display for ReportRefused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            ReportRefused::Session => "the sign-in ended",
+            ReportRefused::Limit => "this account sent today's reports already",
+            ReportRefused::Off => "the server takes no problem reports",
+            ReportRefused::Invalid => "the server didn't take the report",
+        })
+    }
+}
+impl std::error::Error for ReportRefused {}
+
+impl ReportRefused {
+    pub fn code(self) -> u8 { match self { ReportRefused::Session => 1, ReportRefused::Limit => 2, ReportRefused::Off => 3, ReportRefused::Invalid => 4 } }
+    pub fn from_code(code: u8) -> ReportRefused {
+        match code { 1 => ReportRefused::Session, 2 => ReportRefused::Limit, 3 => ReportRefused::Off, _ => ReportRefused::Invalid }
+    }
+}
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ServerInfo {
@@ -268,6 +304,31 @@ impl Endpoint {
             Ok::<_, anyhow::Error>((serde_json::from_slice(&reply).context("invalid account reply")?, tls))
         }).await.with_context(|| format!("account request timed out during {stage}"))??;
         finish_response(reply, &mut tls).await
+    }
+
+    /// A problem report (operation 7): `report` (a JSON object: kind, summary, logs...) filed under `session`'s account
+    /// on the server; its report id (`R-XXXX-XXXX`). A refusal is a [`ReportRefused`] in the error.
+    pub async fn problem_report(&self, session: &Token, report: &serde_json::Value) -> anyhow::Result<String> {
+        use std::io::Write;
+        let mut packed = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
+        packed.write_all(&serde_json::to_vec(report)?)?;
+        let body = packed.finish()?;
+        if body.len() > MAX_PROBLEM_REPORT { bail!("problem report too large") }
+        let mut stage = "TCP connect";
+        let (id, mut tls) = tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
+            let mut tls = self.open(7, &mut stage).await?;
+            stage = "send problem report";
+            tls.write_all(session).await?;
+            tls.write_u32(body.len() as u32).await?;
+            tls.write_all(&body).await?;
+            stage = "read problem report answer";
+            let status = tls.read_u8().await.context("read problem report answer")?;
+            if status != 0 { return Err(anyhow::Error::new(ReportRefused::from_code(status))) }
+            let length = tls.read_u8().await? as usize;
+            let mut id = vec![0; length]; tls.read_exact(&mut id).await?;
+            Ok::<_, anyhow::Error>((String::from_utf8(id).context("invalid report id")?, tls))
+        }).await.with_context(|| format!("problem report timed out during {stage}"))??;
+        finish_response(id, &mut tls).await
     }
 
     pub async fn ticket(&self, session: &Token, role: Role) -> anyhow::Result<Token> {

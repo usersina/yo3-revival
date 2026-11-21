@@ -20,11 +20,14 @@ pub(crate) struct Gate {
     pub throttle: Mutex<crate::logins::Throttle>,
     /// The live settings (#24): the account rules and the server list's name and headline.
     pub settings: Arc<crate::settings::Live>,
+    /// Players' problem reports (operation 7), shared with the admin API.
+    pub problems: Arc<crate::problems::Problems>,
 }
 
 impl Gate {
-    pub fn new(accounts: Arc<Mutex<Directory>>, settings: Arc<crate::settings::Live>, sessions: Arc<Mutex<Sessions>>) -> Self {
-        Gate { sessions, accounts, throttle: Mutex::default(), settings }
+    pub fn new(accounts: Arc<Mutex<Directory>>, settings: Arc<crate::settings::Live>, sessions: Arc<Mutex<Sessions>>,
+        problems: Arc<crate::problems::Problems>) -> Self {
+        Gate { sessions, accounts, throttle: Mutex::default(), settings, problems }
     }
     /// Discovery's answer: the build, and for the server list its name, headline, who is online and how accounts
     /// are made, from the settings now.
@@ -50,6 +53,24 @@ impl Gate {
 /// A game's front connection ending: its place on the device is free again (#64).
 struct GameClosed { sessions: Arc<Mutex<crate::auth::Sessions>>, identity: crate::auth::Identity }
 impl Drop for GameClosed { fn drop(&mut self) { self.sessions.locked().set_playing(self.identity, false, usize::MAX); } }
+
+/// Files a problem report under `session`'s account: its id, or why not.
+fn problem_report(gate: &Gate, session: &yo3_tunnel::Token, body: &[u8]) -> Result<String, yo3_tunnel::ReportRefused> {
+    use yo3_tunnel::ReportRefused;
+    if !gate.settings.now().problem_reports { return Err(ReportRefused::Off) }
+    let user_id = gate.sessions.locked().user_of(session, Instant::now()).ok_or(ReportRefused::Session)?;
+    let request = crate::problems::inflate(body)?;
+    let (account, names) = {
+        let d = gate.accounts.locked();
+        let names = d.player_names(user_id);
+        let account = d.login_by_id(user_id).map(|l| l.user.clone()).unwrap_or_else(|| names.join(", "));
+        (account, names)
+    };
+    let now = crate::logins::now();
+    let report = gate.problems.accept(user_id, &account, &request, crate::problems::server_lines(user_id, &names, now), now)?;
+    tracing::info!("[report] user {user_id} ({account}) sent problem report {report}: {}", request["kind"].as_str().unwrap_or_default());
+    Ok(report)
+}
 
 /// `info(with_online)`: discovery's answer. Only discovery (operation 5) counts who is online, which takes the hub
 /// lock: that is the server list's and the launcher's liveness check of a hung hub, and the other operations (a
@@ -124,6 +145,22 @@ async fn handshake(mut tls: TlsStream<TcpStream>, gate: &Gate, info: &(dyn Fn(bo
                 tls.write_u16(body.len() as u16).await?;
                 tls.write_all(&body).await?;
             }
+            7 => {
+                // A problem report (problems.rs): the session it is filed under, then its deflated JSON.
+                let mut session = [0; 32]; tls.read_exact(&mut session).await?;
+                let length = tls.read_u32().await? as usize;
+                anyhow::ensure!(length <= yo3_tunnel::MAX_PROBLEM_REPORT, "problem report too large");
+                let mut body = vec![0; length]; tls.read_exact(&mut body).await?;
+                let answer = problem_report(gate, &session, &body);
+                match &answer {
+                    Ok(id) => tracing::info!("[report] {peer} problem report {id}"),
+                    Err(refused) => tracing::info!("[report] {peer} problem report refused: {refused}"),
+                }
+                match answer {
+                    Ok(id) => { tls.write_u8(0).await?; tls.write_u8(id.len() as u8).await?; tls.write_all(id.as_bytes()).await?; }
+                    Err(refused) => tls.write_u8(refused.code()).await?,
+                }
+            }
             6 => {
                 // Account requests (account_ops): a length and a JSON object each way. Never logged as they come.
                 let length = tls.read_u16().await? as usize;
@@ -161,9 +198,9 @@ async fn handshake(mut tls: TlsStream<TcpStream>, gate: &Gate, info: &(dyn Fn(bo
 #[expect(clippy::too_many_arguments, reason = "Each authenticated stream shares the server state, framing limits and HTTP endpoint.")]
 pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::RwLock<TlsAcceptor>>, world: Arc<World>, hub: Arc<Mutex<Hub>>,
     accounts: Arc<Mutex<Directory>>, log: Arc<PacketLog>, idle: net::Idle, http: SocketAddr,
-    sessions: Arc<Mutex<Sessions>>)
+    sessions: Arc<Mutex<Sessions>>, problems: Arc<crate::problems::Problems>)
 {
-    let gate = Arc::new(Gate::new(accounts.clone(), world.settings.clone(), sessions));
+    let gate = Arc::new(Gate::new(accounts.clone(), world.settings.clone(), sessions, problems));
     // The connections open now, against the `max-connections` setting, and each address's handshake allowance (#27).
     let open = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let mut buckets = crate::logins::Buckets::default();
@@ -212,6 +249,8 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
             let Some(mut lease) = gate.sessions.locked().lease(identity) else { return };
             tracing::info!("[tls] {peer} user {} launcher {} {role:?}", identity.user_id, identity.session_id);
             let pace = gate.settings.now().pace;
+            let trail = Arc::new(net::Trail::default());
+            let carried = trail.clone();
             let work = async move {
                 match role {
                     Role::Front => {
@@ -225,7 +264,7 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
                             return Ok(());
                         }
                         let _closed = GameClosed { sessions: gate.sessions.clone(), identity };
-                        Box::pin(net::secured(tls, "front", log, idle, pace, move |outbox| {
+                        Box::pin(net::secured(tls, "front", log, idle, pace, trail, move |outbox| {
                             let mut front = FrontSession::new(account, world, hub, outbox);
                             front.set_identity(identity);
                             front.set_tunnel_duel_port(port);
@@ -233,7 +272,7 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
                             move |p: &yo3_proto::Packet| front.handle(p)
                         })).await
                     }
-                    Role::Duel => Box::pin(net::secured(tls, "duel", log, idle, pace, move |outbox| {
+                    Role::Duel => Box::pin(net::secured(tls, "duel", log, idle, pace, trail, move |outbox| {
                         let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64);
                         let mut duel = crate::duel::DuelSession::new(world, hub, seed).with_outbox(outbox).with_identity(identity);
                         move |p: &yo3_proto::Packet| duel.handle(p)
@@ -271,13 +310,17 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
                 }
             };
             // Why a connection ended is said in the log: a player who reports being disconnected can then be answered from it.
+            // A game connection's line also says what it carried and its last messages each way (net::Trail): a player's
+            // problem report brings this line along (problems.rs).
             let user = identity.user_id;
+            let carried = |role: Role| if role == Role::Http { String::new() } else { format!("; {}", carried.summary()) };
             tokio::select! {
-                _ = lease.changed() => tracing::info!("[tls] {peer} user {user} {role:?} closed by the server: the session ended (signed out, or the account signed in again: the newest sign-in wins)"),
+                _ = lease.changed() => tracing::info!("[tls] {peer} user {user} {role:?} closed by the server: the session ended (signed out, or the account signed in again: the newest sign-in wins){}", carried(role)),
                 result = tokio::time::timeout(expires.saturating_duration_since(Instant::now()), work) => match result {
                     Err(_) => tracing::info!("[tls] {peer} user {user} {role:?} closed by the server: the session's 12 hours are over"),
-                    Ok(Err(e)) => tracing::info!("[tls] {peer} user {user} {role:?} ended with an error: {e}"),
-                    Ok(Ok(())) => tracing::debug!("[tls] {peer} user {user} {role:?} ended"),
+                    Ok(Err(e)) => tracing::info!("[tls] {peer} user {user} {role:?} ended with an error: {e}{}", carried(role)),
+                    Ok(Ok(())) if role == Role::Http => tracing::debug!("[tls] {peer} user {user} {role:?} ended"),
+                    Ok(Ok(())) => tracing::info!("[tls] {peer} user {user} {role:?} ended by the game or its helper{}", carried(role)),
                 },
             };
         });
@@ -301,7 +344,7 @@ mod close_tests {
         let listener=TcpListener::bind(("127.0.0.1",0)).await.unwrap();let address=listener.local_addr().unwrap();
         let mut peer=tokio::spawn(async move {
             let (tcp,_)=listener.accept().await.unwrap();let tls=acceptor.accept(tcp).await.unwrap();
-            let gate=Gate::new(Arc::new(Mutex::new(Directory::new(vec![]))),Arc::new(crate::settings::Live::open(None,vec![]).unwrap()),Arc::default());
+            let gate=Gate::new(Arc::new(Mutex::new(Directory::new(vec![]))),Arc::new(crate::settings::Live::open(None,vec![]).unwrap()),Arc::default(),Arc::new(crate::problems::Problems::new(None)));
             handshake(tls,&gate,&|_| yo3_tunnel::ServerInfo::current(true),std::net::Ipv4Addr::LOCALHOST.into()).await.unwrap();
         });
         let tcp=TcpStream::connect(address).await.unwrap();
@@ -330,7 +373,7 @@ mod close_tests {
             let acceptor=acceptor.clone();
             let peer=tokio::spawn(async move {
                 let (tcp,_)=listener.accept().await.unwrap();let tls=acceptor.accept(tcp).await.unwrap();
-                let gate=Gate::new(Arc::new(Mutex::new(Directory::new(vec![]))),Arc::new(crate::settings::Live::open(None,vec![]).unwrap()),Arc::default());
+                let gate=Gate::new(Arc::new(Mutex::new(Directory::new(vec![]))),Arc::new(crate::settings::Live::open(None,vec![]).unwrap()),Arc::default(),Arc::new(crate::problems::Problems::new(None)));
                 let asked=std::sync::atomic::AtomicBool::new(false);
                 let info=|online: bool| { asked.fetch_or(online, std::sync::atomic::Ordering::SeqCst); yo3_tunnel::ServerInfo::current(true) };
                 handshake(tls,&gate,&info,std::net::Ipv4Addr::LOCALHOST.into()).await.unwrap();

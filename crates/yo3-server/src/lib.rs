@@ -40,6 +40,7 @@ pub mod prizes;
 mod social;
 mod mail;
 pub mod reports;
+pub mod problems;
 pub mod sources;
 mod teams;
 mod trade;
@@ -702,7 +703,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     // The signed-in sessions: the TLS gate makes them, the admin API ends them (a kick, a ban, maintenance).
     let sessions = Arc::new(Mutex::new(auth::Sessions::default()));
     let auth_task = tokio::spawn(transport::accept_loop(authenticated, tls, world.clone(), hub.clone(), directory.clone(),
-        packets.clone(), idle, http_addr, sessions.clone()));
+        packets.clone(), idle, http_addr, sessions.clone(), Arc::new(problems::Problems::new(cfg.data_dir.as_deref()))));
     let maintenance_task = tokio::spawn(maintenance(world.clone(), hub.clone(), directory.clone(), sessions.clone()));
     // Duel clocks between players run out on the server's side: checked once a second.
     let clock_task = {

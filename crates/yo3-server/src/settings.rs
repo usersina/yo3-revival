@@ -117,6 +117,9 @@ pub const REGISTRY: &[Setting] = &[
     Setting { name: "clean-game", help: "on: the launcher refuses to start the game here while another program's .dll or .asi is in the game folder, \
         a Winsock provider isn't Microsoft's or a network function is detoured (a tidiness policy, not anti-cheat: the launcher reports it)",
         kind: Kind::Choice(&["off", "on"]), applies: Applies::AtOnce, default: || json!("off") },
+    Setting { name: "problem-reports", help: "on: players' launchers send their logs here when a game breaks (its connection dropped, an error) \
+        and with Report a problem; read them with `reports` and `report ID`, or on the dashboard. off: nothing is sent or kept",
+        kind: Kind::Choice(&["on", "off"]), applies: Applies::AtOnce, default: || json!("on") },
     Setting { name: "news", help: "The game's Information list: \"TITLE | BODY\" for one entry, or a JSON list of {title, body}",
         kind: Kind::News, applies: Applies::NextRequest, default: default_news },
     Setting { name: "maintenance-at", help: "When maintenance starts, in Unix seconds (0: none); `maintenance --in MINUTES` sets it. \
@@ -214,6 +217,8 @@ pub struct Settings {
     pub linked_fair: bool,
     /// The launcher refuses a game with other programs inside (#69).
     pub clean_game: bool,
+    /// Players' launchers may send problem reports (`problems.rs`).
+    pub problem_reports: bool,
     /// Every setting's value by name, defaults included.
     values: Map<String, Json>,
 }
@@ -261,6 +266,7 @@ impl Settings {
             games_per_device: number("games-per-device"),
             linked_fair: text("linked-accounts") != "off",
             clean_game: text("clean-game") == "on",
+            problem_reports: text("problem-reports") != "off",
             pace: crate::net::Pace { burst: number("request-burst"), per_second: number("requests-per-second"), outbox_max: number("outbox-max") as usize },
             limits: Limits { burst: number("address-burst"), refill_seconds: number("address-refill-seconds"), max_backoff_seconds: number("backoff-max-seconds") },
             values,

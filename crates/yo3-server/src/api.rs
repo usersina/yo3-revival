@@ -45,6 +45,7 @@ pub mod server;
 pub mod observability;
 pub mod backups;
 pub mod reports;
+pub mod problem_reports;
 pub mod banlist;
 pub mod championship;
 pub mod official;
@@ -99,6 +100,10 @@ pub enum Op {
     Settings,
     Set { name: String, value: String },
     Reset { name: String },
+    /// Players' problem reports (problems.rs), newest first: WHO's only when given (50 when no limit is given).
+    ProblemReports { #[serde(default)] who: Option<String>, #[serde(default)] limit: Option<u32> },
+    /// One problem report with its logs.
+    ProblemReport { id: String },
     /// The newest audit rows (50 when no limit is given).
     Audit { #[serde(default)] limit: Option<u32> },
     Shutdown { run_id: String },
@@ -176,7 +181,7 @@ impl Op {
     /// Whether it changes anything (and so writes an audit row).
     pub fn changes(&self) -> bool {
         !matches!(self, Op::Status | Op::Accounts | Op::Countries | Op::Titles | Op::Recipes | Op::Codes | Op::Invites | Op::Settings | Op::Audit { .. }
-            | Op::Account { .. } | Op::Backups | Op::Logs { .. } | Op::Reports { .. } | Op::Banlists | Op::Events)
+            | Op::Account { .. } | Op::Backups | Op::Logs { .. } | Op::Reports { .. } | Op::Banlists | Op::Events | Op::ProblemReports { .. } | Op::ProblemReport { .. })
     }
 
     /// Whether a moderator may run it (the admin panel, #36): looking, moderation, invites and reset codes. Settings,
@@ -185,7 +190,8 @@ impl Op {
         matches!(self, Op::Status | Op::Accounts | Op::Account { .. } | Op::Countries | Op::Titles | Op::Codes | Op::Invites
             | Op::Settings | Op::Audit { .. } | Op::Logs { .. } | Op::Backups | Op::Invite { .. } | Op::ResetCode { .. }
             | Op::Rename { .. } | Op::Kick { .. } | Op::Ban { .. } | Op::Restrict { .. } | Op::Lift { .. } | Op::Mute { .. }
-            | Op::Unmute { .. } | Op::SignOut { .. } | Op::Reports { .. } | Op::HandleReport { .. } | Op::SetBanlist { .. } | Op::Banlists | Op::Events)
+            | Op::Unmute { .. } | Op::SignOut { .. } | Op::Reports { .. } | Op::HandleReport { .. } | Op::SetBanlist { .. } | Op::Banlists | Op::Events
+            | Op::ProblemReports { .. } | Op::ProblemReport { .. })
     }
 
     /// The account it acts on, if it acts on one (a User ID or a player's name).
@@ -559,6 +565,22 @@ impl Api {
                 Ok((json!({ "backups": rows }), None, None))
             }
             Op::BackUp => Err("backups require the typed mutation boundary".into()),
+            Op::ProblemReports { who, limit } => {
+                let problems = crate::problems::Problems::new(self.data_dir.as_deref());
+                let user = match who.as_deref().filter(|w| !w.trim().is_empty()) {
+                    Some(who) => Some(self.accounts.locked().user_of(who).ok_or_else(|| format!("no account {who:?}"))?),
+                    None => None,
+                };
+                let list = problems.list(user, limit.unwrap_or(50).min(2000) as usize);
+                let when = |at: i64| chrono::DateTime::from_timestamp(at, 0).map(|t| t.format("%Y-%m-%d %H:%M").to_string()).unwrap_or_default();
+                let lines: Vec<String> = list.iter().map(|r| format!("{}\t{}\t{} (user {})\t{}\t{}", r.id, when(r.at), r.account, r.user_id, r.kind, r.summary)).collect();
+                let message = if lines.is_empty() { "no problem reports".to_string() } else { lines.join("\n") };
+                Ok((json!({ "reports": list, "message": message }), None, None))
+            }
+            Op::ProblemReport { id } => {
+                let report = crate::problems::Problems::new(self.data_dir.as_deref()).get(id).ok_or_else(|| format!("no problem report {id}"))?;
+                Ok((json!({ "message": report.text(), "report": report }), None, None))
+            }
             Op::Logs { limit, problems } => {
                 Ok((json!({ "lines": crate::recent::lines(limit.unwrap_or(200).min(crate::recent::KEEP as u32) as usize, *problems) }), None, None))
             }
