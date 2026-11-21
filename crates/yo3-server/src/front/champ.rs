@@ -208,7 +208,7 @@ impl Hub {
     /// The entry draw: the lots (`0x32D1`), then the 16-seat bracket and the first round. More than 16 entrants: 16 are
     /// drawn at random and the others are told they could not enter.
     fn champ_draw(&mut self, id: u32) {
-        let Some(c) = self.championships.get(id).cloned() else { return };
+        let Some(c) = self.championships.get(id).cloned().filter(|c| c.state == State::Scheduled) else { return };
         let (drawn, out) = champ::draw(&c.entrants);
         let closed = Message::reply(0x32D0).with("phase", Value::U32(1)).with("status", Value::U32(0));
         for (p, _) in &c.entrants {
