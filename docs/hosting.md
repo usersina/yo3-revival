@@ -291,6 +291,10 @@ connections, and say so to your players: they are asked to remove files from the
   file for a check). Artwork is not shipped or hosted: each player gets the pictures through Desktop (Settings → Singleplayer → Anime pictures, under the Anime cards tick:
   downloaded from ProjectIgnis on their click, or from a zip; [how](anime-cards.md#artwork)). What changes for players: [playing](playing.md#anime-card-versions); the list of cards:
   [anime cards](anime-cards.md).
+- **Destiny Draw.** `yo3 set destiny-draw on` (a [live setting](guide.md#live-settings), off by default, at the next
+  duel) lets each player, in NPC duels only (not duels between players, events or the Ultimate Match's computer match),
+  use Destiny Draw once per duel: at the start of their Draw Phase with 1000 LP or less they are asked, and a yes lets them pick
+  any card left in their Deck as the card they draw. [Playing](playing.md#destiny-draw).
 - **Prices.** `pack-cost`, `deck-cost`, `trade-cards` and the Rental's `rental-cards`, `rental-bp` and `rental-days`
   are [live settings](guide.md#live-settings), like `yo3 set pack-cost 150`.
 

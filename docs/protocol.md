@@ -1984,6 +1984,17 @@ takes it as its message, and a Yes/No dialog adds it on a line under its client 
 EDOPro's hints with no client text (`HINT_WORDS` in `translate/texts.rs`: Synchro, Xyz and Link Material, positions, …) are
 the server's own words in the table's style (**guess**: the original's wording is unknown).
 
+**Destiny Draw** (#71, the `destiny-draw` setting, **guess**: the original game had it nowhere). In an NPC duel with the setting on,
+the engine gives the player's team the `destiny_draw` skill (`skills.lua`, like the heroes' Heart of the Cards, `bot::give_skills`):
+at EVENT_PREDRAW of their turn, with a draw to make, LP of 1000 or less, a card in the Deck and the skill unused, the core asks
+MSG_SELECT_YESNO with a description of the engine's own (pseudo card code `0x7FF00000`, string 0), which the engine adds as
+`description_text`. It reaches the client as the Yes/No dialog (kind `YES_NO`, 'Use now?' with the server's line under it, through the
+connection DLL's server texts, see Option texts). Yes: MSG_HINT SELECTMSG with string 1 (`hint_text`) and a MSG_SELECT_CARD of one of each name
+in the Deck as the card list titled with that text; the pick goes to the Deck's top (`Duel.MoveToDeckTop`, which sends no message, as
+with Heart of the Cards: the client just sees the draw) and the draw takes it; the skill is then used up. No: asked again at the next draw.
+Duels between players, events and the Ultimate Match's computer match give no skill (`duel.rs` `destiny_draw_applies`); the duel check's
+`YO3_CHECK_SKILLS=1` gives it to the client's side. The duel's chat gets a line at its start (`engine::DESTINY_NOTE`, as the anime note does).
+
 **Numbers.** The number dialog (`0x4C6430`: max `param3 >> 24`, step and min 4 bits each, format 302 thousands / 303
 hundreds / else ones; `NumberSprite` to five figures) says "Declare monster level." (280) only after the Level hint
 (HINTMSG_LVRANK 567, Reasoning): EDOPro's Duel.AnnounceLevel is an alias of AnnounceNumberRange, and the client's
