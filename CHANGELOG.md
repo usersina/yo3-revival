@@ -13,7 +13,9 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.1.9 (2026-11-21)
+
+Multiplayer: update to v0.1.9 to join the hosted server after deployment.
 
 - **Destiny Draw** (off by default): in a duel against the computer, once per duel, at the start of your Draw Phase with
   1000 LP or less, the game asks whether to use Destiny Draw; if you do, you pick any card left in your Deck and draw it.
