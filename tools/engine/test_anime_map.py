@@ -14,10 +14,26 @@ SPEC.loader.exec_module(anime_map)
 
 MAP = json.loads((ROOT / 'engine/anime-cards.json').read_text(encoding='utf-8'))
 CARDS = {c['cid']: c for c in MAP['cards']}
-TABLE = [line.split('\t') for line in (ROOT / 'engine/anime/research.tsv').read_text(encoding='utf-8').splitlines()[1:]]
+ROWS = [dict(zip(anime_map.COLUMNS, (line.split('\t') + [''] * 6)[:6]))
+        for line in (ROOT / 'engine/anime/cards.tsv').read_text(encoding='utf-8').splitlines()[1:]]
+# The reviewed cards: those with an anime version, and the one held for research.
+TABLE = [[r['cid'], r['name'], r['anime_id'], r['status'], r['note']] for r in ROWS if r['status'] in anime_map.WITH_ANIME | {'Held'}]
 
 
 class AnimeMap(unittest.TestCase):
+    def test_the_table_has_one_row_per_card_and_an_anime_id_only_with_an_anime_status(self):
+        ids = [r['cid'] for r in ROWS]
+        self.assertEqual(len(ids), len(set(ids)), 'a Konami id twice')
+        self.assertGreater(len(ROWS), 4700, 'every card of the game has a row')
+        self.assertEqual([r['cid'] for r in ROWS], sorted(ids, key=int), 'sorted by Konami id')
+        for r in ROWS:
+            self.assertIn(r['status'], anime_map.STATUSES, r)
+            self.assertEqual(bool(r['anime_id']), r['status'] in anime_map.WITH_ANIME, r)
+        by = {r['name']: r for r in ROWS}
+        self.assertEqual((by['The Winged Dragon of Ra']['anime_id'], by['The Winged Dragon of Ra']['edopro_id']), ('511600400', '10000010'))
+        self.assertEqual(by['Deck Devastation Virus']['anime_id'], '', 'its anime appearance is the game card; 511001119 is another card')
+
+
     def test_every_researched_card_has_one_recorded_disposition(self):
         self.assertEqual(sorted(int(r[0]) for r in TABLE), sorted(CARDS))
         self.assertEqual(len(TABLE), len(CARDS), 'a Konami id twice')

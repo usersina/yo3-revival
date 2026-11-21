@@ -1,6 +1,6 @@
 # Anime card versions
 
-<!-- Made by tools/engine/anime-map.py from engine/anime/research.tsv: do not edit by hand. -->
+<!-- Made by tools/engine/anime-map.py from engine/anime/cards.tsv: do not edit by hand. -->
 
 With the `anime-cards` setting on (a host sets it; a single player turns on **Anime cards** in Desktop's Settings → Singleplayer: [playing](playing.md#anime-card-versions)), the 415 cards below play by their anime effects, ProjectIgnis' unofficial scripts (CardScripts `915c6ff`), in NPC and player duels, and the game shows them as their anime versions: the **card profile**. The other cards, and the 3 retained or held back below, play and show as they always did. The reviewed table is the issue [#60](https://github.com/usersina/yo3-revival/issues/60); an unofficial script loading without an error is not proof of anime accuracy, only that it plays.
 
@@ -670,20 +670,24 @@ Extra Deck), or when the research or the script is not settled. Each reason is k
 
 | Card | Why |
 | --- | --- |
-| Alligator's Sword | the anime Normal Monster is equivalent |
-| Anthrosaurus | the anime Normal Monster is equivalent |
-| Card Guard | upstream entry 511000155 is a different or prize card |
-| Fiend's Mirror | upstream entry 511002611 is a different or prize card |
-| Hero of the East | the anime Normal Monster is equivalent |
-| Kageningen | the anime Normal Monster is equivalent |
-| Little D | the anime Normal Monster is equivalent |
-| Meotoko | the anime Normal Monster is equivalent |
-| Ray of Hope | upstream entry 511000901 is a different or prize card |
-| Short Circuit | upstream entry 511000181 is a different or prize card |
-| Skull Stalker | the anime Normal Monster is equivalent |
-| Stone Armadiller | the anime Normal Monster is equivalent |
-| Super War-Lion | upstream entry 511002612 is a different or prize card |
-| Wolf | the anime Normal Monster is equivalent |
-| Zera the Mant | upstream entry 511002610 is a different or prize card |
+| Alligator's Sword | upstream 511003060: the anime Normal Monster is equivalent |
+| Anthrosaurus | upstream 511003069: the anime Normal Monster is equivalent |
+| Card Guard | upstream 511000155 is a different card or a prize card |
+| Fiend's Mirror | upstream 511002611 is a different card or a prize card |
+| Hero of the East | upstream 511003068: the anime Normal Monster is equivalent |
+| Kageningen | upstream 511003066: the anime Normal Monster is equivalent |
+| Little D | upstream 511003059: the anime Normal Monster is equivalent |
+| Meotoko | upstream 511003063: the anime Normal Monster is equivalent |
+| Ray of Hope | upstream 511000901 is a different card or a prize card |
+| Short Circuit | upstream 511000181 is a different card or a prize card |
+| Skull Stalker | upstream 511003064: the anime Normal Monster is equivalent |
+| Stone Armadiller | upstream 511003067: the anime Normal Monster is equivalent |
+| Super War-Lion | upstream 511002612 is a different card or a prize card |
+| Wolf | upstream 511003065: the anime Normal Monster is equivalent |
+| Zera the Mant | upstream 511002610 is a different card or a prize card |
 
-Every other card of the game (4,263 of 4,696) has no anime version in the catalogue and keeps its current behaviour.
+Every other card of the game (4,338 of 4,771 in `engine/anime/cards.tsv`) has no anime_id: no anime version, or none we use, and keeps its current behaviour.
+
+| Card | Note |
+| --- | --- |
+| Deck Devastation Virus | Its anime appearance (ZEXAL) has the game's text. ProjectIgnis' Deck Destruction Virus (511001119) is another card, from the Pyramid of Light film. |

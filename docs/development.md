@@ -429,8 +429,9 @@ from: carry an upstream change over, or delete an override upstream has fixed.
 (`Engine::start_with`, `crates/yo3-engine/src/cards.rs`): the cards `engine/anime-cards.json` maps play as their
 ProjectIgnis unofficial versions (data from `cards-unofficial.cdb`, scripts from `CardScripts/unofficial/`, which also
 holds `proc_unofficial.lua`), keyed by the client's Konami id as ever. Nothing is derived from upstream aliases. The map is
-made by `tools/engine/anime-map.py` from `engine/anime/research.tsv` (issue #60's reviewed table, one line per
-client card, with a note where the research left a question) and the fetched data; it also writes
+made by `tools/engine/anime-map.py` from `engine/anime/cards.tsv` (one row per card of the game: Konami id, name, the
+EDOPro passcode the engine plays, an optional `anime_id` (the EDOPro passcode of its anime version; empty: none), a status
+and a note; `card_profile.rs` checks it has every card of the game) and the fetched data; it also writes
 [docs/anime-cards.md](anime-cards.md). A card is `mapped` only if the client can show what the engine plays: every difference
 in card class, Main or Extra Deck, type, Spell/Trap kind, level, ATK, DEF, attribute and race from the game's card is in a
 category the **card profile** covers (`PROFILE_COVERS` and the proof set in `anime-map.py`; `--releases` prints what each

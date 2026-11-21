@@ -168,6 +168,25 @@ fn every_anime_text_fits_the_connection_dll() {
     assert!(dll.contains(&format!("#define YO3_PROFILE_TEXT_CHARS {}", yo3_server::profile::CLIENT_TEXT_CHARS)), "the DLL's limit is the server's");
 }
 
+/// `engine/anime/cards.tsv` has one row per card of the game, under the game's own name: a card the table lacks would be
+/// one nobody reviewed for an anime version (the anime_id column; `tools/engine/test_anime_map.py` checks the rest).
+#[test]
+fn the_anime_table_has_a_row_for_every_card_of_the_game() {
+    let Some(data) = game() else { return };
+    let table = std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../engine/anime/cards.tsv")).unwrap();
+    let rows: HashMap<u16, String> = table.lines().skip(1).map(|l| {
+        let mut f = l.split('\t');
+        (f.next().unwrap().parse().unwrap(), f.next().unwrap().to_string())
+    }).collect();
+    let mut game: HashMap<u16, String> = HashMap::new();
+    for c in data.cards.iter() { game.entry(c.cid).or_insert_with(|| c.name.clone()); }
+    let missing: Vec<_> = game.iter().filter(|(cid, _)| !rows.contains_key(cid)).collect();
+    assert!(missing.is_empty(), "cards with no row: {missing:?}");
+    let extra: Vec<_> = rows.keys().filter(|cid| !game.contains_key(cid)).collect();
+    assert!(extra.is_empty(), "rows of no card of the game: {extra:?}");
+    for (cid, name) in &game { assert_eq!(&rows[cid], name, "Konami id {cid}") }
+}
+
 // One card of each released category (issue #60, `PROFILE_COVERS`): what the client's row says before and under the profile,
 // and where a deck keeps the card. The category's real-core scenario is in tests/anime_cards.rs, and the self-play duel check
 // holds the engine's field to the profile (tests/duel_check.rs).

@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Builds engine/anime-cards.json, the reviewed map from the client's cards to their anime versions (issue #60).
 
-Input (committed): engine/anime/research.tsv, the issue's reviewed table (client Konami id, name, anime passcode in the
-pinned unofficial database, the research label, a note). Nothing is derived from upstream aliases: the table is the
+Input (committed): engine/anime/cards.tsv, one row per card of the game: its Konami id, name, EDOPro passcode (the
+official card the engine plays, as engine/card-ids.json gives it), its optional anime_id (the EDOPro passcode of its anime
+version in the pinned unofficial database; empty: the card has no anime version, or none we use), a status (Anime,
+Anime / Normal, Reconstruction for our own record and script; Held for a card waiting on research; Kept for a card whose
+upstream anime entry is equivalent or another card) and a note. Nothing is derived from upstream aliases: the table is the
 only source of which anime card a game card gets, and an upstream alias that points at a different card (anime Power
 Bond aliases Polymerization) holds the entry back.
 
@@ -33,6 +36,11 @@ TYPE_NAMES = {0x10: "Normal", 0x20: "Effect", 0x40: "Fusion", 0x80: "Ritual", 0x
               0x80000: "Field", 0x100000: "Counter", 0x200000: "Flip", 0x400000: "Toon", 0x800000: "Xyz", 0x1000000: "Pendulum",
               0x2000000: "Special Summon only", 0x4000000: "Link"}
 SCRIPT_FOLDERS = ["official", "pre-errata", "pre-release"]
+# engine/anime/cards.tsv: its columns, and the statuses of a card with an anime version (an anime_id) or one under review.
+TABLE = os.path.join(ENGINE, "anime", "cards.tsv")
+COLUMNS = ["cid", "name", "edopro_id", "anime_id", "status", "note"]
+WITH_ANIME = {"Anime", "Anime / Normal", "Reconstruction"}
+STATUSES = WITH_ANIME | {"Held", "Kept", ""}
 
 
 def read(path):
@@ -49,6 +57,29 @@ def pins():
 def records():
     """engine/anime/records.json: the corrected anime records (cards whose upstream entry is a placeholder), by passcode."""
     return {r["code"]: r for r in json.loads(read(os.path.join(ENGINE, "anime/records.json")))["records"]}
+
+
+def table():
+    """engine/anime/cards.tsv as dicts, checked: every Konami id once, a known status, and an anime_id exactly when the status
+    is one of WITH_ANIME."""
+    lines = read(TABLE).splitlines()
+    if lines[0].split("\t") != COLUMNS:
+        sys.exit("engine/anime/cards.tsv: the header must be " + "\t".join(COLUMNS))
+    rows, seen, bad = [], set(), []
+    for n, line in enumerate(lines[1:], 2):
+        r = dict(zip(COLUMNS, (line.split("\t") + [""] * 6)[:6]))
+        if not r["cid"].isdigit() or int(r["cid"]) in seen:
+            bad.append("line %d: Konami id %r missing or twice" % (n, r["cid"]))
+            continue
+        seen.add(int(r["cid"]))
+        if r["status"] not in STATUSES:
+            bad.append("line %d: unknown status %r" % (n, r["status"]))
+        if bool(r["anime_id"]) != (r["status"] in WITH_ANIME) or (r["anime_id"] and not r["anime_id"].isdigit()):
+            bad.append("line %d (%s): anime_id %r with status %r" % (n, r["name"], r["anime_id"], r["status"]))
+        rows.append(r)
+    if bad:
+        sys.exit("engine/anime/cards.tsv:\n  " + "\n  ".join(bad))
+    return rows
 
 
 def official_passcodes(alias):
@@ -252,9 +283,16 @@ def build():
     tokens = client_tokens()
     name_of = lambda code: next((r[0] for db in (official, unofficial) for r in db.execute("select name from texts where id = ?", (code,))), None)
     entries = []
-    for line in read(os.path.join(ENGINE, "anime/research.tsv")).splitlines()[1:]:
-        cid, name, anime, label, note = (line.split("\t") + [""] * 5)[:5]
-        cid = int(cid)
+    rows = table()
+    # The table's EDOPro passcode is the one the engine plays for the Konami id (crates/yo3-engine's Cards::open).
+    wrong = ["%s (%s): %r, the pins say %s" % (r["name"], r["cid"], r["edopro_id"], passcode.get(int(r["cid"])) or "none")
+             for r in rows if r["edopro_id"] != str(passcode.get(int(r["cid"])) or "")]
+    if wrong:
+        sys.exit("engine/anime/cards.tsv: edopro_id differs from engine/card-ids.json:\n  " + "\n  ".join(wrong))
+    for r in rows:
+        if r["status"] not in WITH_ANIME | {"Held"}:
+            continue
+        cid, name, anime, label, note = int(r["cid"]), r["name"], r["anime_id"], r["status"], r["note"]
         entry = {"cid": cid, "name": name, "anime": int(anime) if anime.isdigit() else None, "label": label}
         if note:
             entry["note"] = note
@@ -394,42 +432,6 @@ def dump(data):
     return json.dumps(head, ensure_ascii=False)[:-1] + ',"cards":[\n' + ",\n".join(lines) + "\n]}\n"
 
 
-HELD_NOTES = {
-    "8035": "Our own record and script (engine/anime/records.json, engine/overrides/c513000079.lua): upstream 513000079 is a placeholder. A reconstruction of 5D's episodes 21 and 134, not verified.",
-    "8302": "Our own record and script (engine/anime/records.json, engine/overrides/c511247002.lua): upstream 511247002 is a placeholder. The official card with the destroy trigger on any face-up Attack Position Special Summon; the target is the official card's.",
-    "5231": "Default retained: needs a reconstruction of the anime card (Duel Monsters episodes 87 and 89: which cards the sealed-card effect may seal, the set restrictions, the scope of the protection, the release costs, when the card is lost) before any script. Upstream 513000016 mixes the original, later and printed rules and its cost check is wrong (hand vs field), so it is never enabled. Nothing is implemented.",
-    "4804": "Era and type decision open (Quick-Play in the Japanese anime, Trap or Counter Trap elsewhere); the ZEXAL entry 511756005 is a different card and is not used.",
-    "6398": "Upstream aliases Polymerization (24094653); never follow it.",
-}
-
-
-def from_triage(folder):
-    """Rewrites engine/anime/research.tsv and retained.tsv from the issue #60 triage files (animifiable-cards.csv: the 415
-    reviewed mappings; all-game-cards.csv: every card's disposition). The files stay outside git."""
-    import csv
-    def rows(name):
-        with open(os.path.join(folder, name), encoding="utf-8-sig", newline="") as f:
-            return list(csv.DictReader(f))
-    out = ["cid\tname\tanime\tlabel\tnote"]
-    for r in sorted(rows("animifiable-cards.csv"), key=lambda r: int(r["cid"])):
-        label = "Anime / Normal" if r["anime_type"] and int(r["anime_type"]) & 0x30 == 0x10 else "Anime"
-        out.append("\t".join([r["cid"], r["name"], r["anime_id"], label, HELD_NOTES.get(r["cid"], "")]))
-    allc = rows("all-game-cards.csv")
-    held = [r for r in allc if r["disposition"] == "review_required"]
-    own = {str(r["cid"]): r for r in records().values()}
-    out += ["\t".join([r["cid"], r["name"], str(own[r["cid"]]["code"]) if r["cid"] in own else "-", "Reconstruction" if r["cid"] in own else "Held", HELD_NOTES[r["cid"]]]) for r in held]
-    with open(os.path.join(ENGINE, "anime/research.tsv"), "w", encoding="utf-8") as f:
-        f.write("\n".join(out) + "\n")
-    kept = ["cid\tname\tdisposition\tupstream entry"]
-    for r in allc:
-        if r["disposition"] in ("retain_current_equivalent_normal_metadata", "retain_current_rejected_counterpart"):
-            kept.append("\t".join([r["cid"], r["name"], r["disposition"], r["anime_ids"]]))
-    with open(os.path.join(ENGINE, "anime/retained.tsv"), "w", encoding="utf-8") as f:
-        f.write("\n".join(kept) + "\n")
-    print("%d reviewed, %d held for custom work, %d retained with a note, %d with no catalogue match" % (
-        len(out) - 1 - len(held), len(held), len(kept) - 1, sum(1 for r in allc if r["disposition"] == "retain_current_no_catalogue_match")))
-
-
 RECONSTRUCTION_DETAILS = """### Dark Strike Fighter (8035)
 
 A Level 7 DARK Machine Synchro/Effect Monster, 2600/1800 (the upstream placeholder had 2700 ATK). The rules below are the community's
@@ -467,7 +469,7 @@ def doc(data):
     shown = [c for c in mapped if c.get("profile")]
     releases = release_report(data)
     out = ["# Anime card versions", "",
-           "<!-- Made by tools/engine/anime-map.py from engine/anime/research.tsv: do not edit by hand. -->", "",
+           "<!-- Made by tools/engine/anime-map.py from engine/anime/cards.tsv: do not edit by hand. -->", "",
            "With the `anime-cards` setting on (a host sets it; a single player turns on **Anime cards** in Desktop's Settings → Singleplayer: [playing](playing.md#anime-card-versions)), the %d cards below play by their"
            " anime effects, ProjectIgnis' unofficial scripts (CardScripts `%s`), in NPC and player duels, and the game shows them as"
            " their anime versions: the **card profile**. The other cards, and the %d retained or held back below, play and show as they always did."
@@ -621,11 +623,17 @@ def doc(data):
         out.append("| %s | %s |" % (c["name"], "<br>".join(h.replace("|", "/") for h in c["holds"])))
     if not held:
         out.append("| None now | Every reviewed card is enabled or retained on purpose. |")
-    kept = [l.split("\t") for l in read(os.path.join(ENGINE, "anime/retained.tsv")).splitlines()[1:]]
+    rows = table()
     out += ["", "## Kept on purpose", "", "| Card | Why |", "| --- | --- |"]
-    for cid, name, why, up in sorted(kept, key=lambda k: k[1].lower()):
-        out.append("| %s | %s |" % (name, "the anime Normal Monster is equivalent" if "equivalent" in why else "upstream entry %s is a different or prize card" % up))
-    out += ["", "Every other card of the game (4,263 of 4,696) has no anime version in the catalogue and keeps its current behaviour.", ""]
+    for r in sorted((r for r in rows if r["status"] == "Kept"), key=lambda r: r["name"].lower()):
+        out.append("| %s | %s |" % (r["name"], r["note"].replace("|", "/")))
+    others = [r for r in rows if not r["status"]]
+    out += ["", "Every other card of the game (%s of %s in `engine/anime/cards.tsv`) has no anime_id: no anime version, or none we use,"
+            " and keeps its current behaviour." % (format(len(others), ","), format(len(rows), ","))]
+    noted = sorted((r for r in others if r["note"]), key=lambda r: r["name"].lower())
+    if noted:
+        out += ["", "| Card | Note |", "| --- | --- |"] + ["| %s | %s |" % (r["name"], r["note"].replace("|", "/")) for r in noted]
+    out.append("")
     return "\n".join(out)
 
 
@@ -634,10 +642,7 @@ def main():
     ap.add_argument("--check", action="store_true", help="fail if engine/anime-cards.json is not what the table builds")
     ap.add_argument("--releases", action="store_true", help="print how many held cards each category of the card profile would release")
     ap.add_argument("--list", action="store_true", help="print the held cards and why")
-    ap.add_argument("--triage", metavar="DIR", help="first rewrite engine/anime/research.tsv and retained.tsv from the issue #60 triage files in DIR")
     args = ap.parse_args()
-    if args.triage:
-        from_triage(args.triage)
     data = build()
     out = os.path.join(ENGINE, "anime-cards.json")
     if args.releases:

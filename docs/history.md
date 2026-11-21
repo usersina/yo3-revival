@@ -130,6 +130,12 @@ A player reported anime cards showing the wrong text: The Winged Dragon of Ra an
       ProjectIgnis' "Deck Destruction Virus" (511001119) is a different card from the Pyramid of Light film. A sweep of
       the client's cards with no reviewed entry against ProjectIgnis' anime cards found no other missed counterpart
       (no same-named anime version; the renamed candidates were different cards).
+- [x] One table for every card (`engine/anime/cards.tsv`, the owner's choice): a row per card of the game (4,771 Konami
+      ids) with its name, the EDOPro passcode the engine plays (checked against `card-ids.json`), an optional `anime_id`
+      (the EDOPro passcode of its anime version), a status and a note. It replaces `research.tsv` (the 418 reviewed
+      cards) and `retained.tsv`, so a card nobody reviewed can't hide: `card_profile.rs` fails on a game card without a
+      row. One anime_id per card: where the anime had several versions (Crush Card Virus), it is the one ProjectIgnis
+      scripts. A card whose anime version is the game's own (Deck Devastation Virus) has no anime_id and a note.
 
 ## 2026-11-21 — Problem reports: a broken game's logs go to the host
 
