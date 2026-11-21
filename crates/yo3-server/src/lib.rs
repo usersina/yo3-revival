@@ -350,7 +350,8 @@ fn card_sources(data: &yo3_data::GameData, with_extras: bool) -> Vec<sources::Ca
         for d in data.decks.iter().filter(|d| recipe_deck(data, d)) {
             let name = d.name_id().and_then(|id| data.text(id)).unwrap_or("Theme Deck").to_string();
             let name = format!("{name} (a deck recipe: the recipes command)");
-            all.push(CardSource { kind: Kind::StructureDeck, name, cards: of(&mut d.cards()) });
+            let kept = d.cards().filter(|r| data.cards.by_row(*r).is_none_or(|c| !prizes::UNOBTAINABLE.contains(&c.name.as_str())));
+            all.push(CardSource { kind: Kind::StructureDeck, name, cards: of(&mut kept.collect::<Vec<_>>().into_iter()) });
         }
     }
     if let Some(d) = data.starter_deck(STARTER_REGULATION) {
@@ -370,13 +371,15 @@ fn has_art(d: &yo3_data::Deck) -> bool {
 }
 
 /// Whether a preset deck is sold as a recipe with its cards by the `recipes` chat command (#19): the 22 theme decks
-/// (deck_type 2) and the starter recipes besides the free one (deck_type 1 without art). The shop's own shelf can't show
-/// them: a deck without `deck_image` is an invisible slot there (checked live), so only the structure decks go on it.
+/// (deck_type 2), the starter recipes besides the free one (deck_type 1 without art) and the 57 NPC decks (deck_type 3)
+/// of NPCs the client's roster doesn't list, so no win can give them. The shop's own shelf can't show them: a deck
+/// without `deck_image` is an invisible slot there (checked live), so only the structure decks go on it.
 pub fn recipe_deck(data: &yo3_data::GameData, d: &yo3_data::Deck) -> bool {
     match d.kind {
         1 if has_art(d) => false,
         1 => data.starter_deck(STARTER_REGULATION).is_some_and(|free| free.id != d.id) && d.pbin_no().is_some(),
         2 => d.pbin_no().is_some(),
+        3 => d.pbin_no().is_some() && !data.npc_ids().into_iter().any(|id| data.npc_deck(id).is_some_and(|n| n.id == d.id)),
         _ => false,
     }
 }
@@ -386,11 +389,27 @@ fn shelf_deck(d: &yo3_data::Deck) -> bool {
     d.kind == 1 && has_art(d)
 }
 
+/// A deck the recipes command sells: its cards without the five that stay unobtainable (`prizes::UNOBTAINABLE`; an
+/// unlisted NPC's deck holds Obelisk the Tormentor). The recipe itself still lists them, as the client's file does.
+fn sold_deck(data: &yo3_data::GameData, d: &yo3_data::Deck) -> shop::ShopDeck {
+    let mut sold = shop_deck(data, d);
+    let keep = |row: &u16| data.cards.by_row(*row).is_none_or(|c| !prizes::UNOBTAINABLE.contains(&c.name.as_str()));
+    for list in [&mut sold.deck.main, &mut sold.deck.extra, &mut sold.deck.side] { list.retain(keep) }
+    sold
+}
+
 fn shop_deck(data: &yo3_data::GameData, d: &yo3_data::Deck) -> shop::ShopDeck {
     let date = |k: &str| d.record.get(k).and_then(Value::as_str).unwrap_or_default();
     let name = d.name_id().and_then(|id| data.text(id)).unwrap_or("Structure Deck").to_string();
     let deck = Deck { id: d.id, name, main: d.main.clone(), extra: d.extra.clone(), side: d.side.clone() };
     shop::ShopDeck { released: date("created"), modified: date("modified"), deck, item: d.pbin_no() }
+}
+
+/// The names of the cards a player can keep through this server's routes besides the Special Pack (the booster packs,
+/// structure decks, Trade Card pools, the decks the recipes command sells and the free decks), for the tests.
+pub fn keepable_card_names(data: &yo3_data::GameData) -> std::collections::HashSet<String> {
+    let cids: std::collections::HashSet<u16> = card_sources(data, true).iter().filter(|s| s.kind != sources::Kind::Rental).flat_map(|s| s.cards.iter().copied()).collect();
+    data.cards.iter().filter(|c| cids.contains(&c.cid)).map(|c| c.name.clone()).collect()
 }
 
 /// The Special Pack's cards, the alternate artworks and the NPCs' recipes from the client's files, for the tests.
@@ -405,7 +424,14 @@ fn prizes(data: &yo3_data::GameData, official_items: &[u16]) -> prizes::Prizes {
     use std::collections::HashSet;
     // Where a card had a route in the original: the sources without the theme decks, which this server sells too.
     let routed: HashSet<u16> = card_sources(data, false).iter().flat_map(|s| s.cards.iter().copied()).collect();
-    let special_rows = prizes::special_cards(data.cards.iter(), &routed);
+    let mut special_rows = prizes::special_cards(data.cards.iter(), &routed);
+    // The rental-only cards no route of this server lets a player keep (Blister's extra pool, the recipes command, the
+    // NPCs' recipes give only the recipe): in the Special Pack too, so every card but the five that stay out can be kept.
+    let kept: HashSet<u16> = card_sources(data, true).iter().filter(|s| s.kind != sources::Kind::Rental).flat_map(|s| s.cards.iter().copied()).collect();
+    let mut rental_only = prizes::special_cards(data.cards.iter(), &kept);
+    rental_only.retain(|c| !special_rows.iter().any(|s| s.cid == c.cid));
+    special_rows.extend(rental_only);
+    special_rows.sort_by_key(|c| c.row);
     // The rows the packs and the free and structure decks give: any other artwork of their cards is an alternate.
     let mut routed_rows: HashSet<u16> = data.packs.iter().filter(|p| p.kind == 1).flat_map(|p| p.cards.iter().copied()).collect();
     routed_rows.extend(data.starter_deck(STARTER_REGULATION).into_iter().flat_map(|d| d.cards()));
@@ -502,7 +528,7 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
                 .collect(),
             // Structure decks: the deck_type 1 presets with their own art (SD001-SD005; the others are starters).
             structure_decks: data.decks.iter().filter(|d| shelf_deck(d)).map(|d| shop_deck(&data, d)).collect(),
-            recipe_decks: data.decks.iter().filter(|d| recipe_deck(&data, d)).map(|d| shop_deck(&data, d)).collect(),
+            recipe_decks: data.decks.iter().filter(|d| recipe_deck(&data, d)).map(|d| sold_deck(&data, d)).collect(),
             exchange_pools: data
                 .packs
                 .iter()

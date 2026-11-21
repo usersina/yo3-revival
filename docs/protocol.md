@@ -718,8 +718,9 @@ artworks of cards that are not in any pack; Launcher Spider's art 1 included). T
 other row among `item`; the client shows whichever row it is. Test hook: the environment variable `YO3_ALT_ART_ODDS` (1 =
 always) on the server.
 
-**Deck recipes (#19).** The 22 theme decks (`deck_type` 2) and the two starters that aren't the free one (`deck_type` 1)
-have no `deck_image` (`noImage`). Put on the STRUCTURE DECK shelf as `0x1C22` items of `item_type` 1, they are **invisible
+**Deck recipes (#19).** The 22 theme decks (`deck_type` 2), the two starters that aren't the free one (`deck_type` 1) and,
+since 2026-11-21, the 57 NPC decks (`deck_type` 3) of NPC ids the roster doesn't list (sold without the five cards that stay
+unobtainable; one holds Obelisk the Tormentor) have no `deck_image` (`noImage`). Put on the STRUCTURE DECK shelf as `0x1C22` items of `item_type` 1, they are **invisible
 slots** (live, 2026-11-21: `AddStruct` loads the box art by that name, nothing is drawn or clickable, and the real boxes
 sit between the gaps), so the client can't show them. They are sold as recipes with their cards by the chat command
 `recipes` instead (`/p Server recipes` lists them, `recipes NAME` buys one for the structure decks' price): the same
@@ -888,7 +889,8 @@ Auto Duel's (2) and the user events' (from 100).
 | a duel's end | push `0x2009` | top-level `score_<player_id>` becomes `event_score` (the dispatcher `0x4F4C9E`); a non-zero score adds the star effect on the result screen (`0x5128B0`), shown up to 9999 | `0x4F4C9E` | live |
 | My Profile / player records | `0x2260` item | `tp` (Tournament Points, ProfileGet `0x4705D0`) and `tprank` | `0x4705D0`, `0x475A20` | shape |
 
-**Event prizes and titles (#18, 2026-11-21).** A counted win (a duel, or a match) earns one **Special Pack**: 5 cards of the
+**Event prizes and titles (#18, 2026-11-21).** A counted win (a duel, or a match) earns one **Special Pack**: 5 cards of 252, the 156
+rental-only cards no other route of ours lets a player keep (2026-11-21, `prizes_data.rs` `every_card_but_the_five_can_be_kept`) and the
 96 promo-style cards no pack, deck or rental route gives (#19's 101 less Obelisk, Ra, Spirit Elimination, Secret Pass to
 the Treasures and Pole Position; found by name: a second print of a card a pack gives is no gap), four of the first rarity
 tier and one of a higher one (tiers by card type: Spells, Traps and Normal monsters, then the other monsters, then Fusion

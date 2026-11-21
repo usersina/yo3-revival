@@ -313,7 +313,7 @@ Purchase Special Packs stays greyed out: those packs were event prizes whose con
 (above) are ours.
 
 **More decks:** the 22 theme decks (E-HERO EVOLUTION DECK, DRAGON'S DOMINION, STARDUST RISING, DRAGUNITY STORM and the
-others) and the two other starter decks (EQUIP TO BEAT DOWN, RESIDENT OF DARKNESS) have no box art in the game's files, so the
+others), the two other starter decks (EQUIP TO BEAT DOWN, RESIDENT OF DARKNESS) and 57 decks of NPCs you can't duel have no box art in the game's files, so the
 shop can't show them. Whisper `recipes` to the server (`/p Server recipes`) to list them and `recipes NAME` to buy one for
 the structure decks' price: you get its recipe (Load Deck's Official tab) and its cards, as a present from the map. Beating an
 NPC for the first time gives you the recipe of the deck it played (no cards: build it from yours, or buy cards in the

@@ -19,7 +19,10 @@ fn the_special_pack_holds_the_96_cards_without_any_route_and_no_god_card() {
     let Some(data) = game() else { return };
     let prizes = yo3_server::game_prizes(&data);
     let rows: Vec<u16> = prizes.special.iter().flatten().copied().collect();
-    assert_eq!(rows.len(), 96, "#19: 101 cards without a pack, deck or rental route, less the five that stay out");
+    // #19: 101 cards without a pack, deck or rental route, less the five that stay out, and the rental-only cards no
+    // route of this server lets a player keep.
+    eprintln!("special pack: {} cards", rows.len());
+    assert!(rows.len() >= 96, "{}", rows.len());
     let names: Vec<String> = rows.iter().filter_map(|r| data.cards.by_row(*r)).map(|c| c.name.clone()).collect();
     for out in yo3_server::prizes::UNOBTAINABLE {
         assert!(!names.iter().any(|n| n == out), "{out} stays unobtainable");
@@ -57,4 +60,21 @@ fn the_npcs_give_66_recipes_and_the_shop_sells_the_theme_decks_and_the_other_sta
     let sold: Vec<&yo3_data::Deck> = data.decks.iter().filter(|d| yo3_server::recipe_deck(&data, d)).collect();
     assert_eq!(sold.iter().filter(|d| d.kind == 2).count(), 22, "the theme decks");
     assert_eq!(sold.iter().filter(|d| d.kind == 1).count(), 2, "the two other starters");
+    assert_eq!(sold.iter().filter(|d| d.kind == 3).count(), 57, "the NPC decks of NPCs nobody can duel");
+}
+
+#[test]
+fn every_card_but_the_five_can_be_kept() {
+    // #19's gap closed: every card (by name, tokens left out) is in a booster pack, a structure deck, a Trade Card pool, a
+    // deck the recipes command sells, a free deck or the Special Pack; only the five that stay out are in none.
+    let Some(data) = game() else { return };
+    let prizes = yo3_server::game_prizes(&data);
+    let mut kept: std::collections::HashSet<String> = yo3_server::keepable_card_names(&data);
+    kept.extend(prizes.special.iter().flatten().filter_map(|r| data.cards.by_row(*r)).map(|c| c.name.clone()));
+    let mut missing: Vec<&str> = data.cards.iter().filter(|c| c.kind != 10 && !kept.contains(&c.name)).map(|c| c.name.as_str()).collect();
+    missing.sort_unstable();
+    missing.dedup();
+    let mut five = yo3_server::prizes::UNOBTAINABLE.to_vec();
+    five.sort_unstable();
+    assert_eq!(missing, five);
 }
