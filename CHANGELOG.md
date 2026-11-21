@@ -13,6 +13,13 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## v0.1.11 (2026-11-21)
+
+Multiplayer: update to v0.1.11 to join the hosted server after deployment.
+
+- Brings v0.1.10 to the hosted server: its update didn't go through (the staff dashboard didn't start, and the server
+  went back to v0.1.9 by itself). Nothing else changes for players.
+
 ## v0.1.10 (2026-11-21)
 
 Multiplayer: update to v0.1.10 to join the hosted server after deployment.

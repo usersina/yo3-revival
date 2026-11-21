@@ -113,6 +113,11 @@ server it plays on, TLS operation 7, under the game's session (`problems.rs`).
 - **Players' choice:** Setup's Ready step has a tick, on by default, and Settings → Advanced a switch. It writes
   `profiles/problem-reports.off`, which direct start's helper also reads; Play passes `--no-problem-reports` as well.
 
+**v0.1.10's deployment failed** and rolled back by itself: the new dashboard route's nginx regex held `{1,16}`, and nginx
+ends an unquoted location regex at a brace (pcre2 "missing closing parenthesis"), so the dashboard stayed unhealthy.
+`test_stack.py` (real images, not in CI's check list) would have caught it. v0.1.11 uses `+`, `test_config.py` now
+refuses a brace in an unquoted location regex, and the template was checked with `nginx -t` in the dashboard image.
+
 Live (headless client on a scratch server): a QUIT from the title sent nothing; the game killed on the map sent
 `game-error` report `R-A1SW-WVXS`, and `problem-report` showed the account, the summary, the server's lines (with the
 new end-of-connection line) and 67 KB of the game's log.
