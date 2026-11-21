@@ -13,6 +13,15 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- The game now gets each reply from the server in one piece. This aims at the shop disconnecting some players
+  (#65): the game waits for a whole reply before reading it, and on some Windows PCs it could give up on the shop's
+  larger lists instead.
+- If the game drops its connection anyway, its log now says why and where. Please send **Settings → Advanced → Export
+  logs…** with a report.
+- A sign-in or a game connection no longer waits while the server is busy saving.
+
 ## v0.1.9 (2026-11-21)
 
 Multiplayer: update to v0.1.9 to join the hosted server after deployment.

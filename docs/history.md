@@ -9,6 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-21 — Network review: whole frames to the game, and its disconnect reasons logged (#65)](#2026-11-21--network-review-whole-frames-to-the-game-and-its-disconnect-reasons-logged-65)
   - [2026-11-21 — The Championship (#17)](#2026-11-21--the-championship-17)
   - [2026-11-20 — Preset-deck scenarios, paged effect choices and lasting-effect markers (#67, #16)](#2026-11-20--preset-deck-scenarios-paged-effect-choices-and-lasting-effect-markers-67-16)
   - [2026-11-20 — Synchro Strike was never broken (#67)](#2026-11-20--synchro-strike-was-never-broken-67)
@@ -89,6 +90,35 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   one PC are "linked accounts": the first duel counted nothing until `set linked-accounts off`.
 - **Guesses** (roadmap): the Special Pack's contents, tiers and cap, the artwork odds (1 in 20), the theme decks' price, the
   champion rule and THE ANNIVERSARIAN's win.
+
+## 2026-11-21 — Network review: whole frames to the game, and its disconnect reasons logged (#65)
+
+The shop still disconnected some players. #65's two log sets were read again: the second game was connected to the
+player's own server on the same PC, so no internet was involved, and the game exited normally afterwards (the DLL's
+buffered "connection mod loaded" was flushed at exit): the game was alive and dropped its own connection. Its trace
+stopped after the rental offer, the reply before the shop's avatar items, the largest reply of a session (59,676 bytes,
+packet log; protectors 35,886, the pack shelves 13,378, the trunk 9,713).
+
+The client's receive path (`0x535190`, now in client internals) takes a frame only once a `MSG_PEEK` returns all of it,
+and Microsoft's KB 192599 warns that peeking for a complete message on Winsock "might never succeed". TLS hands the
+helper a reply in 16 KiB records, and the helper wrote each one to the game as it came. The silent failure paths
+(a read short of its peek, a select error) log only through the game's EasyMultiPlayWriteLog, which our DLL had made a
+do-nothing stub. Not reproduced: the shop works under Wine and on the Windows 11 VM.
+
+Changes: the helper writes each server frame to the game in one write, with a 2 MiB send buffer on its side; the DLL
+gives the game's front and duel sockets a 2 MiB receive buffer before they connect; the DLL writes the game's own network
+messages and each close of its front or duel connection (unread bytes, last error, callers by a stack scan) to the session
+log; the server leaves out a frame past the client's 1 MiB buffer with an error instead of losing the player's
+connection; and only discovery takes the hub lock in the TLS handshake (a sign-in, ticket or game connection waited
+behind a busy hub). Live (headless client, scratch server): the shop and its avatar items through the framed relay; the
+server stopped under the game logged `recv_nonblock 2067` and the close with callers `0x534dc5 0x4f78c6 0x401e95`.
+
+Load, the protocol monkey's soak at twice the beta's peak (100 password players with their own launcher proxy, which
+now frames, 40 fuzzing connections, 30 duel pairs, 300 s): 2,496,478 messages, 0 failures, 558 duels to a result,
+canary p50 210 ms, p99 633 ms, max 1.3 s; server peak 293 MB and 543 descriptors, back to 18 after; a restart on the
+run's data came up. A read-only review of the launcher's other paths (server list, account requests, liveness) found
+nothing severe; its medium findings (a register whose reply is lost loses the recovery code, a failing account request
+waits up to about 40 s, one dropped probe marks a server Offline) are on the roadmap.
 
 ## 2026-11-21 — The Championship (#17)
 

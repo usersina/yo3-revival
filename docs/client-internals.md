@@ -501,6 +501,35 @@ decisions and outputs in `survey-logic.h`, tested without Windows by `survey-tes
   opened directly: there is no window of ours to tell the player in. The DLL's own log lines go nowhere there (no console).
 - Not done: a host's "clean game" setting (the server's status naming what it refuses), the issue's slice 4.
 
+### How the client receives a frame (#65)
+
+The front and duel connections are non-blocking sockets read by EasyMultiPlayPacketBase::recv_nonblock (`0x535190`,
+called from Yo3Client's slot 21, `0x51FD70`) into a 1 MiB packet buffer (`0x100000`, set up at `0x51FBD0` and
+`0x535900`; free room is EasyMultiPlayPacketBuffer `0x533F00`). Each call: `select` (ordinal 18), peek 1 byte (EOF or
+error there: log `0x813`, print `disconnect`, return -1); while the buffer holds under 4 bytes, peek 4 and read them
+(a short peek: log `0x84C`, return 0 and try later; a short read: log, return -1); the body's length (`^ 0x77777777`)
+must fit the room left, else `recv_nonblock length error` on stdout and -1; then **peek the whole body**, and only when
+the peek returns all of it read it (a short peek: log `0x83A`, return 0; a short read: -1). -1 closes the connection.
+
+- **It waits for a whole frame visible to a peek.** Microsoft's KB 192599 warns that peeking for a complete message on
+  Winsock "might never succeed". The helper therefore writes each server frame to the game in one write
+  (`yo3-launcher` `relay`), with a 2 MiB send buffer on its side, and the connection DLL gives the game's front and duel
+  sockets a 2 MiB receive buffer before they connect, room for the largest frame the game takes.
+- **Its socket reads check the CRT's `errno`, not Winsock's error** (`0x534C10` read, `0x534CE0` peek): `errno` 4 retries
+  and drops what that `recv` returned, 11 returns early. Winsock never sets `errno`, so only a stale value from another
+  CRT call could trigger either. Neither has been seen; the logs below would show it (`recv errno=%d`, `recv EINTR`).
+- **Every failure logs through EasyMultiPlayWriteLog** (global `0x82D214`), which this build never creates, so the DLL
+  supplies one (`netlog.h`). It writes the game's own message to the session log: `[YO3 MOD] Game network:
+  EasyMultiPlay PacketBase::recv_nonblock 2067 (at 0x535227)` (2067 = `0x813`; the space keeps the log's credential
+  filter, which hides 20 letters in a row, off the name); the waiting ones (`0x83A`, `0x84C`) five
+  times at most, the rest forty. The DLL also logs each time the game closes its front or duel connection, with the bytes
+  it left unread, the last socket error and the game code that called `closesocket`, found by scanning the stack for return
+  addresses (the game has no frame pointers). Live, 2026-11-21, the server stopped under a game in the shop: `recv_nonblock
+  2067`, then `The game closed its front connection: 0 bytes unread, last socket error 0; called from 0x534dc5 0x4f78c6
+  0x401e95`.
+- The server never sends a frame the buffer can't take: a body past `0x100000 - 4` is logged as an error and left out
+  (`net.rs`, `CLIENT_FRAME_MAX`). The largest in a session is the shop's avatar items, about 60 KB.
+
 ### Native duel observer
 
 `tools/mod/duel-observer.h` installs two byte-guarded hooks for ver.1.153: the CALL at `0x514212`
