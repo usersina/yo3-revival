@@ -418,6 +418,15 @@ fn shop_deck(data: &yo3_data::GameData, d: &yo3_data::Deck) -> shop::ShopDeck {
     shop::ShopDeck { released: date("created"), modified: date("modified"), deck, item: d.pbin_no() }
 }
 
+/// Where each card comes from, for `/where` (#55): [`card_sources`] and the Special Pack (#76: a card only it gives said
+/// "no normal route").
+pub fn player_card_sources(data: &yo3_data::GameData, prizes: &prizes::Prizes) -> Vec<sources::CardSource> {
+    let mut all = card_sources(data, true);
+    let cards = prizes.special.iter().flatten().filter_map(|row| data.cards.by_row(*row).map(|c| c.cid)).collect();
+    all.push(sources::CardSource { kind: sources::Kind::Prize, name: "the Special Pack (a prize for each win in the Stadium's Official Events)".into(), cards });
+    all
+}
+
 /// The names of the cards a player can keep through this server's routes besides the Special Pack (the booster packs,
 /// structure decks, Trade Card pools, the decks the recipes command sells and the free decks), for the tests.
 pub fn keepable_card_names(data: &yo3_data::GameData) -> std::collections::HashSet<String> {
@@ -558,7 +567,7 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
             free_items: data.free_items().iter().map(|e| e.id).collect(),
             banlists: data.regulations.iter().map(|r| (r.id, data.text(r.name_id).unwrap_or_default().to_string())).collect(),
             regulations: data.regulations.iter().map(|r| (r.id, r.clone())).collect(),
-            card_sources: card_sources(&data, true),
+            card_sources: player_card_sources(&data, &prizes(&data, &official_items)),
             prizes: Arc::new(prizes(&data, &official_items)),
             ..World::new(data.regulations.iter().map(|r| r.id as u16).collect())
         };

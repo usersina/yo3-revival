@@ -13,6 +13,11 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- `where CARD` now names the Special Pack (an Official Event win's prize) for the cards only it gives, such as Malefic
+  Paradox Dragon and Malefic World, instead of "no normal route".
+
 ## v0.1.13 (2026-11-21)
 
 Multiplayer: update to v0.1.13 to join the hosted server after deployment.

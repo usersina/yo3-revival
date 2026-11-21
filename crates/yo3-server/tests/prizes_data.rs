@@ -78,3 +78,25 @@ fn every_card_but_the_five_can_be_kept() {
     five.sort_unstable();
     assert_eq!(missing, five);
 }
+
+/// #76: `where` names the Special Pack for the cards only it gives (Malefic Paradox Dragon, Malefic World), and every card
+/// of the game but the five that stay out has a place to come from.
+#[test]
+fn where_names_the_special_pack_and_every_keepable_card_has_a_place() {
+    let Some(data) = game() else { return };
+    let prizes = yo3_server::game_prizes(&data);
+    let sources = yo3_server::player_card_sources(&data, &prizes);
+    let names: std::collections::HashMap<u16, String> = data.cards.iter().map(|c| (c.cid, c.name.clone())).collect();
+    let answer = |q: &str| yo3_server::sources::answer(q, &names, &sources).join("\n");
+    for card in ["malefic paradox dragon", "malefic world"] {
+        let a = answer(card);
+        assert!(a.contains("the Special Pack") && !a.contains("no normal route"), "{a}");
+    }
+    assert!(!answer("malefic").contains("no normal route"), "every Malefic card has a place");
+    // By name, as `where` answers: another print of a card (Dark Magician's) shares its places.
+    let placed: std::collections::HashSet<&str> = sources.iter().flat_map(|s| s.cards.iter()).filter_map(|c| names.get(c)).map(String::as_str).collect();
+    let lost: std::collections::BTreeSet<&str> = data.cards.iter()
+        .filter(|c| c.kind != 10 && !placed.contains(c.name.as_str()) && !yo3_server::prizes::UNOBTAINABLE.contains(&c.name.as_str()))
+        .map(|c| c.name.as_str()).collect();
+    assert!(lost.is_empty(), "cards with no place to come from: {lost:?}");
+}

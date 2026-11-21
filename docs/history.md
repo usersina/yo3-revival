@@ -150,6 +150,10 @@ A player reported anime cards showing the wrong text: The Winged Dragon of Ra an
       both; `card_data.rs` compares the server's Tuner set with the engine's for every card, with and without the
       anime profile (it failed on Formula Synchron alone before the fix). Not run live: no deck in the game reaches a
       Synchro Summon with Formula Synchron as a material without building one.
+- [x] #76 (a player): `where malefic world` said "no normal route", but the Special Pack an Official Event win earns gives
+      it (and Malefic Paradox Dragon). `where`'s places never listed the Special Pack. `player_card_sources` adds it;
+      `prizes_data.rs` checks those two name it and that every card of the game but the five that stay out has a place.
+      Every Malefic card is already in the game: nothing needs adding.
 
 ## 2026-11-21 — Problem reports: a broken game's logs go to the host
 

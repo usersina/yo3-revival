@@ -12,6 +12,8 @@ pub enum Kind {
     Rental,
     /// The starter deck and the main characters' decks, which every player owns.
     FreeDeck,
+    /// A prize: the Special Pack an Official Event win earns (`prizes.rs`, #18/#19).
+    Prize,
 }
 
 /// One place, by the Konami ids of the cards it holds (a card's artworks share one).
@@ -75,7 +77,7 @@ pub fn answer(query: &str, names: &std::collections::HashMap<u16, String>, sourc
     }
     by_name.into_values().map(|(name, cids)| {
         let places: Vec<&CardSource> = sources.iter().filter(|s| cids.iter().any(|c| s.cards.contains(c))).collect();
-        if places.is_empty() { return format!("{name}: no normal route (the game's shop and decks don't hold it).") }
+        if places.is_empty() { return format!("{name}: no normal route (nothing on this server gives it).") }
         let mut parts: Vec<String> = places.iter().take(MAX_PLACES).map(|s| s.name.clone()).collect();
         if places.len() > MAX_PLACES { parts.push(format!("and {} more", places.len() - MAX_PLACES)) }
         format!("{name}: {}", parts.join("; "))
@@ -95,7 +97,7 @@ mod tests {
     fn a_name_lists_its_places_or_none() {
         let names = [(1, "Dark Magician".to_string()), (2, "Dark Magician Girl".to_string()), (3, "Kuriboh".to_string())].into();
         let sources = [CardSource { kind: Kind::Pack, name: "Pack A".into(), cards: [1].into() }];
-        assert_eq!(answer("dark mag", &names, &sources), ["Dark Magician: Pack A", "Dark Magician Girl: no normal route (the game's shop and decks don't hold it)."]);
+        assert_eq!(answer("dark mag", &names, &sources), ["Dark Magician: Pack A", "Dark Magician Girl: no normal route (nothing on this server gives it)."]);
         assert_eq!(answer("dark magician", &names, &sources), ["Dark Magician: Pack A"], "an exact name wins");
         assert_eq!(answer("KURI", &names, &sources).len(), 1);
         assert!(answer("zzz", &names, &sources)[0].starts_with("No card"));
@@ -106,7 +108,7 @@ mod tests {
         let names = [(1, "Red-Eyes Black Dragon".to_string()), (2, "Red-Eyes Darkness Metal Dragon".to_string()), (3, "Black Luster Soldier".to_string())].into();
         let sources = [CardSource { kind: Kind::Pack, name: "Pack A".into(), cards: [1].into() }];
         assert_eq!(answer("red-eyes *****", &names, &sources).len(), 2, "both Red-Eyes cards");
-        assert_eq!(answer("red-eyes ***** metal", &names, &sources), ["Red-Eyes Darkness Metal Dragon: no normal route (the game's shop and decks don't hold it)."]);
+        assert_eq!(answer("red-eyes ***** metal", &names, &sources), ["Red-Eyes Darkness Metal Dragon: no normal route (nothing on this server gives it)."]);
         assert!(answer("*****", &names, &sources)[0].starts_with("Usage"), "only stars is no query");
     }
 
