@@ -45,6 +45,11 @@ impl Pace {
 /// A request's frame costs one more request per this many bytes, so large frames use the allowance faster.
 pub const PACE_BYTES: usize = 16 * 1024;
 
+/// The largest frame body the client takes: its packet buffer is 1 MiB (`0x100000`, Yo3Client `0x51FBD0` and the
+/// packet client `0x535900`) and holds the 4-byte header while recv_nonblock (`0x535190`) checks a body against the room
+/// left; past it the client prints "recv_nonblock length error" and drops the connection.
+pub const CLIENT_FRAME_MAX: usize = MAX_FRAME - 4;
+
 /// How long one write to a client may wait (the client reads nothing) before its connection ends.
 pub const WRITE_STALL: Duration = Duration::from_secs(60);
 
@@ -92,6 +97,11 @@ async fn write_loop<W: AsyncWrite + Unpin>(mut stream: W, mut queue: UnboundedRe
         let plain = msg.encode();
         log.outgoing(who, &plain, &msg);
         let bytes = frame(&plain);
+        if bytes.len() - 4 > CLIENT_FRAME_MAX {
+            // The client would drop its whole connection for it: the message is lost, the connection kept.
+            tracing::error!("[{who}] reply {:#x} is {} bytes, past the client's {CLIENT_FRAME_MAX}; not sent", msg.request().unwrap_or(0), bytes.len() - 4);
+            continue;
+        }
         let started = tokio::time::Instant::now();
         let mut check = tokio::time::interval(Duration::from_millis(250));
         let write = stream.write_all(&bytes);
@@ -382,6 +392,26 @@ mod tests {
         let ended = tokio::time::timeout(Duration::from_secs(5), session).await;
         assert!(matches!(ended, Ok(Ok(Ok(())))), "the session ends once 100 messages wait: {ended:?}");
         let _ = read_half.read(&mut [0; 1]).await;
+    }
+
+    #[tokio::test]
+    async fn a_reply_too_large_for_the_client_is_not_sent_and_the_connection_goes_on() {
+        // The client drops its connection for a frame past its 1 MiB buffer (0x535190): skip it, send what follows.
+        let (client, server) = tokio::io::duplex(4 << 20);
+        let log = Arc::new(PacketLog::disabled().unwrap());
+        let session = tokio::spawn(secured(server, "front", log, Idle { limit: IDLE_TIMEOUT }, Pace::UNLIMITED, move |_| move |_: &Packet| {
+            vec![Message::reply(0x1C2A).with("blob", yo3_proto::Value::Bin(vec![0; CLIENT_FRAME_MAX])), Message::reply(0x1C36)]
+        }));
+        let (mut read_half, mut write_half) = tokio::io::split(client);
+        write_half.write_all(&heartbeat()).await.unwrap();
+        let mut head = [0; 4];
+        read_half.read_exact(&mut head).await.unwrap();
+        let mut body = vec![0; frame_len(head)];
+        read_half.read_exact(&mut body).await.unwrap();
+        let Ok(Packet::Message(m)) = Packet::decode(&decrypt(&body).unwrap()) else { panic!() };
+        assert_eq!(m.request(), Some(0x1C36), "the oversized reply was left out, the next one arrived");
+        drop(write_half); drop(read_half);
+        let _ = session.await;
     }
 
     #[tokio::test(start_paused = true)]

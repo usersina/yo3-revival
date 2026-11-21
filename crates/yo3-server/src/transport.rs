@@ -51,7 +51,10 @@ impl Gate {
 struct GameClosed { sessions: Arc<Mutex<crate::auth::Sessions>>, identity: crate::auth::Identity }
 impl Drop for GameClosed { fn drop(&mut self) { self.sessions.locked().set_playing(self.identity, false, usize::MAX); } }
 
-async fn handshake(mut tls: TlsStream<TcpStream>, gate: &Gate, info: &yo3_tunnel::ServerInfo, peer: std::net::IpAddr)
+/// `info(with_online)`: discovery's answer. Only discovery (operation 5) counts who is online, which takes the hub
+/// lock: that is the server list's and the launcher's liveness check of a hung hub, and the other operations (a
+/// sign-in, a ticket, a game connection) need not wait behind a busy hub.
+async fn handshake(mut tls: TlsStream<TcpStream>, gate: &Gate, info: &(dyn Fn(bool) -> yo3_tunnel::ServerInfo + Sync), peer: std::net::IpAddr)
     -> anyhow::Result<Option<(TlsStream<TcpStream>, Identity, Instant, Role, u16)>>
 {
     let (sessions, accounts) = (&*gate.sessions, &*gate.accounts);
@@ -59,6 +62,7 @@ async fn handshake(mut tls: TlsStream<TcpStream>, gate: &Gate, info: &yo3_tunnel
     anyhow::ensure!(&magic == MAGIC, "unsupported transport version");
     let operation=tls.read_u8().await.context("read transport operation")?;
     let result=async {
+        let info = &info(operation == 5);
         match operation {
             1 => {
                 let protocol = tls.read_u16().await?;
@@ -192,8 +196,8 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
             let hello = tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
                 let tls = acceptor.accept(tcp).await.context("TLS handshake")?;
                 stage = "transport handshake";
-                let online = u32::try_from(hub.locked().online()).ok();
-                handshake(tls, &gate, &{
+                handshake(tls, &gate, &|with_online: bool| {
+                    let online = if with_online { u32::try_from(hub.locked().online()).ok() } else { None };
                     let mut info = gate.info(world.engine_problem.is_none(), online);
                     info.card_profile = world.profiles.current_hash(world.settings.now().anime_cards);
                     info
@@ -298,7 +302,7 @@ mod close_tests {
         let mut peer=tokio::spawn(async move {
             let (tcp,_)=listener.accept().await.unwrap();let tls=acceptor.accept(tcp).await.unwrap();
             let gate=Gate::new(Arc::new(Mutex::new(Directory::new(vec![]))),Arc::new(crate::settings::Live::open(None,vec![]).unwrap()),Arc::default());
-            handshake(tls,&gate,&yo3_tunnel::ServerInfo::current(true),std::net::Ipv4Addr::LOCALHOST.into()).await.unwrap();
+            handshake(tls,&gate,&|_| yo3_tunnel::ServerInfo::current(true),std::net::Ipv4Addr::LOCALHOST.into()).await.unwrap();
         });
         let tcp=TcpStream::connect(address).await.unwrap();
         let mut tls=TlsConnector::from(Arc::new(client)).connect("localhost".try_into().unwrap(),tcp).await.unwrap();
@@ -309,6 +313,38 @@ mod close_tests {
             "keep the read half alive until the client can return its TLS close_notify");
         tls.shutdown().await.unwrap();
         tokio::time::timeout(Duration::from_secs(1),peer).await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn only_discovery_counts_who_is_online() {
+        // Counting takes the hub lock: a ticket, a sign-in or a game connection waiting behind a busy hub (a slow save,
+        // the engine) only slowed every player's connections; discovery keeps it, as the launchers' liveness check.
+        let rcgen::CertifiedKey{cert,signing_key}=rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let mut roots=rustls::RootCertStore::empty();roots.add(cert.der().clone()).unwrap();
+        let client=Arc::new(rustls::ClientConfig::builder().with_root_certificates(roots).with_no_client_auth());
+        let server=rustls::ServerConfig::builder().with_no_client_auth()
+            .with_single_cert(vec![cert.der().clone()],rustls::pki_types::PrivatePkcs8KeyDer::from(signing_key.serialize_der()).into()).unwrap();
+        let acceptor=TlsAcceptor::from(Arc::new(server));
+        for (operation, counted) in [(2u8, false), (4, false), (5, true)] {
+            let listener=TcpListener::bind(("127.0.0.1",0)).await.unwrap();let address=listener.local_addr().unwrap();
+            let acceptor=acceptor.clone();
+            let peer=tokio::spawn(async move {
+                let (tcp,_)=listener.accept().await.unwrap();let tls=acceptor.accept(tcp).await.unwrap();
+                let gate=Gate::new(Arc::new(Mutex::new(Directory::new(vec![]))),Arc::new(crate::settings::Live::open(None,vec![]).unwrap()),Arc::default());
+                let asked=std::sync::atomic::AtomicBool::new(false);
+                let info=|online: bool| { asked.fetch_or(online, std::sync::atomic::Ordering::SeqCst); yo3_tunnel::ServerInfo::current(true) };
+                handshake(tls,&gate,&info,std::net::Ipv4Addr::LOCALHOST.into()).await.unwrap();
+                asked.into_inner()
+            });
+            let tcp=TcpStream::connect(address).await.unwrap();
+            let mut tls=TlsConnector::from(client.clone()).connect("localhost".try_into().unwrap(),tcp).await.unwrap();
+            tls.write_all(MAGIC).await.unwrap();tls.write_u8(operation).await.unwrap();
+            if operation != 5 { tls.write_all(&[0;32]).await.unwrap(); }
+            if operation == 2 { tls.write_u8(Role::Front as u8).await.unwrap(); }
+            let mut answer=Vec::new();tls.read_to_end(&mut answer).await.ok();
+            tls.shutdown().await.ok();
+            assert_eq!(tokio::time::timeout(Duration::from_secs(2),peer).await.unwrap().unwrap(), counted, "operation {operation}");
+        }
     }
 }
 
