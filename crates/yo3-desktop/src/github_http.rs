@@ -77,7 +77,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         assert!(!servers.is_empty(), "official list did not download and verify");
         println!("Signed official list: {} server(s)", servers.len());
-        crate::github_report::Client::new().unwrap();
     }
 
 }

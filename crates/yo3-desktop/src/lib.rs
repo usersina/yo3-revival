@@ -16,10 +16,6 @@ pub mod foreign;
 pub mod reports;
 pub mod system_info;
 pub mod bug_report;
-pub mod bug_evidence;
-pub mod github_credentials;
-pub mod github_report;
-pub mod bug_publish;
 pub mod updates;
 pub mod preferences;
 pub mod server_options;
@@ -77,6 +73,9 @@ pub struct Settings {
     pub host_share: String,
     /// Host for friends: the server's name in friends' lists ("" for the default).
     pub host_name: String,
+    /// When a game breaks, its logs go to the server it played on, for the host (problem reports). Asked in setup; on
+    /// unless the player turns it off.
+    pub problem_reports: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -84,7 +83,7 @@ impl Default for Settings {
             host_address: "localhost".into(), data_dir: String::new(), bind_address: "0.0.0.0".into(), bind_interface: None, listen_port: 7443,
             player_name: "Duelist".into(), local_account: String::new(), resolution: String::new(),
             banlist: String::new(), setup_complete: false, game_fingerprint: String::new(), direct_start: true,
-            wine_binary: String::new(), log_level: String::new(), host_port: 7443, host_share: String::new(), host_name: String::new() }
+            wine_binary: String::new(), log_level: String::new(), host_port: 7443, host_share: String::new(), host_name: String::new(), problem_reports: true }
     }
 }
 
@@ -728,13 +727,23 @@ impl Backend {
             Err(_) => {}
         }
     }
+    /// Problem reports' switch, where every helper reads it (`yo3_launcher::problems::OFF_FILE` beside the profiles):
+    /// the one Play starts, and direct start's, which the game's own loader starts without the launcher.
+    pub fn sync_problem_reports(&self, settings: &Settings) {
+        let off = self.root.join("profiles").join(yo3_launcher::problems::OFF_FILE);
+        let result = if settings.problem_reports { std::fs::remove_file(&off).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(e) }) }
+            else { std::fs::create_dir_all(self.root.join("profiles")).and_then(|()| std::fs::write(&off, b"Problem reports are off (Settings, Advanced).\n")) };
+        if let Err(error) = result { self.diagnostics.line(&format!("Problem reports' switch could not be saved: {error}")) }
+    }
     /// The helper's command for a Play: the settings it reads (screen size, Wine) are taken at each Play.
     pub fn launch_command(&self, settings: &Settings, profile: &Path, ready: &Path) -> anyhow::Result<Command> {
         self.launch_command_with(settings, profile, ready, None)
     }
     /// [`Backend::launch_command`] for an extra game (#64): its own Wine prefix and game data folder.
     pub fn launch_command_with(&self, settings: &Settings, profile: &Path, ready: &Path, extra: Option<&games::ExtraRun>) -> anyhow::Result<Command> {
+        self.sync_problem_reports(settings);
         let mut cmd = Command::new(&self.runtime.launcher);
+        if !settings.problem_reports { cmd.arg("--no-problem-reports"); }
         cmd.arg("--control-stdin").arg("--profile").arg(profile).arg("--game-dir").arg(&settings.game_dir).arg("--injector").arg(&self.runtime.injector).arg("--dll").arg(&self.runtime.dll);
         match extra.and_then(|e| e.prefix.as_ref()) {
             Some(prefix) => { cmd.arg("--wine-prefix").arg(prefix); }

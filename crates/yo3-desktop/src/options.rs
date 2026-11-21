@@ -22,6 +22,8 @@ pub enum Change {
     WineBinary(String),
     /// Detailed logs for your servers.
     DetailedLogs(bool),
+    /// Send a broken game's logs to the server it played on (problem reports).
+    ProblemReports(bool),
     /// Host for friends: the port friends connect to.
     HostPort(u16),
     /// Host for friends: the address friends dial ("" for this PC's network address).
@@ -58,6 +60,7 @@ impl Change {
                 settings.wine_binary = value.into();
             }
             Change::DetailedLogs(on) => settings.log_level = if *on { DETAILED.into() } else { String::new() },
+            Change::ProblemReports(on) => settings.problem_reports = *on,
             Change::HostPort(port) => {
                 ensure!(*port >= 1024, "Choose a port from 1024 to 65535.");
                 settings.host_port = *port;

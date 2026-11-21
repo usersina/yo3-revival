@@ -24,7 +24,8 @@ pub enum Dialog { Help, Report, Repair, ConfirmClose, Backups, Host, Support, Co
 
 /// Report a problem: what the player says happened, the error it is about, and how far it got.
 #[derive(Debug, Default)]
-pub struct Report { pub what: iced::widget::text_editor::Content, pub error: String, pub busy: bool, pub result: Option<Result<(), String>> }
+pub struct Report { pub what: iced::widget::text_editor::Content, pub error: String, pub busy: bool,
+    /** Ok(true): the logs went to the server, the form carries the report ID; Ok(false): the saved file is to attach. */ pub result: Option<Result<bool, String>> }
 
 /// Another program's file or provider stopped a start (#68): what was found, and where the player is in answering it.
 #[derive(Debug)]
@@ -35,7 +36,7 @@ pub struct Foreign { held: yo3_desktop::foreign::Held, /** Move it aside was pre
 pub enum ForeignMessage { Move, ConfirmMove, Back, Continue, Details, Moved(Result<Vec<String>, String>) }
 
 #[derive(Clone, Debug)]
-pub enum ReportMessage { Edit(iced::widget::text_editor::Action), Send, Sent(Result<(), String>) }
+pub enum ReportMessage { Edit(iced::widget::text_editor::Action), Send, Sent(Result<bool, String>) }
 
 #[derive(Clone, Debug)]
 pub enum Message {
@@ -244,11 +245,24 @@ impl App {
                 let (what, error) = (what.trim().to_owned(), self.report.error.clone());
                 self.report.busy = true;
                 self.report.result = None;
-                return job(move || {
-                    let prepared = backend.report_problem(&what, &error)?;
-                    // The saved logs' folder, so the player can drag the file into the form; then the form.
-                    if let Some(dir) = prepared.zip.parent() { let _ = external::open(&dir.to_string_lossy()); }
-                    external::open(&prepared.url)
+                // Signed in to a server on Multiplayer (and reports on): the logs go to its host and the form gets the
+                // report ID. Otherwise (Singleplayer, or turned off) the saved logs file is attached by hand.
+                let target = self.home.multi.session().filter(|_| self.ctx.settings.problem_reports);
+                return Task::perform(async move {
+                    let mut ids = backend.recent_report_ids();
+                    if let Some((server, signed)) = target {
+                        let logs = backend.problem_logs();
+                        match yo3_desktop::multiplayer::problem_report(&server, &signed.session, &what, &error, &logs).await {
+                            Ok(id) => ids.insert(0, id),
+                            Err(problem) => backend.diagnostics.line(&format!("Report a problem: the logs were not sent to the server: {}", problem.sentence())),
+                        }
+                    }
+                    tokio::task::spawn_blocking(move || {
+                        let prepared = backend.report_problem(&what, &error, &ids).map_err(|e| format!("{e:#}"))?;
+                        // The saved logs' folder, so the player can drag the file into the form; then the form.
+                        if let Some(dir) = prepared.zip.as_ref().and_then(|z| z.parent()) { let _ = external::open(&dir.to_string_lossy()); }
+                        external::open(&prepared.url).map(|()| prepared.zip.is_none()).map_err(|e| format!("{e:#}"))
+                    }).await.map_err(|e| e.to_string())?
                 }, |result| Message::Report(ReportMessage::Sent(result)));
             }
             Message::Report(ReportMessage::Sent(result)) => {
@@ -787,11 +801,12 @@ impl App {
     fn report_dialog(&self) -> Element<'_, Message> {
         let report = &self.report;
         let help = Some(Message::OpenHelp(Some("report")));
-        if let Some(Ok(())) = &report.result {
+        if let Some(Ok(sent)) = &report.result {
             // Done here: what is left happens in the browser.
             return yo3_skin::dialog("Report a problem", help, Message::CloseDialog, 520.0, 250.0, column![
                 yo3_skin::rule(yo3_skin::Rule::Met, "The report form is open in your browser."),
-                text("Drag the logs file from the folder that opened into the form, then press Submit there.").size(15).color(color::INK),
+                text(if *sent { "Your logs went to the server's host, and the form has their report ID. Press Submit there." }
+                    else { "Drag the logs file from the folder that opened into the form, then press Submit there." }).size(15).color(color::INK),
                 Space::new().height(Fill),
                 row![Space::new().width(Fill), pill("Done", Some(Message::CloseDialog), Kind::Primary, 120, 38)],
             ].spacing(10));

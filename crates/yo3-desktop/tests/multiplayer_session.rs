@@ -101,3 +101,24 @@ async fn one_dropped_status_probe_still_shows_the_server_online() {
     });
     assert!(matches!(mp::status(&relayed).await, mp::Status::Online { .. }), "one dropped probe isn't Offline");
 }
+
+/// Report a problem, signed in on Multiplayer: the logs go to the server's host and come back as a report ID for the
+/// GitHub form (problem reports).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn report_a_problem_gets_a_report_id_from_the_server() {
+    yo3_server::logins::use_fast_hashing();
+    let root = std::env::temp_dir().join(format!("yo3-desktop-problem-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let mut cfg = Config::ephemeral(root.join("host"));
+    cfg.settings.push(("registration".into(), "open".into()));
+    let data = cfg.data_dir.clone().unwrap();
+    let running = yo3_server::start(cfg).await.unwrap();
+    let server = mp::first_contact(&format!("localhost:{}", running.auth.port())).await.unwrap();
+    mp::register(&server, "Yugi", "LongPassphrase1", "LongPassphrase1", "", true).await.unwrap();
+    let signed = mp::sign_in(&server, "Yugi", "LongPassphrase1", false).await.unwrap();
+    let id = mp::problem_report(&server, &signed.session, "The shop disconnected\nwhile buying", "", "== The app ==\n1 a log line").await.unwrap();
+    let report = yo3_server::problems::Problems::new(Some(&data)).get(&id).unwrap();
+    assert_eq!((report.kind.as_str(), report.summary.as_str(), report.account.as_str()), ("report", "The shop disconnected", "Yugi"));
+    assert!(report.logs.contains("== What the player wrote ==\nThe shop disconnected\nwhile buying") && report.logs.contains("1 a log line"));
+    assert_eq!(mp::problem_report(&server, &[9; 32], "x", "", "").await.map(|_| ()), Err(Problem::Other("the sign-in ended".into())));
+}

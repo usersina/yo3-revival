@@ -58,7 +58,7 @@ Settings, at the bottom right, opens Settings; press it again or Back to return.
 - Close any other copy of the game, then press PLAY again.
 - On Windows, install the DirectX End-User Runtimes (June 2010) and the Visual C++ 2008 runtime if Setup names them.
 - If YO3 Revival says another program is running in your game, see: Another program is running in your game.
-If it keeps failing, use Report a problem: your logs are attached for you.
+If it keeps failing, use Report a problem: your logs go with it for you.
 
 # foreign | Another program is running in your game
 Each time the game starts, YO3 Revival checks what else runs inside it. Another program's file in the game folder, or software on this PC that watches the game's network connection, can break it (for example by disconnecting you in the shop). The message says what was found; Details has the technical text, and Report a problem sends it with your logs.
@@ -100,9 +100,9 @@ If the game doesn't start, try Verify and repair, then Report a problem.
 - This server's identity changed: don't sign in. Ask the host whether they moved the server.
 
 # report | Reporting a problem
-Report a problem saves your recent logs in a file and opens the project's report form in your browser.
-Describe what happened, then drag the saved file into the form. Nothing is sent until you submit the form yourself.
-Personal details are removed from the logs before they are saved.
+Report a problem sends your recent logs to the server you're signed in to on Multiplayer and opens the project's report form in your browser, with the report ID filled in. Describe what happened and submit it: there is nothing to attach.
+Without a server to send to (Singleplayer, or with sending logs turned off), it saves the logs in a file instead: drag it into the form.
+When a game's connection breaks or it closes with an error, its logs go to the server you played on by themselves, so the host can see what went wrong. Passwords and keys are never in them. Settings, Advanced, Send logs when something breaks turns this off.
 
 # community | Talk with other players
 Questions, finding opponents, servers to join and ideas: YO3 Revival's discussions on GitHub.

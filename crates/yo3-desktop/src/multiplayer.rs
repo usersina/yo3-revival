@@ -466,6 +466,25 @@ pub async fn sign_out(server: &Server, device_token: &str, everywhere: bool) -> 
     ask(server, json!({ "op": "sign_out", "device_token": device_token, "everywhere": everywhere })).await.map(|_| ())
 }
 
+/// Report a problem's logs, sent to the server the player is signed in to (problem reports): the report ID to quote in
+/// the GitHub form, so nothing has to be attached. `what` is what the player wrote, `logs` the app's and the latest game's.
+pub async fn problem_report(server: &Server, session: &yo3_tunnel::Token, what: &str, error: &str, logs: &str) -> Result<String, Problem> {
+    let summary = what.lines().map(str::trim).find(|l| !l.is_empty()).or_else(|| error.lines().next()).unwrap_or("Report a problem");
+    let mut text = String::new();
+    if !what.trim().is_empty() { text.push_str(&format!("== What the player wrote ==\n{}\n\n", what.trim())) }
+    if !error.trim().is_empty() { text.push_str(&format!("== The error shown ==\n{}\n\n", error.trim())) }
+    text.push_str(logs);
+    let report = yo3_launcher::problems::report("report", summary, &text);
+    for endpoint in server.endpoints().map_err(|_| Problem::Unreachable)? {
+        match tokio::time::timeout(yo3_launcher::problems::SEND_WAIT, endpoint.problem_report(session, &report)).await {
+            Ok(Ok(id)) => return Ok(id),
+            Ok(Err(e)) if e.downcast_ref::<yo3_tunnel::ReportRefused>().is_some() => return Err(Problem::Other(e.to_string())),
+            _ => {}
+        }
+    }
+    Err(Problem::Unreachable)
+}
+
 /// Settings → Accounts' Sign out everywhere: every device token of the account is revoked and its game sessions end.
 /// A sign-in that didn't stay has no device token to ask with, so the password signs in once more for one.
 pub async fn sign_out_everywhere(server: &Server, device_token: Option<&str>, user: &str, password: &str) -> Result<(), Problem> {

@@ -287,6 +287,7 @@ impl State {
                     Change::WinePrefix(_) => self.good("Saved. The next PLAY uses this Wine prefix."),
                     Change::WineBinary(_) => self.good("Saved. The next PLAY uses this Wine program."),
                     Change::DirectStart(_) => return self.check_direct(ctx),
+                    Change::ProblemReports(_) => if let Some(backend) = &ctx.backend { backend.sync_problem_reports(&ctx.settings) },
                     _ => {}
                 }
             }
@@ -777,6 +778,9 @@ impl State {
         col = col.push(yo3_skin::setting_group("Logs", vec![
             yo3_skin::setting("Detailed logs", "Your servers write more about what they do, for a problem report. From their next start.",
                 Some(toggler(options::detailed(&ctx.settings)).on_toggle(|on| Message::Change(Change::DetailedLogs(on))).style(yo3_skin::switch).size(22).into()), None),
+            yo3_skin::setting("Send logs when something breaks", "When a game's connection breaks or it closes with an error, its logs go to the \
+                server you played on, so the host can see what went wrong. Report a problem then needs no file.",
+                Some(toggler(ctx.settings.problem_reports).on_toggle(|on| Message::Change(Change::ProblemReports(on))).style(yo3_skin::switch).size(22).into()), None),
             yo3_skin::setting("Your logs", "Export them for a report, or open their folder.", None,
                 Some(row![pill("Export logs…", Some(Message::ExportLogs), Kind::Secondary, 150, 32), pill("Open logs folder", Some(Message::OpenLogs), Kind::Secondary, 170, 32)].spacing(10).into())),
         ]));
@@ -838,7 +842,7 @@ mod tests {
         let mut ctx = ctx();
         let mut state = State::new(&ctx, Section::Game);
         for change in [Change::Resolution("1440x1080".into()), Change::DirectStart(false), Change::Banlist("4".into()), Change::WinePrefix("/p".into()),
-            Change::WineBinary("/w".into()), Change::DetailedLogs(true)] {
+            Change::WineBinary("/w".into()), Change::DetailedLogs(true), Change::ProblemReports(false)] {
             let mut expected = ctx.settings.clone();
             match &change { Change::WinePrefix(v) => expected.wine_prefix = v.clone(), Change::WineBinary(v) => expected.wine_binary = v.clone(), other => other.apply(&mut expected).unwrap() }
             let _ = state.update(Message::Changed(change.clone(), Ok(Box::new(expected.clone()))), &mut ctx, false);

@@ -28,20 +28,9 @@ impl Report {
     pub fn export_bug(&self, destination: &Path, remove_personal: bool, context: &serde_json::Value, report_markdown: &str, system: &crate::system_info::SystemInfo) -> anyhow::Result<()> {
         self.export_to(destination,remove_personal,Some((context,report_markdown,system)),Some(GITHUB_ATTACHMENT_BYTES))
     }
-    pub fn gist_files(&self, remove_personal: bool, context: &serde_json::Value, report_markdown: &str, system: &crate::system_info::SystemInfo) -> anyhow::Result<BTreeMap<String,String>> {
-        Ok(self.text_files(remove_personal,Some((context,report_markdown,system)),true)?.into_iter()
-            .map(|(name,text)|(name.strip_prefix("sessions/").map(|name|format!("session-{name}")).unwrap_or(name),text)).collect())
-    }
-    fn text_files(&self, remove_personal: bool, bug: Option<(&serde_json::Value,&str,&crate::system_info::SystemInfo)>, for_gist: bool) -> anyhow::Result<BTreeMap<String,String>> {
-        let mut files=BTreeMap::new();let mut payload_bytes=4096usize;
-        let mut add=|name:String,text:String|->anyhow::Result<()> {
-            if for_gist {
-                ensure!(files.len()<99,"This report exceeds GitHub's 100-file evidence limit, including its report marker. Select fewer retained sessions; no evidence was uploaded or silently omitted.");
-                payload_bytes+=serde_json::to_vec(&name)?.len()+serde_json::to_vec(&text)?.len()+14;
-                ensure!(payload_bytes<=8*1024*1024,"This report exceeds the 8 MiB evidence payload limit. Select fewer retained sessions or remove personal data; no evidence was uploaded or silently omitted.");
-            }
-            files.insert(name,text);Ok(())
-        };
+    fn text_files(&self, remove_personal: bool, bug: Option<(&serde_json::Value,&str,&crate::system_info::SystemInfo)>) -> anyhow::Result<BTreeMap<String,String>> {
+        let mut files=BTreeMap::new();
+        let mut add=|name:String,text:String|->anyhow::Result<()> { files.insert(name,text);Ok(()) };
         let home = std::env::var(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).ok();
         let mut metadata=serde_json::json!({"format":2,"created":logs::now(),"preview":self.preview,"personal_data_filtered":remove_personal,
             "release":yo3_tunnel::BUILD_VERSION,"commit":yo3_tunnel::BUILD_COMMIT,"protocol":yo3_tunnel::PROTOCOL_VERSION,"mod_abi":yo3_tunnel::MOD_ABI,
@@ -50,7 +39,6 @@ impl Report {
             metadata["context"]=clean_context(context,home.as_deref(),remove_personal);
             metadata["system"]=clean_context(&serde_json::to_value(system)?,home.as_deref(),remove_personal);
         }
-        if for_gist {metadata["note"]="User-reviewed evidence prepared for a GitHub bug report. Credentials, databases, profiles and game files are excluded. Personal filtering reduces debugging detail; review before sharing.".into();}
         add("report.json".into(),serde_json::to_string_pretty(&metadata)?)?;
         if let Some((_,markdown,_))=bug {add("bug-report.md".into(),filter_narrative(markdown,home.as_deref(),remove_personal))?;}
         let current = logs::records(&self.root)?;
@@ -76,7 +64,7 @@ impl Report {
     }
     fn export_to(&self, destination: &Path, remove_personal: bool, bug: Option<(&serde_json::Value,&str,&crate::system_info::SystemInfo)>, limit: Option<u64>) -> anyhow::Result<()> {
         ensure!(destination.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip")), "Choose a .zip report file");
-        let files=self.text_files(remove_personal,bug,false)?;
+        let files=self.text_files(remove_personal,bug)?;
         let mut archive=zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
         let options=zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated).unix_permissions(0o600);
         for (name,text) in files {archive.start_file(name,options)?;archive.write_all(text.as_bytes())?;}
@@ -175,39 +163,135 @@ mod tests {
 }
 
 /// Report a problem (#31): the session's logs saved for the player, and the report form's link to open.
-pub struct Prepared { pub zip: PathBuf, pub url: String }
+/// A report ready for the form: its link, and the saved logs file when no report ID took their place.
+pub struct Prepared { pub zip: Option<PathBuf>, pub url: String }
+
+/// How much of each log a problem report from the app carries (its newest bytes).
+const REPORT_LOG_BUDGET: usize = 384 * 1024;
 
 impl crate::Backend {
-    /// Saves this session's logs (personal details removed) in `<app data>/reports/` and returns the report form's link,
-    /// filled in with `what` and the error. Nothing is uploaded: the player attaches the file to the form.
-    pub fn report_problem(&self, what: &str, error: &str) -> anyhow::Result<Prepared> {
+    /// What a problem report from Report a problem carries: the newest lines of this app session's log and of the
+    /// latest game's (the helper's, with the game's and the connection DLL's lines).
+    pub fn problem_logs(&self) -> String {
+        let root = self.root.join("logs/sessions");
+        let mut text = format!("== The app ==\n{}", self.diagnostics.tail(REPORT_LOG_BUDGET));
+        if let Ok(id) = std::fs::read_to_string(root.join("latest-game")) && logs::valid_id(id.trim()) {
+            text.push_str(&format!("\n\n== The latest game ==\n{}", logs::tail_of(&root, id.trim(), REPORT_LOG_BUDGET)));
+        }
+        text
+    }
+
+    /// The report IDs the helper got for games that broke in the last day (problem reports), newest first.
+    pub fn recent_report_ids(&self) -> Vec<String> {
+        let root = self.root.join("logs/sessions");
+        let since = logs::now().saturating_sub(86_400);
+        let mut games: Vec<_> = logs::records(&root).unwrap_or_default().into_iter()
+            .filter(|r| r.name.ends_with(".json") && (r.id.starts_with("game-") || r.id.starts_with("direct-")) && r.modified >= since).collect();
+        games.sort_by_key(|r| std::cmp::Reverse(r.modified));
+        let mut ids = Vec::new();
+        for game in games.iter().take(5) {
+            for line in logs::tail_of(&root, &game.id, 256 * 1024).lines().rev() {
+                if let Some(id) = line.split("Problem report ").nth(1).and_then(|rest| rest.split_whitespace().next()).filter(|id| is_report_id(id))
+                    && !ids.iter().any(|known| known == id) { ids.push(id.to_string()) }
+            }
+        }
+        ids.truncate(5);
+        ids
+    }
+
+    /// The report form's link, filled in with `what`, the error and the report IDs (`ids`: the one Report a problem got
+    /// and the helper's from recent games). Without any, this session's logs (personal details removed) are saved in
+    /// `<app data>/reports/` for the player to attach.
+    pub fn report_problem(&self, what: &str, error: &str, ids: &[String]) -> anyhow::Result<Prepared> {
         use crate::bug_report::{Context, Draft};
+        let context = Context { error: error.to_owned(), ..Context::default() };
+        let draft = Draft { description: what.trim().to_owned(), steps: String::new() };
+        let system = crate::system_info::SystemInfo::collect();
+        if !ids.is_empty() {
+            self.diagnostics.line(&format!("Report a problem: the form carries report ID(s) {}", ids.join(", ")));
+            return Ok(Prepared { url: draft.url(&context, &system, None, ids)?, zip: None });
+        }
         let dir = self.root.join("reports");
         std::fs::create_dir_all(&dir)?;
         let name = format!("yo3-revival-report-{}.zip", chrono::Local::now().format("%Y%m%d-%H%M%S"));
         let zip = dir.join(&name);
-        let context = Context { error: error.to_owned(), ..Context::default() };
-        let draft = Draft { description: what.trim().to_owned(), steps: String::new() };
-        let system = crate::system_info::SystemInfo::collect();
-        let markdown = draft.markdown(&context, &system, Some(&name));
+        let markdown = draft.markdown(&context, &system, Some(&name), &[]);
         self.report(false)?.export_bug(&zip, true, &serde_json::to_value(&context)?, &markdown, &system)?;
         self.diagnostics.line("Saved a problem report's logs");
-        Ok(Prepared { url: draft.url(&context, &system, Some(&name))?, zip })
+        Ok(Prepared { url: draft.url(&context, &system, Some(&name), &[])?, zip: Some(zip) })
     }
+}
+
+/// `R-XXXX-XXXX`, as the server makes them.
+pub fn is_report_id(text: &str) -> bool {
+    let b = text.as_bytes();
+    b.len() == 11 && text.starts_with("R-") && b[6] == b'-' && b.iter().enumerate().all(|(i, c)| i < 2 || i == 6 || c.is_ascii_uppercase() || c.is_ascii_digit())
 }
 
 #[cfg(test)]
 mod report_problem_tests {
-    #[test]
-    fn a_report_saves_the_logs_and_fills_in_the_form() {
-        let root = std::env::temp_dir().join(format!("yo3-report-{}-{}", std::process::id(),
+    fn backend(test: &str) -> (std::sync::Arc<crate::Backend>, std::path::PathBuf) {
+        let root = std::env::temp_dir().join(format!("yo3-report-{test}-{}-{}", std::process::id(),
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
-        let backend = crate::Backend::new(root.clone()).unwrap();
+        (crate::Backend::new(root.clone()).unwrap(), root)
+    }
+
+    #[test]
+    fn without_a_report_id_the_logs_are_saved_to_attach() {
+        let (backend, root) = backend("zip");
         backend.diagnostics.line("something to report");
-        let prepared = backend.report_problem("The game froze in a duel", "The game stopped unexpectedly (exit status: 1).").unwrap();
-        assert!(prepared.zip.is_file() && prepared.zip.starts_with(root.join("reports")));
+        let prepared = backend.report_problem("The game froze in a duel", "The game stopped unexpectedly (exit status: 1).", &[]).unwrap();
+        assert!(prepared.zip.as_ref().is_some_and(|z| z.is_file() && z.starts_with(root.join("reports"))));
         assert!(prepared.url.starts_with("https://github.com/usersina/yo3-revival/issues/new?") && prepared.url.contains("The+game+froze"), "{}", prepared.url);
         drop(backend);
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_report_id_goes_in_the_form_and_nothing_is_saved() {
+        let (backend, root) = backend("id");
+        let prepared = backend.report_problem("The shop disconnected", "", &["R-7K3Q-M2PA".into()]).unwrap();
+        assert!(prepared.zip.is_none() && !root.join("reports").exists());
+        assert!(prepared.url.contains("R-7K3Q-M2PA"), "{}", prepared.url);
+        drop(backend);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn the_helpers_report_ids_from_recent_games_are_found() {
+        let (backend, root) = backend("recent");
+        let sessions = root.join("logs/sessions");
+        let game = yo3_tunnel::diagnostics::Session::start(&sessions, "game", None).unwrap();
+        game.line("Problem report R-7K3Q-M2PA sent to the server (network): quote it when you report this problem");
+        game.line("Problem report not sent: the sign-in ended");
+        assert_eq!(backend.recent_report_ids(), vec!["R-7K3Q-M2PA".to_string()]);
+        assert!(backend.problem_logs().contains("== The latest game ==") && backend.problem_logs().contains("R-7K3Q-M2PA"));
+        drop((backend, game));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// The setting reaches every helper: Play's (its flag) and direct start's, which only sees the file beside the profiles.
+    #[test]
+    fn turning_problem_reports_off_reaches_the_helper() {
+        let (backend, root) = backend("switch");
+        let off = root.join("profiles").join(yo3_launcher::problems::OFF_FILE);
+        let mut settings = crate::Settings { problem_reports: false, ..crate::Settings::default() };
+        backend.sync_problem_reports(&settings);
+        assert!(off.is_file() && yo3_launcher::problems::off(&root.join("profiles/direct.json")));
+        let cmd = backend.launch_command(&settings, &root.join("profiles/connection-0.json"), &root.join("profiles/ready.json")).unwrap();
+        assert!(cmd.get_args().any(|a| a == "--no-problem-reports"));
+        settings.problem_reports = true;
+        backend.sync_problem_reports(&settings);
+        assert!(!off.exists());
+        let cmd = backend.launch_command(&settings, &root.join("profiles/connection-0.json"), &root.join("profiles/ready.json")).unwrap();
+        assert!(!cmd.get_args().any(|a| a == "--no-problem-reports"));
+        drop(backend);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn report_ids_are_recognised_exactly() {
+        assert!(super::is_report_id("R-7K3Q-M2PA"));
+        for not in ["R-7K3Q-M2P", "X-7K3Q-M2PA", "R-7k3q-m2pa", "R-7K3QM-2PA", "not"] { assert!(!super::is_report_id(not), "{not}") }
     }
 }
