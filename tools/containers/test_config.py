@@ -46,6 +46,14 @@ class DeploymentConfig(unittest.TestCase):
         missing = [p for p in paths if p not in blocked and not any(r.match(sample(p)) for r in allowed)]
         self.assertEqual(missing, [], 'add these routes to deploy/nginx/dashboard.conf.template')
 
+    def test_nginx_location_regexes_need_no_quotes(self):
+        """nginx ends an unquoted location regex at `{` (v0.1.10's deployment failed on `{1,16}`: pcre2 "missing closing
+        parenthesis", the dashboard unhealthy and rolled back). Keep braces out of them, or quote the whole regex."""
+        import re
+        conf = (ROOT / 'deploy/nginx/dashboard.conf.template').read_text()
+        for regex in re.findall(r'location ~\*? (\S+) \{', conf):
+            self.assertFalse(regex[0] not in '"\'' and ('{' in regex or '}' in regex), f'quote or rewrite: {regex}')
+
     def test_host_scripts_parse(self):
         for name in ['server-entrypoint.sh','nginx/entrypoint.sh','install-certificate.sh','check-https.sh']:
             subprocess.run(['sh','-n',str(ROOT/'deploy'/name)],check=True)
