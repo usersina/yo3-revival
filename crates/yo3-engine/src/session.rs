@@ -920,6 +920,88 @@ mod tests {
         assert!(plain.name(511009416).is_none() && plain.library.card(511009416).is_none());
     }
 
+    /// A bot scenario: team 0 (a player who passes every turn and never attacks) goes first, team 1 is the bot with
+    /// `style`, both with the board `field` in place (spawned from their Decks) at `lp` each. Plays until the bot's first
+    /// turn is over: the state then, and whether the bot won.
+    fn bot_scenario(vendor: &std::path::Path, lp: u32, decks: [&[u32]; 2], field: &[Json], style: Json) -> (Json, bool) {
+        let mut session = Session::new(Cards::open(vendor).expect("the card data"));
+        let decks: Vec<Json> = decks.iter().map(|d| json!({ "main": d, "extra": [] })).collect();
+        let new = json!({ "op": "new", "seed": 11, "lp": lp, "decks": decks, "names": {}, "field": field });
+        let mut answer: Json = serde_json::from_str(&session.handle(&new.to_string())).unwrap();
+        let mut bot_turns = 0;
+        for _ in 0..400 {
+            assert_eq!(answer["errors"], json!([]), "{answer}");
+            let messages = answer["messages"].as_array().cloned().unwrap_or_default();
+            if messages.iter().any(|m| m["type"] == msg::WIN && m["player"] == 1) {
+                let state: Json = serde_json::from_str(&session.handle(&json!({ "op": "state" }).to_string())).unwrap();
+                return (state["teams"].clone(), true);
+            }
+            bot_turns += messages.iter().filter(|m| m["type"] == msg::NEW_TURN && m["player"] == 1).count();
+            let back_to_them = messages.iter().any(|m| m["type"] == msg::NEW_TURN && m["player"] == 0);
+            if bot_turns > 0 && back_to_them || answer["status"] != "await" {
+                break;
+            }
+            let prompt = messages.last().cloned().unwrap_or_default();
+            let response = if prompt["player"] == 1 {
+                let thought: Json = serde_json::from_str(&session.handle(&json!({ "op": "think", "style": style }).to_string())).unwrap();
+                thought["response"].clone()
+            } else if prompt["type"] == msg::SELECT_IDLECMD {
+                yo3_ocg::Response::IdleCmd { action: yo3_ocg::idle::TO_EP, index: None }.json()
+            } else if prompt["type"] == msg::SELECT_BATTLECMD {
+                yo3_ocg::Response::BattleCmd { action: yo3_ocg::battle::TO_EP, index: None }.json()
+            } else {
+                crate::bot::policy::passive(&prompt)
+            };
+            answer = serde_json::from_str(&session.handle(&json!({ "op": "respond", "response": response }).to_string())).unwrap();
+        }
+        let state: Json = serde_json::from_str(&session.handle(&json!({ "op": "state" }).to_string())).unwrap();
+        (state["teams"].clone(), false)
+    }
+
+    /// The codes of a team's cards at `place` in a state.
+    fn codes(teams: &Json, team: usize, place: &str) -> Vec<u64> {
+        teams[team][place].as_array().into_iter().flatten().filter_map(|c| c["code"].as_u64()).collect()
+    }
+
+    const BLUE_EYES: u32 = 4007;
+    const SUMMONED_SKULL: u32 = 4028;
+    const CELTIC_GUARDIAN: u32 = 4047;
+    const KURIBOH: u32 = 4064;
+    const SPAWN_MONSTER: u64 = 4;
+    const SPAWN_HAND: u64 = 2;
+
+    #[test]
+    fn the_bot_attacks_for_the_win() {
+        let Some(vendor) = fetched_vendor() else { return };
+        // 1000 LP each, the bot's Celtic Guardian (1400) faces an empty field: one attack wins.
+        let field = [json!({ "player": 1, "location": SPAWN_MONSTER, "position": 1, "cid": CELTIC_GUARDIAN })];
+        for style in [json!(null), json!({ "aggression": -1.0, "caution": 1.0 })] {
+            let (_, won) = bot_scenario(&vendor, 1000, [&[KURIBOH; 40], &[CELTIC_GUARDIAN; 40]], &field, style.clone());
+            assert!(won, "the bot ({style}) attacks for the win");
+        }
+    }
+
+    #[test]
+    fn the_bot_tributes_two_weak_monsters_for_blue_eyes_to_beat_summoned_skull() {
+        let Some(vendor) = fetched_vendor() else { return };
+        // Two Celtic Guardians (1400) can't pass Summoned Skull (2500); Blue-Eyes (3000) in hand can, for both of them.
+        let mut bot_deck = vec![CELTIC_GUARDIAN; 40];
+        bot_deck[0] = BLUE_EYES;
+        let field = [
+            json!({ "player": 1, "location": SPAWN_MONSTER, "position": 1, "cid": CELTIC_GUARDIAN }),
+            json!({ "player": 1, "location": SPAWN_MONSTER, "position": 1, "cid": CELTIC_GUARDIAN }),
+            json!({ "player": 1, "location": SPAWN_HAND, "position": 10, "cid": BLUE_EYES }),
+            json!({ "player": 0, "location": SPAWN_MONSTER, "position": 1, "cid": SUMMONED_SKULL }),
+        ];
+        let mut wall = vec![KURIBOH; 40];
+        wall[0] = SUMMONED_SKULL;
+        let (teams, _) = bot_scenario(&vendor, 8000, [&wall, &bot_deck], &field, json!({ "aggression": 0.9 }));
+        let cards = Cards::open(&vendor).unwrap();
+        let passcode = |cid: u32| cards.passcode(cid).unwrap_or(0) as u64;
+        assert!(codes(&teams, 1, "mzone").contains(&passcode(BLUE_EYES)), "Blue-Eyes on the bot's field: {teams}");
+        assert!(codes(&teams, 0, "grave").contains(&passcode(SUMMONED_SKULL)), "Summoned Skull destroyed: {teams}");
+    }
+
     #[test]
     fn the_bots_copy_of_a_duel_that_starts_with_spawned_cards_is_the_duel() {
         let Some(vendor) = fetched_vendor() else { return };
