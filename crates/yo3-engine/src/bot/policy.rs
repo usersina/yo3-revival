@@ -102,14 +102,17 @@ pub fn answer(m: &Json, me: u8, board: &Board, hint: Option<u64>) -> Json {
     let mine = &board.sides[me as usize];
     match kind {
         msg::SELECT_IDLECMD => {
-            // Summon the strongest, else Set, else battle (when anything can attack), else end.
-            let strongest = |k: &str| {
-                list(m, k).iter().enumerate().max_by_key(|(_, c)| board.base_worth(u(&c["code"]) as u32)).map(|(i, _)| i)
+            // Summon the strongest, else Set (a Flip monster first: its effect works only when Set and flipped, #80),
+            // else battle (when anything can attack), else end.
+            let flip = |c: &Json| board.is_flip(u(&c["code"]) as u32);
+            let strongest = |k: &str, flips: bool| {
+                list(m, k).iter().enumerate().filter(|(_, c)| flips || !flip(c))
+                    .max_by_key(|(_, c)| (flip(c), board.base_worth(u(&c["code"]) as u32))).map(|(i, _)| i)
             };
-            if let Some(i) = strongest("summons") {
+            if let Some(i) = strongest("summons", false) {
                 return Response::IdleCmd { action: idle::SUMMON, index: Some(i) }.json();
             }
-            if let Some(i) = strongest("monster_sets") {
+            if let Some(i) = strongest("monster_sets", true) {
                 return Response::IdleCmd { action: idle::MONSTER_SET, index: Some(i) }.json();
             }
             let action = if m["to_bp"] == true && !mine.monsters.is_empty() { idle::TO_BP } else { idle::TO_EP };

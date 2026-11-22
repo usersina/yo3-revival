@@ -25,6 +25,10 @@ const POS_ATTACK: u32 = 0x3;
 const TYPE_MONSTER: i64 = 0x1;
 const TYPE_TRAP: i64 = 0x4;
 const TYPE_QUICKPLAY: i64 = 0x10000;
+const TYPE_FLIP: i64 = 0x200000;
+/// What a Set Flip monster of the bot's own is worth beyond its DEF: its effect, still to come when it is flipped (about
+/// a card's). Without it a Jar's ATK in Attack Position looked better than its DEF face down (#80).
+const FLIP_SET: f64 = 700.0;
 
 #[derive(Clone, Debug)]
 pub struct Monster {
@@ -35,6 +39,8 @@ pub struct Monster {
     pub def: i32,
     /// Whether the bot knows what it is (its own, or face-up when it started thinking).
     pub known: bool,
+    /// A Flip monster the bot knows, face down: its effect still to come.
+    pub flip_set: bool,
 }
 
 impl Monster {
@@ -125,6 +131,7 @@ impl Board {
                     atk: if known { card.get(decode::QUERY_ATTACK).unwrap_or(0) as i32 } else { 0 },
                     def: if known { card.get(decode::QUERY_DEFENSE).unwrap_or(0) as i32 } else { 0 },
                     known,
+                    flip_set: known && !faceup && card.get(decode::QUERY_CODE).is_some_and(|code| is_flip(library, code)),
                 });
             }
             let szone = decode::query_location(&duel.query_location(decode::QUERY_CODE | decode::QUERY_POSITION | QUERY_TYPE, t, LOCATION_SZONE))
@@ -148,6 +155,11 @@ impl Board {
             .collect()
     }
 
+    /// Whether the card has a Flip effect (it works only when the card is Set and flipped face up).
+    pub fn is_flip(&self, code: u32) -> bool {
+        is_flip(&self.library, code)
+    }
+
     pub fn base_atk(&self, code: u32) -> i32 {
         self.library.row(code).map_or(0, |r| r[2] as i32)
     }
@@ -167,7 +179,7 @@ impl Board {
 
     /// How good the position is for the bot, in Life Points: the LP difference, about 700 a card in hand or on the
     /// field, its monsters' strength, what the opponent's next battle would cost it ([`exposure`]), Traps ready to
-    /// spring, an empty Deck. A won duel is worth everything.
+    /// spring, its Set Flip monsters' effects to come, an empty Deck. A won duel is worth everything.
     pub fn value(&self) -> f64 {
         let me = &self.sides[self.me as usize];
         let them = &self.sides[1 - self.me as usize];
@@ -185,6 +197,7 @@ impl Board {
         // Looking through the opponent's turn already plays its next battle out; what is left is the one after.
         let exposed = if self.style.reach == Reach::Turn { 0.2 } else { 0.6 };
         v -= exposed * (1.0 + self.style.caution) * exposure(me, them);
+        v += FLIP_SET * me.monsters.iter().filter(|m| m.flip_set).count() as f64;
         for s in me.spells.iter().filter(|s| !s.faceup) {
             match s.kind {
                 Some(k) if k & (TYPE_TRAP | TYPE_QUICKPLAY) != 0 => v += 60.0,
@@ -197,6 +210,10 @@ impl Board {
         }
         v
     }
+}
+
+fn is_flip(library: &Library, code: u32) -> bool {
+    library.row(code).is_some_and(|r| r[0] & TYPE_MONSTER != 0 && r[0] & TYPE_FLIP != 0)
 }
 
 /// What `them`'s next Battle Phase would cost `me` with the monsters on the field now, in LP: each of their known

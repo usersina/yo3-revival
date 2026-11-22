@@ -917,6 +917,35 @@ mod tests {
     }
 
     #[test]
+    fn the_bot_sets_a_flip_monster_instead_of_summoning_it_issue_80() {
+        let Some(vendor) = fetched_vendor() else { return };
+        // A player saw the computer summon its Jars in Attack Position: a Flip effect works only when the card is Set
+        // and flipped. With Decks of Morphing Jar (4597, 700/600, Flip: both players discard their hands and draw 5),
+        // each side's first monster is Set face down.
+        let mut session = Session::new(Cards::open(&vendor).expect("the card data"));
+        let deck: Vec<u32> = vec![4597; 40];
+        let new = json!({ "op": "new", "seed": 3, "lp": 8000, "decks": [{ "main": deck, "extra": [] }, { "main": deck, "extra": [] }], "names": {} });
+        let mut answer: Json = serde_json::from_str(&session.handle(&new.to_string())).unwrap();
+        let mut first: [Option<u64>; 2] = [None; 2];
+        for _ in 0..200 {
+            assert_eq!(answer["errors"], json!([]), "{answer}");
+            if answer["status"] != "await" || first.iter().all(Option::is_some) {
+                break;
+            }
+            let thought: Json = serde_json::from_str(&session.handle(&json!({ "op": "think" }).to_string())).unwrap();
+            answer = serde_json::from_str(&session.handle(&json!({ "op": "respond", "response": thought["response"] }).to_string())).unwrap();
+            let state: Json = serde_json::from_str(&session.handle(&json!({ "op": "state" }).to_string())).unwrap();
+            for (t, team) in state["teams"].as_array().unwrap().iter().enumerate() {
+                let jar = team["mzone"].as_array().into_iter().flatten().find(|c| c["code"] == 33508719);
+                if first[t].is_none() && let Some(jar) = jar {
+                    first[t] = jar["position"].as_u64();
+                }
+            }
+        }
+        assert_eq!(first, [Some(8), Some(8)], "each side's first Morphing Jar, face-down Defense (8), not face-up Attack (1)");
+    }
+
+    #[test]
     fn the_bots_look_ahead_copies_play_the_anime_versions_too() {
         let Some(vendor) = fetched_vendor() else { return };
         // Anime Card of Sanctity (5479), Mirror Force (4887) and Junk Warrior's Level 2 friends: both sides think and

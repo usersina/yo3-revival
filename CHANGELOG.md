@@ -13,6 +13,11 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- The computer Sets its Flip monsters, such as Morphing Jar and Man-Eater Bug, face down instead of summoning them in
+  Attack Position, so their effects work when they are flipped (#80).
+
 ## v0.1.18 (2026-11-22)
 
 Multiplayer: update to v0.1.18 to join the hosted server after deployment. The hosted server never got v0.1.17 (its
