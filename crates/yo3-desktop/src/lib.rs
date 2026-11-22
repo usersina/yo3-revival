@@ -54,7 +54,7 @@ pub struct Settings {
     pub local_account: String,
     /// The connection DLL's higher resolution ("" or "off", "auto", "WIDTHxHEIGHT"); see yo3_launcher::resolution.
     pub resolution: String,
-    /// The server's banlist (`--regulation`): "" for the server's default (Season 16), else a regulation id, or a
+    /// The server's banlist (`--regulation`): "" for the default (the game's unlimited list, `apply_banlist`), else a regulation id, or a
     /// name kept from an older `--regulation` server flag.
     pub banlist: String,
     /// The setup wizard was finished (#28); until then the launcher opens on it.
@@ -835,11 +835,26 @@ impl Backend {
 }
 
 /// Writes the saved Banlist into the server's data as its `login-regulation` setting (#24), before the server starts:
-/// "" puts the setting back to its default (Season 16).
+/// "" is the game's unlimited list (the server's default, Season 16, when the game has none).
 pub fn apply_banlist(data: &Path, settings: &Settings) -> anyhow::Result<()> {
-    let live = yo3_server::settings::Live::open(Some(&data.join("settings.json")), banlists(Path::new(&settings.game_dir)))?;
-    let done = if settings.banlist.is_empty() { live.reset("login-regulation") } else { live.set("login-regulation", &settings.banlist) };
+    let lists = banlists(Path::new(&settings.game_dir));
+    let unlimited = unlimited(&lists);
+    let live = yo3_server::settings::Live::open(Some(&data.join("settings.json")), lists)?;
+    let done = match (settings.banlist.is_empty(), unlimited) {
+        (true, Some(id)) => live.set("login-regulation", &id.to_string()),
+        (true, None) => live.reset("login-regulation"),
+        (false, _) => live.set("login-regulation", &settings.banlist),
+    };
     done.map(|_| ()).map_err(|e| anyhow::anyhow!("The Banlist {:?} can't be used: {e}", settings.banlist))
+}
+
+/// Singleplayer's default banlist (the setting left empty): the game's own unlimited list, so a new player can build any
+/// deck. The server's default (Season 16) only when the game has no such list. Hosting keeps the server's default.
+pub const DEFAULT_BANLIST: &str = "Unlimited (default)";
+
+/// The game's unlimited banlist among `lists`, by its name.
+pub fn unlimited(lists: &[(u32, String)]) -> Option<u32> {
+    lists.iter().find(|(_, name)| name.trim().eq_ignore_ascii_case("unlimited")).map(|(id, _)| *id)
 }
 
 /// The game's banlists (regulation id, name from its text table) for Hosting's Banlist choice; empty without game data.
@@ -1014,12 +1029,29 @@ mod tests {
         drop(backend); std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
+    fn the_default_banlist_is_the_games_unlimited_list() {
+        // The player's request of 2026-11-22: new players start on the unlimited list. Needs the game (skipped without).
+        let game = std::env::var("YO3_GAME_DIR").map(PathBuf::from).unwrap_or_else(|_| dirs_home().join(".wine/drive_c/Program Files (x86)/Konami/Yu-Gi-Oh! ONLINE 3"));
+        let lists = banlists(&game);
+        let Some(id) = unlimited(&lists) else { return };
+        let root = std::env::temp_dir().join(format!("yo3-desktop-unlimited-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let data = root.join("server-data");
+        yo3_server::store::initialize(&data).unwrap();
+        apply_banlist(&data, &Settings { game_dir: game.to_string_lossy().into(), ..Settings::default() }).unwrap();
+        let live = yo3_server::settings::Live::open(Some(&data.join("settings.json")), lists).unwrap();
+        assert_eq!(live.now().login_regulation, id);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+    fn dirs_home() -> PathBuf { PathBuf::from(std::env::var_os("HOME").unwrap_or_default()) }
+
+    #[test]
     fn the_banlist_is_saved_reaches_the_server_and_an_old_regulation_flag_moves_to_it() {
         let root=std::env::temp_dir().join(format!("yo3-desktop-banlist-{}",std::process::id()));
         let _=std::fs::remove_dir_all(&root);
         let backend=Backend::new(root.clone()).unwrap();
         let db=LauncherDb::open(&root).unwrap();
-        // Before the option: the server's default (Season 16), nothing passed.
+        // Before the option: nothing passed (the default is applied as a live setting below).
         let old: Settings = serde_json::from_value(serde_json::json!({"game_dir": "saved game", "bind_address": "127.0.0.1"})).unwrap();
         assert_eq!(old.banlist, "");
         let cmd=backend.server_command(&old,std::net::Ipv4Addr::LOCALHOST.into()).unwrap();
@@ -1039,7 +1071,9 @@ mod tests {
         assert_eq!(login(),3);
         assert_eq!(db.save_banlist("").unwrap(), "");
         apply_banlist(&data,&db.settings().unwrap()).unwrap();
-        assert_eq!(login(),yo3_server::front::LOGIN_REGULATION);
+        assert_eq!(login(),yo3_server::front::LOGIN_REGULATION, "a game without an unlimited list: the server's default");
+        assert_eq!(unlimited(&[(1, "Beta Forbidden/Limited".into()), (4, " unlimited ".into())]), Some(4), "the game's own name, any case");
+        assert_eq!(unlimited(&[(1, "Season 16".into())]), None);
         // A host who set --regulation under All server flags keeps it, now as the Banlist.
         db.save_settings(&Settings { server_options: [("regulation".into(), "Season 14".into())].into(), ..Settings::default() }).unwrap();
         let moved=db.settings().unwrap();

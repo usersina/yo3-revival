@@ -550,7 +550,7 @@ impl App {
             window::open_events().map(|_| Message::WindowOpened),
             keyboard::listen().map(Message::Key),
         ];
-        if self.setup.is_none() { all.push(self.home.subscription().map(Message::Home)) }
+        if self.setup.is_none() { all.push(self.home.subscription(self.settings.is_none() && self.dialog.is_none()).map(Message::Home)) }
         all.push(self.host.subscription().map(Message::Host));
         all.push(iced::time::every(std::time::Duration::from_secs(10 * 60)).map(|_| Message::UpdateTick));
         if self.home.good_toast().is_some() || self.settings.as_ref().is_some_and(|s| s.good_toast().is_some()) {

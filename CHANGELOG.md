@@ -20,6 +20,9 @@ Older entries describe their release at the time. For current setup, use the [RE
   Shooting Star Dragon when it leaves). Your host gives it for now. Its picture comes with the other card pictures; until
   then it shows a stand-in picture. With anime cards on, it plays as the anime's Shooting Quasar Dragon (when it leaves the field it destroys
   every monster and brings Shooting Star Dragon).
+- Singleplayer's banlist is now **Unlimited** by default, so any deck works from the start, the character decks
+  included. Choose Season 16 (or any other list) in Settings → Singleplayer → Banlist to play by the original rules.
+- The Multiplayer tab's server list now updates every 3 seconds while you look at it: online status, players and ping.
 - Card pictures moved to Settings → Game → **Card pictures**: the anime cards' and the new cards' pictures, with
   **Download automatically**. Setup's last step has the same tick, ticked, so new players get them in the background
   after setup. While they download, the footer shows the progress; click it to open the group.

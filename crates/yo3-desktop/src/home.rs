@@ -649,8 +649,13 @@ impl State {
     /// Since when Play has been starting or waiting for the game's window, for Cancel.
     pub fn launching_since(&self) -> Option<Instant> { self.game.launching().or(self.waiting_since) }
 
-    pub fn subscription(&self) -> Subscription<Message> {
-        iced::time::every(Duration::from_secs(2)).map(|_| Message::Tick)
+    /// `shown`: the main screen is what the window shows (no Settings or dialog over it), so the Multiplayer tab's
+    /// server list refreshes only while someone can see it.
+    pub fn subscription(&self, shown: bool) -> Subscription<Message> {
+        let tick = iced::time::every(Duration::from_secs(2)).map(|_| Message::Tick);
+        if shown && self.tab == Tab::Multi {
+            Subscription::batch([tick, iced::time::every(crate::multi::REFRESH).map(|_| Message::Multi(crate::multi::Message::Refresh))])
+        } else { tick }
     }
 
     pub fn view<'a>(&'a self, ctx: &'a Ctx) -> Element<'a, Message> {
@@ -693,7 +698,7 @@ impl State {
         let choices = banlist_choices(&self.banlists);
         let selected = choices.iter().find(|c| c.value == ctx.settings.banlist).cloned();
         // The banlist is chosen in Settings → Singleplayer; it is read when your server starts.
-        let banlist = text(selected.map_or_else(|| "Season 16 (default)".to_owned(), |b| b.name)).size(15).color(color::INK).width(Fill);
+        let banlist = text(selected.map_or_else(|| yo3_desktop::DEFAULT_BANLIST.to_owned(), |b| b.name)).size(15).color(color::INK).width(Fill);
         yo3_skin::panel(Some("Your own server"), column![
             text("Duel the NPCs, open packs and build decks. Cards you earn here stay on this PC.").size(15).color(color::INK),
             row![text("Banlist").font(BODY_BOLD).size(15).color(color::INK).width(74), banlist,
@@ -775,10 +780,13 @@ pub fn game_missing(settings: &yo3_desktop::Settings) -> bool {
     settings.setup_complete && !std::path::Path::new(&settings.game_dir).join("yo3.exe").is_file()
 }
 
-/// The banlists to choose from: the server's default first, then the game's own lists.
+/// The banlists to choose from: the default (the game's unlimited list, `yo3_desktop::unlimited`) first, then the game's
+/// other lists. Without game data, the server's own default.
 fn banlist_choices(lists: &[(u32, String)]) -> Vec<Banlist> {
-    let mut choices = vec![Banlist { value: String::new(), name: "Season 16 (default)".into() }];
-    choices.extend(lists.iter().map(|(id, name)| Banlist { value: id.to_string(), name: name.clone() }));
+    let unlimited = yo3_desktop::unlimited(lists);
+    let name = if unlimited.is_some() { yo3_desktop::DEFAULT_BANLIST } else { "Season 16 (default)" };
+    let mut choices = vec![Banlist { value: String::new(), name: name.into() }];
+    choices.extend(lists.iter().filter(|(id, _)| Some(*id) != unlimited).map(|(id, name)| Banlist { value: id.to_string(), name: name.clone() }));
     choices
 }
 
@@ -1132,5 +1140,10 @@ mod tests {
         let choices = banlist_choices(&[(4, "Season 13".into())]);
         assert_eq!(choices[0].value, "");
         assert_eq!(choices[1], Banlist { value: "4".into(), name: "Season 13".into() });
+        assert_eq!(choices[0].name, "Season 16 (default)", "a game without an unlimited list: the server's default");
+        // The game's unlimited list is the default, listed once.
+        let choices = banlist_choices(&[(4, "Season 13".into()), (9, "unlimited".into()), (16, "Season 16".into())]);
+        let names: Vec<_> = choices.iter().map(|c| (c.value.as_str(), c.name.as_str())).collect();
+        assert_eq!(names, [("", "Unlimited (default)"), ("4", "Season 13"), ("16", "Season 16")]);
     }
 }

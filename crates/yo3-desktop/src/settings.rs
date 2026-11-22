@@ -773,10 +773,10 @@ impl State {
         let choices = home.banlists();
         let selected = choices.iter().find(|c| c.value == ctx.settings.banlist).cloned();
         let banlist: Element<'_, Message> = if playing {
-            text(selected.map_or_else(|| "Season 16 (default)".to_owned(), |b| b.name)).size(15).color(color::INK).into()
+            text(selected.map_or_else(|| yo3_desktop::DEFAULT_BANLIST.to_owned(), |b| b.name)).size(15).color(color::INK).into()
         } else {
             pick_list(choices, selected, |b: home::Banlist| Message::Change(Change::Banlist(b.value))).style(yo3_skin::choice).menu_style(yo3_skin::choice_menu)
-                .width(230).padding([6, 10]).placeholder("Season 16 (default)").into()
+                .width(230).padding([6, 10]).placeholder(yo3_desktop::DEFAULT_BANLIST).into()
         };
         let reset_below: Option<Element<'_, Message>> = self.confirm_reset.then(|| row![
             text("Reset your singleplayer data? The old data is kept beside it.").size(14).font(BODY_BOLD).color(color::BAD).width(Fill),

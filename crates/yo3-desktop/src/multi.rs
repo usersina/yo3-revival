@@ -127,6 +127,8 @@ pub enum Message {
     /// The servers, why the credential store is unavailable (if it is), and the servers this PC stays signed in to.
     Loaded(Vec<Server>, Option<String>, Vec<String>),
     Probed(String, Status),
+    /// Every few seconds while the Multiplayer tab is shown (`REFRESH`): each server's status asked again.
+    Refresh,
     Select(Choice),
     Edit(Field, String),
     Toggle(Tick, bool),
@@ -192,6 +194,8 @@ pub enum Message {
 pub struct State {
     servers: Vec<Server>,
     status: HashMap<String, Status>,
+    /// Servers asked by [`Message::Refresh`] and not answered yet: a slow server is not asked again meanwhile.
+    refreshing: std::collections::HashSet<String>,
     selected: Option<String>,
     form: Form,
     user: String,
@@ -234,6 +238,9 @@ pub struct State {
     /// Settings → Accounts' last result: whether it worked, and its sentence.
     account_note: Option<(bool, String)>,
 }
+
+/// How often the servers' statuses (online, players, ping) are asked again while the Multiplayer tab is shown.
+pub const REFRESH: std::time::Duration = std::time::Duration::from_secs(3);
 
 impl State {
     /// Loads the servers (the player's and the official list) and checks the credential store.
@@ -323,7 +330,13 @@ impl State {
                 let select = first.map_or(Task::none(), |key| self.select(key));
                 return Task::batch(probes.into_iter().chain([select]));
             }
-            Message::Probed(key, status) => { self.status.insert(key, status); }
+            Message::Probed(key, status) => { self.refreshing.remove(&key); self.status.insert(key, status); }
+            // The rows keep their last status while asked again, so nothing flickers; only the answer changes them.
+            Message::Refresh => {
+                let due: Vec<Server> = self.servers.iter().filter(|s| !self.refreshing.contains(s.key())).cloned().collect();
+                self.refreshing.extend(due.iter().map(|s| s.key().to_string()));
+                return Task::batch(due.iter().map(|s| self.probe(s)));
+            }
             Message::Select(choice) => return self.select(choice.key),
             Message::Edit(field, value) => {
                 let value = value.chars().filter(|c| !c.is_control()).take(200).collect();
@@ -1011,6 +1024,22 @@ mod tests {
         mp::invite_link(&format!("yo3revival://server?address={}.example:7443&identity={}&name={name}", name.to_lowercase(), name.len().to_string().repeat(64))).unwrap()
     }
     fn ctx() -> Ctx { Ctx { root: std::env::temp_dir(), backend: None, store: None, settings: Default::default() } }
+
+    #[test]
+    fn a_refresh_asks_each_server_once_until_it_answers_and_keeps_the_last_status_meanwhile() {
+        // The player's request of 2026-11-22: the list kept a status until RETRY. The tab now asks every REFRESH.
+        let mut state = tab(Status::Offline, None);
+        let key = state.servers[0].key().to_string();
+        let _ = state.update(Message::Refresh, &ctx());
+        assert!(state.refreshing.contains(&key));
+        assert_eq!(state.status.get(&key), Some(&Status::Offline), "the row keeps its status while asked again");
+        let _ = state.update(Message::Refresh, &ctx());
+        assert_eq!(state.refreshing.len(), 1, "a server not answered yet isn't asked twice");
+        let _ = state.update(Message::Probed(key.clone(), Status::Maintenance), &ctx());
+        assert!(!state.refreshing.contains(&key));
+        assert_eq!(state.status.get(&key), Some(&Status::Maintenance), "the answer changes the row");
+        assert_eq!(REFRESH, std::time::Duration::from_secs(3));
+    }
     /// A tab with one server, `status`, and a vault (None: the system's isn't available).
     fn tab(status: Status, vault: Option<Arc<MemoryVault>>) -> State {
         let mut state = State::default();
