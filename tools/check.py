@@ -41,6 +41,7 @@ PY = [
     'tools/engine/test_coverage.py',
     'tools/engine/test_anime_map.py',
     'tools/engine/test_anime_pictures.py',
+    'tools/engine/test_added_cards.py',
     'tools/vm/test_vm.py',
     'tools/vm/test_smoke.py',
     'tools/dev/test_scratch_server.py',

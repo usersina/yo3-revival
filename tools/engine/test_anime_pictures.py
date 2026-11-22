@@ -12,11 +12,18 @@ pictures = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(pictures)
 
 MAP = json.loads((ROOT / 'engine/anime-cards.json').read_text(encoding='utf-8'))
+ADDED = json.loads((ROOT / 'engine/added-cards.json').read_text(encoding='utf-8'))['cards']
 
 
 class AnimePictures(unittest.TestCase):
     def test_the_committed_list_is_what_the_map_builds(self):
-        self.assertEqual((ROOT / 'engine/anime/pictures.tsv').read_text(encoding='utf-8'), pictures.build(MAP))
+        self.assertEqual((ROOT / 'engine/anime/pictures.tsv').read_text(encoding='utf-8'), pictures.build(MAP, ADDED))
+
+    def test_each_added_card_is_fetched_by_its_official_passcode(self):
+        # #75: an added card has no picture in the game: Get pictures fetches its normal picture with the anime ones.
+        rows = {int(r.split('\t')[0]): r.split('\t') for r in pictures.build(MAP, ADDED).splitlines()[1:]}
+        for card in ADDED:
+            self.assertEqual(rows[card['cid']][1:], ['0', str(card['passcode'])])
 
     def test_every_card_of_the_map_has_one_row_with_a_passcode_to_fetch(self):
         rows = [line.split('\t') for line in pictures.build(MAP).splitlines()[1:]]

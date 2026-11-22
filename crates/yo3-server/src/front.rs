@@ -644,6 +644,9 @@ pub struct World {
     pub prizes: Arc<crate::prizes::Prizes>,
     /// Every duel's engine traffic, in the data folder (`crate::recordings`); None without one (tests).
     pub recordings: Option<Arc<crate::recordings::Recordings>>,
+    /// The cards the game never had (#75, `engine/added-cards.json`): already in `cards` and the other tables; served to
+    /// the launcher at `/web/added-cards`, which extends the game's card files with them before the game loads them.
+    pub added: Arc<yo3_data::added::Added>,
 }
 
 /// The Information list (0x21FC, read by the global dispatcher `0x4F4700` whenever it arrives, so the server may push
@@ -779,6 +782,7 @@ impl World {
             card_sources: vec![],
             prizes: Default::default(),
             recordings: None,
+            added: Default::default(),
         }
     }
 

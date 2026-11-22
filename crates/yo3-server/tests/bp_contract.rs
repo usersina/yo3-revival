@@ -306,7 +306,7 @@ fn a_host_gift_of_cards_or_a_recipe_is_mailed_and_the_cards_arrive_at_once() {
     assert!(pushed.iter().any(|m| m.request() == Some(0x2581)), "the bell's mail icon");
     let trunk = pushed.iter().find(|m| m.request() == Some(9000)).expect("the new trunk");
     let cards = trunk.items[0].get("cards").and_then(Value::as_bytes).unwrap();
-    assert_eq!((cards.len(), cards[817 - 1]), (5000, 3), "row 817 at index 816");
+    assert_eq!((cards.len(), cards[817 - 1]), (5001, 3), "row 817 at index 816; one byte more than the highest row (Edit Deck lists rows 1 .. len - 1)");
     let mail = one(c.send(req_with(0x2582, &[("count", Value::U32(1))])));
     let item = &mail.items[0];
     assert_eq!(item.get("title").and_then(Value::as_str).as_deref(), Some("Cards received"));

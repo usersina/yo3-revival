@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 
 use yo3_proto::{Message, Value};
 
+pub mod added;
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
@@ -173,6 +175,8 @@ pub fn tuner_kind(kind: u32) -> bool {
 #[derive(Default)]
 pub struct CardDb {
     cards: Vec<Card>,
+    /// The first added card's row (#75, `added`), when cards were added after the game's own.
+    first_added: Option<u16>,
     by_cid: HashMap<u16, usize>,
     by_row: HashMap<u16, usize>,
 }

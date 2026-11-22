@@ -106,21 +106,37 @@ pub fn receive(player: &mut Player, offer: &[u16]) {
 }
 
 /// The trunk 9000 {cards, noTrade} (copied wholesale into the trunk dataset, slot 18): owned and untradeable count per
-/// card, one byte at row - 1 (0x410DB0); the NPC duel writes into both unchecked (0x4F6A82).
+/// card, one byte at row - 1 (0x410DB0); the NPC duel writes into both unchecked (0x4F6A82). Edit Deck lists rows
+/// 1 .. len - 1 (0x4125D8), so the arrays hold one byte more than the highest row, or the last card is never listed.
 pub fn trunk(world: &World, player: &Player) -> Message {
-    let mut cards = vec![0u8; world.card_rows];
+    let len = world.card_rows + 1;
+    let mut cards = vec![0u8; len];
     for (row, count) in collection(world, player) {
         if let Some(n) = (row as usize).checked_sub(1).and_then(|i| cards.get_mut(i)) {
             *n = count.min(255) as u8;
         }
     }
-    let no_trade = Value::Bin(vec![0; world.card_rows]);
+    let no_trade = Value::Bin(vec![0; len]);
     Message::reply(9000).item(Message::record().with("cards", Value::Bin(cards)).with("noTrade", no_trade))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_trunk_has_room_for_the_last_row() {
+        // Edit Deck lists rows 1 .. len - 1 of `cards` (the loop at 0x4125D8 runs while row < 0x410C90's length) but reads
+        // a row's count at row - 1 (0x410DB0): with one byte per row the last row was never listed. Live (#75): Blue Rose
+        // Dragon (row 4833, a Special Pack card) and then the first added card were missing from the trunk.
+        let world = World { card_rows: 50, ..World::new(vec![]) };
+        let mut player = Player::new(1001, "Owner");
+        player.cards.insert(50, 2);
+        let trunk = trunk(&world, &player);
+        let cards = trunk.items[0].get("cards").and_then(Value::as_bytes).unwrap().to_vec();
+        let no_trade = trunk.items[0].get("noTrade").and_then(Value::as_bytes).unwrap().to_vec();
+        assert_eq!((cards.len(), cards[49], no_trade.len()), (51, 2, 51), "row 50 at index 49, and the list reaches it");
+    }
 
     #[test]
     fn a_lent_card_is_not_the_lenders_to_play_and_a_borrowed_one_is_the_borrowers() {

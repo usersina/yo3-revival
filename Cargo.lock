@@ -5742,6 +5742,8 @@ name = "yo3-data"
 version = "0.1.16"
 dependencies = [
  "flate2",
+ "serde",
+ "serde_json",
  "thiserror 2.0.21",
  "yo3-proto",
 ]
@@ -5811,6 +5813,7 @@ dependencies = [
  "subtle",
  "tokio",
  "windows-sys 0.61.2",
+ "yo3-data",
  "yo3-proto",
  "yo3-server",
  "yo3-tunnel",

@@ -454,6 +454,8 @@ fn prizes(data: &yo3_data::GameData, official_items: &[u16]) -> prizes::Prizes {
     let mut rental_only = prizes::special_cards(data.cards.iter(), &kept);
     rental_only.retain(|c| !special_rows.iter().any(|s| s.cid == c.cid));
     special_rows.extend(rental_only);
+    // Added cards (#75) are never a prize by themselves: how players get one is the host's choice (give-cards, a pack...).
+    special_rows.retain(|c| !data.cards.added_row(c.row));
     special_rows.sort_by_key(|c| c.row);
     // The rows the packs and the free and structure decks give: any other artwork of their cards is an alternate.
     let mut routed_rows: HashSet<u16> = data.packs.iter().filter(|p| p.kind == 1).flat_map(|p| p.cards.iter().copied()).collect();
@@ -484,10 +486,21 @@ async fn prune_recordings(recordings: Arc<recordings::Recordings>, days: u32) {
     }
 }
 
+/// The game's data with the server's added cards (#75, `engine/added-cards.json` in the engine folder) after its own rows:
+/// what everything that names cards by row (the world, the admin commands) reads.
+pub fn game_data(game_dir: &std::path::Path) -> anyhow::Result<(yo3_data::GameData, yo3_data::added::Added)> {
+    let mut data = yo3_data::GameData::load(game_dir)?;
+    let added = engine::Engine::dir().map(|dir| yo3_data::added::Added::load(&dir)).transpose().map_err(anyhow::Error::msg)?.unwrap_or_default();
+    data.cards.add(&added).map_err(anyhow::Error::msg)?;
+    Ok((data, added))
+}
+
 fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> {
     let duel_server = (cfg.advertise.clone().unwrap_or_default(), duel_port);
-    let world = match yo3_data::GameData::load(&cfg.game_dir) {
-        Ok(data) => {
+    let world = match game_data(&cfg.game_dir) {
+        // The cards the game never had (#75) are after its own rows: every table below knows them like the game's.
+        Ok((data, added)) => {
+            if !added.is_empty() { tracing::info!("{} added card(s) after the game's rows (engine/added-cards.json)", added.cards.len()) }
             let official_items: Vec<u16> = data.starter_deck(STARTER_REGULATION).into_iter()
                 .chain(OFFICIAL_DECKS.iter().filter_map(|&(npc, _)| data.npc_deck(npc))).filter_map(yo3_data::Deck::pbin_no).collect();
             let mut world = World {
@@ -580,6 +593,7 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
             regulations: data.regulations.iter().map(|r| (r.id, r.clone())).collect(),
             card_sources: player_card_sources(&data, &prizes(&data, &official_items)),
             prizes: Arc::new(prizes(&data, &official_items)),
+            added: Arc::new(added),
             ..World::new(data.regulations.iter().map(|r| r.id as u16).collect())
         };
             // The card profiles (#60), over the game's own cards.

@@ -14,6 +14,7 @@ pub mod attach;
 pub mod runtime;
 pub mod art;
 pub mod decks;
+pub mod added;
 pub mod resolution;
 pub mod direct;
 pub mod vault;

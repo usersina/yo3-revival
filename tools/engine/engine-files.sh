@@ -18,6 +18,8 @@ cp engine/vendor/CardScripts/*.lua engine/vendor/CardScripts/COPYING engine/vend
 cp -r engine/vendor/CardScripts/official engine/vendor/CardScripts/pre-errata engine/vendor/CardScripts/pre-release engine/vendor/CardScripts/unofficial "$e/vendor/CardScripts/"
 cp engine/vendor/BabelCDB/cards.cdb engine/vendor/BabelCDB/cards-unofficial.cdb engine/vendor/BabelCDB/README.md "$e/vendor/BabelCDB/"
 cp engine/anime-cards.json "$e/anime-cards.json"
+# The cards the game never had (#75): the server adds them after the game's rows and serves them to the launcher.
+cp engine/added-cards.json "$e/added-cards.json"
 cp engine/vendor/cardinfo.json "$e/vendor/cardinfo.json"
 cp -r engine/overrides "$e/overrides"
 cp engine/vendor/ygopro-core/LICENSE "$e/LICENSE-AGPL.txt"

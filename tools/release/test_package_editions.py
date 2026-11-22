@@ -131,6 +131,7 @@ class Editions(unittest.TestCase):
                 "engine/vendor/CardScripts/unofficial/c511009416.lua": "anime", "engine/vendor/CardScripts/unofficial/proc_unofficial.lua": "procs",
                 "engine/vendor/BabelCDB/cards.cdb": "", "engine/vendor/BabelCDB/cards-unofficial.cdb": "anime db", "engine/vendor/BabelCDB/README.md": "",
                 "engine/anime-cards.json": "{\"cards\":[]}",
+                "engine/added-cards.json": "{\"format\":\"yo3-added-cards\"}",
                 "engine/vendor/cardinfo.json": "{}", "engine/vendor/ygopro-core/LICENSE": "",
             }
             for name in [p.relative_to(repo).as_posix() for p in (repo / "engine/overrides").iterdir()]:
@@ -152,6 +153,8 @@ class Editions(unittest.TestCase):
                              "utility.lua loads it: the anime cards' shared procedures")
             self.assertEqual((engine / "vendor/BabelCDB/cards-unofficial.cdb").read_text(), "anime db")
             self.assertEqual((engine / "anime-cards.json").read_text(), '{"cards":[]}')
+            # The cards the game never had (#75): the server adds them after the game's rows.
+            self.assertEqual((engine / "added-cards.json").read_text(), '{"format":"yo3-added-cards"}')
             notes = (engine / "THIRD-PARTY.md").read_text()
             for part in ("unofficial/", "anime-cards.json", "cards-unofficial.cdb"):
                 self.assertIn(part, notes)

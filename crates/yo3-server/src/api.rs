@@ -530,7 +530,7 @@ impl Api {
 
     fn gifts(&self) -> Result<Arc<crate::gifts::Gifts>, String> {
         if let Some(g) = self.gifts.get() { return Ok(g.clone()) }
-        let data = yo3_data::GameData::load(&self.game_dir).map_err(|e| format!("the game's cards: {e}"))?;
+        let data = crate::game_data(&self.game_dir).map(|(data, _)| data).map_err(|e| format!("the game's cards: {e}"))?;
         Ok(self.gifts.get_or_init(|| Arc::new(crate::gifts::Gifts::from_game(&data))).clone())
     }
 

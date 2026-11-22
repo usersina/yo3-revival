@@ -20,6 +20,7 @@
  * Where the profile comes from: YO3_CARD_PROFILE (a file path) else the helper's /session/<cookie>/web/card-profile, else
  * none. A game whose bytes differ, or no profile, changes nothing. */
 #include "card-profile-logic.h"
+#include "added-cards-logic.h"
 
 #define YO3_CARD_LOAD_CALL 0x4AC30E   /* CALL 0x40DEE0 (E8 CD 1B F6 FF) */
 #define YO3_CARD_LOAD_FUNC 0x40DEE0
@@ -124,10 +125,38 @@ static void card_profile_patch(void *env) {
  * card the profile lists with `art`, whose picture is in the art folder (card/<cid>.png, mini/<cid>.png; YO3_ANIME_ART,
  * else <game folder>\anime-art), the name becomes that file's path, which no archive holds. Anything else is untouched. */
 static char card_art_folder[MAX_PATH * 2];
+
+/* The added cards (#75, added-cards-logic.h): the launcher's folder of extended card files, read from the pointer file
+ * (YO3_ADDED_CARDS) at the first card file the game opens, which is after the launcher filled it in (the game is
+ * suspended until then). */
+static char card_added_folder[MAX_PATH * 2];
+static int card_added_read;
+static void card_added_learn(void) {
+    if (card_added_read) return;
+    card_added_read = 1;
+    char pointer[MAX_PATH * 2];
+    if (!GetEnvironmentVariableA("YO3_ADDED_CARDS", pointer, sizeof pointer) || !pointer[0]) return;
+    HANDLE f = CreateFileA(pointer, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (f == INVALID_HANDLE_VALUE) { card_profile_log("[YO3 MOD] added cards: no pointer file, the game's own cards"); return; }
+    char text[MAX_PATH * 2]; DWORD n = 0;
+    BOOL ok = ReadFile(f, text, sizeof text - 1, &n, NULL); CloseHandle(f);
+    if (!ok || !yo3_added_folder(text, n, card_added_folder, sizeof card_added_folder)) { card_added_folder[0] = 0; return; }
+    card_profile_log("[YO3 MOD] added cards: files from %s", card_added_folder);
+}
 static void *(__attribute__((thiscall)) *card_open_original)(void *, const char *) __attribute__((used));
 static unsigned card_art_hits, card_art_asked;
 static void *__attribute__((thiscall, force_align_arg_pointer)) card_open_hook(void *self, const char *path) {
     char file[MAX_PATH * 2 + 32]; int mini;
+    if (path && !strncmp(path, YO3_ADDED_PREFIX, sizeof YO3_ADDED_PREFIX - 1)) {
+        card_added_learn();
+        if (yo3_added_path(card_added_folder, path, file, sizeof file) && GetFileAttributesA(file) != INVALID_FILE_ATTRIBUTES) {
+            card_profile_log("[YO3 MOD] added cards: %s -> %s", path, file);
+            return card_open_original(self, file);
+        }
+    }
+    /* An added card's picture (the folder holds only theirs); read after the card files, so the folder is known. */
+    if (card_added_folder[0] && yo3_added_art_path(card_added_folder, path, file, sizeof file) && GetFileAttributesA(file) != INVALID_FILE_ATTRIBUTES)
+        return card_open_original(self, file);
     if (card_profile_on && card_art_folder[0] && yo3_profile_art_path(&card_profile, path, card_art_folder, file, sizeof file, &mini)) {
         ++card_art_asked;
         if (GetFileAttributesA(file) != INVALID_FILE_ATTRIBUTES) {

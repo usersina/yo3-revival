@@ -30,6 +30,7 @@ PY
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-card-profile-hook-test.exe card-profile-hook-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-signout-test.exe signout-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-chat-lobby-test.exe chat-lobby-test.c
+"$CC" -O2 -Wall -Wextra -Werror -o build/yo3-added-cards-test.exe added-cards-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-survey-test.exe survey-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-auth-test.exe test.c -lws2_32 -lwininet -lwinmm -lshell32
 # Link synthetic sites so the PE headers and callback relocation are valid on native Windows too.

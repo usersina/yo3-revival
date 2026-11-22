@@ -36,6 +36,7 @@ wine "$MOD/yo3-card-profile-test.exe"
 wine "$MOD/yo3-card-profile-hook-test.exe"
 wine "$MOD/yo3-signout-test.exe"
 wine "$MOD/yo3-chat-lobby-test.exe"
+wine "$MOD/yo3-added-cards-test.exe"
 wine "$MOD/yo3-survey-test.exe"
 # The higher resolution (resolution.h) is opt in: an invalid value, or a game whose drawing code isn't v1.153's (this
 # fixture has none), refuses to start; off loads as usual.

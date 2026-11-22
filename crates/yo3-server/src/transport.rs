@@ -303,6 +303,15 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
                             tls.write_all(body.as_bytes()).await?;
                             return tls.shutdown().await;
                         }
+                        // The added cards (#75): the launcher extends the game's card files with them before releasing the game.
+                        if path.split('?').next() == Some(ADDED_CARDS_PATH) {
+                            let body = world.added.render();
+                            tracing::info!("[tls] {peer} user {} read the added cards ({})", identity.user_id, world.added.cards.len());
+                            let head = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+                            tls.write_all(head.as_bytes()).await?;
+                            tls.write_all(body.as_bytes()).await?;
+                            return tls.shutdown().await;
+                        }
                         let mut local = TcpStream::connect(http).await?;
                         local.write_all(&header).await?;
                         tokio::io::copy_bidirectional(&mut tls, &mut local).await.map(|_| ())
@@ -421,6 +430,9 @@ mod handshake_tests {
 
 /// The path of the card profile (`profile.rs`), under the pages the connection DLL may ask for (`/web/`).
 pub const CARD_PROFILE_PATH: &str = "/web/card-profile";
+
+/// The path of the added cards (#75, `yo3_data::added`), read by the launcher through its relay.
+pub const ADDED_CARDS_PATH: &str = "/web/added-cards";
 
 /// Whether a profile request is the launcher's own read to place the local decks (`?for=decks`), not the game's fetch.
 fn launcher_read(path: &str) -> bool {

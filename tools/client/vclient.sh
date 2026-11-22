@@ -120,6 +120,8 @@ case "${1:-}" in
     cmd=("$ROOT/target/release/yo3-launcher" --profile "$PROFILE" --game-dir "$GAME"
          --injector "$MOD/yo3-auth-launch.exe" --dll "$MOD/yo3-auth.dll"
          --wine-prefix "${WINEPREFIX:-$HOME/.wine}")
+    # A picture folder (anime pictures, added cards' pictures: card/<id>.png, mini/<id>.png) outside the game folder.
+    [ -n "${YO3_ANIME_ART:-}" ] && cmd+=(--anime-art "$YO3_ANIME_ART")
     if [ "${2:-}" = "--trace" ]; then
       TRACER="$ROOT/tools/tracer/build"
       [ -f "$TRACER/yo3trace.dll" ] || "$ROOT/tools/tracer/build.sh" >/dev/null

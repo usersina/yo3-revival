@@ -199,6 +199,14 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
         .unwrap_or_else(|| profile.parent().unwrap_or(std::path::Path::new(".")).join("logs/sessions")).join(format!("{}.survey.json", log.id())));
     let _ = std::fs::remove_file(&survey_file);
     let _cleanup = (!survey_given).then(|| SurveyCleanup(survey_file.clone()));
+    // The added cards (#75): the DLL reads which folder of extended card files to serve from this file, filled once signed in.
+    let added_pointer = yo3_launcher::added::pointer_for(&yo3_launcher::added::base_for(profile.parent().unwrap_or(std::path::Path::new("."))), &log.id());
+    let _added_cleanup = SurveyCleanup(added_pointer.clone());
+    if yo3_launcher::added::point(&added_pointer, None).is_ok() {
+        let named = yo3_launcher::runtime::native_path(added_pointer.parent().unwrap_or(std::path::Path::new(".")))?.join(added_pointer.file_name().context("the pointer names a file")?);
+        #[cfg(windows)] cmd.env(yo3_launcher::added::ENV, &named);
+        #[cfg(not(windows))] cmd.env(yo3_launcher::added::ENV, initializing!(windows_path(&named, args.wine_prefix.as_deref()))?);
+    }
     {
         let parent = survey_file.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(std::path::Path::new("."));
         let named = yo3_launcher::runtime::native_path(parent)?.join(survey_file.file_name().context("--survey-file names a file")?);
@@ -282,6 +290,41 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
         _ => Some(initializing!(key.sign_in(&endpoint)).context("Authentication failed; game was not resumed. Check the profile and that the server is running, or export logs for help")?),
     };
     if let Some(session) = session { log.secret(&hex(&session)); proxy.activate(session); }
+    // The added cards (#75): the game's card files with them, before the game loads its cards. A server that adds cards the
+    // game can't be given must not reach the game at all: it would get rows it doesn't have.
+    if session.is_some() {
+        match yo3_launcher::added::fetch(proxy.ports.http, &hex(&proxy.cookie)).await {
+            Ok(added) if added.is_empty() => {}
+            Ok(added) => {
+                let prepared = args.game_dir.as_deref().context("no game folder").and_then(|game| yo3_launcher::added::prepare(
+                    &yo3_launcher::added::base_for(profile.parent().unwrap_or(std::path::Path::new("."))), game, &added,
+                    args.anime_art.as_deref().or(args.game_dir.as_deref().map(|g| g.join(yo3_launcher::art::FOLDER)).as_deref())));
+                let folder = match prepared {
+                    Ok(done) => done.folder.inspect(|f| log.line(&format!("Added cards: {} card(s), files {} ({} written now)", added.cards.len(), f.display(), done.written))),
+                    Err(error) => None.inspect(|_: &PathBuf| log.line(&format!("Added cards: the game's card files could not be extended: {error:#}"))),
+                };
+                let named: anyhow::Result<Option<String>> = match folder.as_deref() {
+                    None => Ok(None),
+                    Some(f) => match yo3_launcher::runtime::native_path(f) {
+                        Err(e) => Err(e.into()),
+                        #[cfg(windows)] Ok(native) => Ok(Some(native.display().to_string())),
+                        #[cfg(not(windows))] Ok(native) => windows_path(&native, args.wine_prefix.as_deref()).await.map(Some),
+                    },
+                };
+                match (named, folder.is_some()) {
+                    (Ok(Some(path)), true) if yo3_launcher::added::point(&added_pointer, Some(&path)).is_ok() => {}
+                    _ => {
+                        let _ = child.kill().await;
+                        anyhow::bail!("This server has cards your game doesn't have yet, and the launcher could not add them. Check that the game folder is complete and writable, then try again, or export logs for help.");
+                    }
+                }
+            }
+            Err(error) => {
+                let _ = child.kill().await;
+                anyhow::bail!("The server's added cards could not be read: {error:#}. Try again, or export logs for help.");
+            }
+        }
+    }
     // The card profile the game loads (what discovery announces for it), kept to notice when the server pins another one.
     let mut loaded_profile: Option<String> = None;
     // The local decks follow the card profile the game is about to load (#60); nothing here can stop the game from starting.
