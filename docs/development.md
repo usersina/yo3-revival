@@ -585,6 +585,25 @@ prompts. The trace gives each decision's time. A decision has a budget (`bot::BU
 try already under way): late in a duel with a full field each engine step costs up to 80 ms (every idle prompt checks
 the Extra Deck's summons), so copies rebuilt from the start are slow, and the bot keeps one ready copy per thread.
 
+#### The duel bot
+
+A change to the bot is measured in **the arena** (`tests/bot_arena.rs`): this build's bot against another engine
+program's (the one to beat, usually `main`'s), on the NPC decks with their characters' styles, each deck pair played with
+the sides swapped. Both programs run the same duel in lockstep and each side thinks in its own. Build the rival from
+`main` in a worktree first; the engine program in `target/release` is not rebuilt by the server's tests, so build it too:
+
+```bash
+git worktree add --detach ../yo3-baseline main && (cd ../yo3-baseline && ln -s "$PWD/../yo3-revival/engine/vendor" engine/vendor && cargo build --release -p yo3-engine)
+cargo build --release -p yo3-engine
+YO3_RIVAL_ENGINE=$PWD/../yo3-baseline/target/release/yo3-engine YO3_ARENA_DUELS=40 cargo nextest run --release -p yo3-server --test bot_arena --run-ignored only --no-capture
+```
+
+A change lands when it wins clearly more duels than it loses there, and the bot's scenarios still pass
+(`crates/yo3-engine/src/session.rs`: a lethal attack, a Tribute Summon past a stronger monster, Set Flip monsters,
+copies that follow a spawned start). `kaiba_against_a_player_who_never_attacks` in `npc_bot.rs` (ignored) prints each turn
+of Kaiba's decks against a player who summons and never attacks (`YO3_KAIBA_LEVEL` 0-2, `YO3_WALL_MONSTER`,
+`YO3_WALL_SPAWN=1`).
+
 Protocol and UI monkeys are documented in the
 [working guide](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md#commands).
 
