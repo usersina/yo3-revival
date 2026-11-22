@@ -229,9 +229,11 @@ mod tests {
 
     #[test]
     fn the_list_has_every_card_of_the_map_once() {
+        // The 418 anime cards and the cards the game never had (#75), each fetched by its official passcode.
         let all = list();
-        assert_eq!(all.len(), 418);
-        assert_eq!(all.iter().map(|e| e.cid).collect::<BTreeSet<_>>().len(), 418);
+        assert_eq!(all.len(), 419);
+        assert_eq!(all.iter().map(|e| e.cid).collect::<BTreeSet<_>>().len(), 419);
+        assert_eq!(all.iter().find(|e| e.cid == 9709), Some(&Entry { cid: 9709, anime: 0, official: 35952884 }), "Shooting Quasar Dragon");
         assert!(all.iter().all(|e| e.official != 0));
         assert_eq!(all.iter().find(|e| e.cid == 5231), Some(&Entry { cid: 5231, anime: 0, official: 29762407 }));
         assert_eq!(all.iter().find(|e| e.cid == 4998).map(|e| e.anime), Some(511600398), "a God is fetched by its anime passcode like any card");

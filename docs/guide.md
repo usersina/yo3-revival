@@ -333,6 +333,7 @@ accounts for the Scripts edition on your own PC. Keep each key profile private (
 ./yo3-server give-bp Alice 5000 --request-id <the-id-printed-by-the-first-try>  # retry a lost answer, not a second grant
 ./yo3-server grant-title Alice "GAME MASTER"
 ./yo3-server give-cards Alice "Blue-Eyes White Dragon" --art 2 --count 3
+./yo3-server give-cards Alice "Shooting Quasar Dragon"   # an added card (#75) too: no pack holds one yet
 ./yo3-server give-recipe Alice "E-HERO EVOLUTION DECK" --cards
 ./yo3-server unlock-cards                    # three of every card, every artwork, for every player (or: unlock-cards Alice)
 ./yo3-server add-code ABCD1234EFGH5678 2500

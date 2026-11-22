@@ -273,6 +273,25 @@ the [working guide](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md#
 | Reverse-engineering helpers (`tools/re/`, GhidraMCP) | The client binary: handlers, fields read, disassembly with log strings | Locating what a screen sends and reads | Runtime state |
 | Session logs and diagnostic ZIPs (Desktop) | A player's server, game and engine output | Bug reports from players | Only what was logged at the time |
 
+## Add a card the game never had
+
+Since #75 the server can add cards after the game's own (the first: Shooting Quasar Dragon). A card is a row; everything
+else comes from the pinned EDOPro data (`engine/fetch.sh`) and the player's own game:
+
+1. Add a line to `engine/added/cards.tsv`: the next free `row` (rows are permanent: never reuse or reorder one, decks and
+   saves store them), the Konami id (`engine/card-ids.json`'s `konami_id`), the name as the database spells it, a note.
+2. Run `tools/engine/added-cards.py`. It writes `engine/added-cards.json` and refuses a card the client can't show (a
+   type, attribute or race no game card has, as Xyz, Link and Pendulum; a stat beyond 5100) or one the game already has.
+3. Run `tools/engine/anime-pictures.py`: Desktop's Get pictures then fetches its normal picture.
+4. Write a scenario test (`crates/yo3-server/tests/added_cards.rs`) that summons it from the game's cards and plays its
+   effects, and check it live with `give-cards` on the headless client (`YO3_ANIME_ART` points `vclient.sh` at a picture
+   folder: `card/<id>.png` 200x290 and `mini/<id>.png` 50x72).
+
+How it reaches the game: the server adds the rows to its card table and serves the list (`/web/added-cards`); the
+launcher builds the game's card files with them from the player's own game into `added-cards/<hash>/` beside its
+profile and points the connection DLL at that folder before the game is released; the DLL hands the game those files
+and the cards' pictures ([internals](client-internals.md#data-formats)). Nothing in the game folder is written.
+
 ## Duel diagnostics
 
 Game output, native mod diagnostics, decoded packet traces and engine stderr are captured automatically in session

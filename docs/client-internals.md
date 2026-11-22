@@ -781,6 +781,17 @@ needs a Play before opening `yo3.exe` alone.
   3900–9448 (4007 = Blue-Eyes, 39xx = tokens).
 - **`CARD_Indx_<lang>`**: `{u32 name offset, u32 desc offset}` per row into `CARD_Name_<lang>` / `CARD_Desc_<lang>`
   (UTF-16LE, NUL-terminated).
+- **`CARD_IntID.bin`**: a row (u16) per Konami id from the table's lowest id (`base + i`); 0 for an id with no card.
+  The loader computes the id bounds (`+0xD0`/`+0xD4`) from the rows (`0x536FF0`), and `0x537230` looks a row up by id.
+- **`CARD_Sort_<lang>` / `CARD_Sort2_<lang>`**: the rows (u16) in two display orders: `Sort2` alphabetical by name,
+  `Sort` the game's own (alternate artworks left out). Row 0 leads both.
+- **`CARD_Indx_<lang>`** has one more entry than rows: the name and text files' ends.
+- **Cards the game never had (#75).** The loader `0x40DEE0` reads each card file to its end into a growable array
+  (`0x537770` 8-byte rows, `0x537890` 4-byte, `0x537970` 2-byte, `0x537A60` the text blobs), so longer files are all a new
+  row needs: no count is fixed in the game. The connection DLL serves the launcher's extended copies through the file
+  system's `createAndOpenFile` (`0x5505E0`, `data/bin#/CARD_...`, `tools/mod/added-cards-logic.h`). Edit Deck lists trunk
+  rows `1 .. len - 1` (`0x4125D8`) and reads a count at `row - 1` (`0x410DB0`): the trunk's arrays hold one byte more than
+  the highest row (before, the game's last card, Blue Rose Dragon, was never listed).
 - **`DLG_Text_<lang>`**: 597 duel-engine prompt strings, indexed by `DLG_Indx_<lang>`.
 - **`data/text/txttbl_<lang>.bin`**: the UI text table (the `$NNNNN` ids and every `name_id`/`discription_id`):
   `u32 count`, then `count` pairs `{u32 id, u32 byte offset}`, then 4 bytes, then UTF-16LE NUL-terminated strings
