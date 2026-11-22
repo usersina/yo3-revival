@@ -93,7 +93,7 @@ The **Multiplayer** tab signs in to servers with a User ID and password ([accoun
 - **The server list**: the official servers (the project's YO3 Revival server, from a list the project signs) and the ones
   you added, the last one you played on first. Each shows whether it is online (the dot: green, amber or red), with how
   many players and its ping, or Maintenance, Offline, Needs a newer launcher, or Identity changed. While the tab is shown
-  the statuses are asked again every 3 seconds (Unreleased), so a server coming back or players joining show without RETRY. The Information panel
+  the statuses are asked again every 3 seconds (v0.1.17 (2026-11-22)), so a server coming back or players joining show without RETRY. The Information panel
   shows the chosen server's news (`code` in it shows as plain words). Your own hosted server, when it isn't running, shows
   Offline with **START HOSTING** (the same as Host for friends) in place of RETRY.
 - **Server tools** (the **⋯** beside the list): **Add a server**, **Host for friends**, and **Remove this server** for one
@@ -204,7 +204,7 @@ press **I saved it**), then Settings. In a text box the first Escape only leaves
 
 ### Card pictures
 
-Settings → Game → **Card pictures** (Unreleased; before, **Anime pictures** under the Anime cards switch in Settings →
+Settings → Game → **Card pictures** (v0.1.17 (2026-11-22); before, **Anime pictures** under the Anime cards switch in Settings →
 Singleplayer) holds the pictures of the anime cards and of the [cards the game never had](anime-cards.md#artwork) (Shooting
 Quasar Dragon): about 10 MB from ProjectIgnis' picture server. The game's own cards keep their artwork.
 
@@ -264,7 +264,7 @@ never shows this switch: its host decides.
 
 Settings → Singleplayer → **Banlist** sets the Forbidden/Limited list your own server checks decks against. Auto Duel
 and duels against the computer use it, and Edit Deck shows it as the **Latest Regulation**. **Unlimited** is the
-default (Unreleased; Season 16 before): the game's own list with no banned or limited cards, so any deck works,
+default (v0.1.17 (2026-11-22); Season 16 before): the game's own list with no banned or limited cards, so any deck works,
 the Yugi, Jaden and Yusei character decks included. Choose **Season 16**, the newest list the game has, to play as on the
 original server, or any of the game's other lists. **Create Duel** can still pick another list for one duel. It changes while the game is
 closed and applies at your server's next start. On a server, each player can choose their own with `banlist` in the

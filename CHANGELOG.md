@@ -13,7 +13,9 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.1.17 (2026-11-22)
+
+Multiplayer: update to v0.1.17 to join the hosted server after deployment.
 
 - New card: **Shooting Quasar Dragon**, the first card the game never had. It plays by its real effects (two Synchro
   Monsters and a Synchro Tuner summon it; it attacks once per non-Tuner, negates an activation once per turn and brings
