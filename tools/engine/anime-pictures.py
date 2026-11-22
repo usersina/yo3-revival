@@ -16,7 +16,9 @@ OUT = os.path.join(ENGINE, 'anime', 'pictures.tsv')
 
 def build(data, added=()):
     lines = ['cid\tanime\tofficial']
-    cards = list(data['cards']) + [{'cid': c['cid'], 'anime': 0, 'official': c['passcode']} for c in added]
+    mapped = {c['cid'] for c in data['cards']}
+    # An added card with an anime version is in the map already: its anime picture, the official one standing in.
+    cards = list(data['cards']) + [{'cid': c['cid'], 'anime': 0, 'official': c['passcode']} for c in added if c['cid'] not in mapped]
     for card in sorted(cards, key=lambda c: c['cid']):
         anime, official = int(card.get('anime') or 0), int(card.get('official') or 0)
         if not anime and not official:

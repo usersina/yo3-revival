@@ -153,7 +153,8 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
             return Ok(());
         }
         Admin::CardProfile { output, profile } => {
-            let data = yo3_data::GameData::load(&game_dir)?;
+            // With the added cards (#75), as the running server has them.
+            let (data, _) = yo3_server::game_data(&game_dir)?;
             let dir = yo3_server::engine::Engine::dir().ok_or_else(|| anyhow::anyhow!("the engine folder is missing: run engine/fetch.sh (or set YO3_ENGINE_DIR)"))?;
             let loaded = yo3_server::profile::Profile::load(profile, data.cards.iter(), &dir).map_err(|e| anyhow::anyhow!(e))?;
             std::fs::write(output, loaded.render())?;

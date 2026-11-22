@@ -281,7 +281,10 @@ impl Session {
             // Before the prompt, which stays last.
             let field = if waiting && batch.is_empty() { None } else { self.field_report()? };
             if let Some(field) = field {
-                let at = if waiting { batch.len() - 1 } else { batch.len() };
+                // Before the prompt, which stays last, and before a win, after which the batch is cut: a change in the
+                // same step as the win (a level that ends with the turn) still reaches the client.
+                let win = batch.iter().position(|m| m["type"] == msg::WIN);
+                let at = win.unwrap_or(if waiting { batch.len() - 1 } else { batch.len() });
                 batch.insert(at, field);
             }
             if let Some(win) = batch.iter().position(|m| m["type"] == msg::WIN) {

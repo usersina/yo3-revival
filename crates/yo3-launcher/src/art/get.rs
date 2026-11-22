@@ -233,7 +233,7 @@ mod tests {
         let all = list();
         assert_eq!(all.len(), 419);
         assert_eq!(all.iter().map(|e| e.cid).collect::<BTreeSet<_>>().len(), 419);
-        assert_eq!(all.iter().find(|e| e.cid == 9709), Some(&Entry { cid: 9709, anime: 0, official: 35952884 }), "Shooting Quasar Dragon");
+        assert_eq!(all.iter().find(|e| e.cid == 9709), Some(&Entry { cid: 9709, anime: 513000031, official: 35952884 }), "Shooting Quasar Dragon, an added card with an anime version");
         assert!(all.iter().all(|e| e.official != 0));
         assert_eq!(all.iter().find(|e| e.cid == 5231), Some(&Entry { cid: 5231, anime: 0, official: 29762407 }));
         assert_eq!(all.iter().find(|e| e.cid == 4998).map(|e| e.anime), Some(511600398), "a God is fetched by its anime passcode like any card");

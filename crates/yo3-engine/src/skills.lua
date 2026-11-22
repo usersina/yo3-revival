@@ -64,7 +64,8 @@ function YO3Skill.Spawn(p,code,loc,pos)
 	e:SetType(EFFECT_TYPE_FIELD+EFFECT_TYPE_CONTINUOUS)
 	e:SetCode(EVENT_STARTUP)
 	e:SetOperation(function(e)
-		local tc=Duel.GetFirstMatchingCard(Card.IsCode,p,LOCATION_DECK+LOCATION_EXTRA,0,nil,code)
+		-- By the card's own passcode: an anime version (513000031) answers IsCode to its game card's (its alias) only.
+		local tc=Duel.GetFirstMatchingCard(function(c) return c:GetOriginalCode()==code or c:IsCode(code) end,p,LOCATION_DECK+LOCATION_EXTRA,0,nil)
 		if tc then
 			if loc==LOCATION_HAND then Duel.SendtoHand(tc,nil,REASON_RULE)
 			elseif loc==LOCATION_GRAVE then Duel.SendtoGrave(tc,REASON_RULE)

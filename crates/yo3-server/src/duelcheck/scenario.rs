@@ -119,6 +119,11 @@ impl Scenario {
         Scenario::start_with(dir, false, seed, lp, decks, skills, vec![])
     }
 
+    /// `start_field` with the anime card versions on.
+    pub fn start_anime_field(dir: &Path, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2], field: &[crate::engine::Spawn]) -> Result<Scenario, String> {
+        Scenario::start_with(dir, true, seed, lp, decks, &[], field.to_vec())
+    }
+
     /// `start` with the anime card versions on (the `anime-cards` setting): the reviewed cards play by their anime effects.
     pub fn start_anime(dir: &Path, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2]) -> Result<Scenario, String> {
         Scenario::start_with(dir, true, seed, lp, decks, &[], vec![])

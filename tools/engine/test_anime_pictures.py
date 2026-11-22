@@ -22,13 +22,17 @@ class AnimePictures(unittest.TestCase):
     def test_each_added_card_is_fetched_by_its_official_passcode(self):
         # #75: an added card has no picture in the game: Get pictures fetches its normal picture with the anime ones.
         rows = {int(r.split('\t')[0]): r.split('\t') for r in pictures.build(MAP, ADDED).splitlines()[1:]}
+        mapped = {c['cid'] for c in MAP['cards']}
         for card in ADDED:
-            self.assertEqual(rows[card['cid']][1:], ['0', str(card['passcode'])])
+            if card['cid'] in mapped:  # it has an anime version: that picture first, its official one standing in
+                self.assertEqual(rows[card['cid']][2], str(card['passcode']))
+            else:
+                self.assertEqual(rows[card['cid']][1:], ['0', str(card['passcode'])])
 
     def test_every_card_of_the_map_has_one_row_with_a_passcode_to_fetch(self):
         rows = [line.split('\t') for line in pictures.build(MAP).splitlines()[1:]]
         self.assertEqual([int(r[0]) for r in rows], sorted(c['cid'] for c in MAP['cards']))
-        self.assertEqual(len(rows), 418)
+        self.assertEqual(len(rows), 419)
         for cid, anime, official in rows:
             self.assertTrue(int(official) > 0, cid)
             self.assertTrue(anime.isdigit(), cid)
