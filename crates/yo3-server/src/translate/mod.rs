@@ -807,6 +807,29 @@ impl Translator {
         if self.hidden[place.player as usize] && hidden { 0 } else { row as u32 }
     }
 
+    /// The card table entry that gives the client card `uid` with its card, when it holds that card without one (an
+    /// opponent's card in the hand, Deck, Extra Deck or face down, about to be shown): before its Fusion or Synchro
+    /// animation, its Tribute or material effect, its activation. The client draws an animation's card from its card
+    /// table, so without it Jaden's Fusion Summons showed only the light (#79); Konami's server sent the same entry
+    /// first (its 228 duel logs never name a card the client holds without one, `duelcheck/shown.rs`).
+    fn reveal(&self, uid: u32) -> Option<Message> {
+        for (player, side) in self.sides.iter().enumerate() {
+            let player = player as u32;
+            for (&zone, cards) in &side.zones {
+                let Some(at) = cards.iter().position(|c| c.uid == uid) else { continue };
+                let field = zone <= zone::FIELD_SPELL;
+                let (face_up, defense) = if field { self.positions.get(&(player, zone)).copied().unwrap_or_default() } else { (false, false) };
+                let index = if field { 0 } else { at };
+                let row = cards[at].row;
+                if self.shown_row(&Place { player, zone, index, face_up, defense }, row) != 0 {
+                    return None;
+                }
+                return Some(Cmd::Card { uid, open: open(zone), row: row as u32, place: table_place(player, zone, index) }.message());
+            }
+        }
+        None
+    }
+
 }
 
 #[cfg(test)]

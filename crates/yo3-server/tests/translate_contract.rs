@@ -2282,6 +2282,16 @@ fn a_monster_turned_right_after_its_summon_lands_in_its_new_position() {
     let mut out = vec![cmd(0x1A, [19, 0x116, 0x4002, 0]), cmd(0x38, [0, 19, 0, 0]), cmd(0x1C, [0xC004, 0, 0, 0])];
     yo3_server::translate::settle_positions(&mut out);
     assert_eq!(cmd_of(&out[0]).1[2], 0x4002);
+    // A face-down Special Summon shown to the opponent for a moment (a confirm turns it up and back down): the monster
+    // stays face down on the move. Settled face up, it arrived face up without its card (the duel check's rule, #79).
+    let mut out = vec![
+        cmd(0x1A, [80, 0x1B, 0x8005, 0]),
+        cmd(0x39, [0x8005, 80, 0, 0]),
+        cmd(0x1C, [0xC005, 0, 0, 0]),
+        cmd(0x1C, [0x8005, 0, 0, 0]),
+    ];
+    yo3_server::translate::settle_positions(&mut out);
+    assert_eq!(cmd_of(&out[0]).1[2], 0x8005);
 }
 
 fn cmd_of(m: &Message) -> (u32, [u32; 4]) {
@@ -3098,6 +3108,38 @@ fn a_fusion_summon_plays_its_materials_and_the_fusion() {
         summon_show(&out),
         [(1015, [2, 1, 2, 0]), (0x3A, [0, fusion, 2, 0]), (0x44, [0, 0x8000 | fusion, 6, 0]), (0x39, [1 << 14, fusion, 0, 0])]
     );
+}
+
+#[test]
+fn an_opponents_fusion_shows_its_monster_and_its_materials_issue_79() {
+    // Jaden's Fusion Summons showed only the light: against a player (an NPC too) the opponent's Extra Deck and hand are
+    // in the client's card table without their cards (row 0), and the Fusion animation and the materials' effects draw
+    // theirs from it. Konami's server sent each card's entry with its row first (its 228 duel logs never name a card
+    // the client holds without one); so do we, and the duel check holds every duel to it (`duelcheck/shown.rs`).
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 1000, def: 1000, level: 4, attribute: 2, race: 12 };
+    let cids = (100..110).chain(200..210).chain([250]).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
+    let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
+    let (mut t, opening) = Translator::against_player(0, [&client, &cpu], cids);
+    let extra = t.extra_decks([&[][..], &[250][..]]);
+    let fusion = extra.iter().map(cmd).find(|(id, _)| *id == 1000).map(|(_, p)| p[0] & 0xFF_FFFF).expect("the Extra Deck's entry");
+    let mut stream: Vec<Message> = opening.into_iter().chain(extra).collect();
+    stream.extend(t.events(&[json!({ "type": 90, "player": 1, "drawn": [{ "cid": 4200 }, { "cid": 4201 }] })]));
+    let material = 0x8 | 0x40000;
+    stream.extend(t.events(&[
+        json!({ "type": 50, "cid": 4201, "reason": material, "from": loc(1, 2, 1, 10), "to": loc(1, 16, 0, 5) }),
+        json!({ "type": 50, "cid": 4200, "reason": material, "from": loc(1, 2, 0, 10), "to": loc(1, 16, 1, 5) }),
+    ]));
+    let arrival = t.events(&[
+        json!({ "type": 50, "cid": 4250, "reason": 0x800 | 0x40000, "from": loc(1, 64, 0, 10), "to": loc(1, 4, 0, 1) }),
+        json!({ "type": 62, "cid": 4250, "controller": 1, "location": 4, "sequence": 0, "position": 1 }),
+    ]);
+    let shown = arrival.iter().map(cmd).position(|(id, p)| id == 1000 && p[0] & 0xFF_FFFF == fusion && p[1] == 250);
+    let animation = arrival.iter().map(cmd).position(|(id, _)| id == 0x3A);
+    assert!(shown.is_some() && shown < animation, "the monster's card before RunFusion: {:?}", arrival.iter().map(cmd).collect::<Vec<_>>());
+    stream.extend(arrival);
+    let mut check = yo3_server::duelcheck::shown::Shown::default();
+    let problems: Vec<String> = stream.iter().map(cmd).filter_map(|(id, p)| check.command(id, p)).collect();
+    assert_eq!(problems, Vec::<String>::new());
 }
 
 /// The material commands and the moves, in order: (id, the card's uid).

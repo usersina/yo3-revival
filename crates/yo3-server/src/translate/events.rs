@@ -417,7 +417,11 @@ impl Translator {
                 _ => Summoning { family, count: 0, tuned: 0, arrived: false, cid: 0, played: vec![], uids: vec![] },
             };
             if let Some(at) = s.played.iter().position(|(c, _)| *c == cid) {
-                out.extend(s.played.remove(at).1);
+                // An earlier material leaving the hand renumbered it and hid this one again: told again before its effect.
+                let run = s.played.remove(at).1;
+                let uid = run.as_ref().and_then(|m| m.get("param3")).and_then(Value::as_u32).unwrap_or(0) & 0xFFFF;
+                out.extend(self.reveal(uid));
+                out.extend(run);
                 self.summoning = Some(s);
                 return out;
             }
@@ -438,6 +442,11 @@ impl Translator {
                 }
             }
             materials.sort_by_key(|&(.., tuner)| !(family == Family::Synchro && tuner));
+            // An opponent's material the client holds without its card (a Set monster tributed, a Fusion material from
+            // the hand) is told first: its marks and effect draw it (#79).
+            for &(_, _, uid, _) in &materials {
+                out.extend(self.reveal(uid));
+            }
             let marks = family.set_and_run();
             for &(_, from, uid, _) in materials.iter().filter(|_| marks.is_some()) {
                 out.push(command(marks.map_or(0, |m| m.0), [from.player, from.zone, uid, 0]));
@@ -481,9 +490,19 @@ impl Translator {
         // The Extra Deck monster arrives: its animation and its line (Konami's logs: 8 for a Synchro, 6 for a Fusion).
         let arriving = reason & reason::SPSUMMON != 0 && mv.from.location == loc::EXTRA;
         let place = self.engine_place(&mv.from).and_then(|from| Some((from, self.uid_at(&from, cid)?)));
+        // The monster and its materials as the animation draws them: an opponent's Extra Deck card is in the client's
+        // table without its card until now, and the Fusion or Synchro animation showed only its light (#79).
+        let mut shown: Vec<Message> = match place {
+            Some((_, uid)) if arriving => {
+                let materials = self.summoning.as_ref().map(|s| s.uids.clone()).unwrap_or_default();
+                std::iter::once(uid).chain(materials).filter_map(|u| self.reveal(u)).collect()
+            }
+            _ => vec![],
+        };
         if let Some(s) = self.summoning.as_mut().filter(|s| arriving && s.family != Family::Tribute && !s.arrived)
             && let Some((from, uid)) = place
         {
+            out.append(&mut shown);
             let (kind, line) = match s.family {
                 Family::Synchro => (2, SUMMON_SYNCHRO),
                 Family::Contact => (1, SUMMON_EXTRA),
@@ -1035,7 +1054,8 @@ impl Translator {
         };
         let Some(card) = card else { return vec![] };
         let cid = self.cards.get(&card.row).map_or(0, |c| c.cid as u32);
-        let mut out = vec![];
+        // An opponent's card activating from the hand or the Deck: the line and the effect draw it (#79).
+        let mut out: Vec<Message> = self.reveal(card.uid).into_iter().collect();
         if (5..=zone::FIELD_SPELL).contains(&place.zone) {
             out.push(command(cmd::SPEAK_ACTIVATE, [place.player, 0x8000 | card.uid, 2, 0]));
             out.push(command(cmd::SPEAK_ACTIVATE, [place.player, 0x8000 | card.uid, 3, 0]));

@@ -51,6 +51,7 @@ use crate::wire::{Cmd, Place, Target, cmd, dialog, request, table_place, zone};
 pub mod native;
 pub mod coverage;
 pub mod summon;
+pub mod shown;
 pub mod scenario;
 
 const SERVER_DUEL: u32 = crate::duel::SERVER_DUEL;
@@ -105,6 +106,10 @@ pub struct ClientModel {
     recent: VecDeque<String>,
     /// The summon commands' order (`summon.rs`).
     summon: summon::SummonOrder,
+    /// Whether each animation's card is in the client's card table (`shown.rs`, #79).
+    shown: shown::Shown,
+    /// `YO3_CHECK_TRACE`: every command the model notes is printed too, under the engine's messages.
+    trace: bool,
 }
 
 impl ClientModel {
@@ -142,6 +147,8 @@ impl ClientModel {
             problems: vec![],
             recent: VecDeque::new(),
             summon: summon::SummonOrder::default(),
+            shown: shown::Shown::default(),
+            trace: std::env::var_os("YO3_CHECK_TRACE").is_some(),
         }
     }
 
@@ -228,6 +235,9 @@ impl ClientModel {
     }
 
     fn note(&mut self, what: String) {
+        if self.trace {
+            eprintln!("  client: {what}");
+        }
         if self.recent.len() == RECENT {
             self.recent.pop_front();
         }
@@ -274,6 +284,9 @@ impl ClientModel {
 
     fn command(&mut self, id: u32, [p1, p2, p3, p4]: [u32; 4]) {
         if let Some(problem) = self.summon.command(id, [p1, p2, p3, p4]) {
+            self.problem(problem);
+        }
+        if let Some(problem) = self.shown.command(id, [p1, p2, p3, p4]) {
             self.problem(problem);
         }
         // A summon's Set or Run names a card at its place: in the hand (11) or a field zone. DuelSummon finds the card

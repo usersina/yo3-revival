@@ -1701,6 +1701,13 @@ a release for a summon, a Fusion or a Synchro material):
   position in between), 1015 (and 1016) with the materials' uids, the Tuners first (without it the Synchro animation
   crashed the client, live), RunFusion, and the summon line `0x44` with kind 8 for a Synchro and 6 for a Fusion (Konami
   sent 8 before the materials and 6 after RunFusion for a Synchro); its own line at MSG_SPSUMMONING is then not said;
+- a card the client holds without its card (row 0: the opponent's hand, Extra Deck or a Set card, against a player or an
+  NPC) gets its card table entry 1000 with its row first, as Konami's server sent it: before RunFusion for the summoned
+  monster and its materials, before a material's Set and again before its Run (a hand renumbered by the first material
+  hid the next again), and before an activation from the hand or the Deck (#79). The client draws an animation's card
+  from its card table; without the entry the Fusion and Synchro animations showed only their light. Konami's 228 logs
+  never name such a card in 0x1D, 0x22, 0x2A-0x32, 0x38-0x3A, 0x44 or 0x47 (`duelcheck/shown.rs`). A face-down Special
+  Summon stays hidden: Konami's server told the opponent its card even then, which a hover would show;
 - a Tribute Summon's line has kind 1 (a Tribute Summon's arrival has no summon reason in the engine's move). A tribute
   for a Set (face down, no summon message) leaves no Tribute Summon behind;
 - a Contact Fusion (Konami's logs: Gladiator Beast Gyzarus, twice) sends no Material commands: its materials go back

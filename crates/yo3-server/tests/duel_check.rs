@@ -2,7 +2,7 @@
 //! decks from a pool of searches, discards, control changes, swaps, flips, tokens, Fusion, Synchro and Xyz Summons, the client's
 //! view (a model of its card manager, fed the commands the translator sends) compared with the engine after every engine
 //! step. A difference fails with the seed, the step and the engine messages before it. Skipped unless engine/fetch.sh
-//! has run. `YO3_CHECK_DUELS=n` plays n duels per test instead of 30 (8 tests).
+//! has run. `YO3_CHECK_DUELS=n` plays n duels per test instead of 30 (8 tests); `YO3_CHECK_SEED=s` replays seed s alone.
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
@@ -47,7 +47,13 @@ fn run(part: u64) {
     let mut failures = vec![];
     let mut cards: BTreeMap<u16, [u32; 5]> = BTreeMap::new();
     let mut duels = 0;
-    for seed in part * per..(part + 1) * per {
+    // `YO3_CHECK_SEED=s` replays seed s alone (in the first part).
+    let seeds = match std::env::var("YO3_CHECK_SEED").ok().and_then(|n| n.parse::<u64>().ok()) {
+        Some(seed) if part == 0 => seed..seed + 1,
+        Some(_) => return,
+        None => part * per..(part + 1) * per,
+    };
+    for seed in seeds {
         match play(&dir, seed) {
             Ok(played) => {
                 duels += 1;

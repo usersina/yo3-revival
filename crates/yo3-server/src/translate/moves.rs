@@ -143,7 +143,14 @@ pub fn settle_positions(out: &mut [Message]) {
             cmd::RUN_SUMMON | cmd::RUN_SP_SUMMON => moved.values_mut().for_each(|(_, effect)| *effect = true),
             cmd::FLIP_TURN => {
                 let place = param(&out[i], "param1");
-                if let Some((at, true)) = slot(place).and_then(|s| moved.remove(&s)) {
+                // A turn undone later in the batch (a face-down monster shown for a moment, as a confirm does: Konami's
+                // reveal flips it up and back down) is not the monster's position: settled onto the move, the monster
+                // arrived face up without its card (#79).
+                let undone = |at: usize| {
+                    let before = param(&out[at], "param3") & 0xC000;
+                    out[i + 1..].iter().any(|m| param(m, "id") == cmd::FLIP_TURN && slot(param(m, "param1")) == slot(place) && param(m, "param1") & 0xC000 == before)
+                };
+                if let Some((at, true)) = slot(place).and_then(|s| moved.remove(&s)).filter(|&(at, _)| !undone(at)) {
                     let to = param(&out[at], "param3") & !0xC000 | place & 0xC000;
                     if let Some((_, v)) = out[at].fields.iter_mut().find(|(k, _)| k == "param3") {
                         *v = Value::U32(to);

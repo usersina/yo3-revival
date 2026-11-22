@@ -13,6 +13,14 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- Fixed: your opponent's Fusion and Synchro Summons, a computer opponent's included (Jaden's Fusions), showed only the
+  light: the summoned monster now appears in the animation (#79). The same fix shows the card when your opponent
+  Tributes a Set monster, uses Fusion materials from their hand or activates an effect from their hand.
+- Fixed: a monster your opponent Special Summoned face down and then showed you for a moment arrived face up without
+  its picture before it turned face down.
+
 ## v0.1.17 (2026-11-22)
 
 Multiplayer: update to v0.1.17 to join the hosted server after deployment.

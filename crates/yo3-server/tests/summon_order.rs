@@ -172,3 +172,43 @@ fn konamis_own_duel_logs_keep_every_rule() {
     assert!(duels >= 200, "only {duels} duel logs read");
     assert!(found.is_empty(), "{} problem(s) in Konami's own logs ({duels} duels, {summons} summons):\n{}", found.len(), found.join("\n"));
 }
+
+/// The cards an animation names, followed through the stream (`duelcheck/shown.rs`, #79).
+fn unshown(stream: &[(u32, [u32; 4])]) -> Vec<String> {
+    let mut shown = yo3_server::duelcheck::shown::Shown::default();
+    stream.iter().filter_map(|&(id, p)| shown.command(id, p)).collect()
+}
+
+#[test]
+fn an_opponents_fusion_needs_its_card_before_the_animation_is_issue_79() {
+    // The opponent's Extra Deck card is in the table without its card (row 0); its summon names it.
+    let hidden = [(1000, [0x57, 0, 0, 0x10C01]), (1015, [1, 0x4D, 0, 0]), (RUN_FUSION, [1, 0x57, 1, 0])];
+    assert!(unshown(&hidden).iter().any(|p| p.contains("uid 87")), "{:?}", unshown(&hidden));
+    // Konami's order: its row first (1000 with the row), then the animation.
+    let told = [(1000, [0x57, 0, 0, 0x10C01]), (1000, [0x4D, 3789, 0, 0x10E01]), (1000, [0x57, 3680, 0, 0x10C01]), (1015, [1, 0x4D, 0, 0]),
+        (RUN_FUSION, [1, 0x57, 1, 0]), (0x44, [1, 0x8057, 6, 0])];
+    assert_eq!(unshown(&told), Vec::<String>::new());
+    // A material whose card the client doesn't have.
+    let material = [(1000, [0x4D, 0, 0, 0]), (1000, [0x57, 3680, 0, 0]), (1015, [1, 0x4D, 0, 0]), (RUN_FUSION, [1, 0x57, 1, 0])];
+    assert!(unshown(&material).iter().any(|p| p.contains("material list")), "{:?}", unshown(&material));
+}
+
+#[test]
+fn konamis_own_duel_logs_name_only_cards_the_client_has() {
+    let mut files = vec![];
+    dlogs(&logs_dir(), &mut files);
+    if files.is_empty() {
+        eprintln!("no original duel logs; skipping");
+        return;
+    }
+    let (mut duels, mut named, mut found) = (0, 0, vec![]);
+    for path in &files {
+        let Some(stream) = stream_of(&std::fs::read(path).unwrap()) else { continue };
+        duels += 1;
+        named += stream.iter().filter(|&&(id, p)| yo3_server::duelcheck::shown::names(id, p).is_some()).count();
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        found.extend(unshown(&stream).into_iter().map(|p| format!("{name}: {p}")));
+    }
+    assert!(duels >= 200 && named > 20000, "only {duels} duel logs, {named} commands naming a card");
+    assert!(found.is_empty(), "{} problem(s) in Konami's own logs ({duels} duels):\n{}", found.len(), found.join("\n"));
+}
