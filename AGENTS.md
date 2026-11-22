@@ -104,6 +104,7 @@ task dev:server                 # a scratch server on free ports with two key ac
 task client -- start            # the headless client (tools/client/vclient.sh) with those exports
 task client:scenario -- tools/client/scenarios/card-search.scn   # a scripted UI scenario on that client
 task vm -- list                 # the Windows VMs (tools/vm/vm.py): shot, click, type, key, run, put, wait
+task vm:smoke                   # the standard Windows check of the newest dist/ Desktop bundle on win11 (before a release)
 ```
 
 Not wrapped by a task (each needs its own setup):

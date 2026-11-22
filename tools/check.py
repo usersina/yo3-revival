@@ -42,6 +42,7 @@ PY = [
     'tools/engine/test_anime_map.py',
     'tools/engine/test_anime_pictures.py',
     'tools/vm/test_vm.py',
+    'tools/vm/test_smoke.py',
     'tools/dev/test_scratch_server.py',
     'tools/test_check.py',
 ]

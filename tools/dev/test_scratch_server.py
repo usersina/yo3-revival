@@ -27,6 +27,19 @@ class Checks(unittest.TestCase):
             self.assertFalse(scratch.port_free(s.getsockname()[1]))
         self.assertTrue(scratch.port_free(free_port()))
 
+    def test_a_server_bound_elsewhere_is_seen_listening_there(self):
+        # A VM's server binds 192.168.122.1 (`-- --bind ADDRESS`): its readiness is checked on that address.
+        self.assertEqual(scratch.bind_address(['--bind', '192.168.122.1']), '192.168.122.1')
+        self.assertEqual(scratch.bind_address(['--duel-lp', '1000', '--bind=0.0.0.0']), '0.0.0.0')
+        self.assertEqual(scratch.bind_address([]), '127.0.0.1')
+        with socket.socket() as s:
+            s.bind(('127.0.0.1', 0))
+            s.listen()
+            port = s.getsockname()[1]
+            self.assertTrue(scratch.listening(port, '127.0.0.1'))
+            self.assertTrue(scratch.listening(port, '0.0.0.0'))
+        self.assertFalse(scratch.listening(free_port(), '127.0.0.1'))
+
     def test_the_live_ports_and_a_missing_server_are_refused(self):
         self.assertEqual(scratch.main(['start', '--port', '7443']), 2)
         self.assertEqual(scratch.main(['start', '--server', '/nonexistent/yo3-server', '--port', str(free_port()),

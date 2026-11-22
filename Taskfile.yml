@@ -103,3 +103,6 @@ tasks:
   vm:
     desc: "The Windows VMs: task vm -- list | shot win7 FILE | click win7 X Y | run win7 -- ver (tools/vm/vm.py --help)"
     cmds: ['python3 tools/vm/vm.py {{.CLI_ARGS}}']
+  vm:smoke:
+    desc: "The standard Windows check of the newest dist/ Desktop bundle on the win11 VM: login, the chat's Lobby, chat, a command (tools/vm/smoke.py --help)"
+    cmds: ['python3 tools/vm/smoke.py {{.CLI_ARGS}}']

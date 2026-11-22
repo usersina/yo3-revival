@@ -44,6 +44,23 @@ def port_free(port, host='127.0.0.1'):
     return True
 
 
+def bind_address(extra):
+    """The address the server listens on: its `--bind` among the extra server arguments, else loopback."""
+    for i, arg in enumerate(extra):
+        if arg == '--bind' and i + 1 < len(extra):
+            return extra[i + 1]
+        if arg.startswith('--bind='):
+            return arg.split('=', 1)[1]
+    return '127.0.0.1'
+
+
+def listening(port, host):
+    """Whether something accepts connections on host:port (0.0.0.0 is checked on loopback)."""
+    with socket.socket() as s:
+        s.settimeout(0.5)
+        return s.connect_ex(('127.0.0.1' if host in ('0.0.0.0', '') else host, port)) == 0
+
+
 def profile_from_key_output(text):
     """The JSON profile in `yo3-server key` output, which prints a heading line before it."""
     start = text.find('{')
@@ -105,8 +122,9 @@ def exports(directory, profile):
 
 def start(args, extra):
     binary = server_binary(args.server)
-    for port in (args.port, args.http):
-        if not port_free(port):
+    bind = bind_address(extra)
+    for port, host in ((args.port, bind), (args.http, '127.0.0.1')):
+        if not port_free(port, host):
             raise Fail(f'port {port} is taken: pick others with --port/--http (never the live 7443/8080)')
     directory = Path(tempfile.mkdtemp(prefix='yo3-dev.'))
     data = directory / 'data'
@@ -135,7 +153,7 @@ def start(args, extra):
         process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                                    start_new_session=True)
     deadline = time.monotonic() + 30
-    while port_free(args.port):
+    while not listening(args.port, bind):
         if process.poll() is not None:
             raise Fail(f'the server exited ({process.returncode}); see {directory / "server.log"}')
         if time.monotonic() > deadline:
@@ -145,7 +163,7 @@ def start(args, extra):
     state = {'pid': process.pid, 'binary': str(binary), 'port': args.port, 'http': args.http, 'profiles': profiles}
     (directory / 'state.json').write_text(json.dumps(state, indent=2))
     CURRENT.write_text(str(directory))
-    print(f'Scratch server {directory} (pid {process.pid}): TLS 127.0.0.1:{args.port}, HTTP {args.http}')
+    print(f'Scratch server {directory} (pid {process.pid}): TLS {bind}:{args.port}, HTTP {args.http}')
     print(f'Profiles: {", ".join(profiles) or "none"}. In a client terminal:')
     print('\n'.join(exports(directory, profiles[0]) if profiles else [f'export YO3_SCRATCH={directory}']))
     return 0
