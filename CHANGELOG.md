@@ -13,13 +13,16 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.1.19 (2026-11-22)
+
+Multiplayer: update to v0.1.19 to join the hosted server after deployment.
 
 - The computer Sets its Flip monsters, such as Morphing Jar and Man-Eater Bug, face down instead of summoning them in
   Attack Position, so their effects work when they are flipped (#80).
 - Choose the flag others see next to your name: whisper `flag BR` to the server (`/p Server flag BR`) with your
   country's two-letter code, or `flag auto` to follow your game's language again (#81). Others see it at once.
 - Fixed: your own game could show you the German flag after you entered the map, whatever your language.
+- The shop's avatar items are every part the game has, 104 Duel Disks among them: the player guide now says so (#82).
 
 ## v0.1.18 (2026-11-22)
 
