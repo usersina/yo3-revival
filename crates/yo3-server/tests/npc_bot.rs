@@ -184,3 +184,67 @@ fn pegasus_reads_a_real_duel_and_says_so() {
     }
     assert!(matches!(said.last().and_then(|s| kind(s)), Some("win" | "lose")), "the end: {said:?}");
 }
+
+/// Experiment (#78 and the "Kaiba holds his hand" report): Kaiba's deck and style against a player who summons and
+/// never attacks. Prints each of Kaiba's turns: his hand, monsters and LP.
+#[test]
+#[ignore]
+fn kaiba_against_a_player_who_never_attacks() {
+    let game_dir = std::env::var_os("YO3_GAME_DIR").map(PathBuf::from).unwrap_or_else(default_game_dir);
+    let engine_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../engine");
+    let game = GameData::load(&game_dir).expect("the client's data loads");
+    let cid = |rows: &[u16]| -> Vec<u16> { rows.iter().filter_map(|r| game.cards.by_row(*r)).map(|c| c.cid).collect() };
+    let by_name = |name: &str| game.npc_ids().into_iter().filter(|&id| game.npc_name(id) == Some(name)).filter_map(|id| game.npc_deck(id).map(|d| (id, d))).collect::<Vec<_>>();
+    let kaibas = by_name("Seto Kaiba");
+    let wall = by_name("Yami Yugi");
+    let level: usize = std::env::var("YO3_KAIBA_LEVEL").ok().and_then(|n| n.parse().ok()).unwrap_or(0);
+    let (kid, kdeck) = kaibas[level.min(kaibas.len() - 1)];
+    let (_, wdeck) = wall[0];
+    eprintln!("Kaiba npc {kid}: {}", game.npc_deck_title(kid).unwrap_or(""));
+    let (km, ke, mut wm, we) = (cid(&kdeck.main), cid(&kdeck.extra), cid(&wdeck.main), cid(&wdeck.extra));
+    // The wall starts with this monster on its field (YO3_WALL_MONSTER, a card name; default Blue-Eyes White Dragon).
+    let wall_name = std::env::var("YO3_WALL_MONSTER").unwrap_or_else(|_| "Blue-Eyes White Dragon".into());
+    let big = (1..=game.cards.len() as u16).filter_map(|r| game.cards.by_row(r)).find(|c| c.name == wall_name).map(|c| c.cid);
+    let seed: u64 = std::env::var("YO3_KAIBA_SEED").ok().and_then(|n| n.parse().ok()).unwrap_or(1);
+    let mut engine = Engine::start(&engine_dir).expect("the engine program runs");
+    // A Deck of it: a monster summoned at once, no spawn (the bot's copies don't follow a spawned start yet).
+    if let Some(big) = big {
+        wm = vec![big; 40];
+    }
+    // Team 0 the wall (goes first), team 1 Kaiba.
+    let mut answer = engine.new_duel_with(seed, 8000, [(&wm, &we), (&km, &ke)], &Default::default(), &[]).expect("the duel starts");
+    let kaiba = serde_json::json!({ "aggression": 0.9, "caution": 0.0, "sees": false });
+    let mut turn = 0;
+    for _ in 0..4000 {
+        if let Some(win) = answer.messages.iter().find(|m| m["type"] == 5) {
+            eprintln!("winner team {}", win["player"]);
+            return;
+        }
+        for m in &answer.messages {
+            if m["type"] == 40 {
+                turn += 1;
+                let state = engine.state().expect("state");
+                let t = &state[1];
+                let w = &state[0];
+                let count = |v: &serde_json::Value| v.as_array().map_or(0, |a| a.iter().filter(|c| !c.is_null()).count());
+                let names = |v: &serde_json::Value| v.as_array().map(|a| a.iter().filter(|c| !c.is_null()).map(|c| { let id = c["cid"].as_u64().unwrap_or(0) as u16; let n = game.cards.by_cid(id).map(|c| c.name.clone()).unwrap_or_default(); if c["position"] == 10 || c["position"] == 0 { n } else { format!("{n} {}/{}", c["attack"], if c["position"].as_u64().unwrap_or(0) & 5 != 0 { if c["position"].as_u64().unwrap_or(0) & 1 != 0 { "ATK" } else { "DEF" } } else { "set" }) } }).collect::<Vec<_>>().join(" ")).unwrap_or_default();
+                eprintln!("turn {turn:>2} (player {}): Kaiba lp {} hand {} [{}] field [{}] spells {} | wall lp {} hand {} field [{}]",
+                    m["player"], t["lp"], count(&t["hand"]), names(&t["hand"]), names(&t["mzone"]), count(&t["szone"]), w["lp"], count(&w["hand"]), names(&w["mzone"]));
+            }
+        }
+        if answer.status != "await" { break; }
+        let last = answer.messages.last().cloned().unwrap_or_default();
+        let player = last["player"].as_u64().unwrap_or(0);
+        let response = if player == 1 {
+            engine.think(kaiba.clone()).expect("an answer")
+        } else if last["type"] == yo3_server::ocg::msg::SELECT_BATTLECMD {
+            // The wall never attacks.
+            let action = if last["to_m2"] == true { yo3_server::ocg::battle::TO_M2 } else { yo3_server::ocg::battle::TO_EP };
+            yo3_server::ocg::Response::BattleCmd { action, index: None }.json()
+        } else {
+            engine.think(serde_json::json!({ "policy": "simple" })).expect("an answer")
+        };
+        answer = engine.respond(response).expect("the engine answers");
+    }
+    eprintln!("no winner in 4000 answers");
+}

@@ -233,7 +233,11 @@ impl Session {
             let Some(bit) = (0..16).find(|b| mask & (1 << b) == 0) else { break };
             let (location, sequence) = if bit < 8 { (LOCATION_MZONE, bit) } else { (LOCATION_SZONE, bit - 8) };
             let answer = json!({"type": 10, "places": [{"player": prompt["player"], "location": location, "sequence": sequence}]});
-            self.duel.as_mut().unwrap().respond(&crate::encode::response(&answer));
+            let bytes = crate::encode::response(&answer);
+            self.duel.as_mut().unwrap().respond(&bytes);
+            // Kept with the answers: the bot's copies replay every answer from the start, and without these they
+            // went out of step with the real duel (every option of the bot came out the same).
+            self.history.push(bytes);
             messages.pop(); // the question answered here, never the server's
             if messages.last().is_some_and(|m| m["type"] == 2 && m["hint_type"] == 3) { messages.pop(); }
             let (more, next) = self.run()?;
