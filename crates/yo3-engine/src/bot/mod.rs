@@ -149,7 +149,7 @@ impl Host for Quiet {
 
 /// A copy of a duel, which may move to another thread: its host is [`Quiet`] (card data behind an `Arc`, no
 /// logging), and the core keeps no state outside its duel object.
-pub struct Copy(Duel);
+pub struct Copy(pub(crate) Duel);
 
 // SAFETY: a Copy's duel is only ever made by `build` with a Quiet host (Send), and is used by one thread at a time.
 unsafe impl Send for Copy {}
@@ -218,7 +218,7 @@ fn settle(duel: &mut Duel, decode: bool) -> (Status, Vec<Json>) {
 }
 
 /// A new copy of the duel `setup` began, after the answers `history`: None if the core refuses it.
-fn build(library: &Arc<Library>, setup: &Setup, history: &[Vec<u8>]) -> Option<Copy> {
+pub(crate) fn build(library: &Arc<Library>, setup: &Setup, history: &[Vec<u8>]) -> Option<Copy> {
     let mut duel = Duel::new(setup.seed, MODE_MR2, setup.lp, 5, Box::new(Quiet(library.clone())))?;
     for name in ["constant.lua", "utility.lua"] {
         let text = library.script(name).unwrap_or_default();

@@ -207,9 +207,14 @@ fn kaiba_against_a_player_who_never_attacks() {
     let big = (1..=game.cards.len() as u16).filter_map(|r| game.cards.by_row(r)).find(|c| c.name == wall_name).map(|c| c.cid);
     let seed: u64 = std::env::var("YO3_KAIBA_SEED").ok().and_then(|n| n.parse().ok()).unwrap_or(1);
     let mut engine = Engine::start(&engine_dir).expect("the engine program runs");
-    // A Deck of it: a monster summoned at once, no spawn (the bot's copies don't follow a spawned start yet).
+    // YO3_WALL_SPAWN=1: it starts on the wall's field; else a Deck of it, summoned at once.
     if let Some(big) = big {
-        wm = vec![big; 40];
+        if std::env::var_os("YO3_WALL_SPAWN").is_some() {
+            wm[0] = big;
+            engine.spawn_at_start(vec![yo3_server::engine::Spawn { team: 0, place: yo3_server::engine::SpawnPlace::Monster, cid: big }]);
+        } else {
+            wm = vec![big; 40];
+        }
     }
     // Team 0 the wall (goes first), team 1 Kaiba.
     let mut answer = engine.new_duel_with(seed, 8000, [(&wm, &we), (&km, &ke)], &Default::default(), &[]).expect("the duel starts");

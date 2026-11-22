@@ -921,6 +921,23 @@ mod tests {
     }
 
     #[test]
+    fn the_bots_copy_of_a_duel_that_starts_with_spawned_cards_is_the_duel() {
+        let Some(vendor) = fetched_vendor() else { return };
+        // A spawned card's zone question was answered without keeping the answer, so the copies the bot thinks in,
+        // which replay every answer from the start, went out of step: every option came out the same.
+        let mut session = Session::new(Cards::open(&vendor).expect("the card data"));
+        let deck: Vec<u32> = vec![4007; 40]; // Blue-Eyes White Dragon
+        let field = [json!({ "player": 0, "location": 4, "position": 1, "cid": 4007 }), json!({ "player": 1, "location": 4, "position": 8, "cid": 4007 })];
+        let new = json!({ "op": "new", "seed": 7, "lp": 8000, "decks": [{ "main": deck, "extra": [] }, { "main": deck, "extra": [] }], "names": {}, "field": field });
+        let answer: Json = serde_json::from_str(&session.handle(&new.to_string())).unwrap();
+        assert_eq!(answer["errors"], json!([]), "{answer}");
+        let library = session.cards.borrow().library.clone();
+        let crate::bot::Copy(mut copy) = crate::bot::build(&library, &session.setup, &session.history).expect("a copy");
+        let real = session.duel.as_mut().unwrap().query_field();
+        assert_eq!(copy.query_field(), real, "the copy's field is the duel's");
+    }
+
+    #[test]
     fn the_bot_sets_a_flip_monster_instead_of_summoning_it_issue_80() {
         let Some(vendor) = fetched_vendor() else { return };
         // A player saw the computer summon its Jars in Attack Position: a Flip effect works only when the card is Set
