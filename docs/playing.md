@@ -203,6 +203,20 @@ cards in your Deck, a Yes/No window asks whether to use Destiny Draw. Yes opens 
 and the card you pick is the card you draw that turn. No, and you are asked again at a later draw until you use it. The duel's
 chat window says at the start that it is on.
 
+## Chatting
+
+The chat window at the bottom has a tab per place your lines go:
+
+- **A chat room's tab** (Lobby, Free Talk, Trading, Duel Recruiting) and its **TRADE** tab: everyone in that room.
+  **Join a room first**: the speech-bubble button at the chat window's top left lists them. Until you do, the first tab
+  reads "----" and the game sends nothing you type there (Enter does nothing).
+- **Team**: your team, from anywhere, in a room or not.
+- **Trade Partner** in a trade or rental, **Opponent** once you are matched for a duel and during it: that player alone.
+- A whisper, `/p NAME message`: that player alone, from anywhere.
+
+In a duel against the computer the game sends nothing from the chat window: send a [chat command](#chat-commands) such
+as `bug` after the duel.
+
 ## Chat commands
 
 The server answers a few commands **only to you**, in your chat window, so they never reach the room. The game's own
@@ -222,7 +236,7 @@ Anything else, such as `!lol`, is ordinary chat.
 | `pack` or `pack NAME` | Every card a booster pack can give, the rarest first, and its price: `pack 12`, `pack beginner`. A long list (a beginner's pack has 155 commons) is given as a count. `pack` alone lists the packs on sale. The same lists are on the Packs page ([website pages](#website-pages)). |
 | `recipes` or `recipes NAME` | Lists the theme deck recipes the shop's shelf can't show, or buys one for the structure decks' price: the recipe on Load Deck's Official tab and its cards, as a present you open from the map. |
 | `report PLAYER reason` | Tells the host's staff about a player (cheating, abuse in chat). Use quotes for a name with spaces: `report "Joey Wheeler" spamming the chat`. The reported player is not told. You can send a few an hour. |
-| `bug what happened` | Tells the host's staff a duel went wrong (an effect did nothing, a wrong card moved): your last duel is sent with your note, so the staff can play it again exactly as it happened. Send it right after the duel (up to two hours later); the game doesn't send chat during a duel against the computer. Say which card and turn: `bug Mirror Force destroyed nothing on turn 4`. It counts towards the same few an hour as `report`. |
+| `bug what happened` | Tells the host's staff a duel went wrong (an effect did nothing, a wrong card moved): your last duel is sent with your note, so the staff can play it again exactly as it happened. In a duel against another player you can send it during the duel, on the Opponent tab; after a duel against the computer (whose chat sends nothing), send it on the map, up to two hours later. Say which card and turn: `bug Mirror Force destroyed nothing on turn 4`. It counts towards the same few an hour as `report`. |
 
 ![The chat commands in the game's chat window](../screenshots/chat-commands.png)
 

@@ -1606,6 +1606,16 @@ impl Hub {
     }
 
     /// The trade a player is in, and their seat in it.
+    /// The player `player_id` trades, rents or duels with now: the chat's partner tab (chat type 4), which the trade and
+    /// rental scenes call Trade Partner and a matched duel Opponent. A duel against the computer has no one there.
+    pub fn partner_of(&self, player_id: u32) -> Option<u32> {
+        self.trades.iter().find_map(|t| t.seat(player_id).map(|s| t.players[1 - s]))
+            .or_else(|| self.rental_sessions.iter().find_map(|r| r.seat(player_id).map(|s| r.players[1 - s].0)))
+            .or_else(|| self.matches.values().filter(|m| !m.cpu)
+                .filter_map(|m| m.players.iter().position(|&p| p == player_id).map(|s| (m.made, m.players[1 - s])))
+                .max_by_key(|(made, _)| *made).map(|(_, opponent)| opponent))
+    }
+
     fn trade_of(&mut self, player_id: u32) -> Option<(&mut crate::trade::Trade, usize)> {
         self.trades.iter_mut().find_map(|t| t.seat(player_id).map(|s| (t, s)))
     }
@@ -4277,7 +4287,11 @@ impl FrontSession {
     /// on 0x2456, so the sender gets the 0x2455 echo too. 0x2455 is read by ChatWindow 0x435950.
     fn chat(&mut self, msg: &Message) -> Vec<Message> {
         const ROOM_CHAT: u32 = 1;
+        // A room's TRADE tab: `to_id` the room, like its chat (live).
+        const ROOM_TRADE_CHAT: u32 = 2;
         const TEAM_CHAT: u32 = 3;
+        // The partner tab (Trade Partner in a trade or rental, Opponent when matched for a duel): `to_id` 0 (live).
+        const PARTNER_CHAT: u32 = 4;
         let Some(id) = self.online else { return vec![Message::reply(0x2457)] };
         // The server's chat commands (`/p Server banlist`, `!draw5`): answered to the sender alone, even when muted.
         {
@@ -4310,6 +4324,7 @@ impl FrontSession {
         let hub = self.hub();
         let delivered = match (chat_type, to_id, to_name) {
             (_, _, Some(name)) => hub.send_player(None, Some(&name), &push),
+            (PARTNER_CHAT, _, None) => hub.partner_of(player.player_id).is_some_and(|partner| hub.send_player(Some(partner), None, &push)),
             (TEAM_CHAT, Some(team), None) => match hub.teams.of(player.player_id).filter(|t| t.id == team) {
                 Some(t) => {
                     hub.tell_team(&t.ids(), Some(player.player_id), &push);
@@ -4317,7 +4332,7 @@ impl FrontSession {
                 }
                 None => false,
             },
-            (ROOM_CHAT, Some(room), None) => {
+            (ROOM_CHAT | ROOM_TRADE_CHAT, Some(room), None) => {
                 let here = hub.room_of(id) == Some(room);
                 if here {
                     hub.send_room(room, &push, id);

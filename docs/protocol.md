@@ -412,10 +412,18 @@ Any other `!` line is ordinary chat. The client masks some words with `*` before
 use it as the login `regulation_id` (a client with no change), Select Deck's server check follows, and Auto Duel pairs
 only the same one.
 
+What each tab sends (live, 2026-11-22, three clients): a room's own tab `chat_type` 1 and its TRADE tab `chat_type` 2,
+both with `to_id` = the room (the TRADE tab exists only in a room); Team `chat_type` 3 with the team's id, in a room or
+not; the partner tab `chat_type` 4 with `to_id` 0 (Trade Partner in a trade or rental, Opponent from the match through
+the duel: the server delivers it to the player's trade or rental partner, else the opponent of their newest match);
+a whisper `chat_type` 0 with `to_name`. Before joining a room the first tab reads "----" and Enter sends nothing. A
+room's entry can't be pushed: ChatWindow's `0x245A` case acts only while its pending choice (`param_1[0x16]`, set when
+the player picks a room) is ≥ 0, and otherwise just closes the list. In a duel against the computer the chat sends nothing.
+
 `0x2455`'s `chat_type` picks the tab (`0x435FD0`: 0 → tab 7, 1 → 0, 2 → 1, 4 → 2, 3 → 3, 5 → 4, else 5) and the
 name's colour (`0x435DAF`, table at `0x7F67C0`: chat type 0 red `#F00000`; the player's own line `#00E8FF`; a team
-member green, a friend orange, anyone else `#F0F0F0`). The duel screen's chat window shows chat types 0 and 1; 2 to 7
-did not appear there (live probe, 2026-11-13). An NPC's lines use chat type 0, so the NPC's name is red like the
+member green, a friend orange, anyone else `#F0F0F0`). The duel screen's chat window shows chat types 0 and 1, and in a duel between players the
+Opponent tab (type 4, live 2026-11-22); the others did not appear in a probe of 2026-11-13. An NPC's lines use chat type 0, so the NPC's name is red like the
 opponent's name plate, and its `npc_id` as `from_id` (never a player's id): **confirmed** live, Pegasus and Yami Yugi.
 
 ### Friends and the ignore list (community agent `0x4A4EE0`)

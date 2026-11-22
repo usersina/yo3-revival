@@ -18,6 +18,9 @@ Older entries describe their release at the time. For current setup, use the [RE
 - New chat command `bug what happened` (`/p Server bug …`): if a card effect went wrong, send it right after the duel.
   Your duel goes to the host's staff with your note, and they can play it again exactly as it happened to find the
   cause.
+- Chat that never arrived now does: lines on the Opponent tab (before and during a duel against another player), on
+  the trade screen's Trade Partner tab and on a chat room's TRADE tab used to answer "That command is not available."
+  and reach no one.
 - Hosts: every duel is now recorded for two weeks (about 10 KB each; the `recording-days` setting, 0 turns it off), and
   the duels players send with `bug` are kept until you delete them. They show on the Reports page.
 

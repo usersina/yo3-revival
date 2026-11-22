@@ -300,3 +300,24 @@ fn an_invitation_accepted_after_the_inviter_started_another_trade_is_refused() {
     assert_eq!(one(t.a.send(req(0x2BCB))).request(), Some(0x2BE9));
     assert_eq!(requests(&t.b.pushed()), [0x2BCD]);
 }
+
+/// The trade scene's Trade Partner chat tab sends `chat_type` 4 with `to_id` 0 (live, 2026-11-22: the game answered
+/// "That command is not available." to the 0x2457 it got): the line goes to the trade partner alone, as a 0x2455 of chat
+/// type 4 (tab 2, `0x435FD0`), and back to the sender. Outside a trade there is no one to send it to.
+#[test]
+fn the_trade_partner_chat_reaches_the_partner() {
+    let mut t = table();
+    let partner_chat = |text: &str| {
+        let body = Message { tag: 10, fields: vec![("chat_str".into(), Value::text(text)), ("chat_type".into(), Value::U32(4)), ("to_id".into(), Value::U32(0))], items: vec![] };
+        yo3_proto::Packet::Message(Message::reply(0x2134).item(body))
+    };
+    assert_eq!(t.a.send(partner_chat("anyone?"))[0].request(), Some(0x2457), "no trade, no partner");
+    in_scene(&mut t);
+    let sent = t.a.send(partner_chat("deal? my two for your one"));
+    assert_eq!(sent[0].request(), Some(0x2456));
+    let heard = t.b.pushed();
+    let line = heard.iter().find(|m| m.request() == Some(0x2455)).expect("the partner hears it");
+    assert_eq!(line.items[0].get("chat_str").and_then(Value::as_str).as_deref(), Some("deal? my two for your one"));
+    assert_eq!(int(&line.items[0], "chat_type"), Some(4));
+    assert_eq!(int(&line.items[0], "from_id"), Some(t.a_id));
+}

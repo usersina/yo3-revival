@@ -151,3 +151,40 @@ fn an_npcs_line_is_a_chat_push_the_duel_screens_window_shows() {
     assert_eq!(line.get("chat_type"), Some(&Value::U32(0)));
     assert_eq!(line.get("from_id"), Some(&Value::U32(135)));
 }
+
+/// A room's TRADE tab sends `chat_type` 2 with `to_id` = the room (live, 2026-11-22: the tab exists only in a room, and
+/// the game answered "That command is not available." to the 0x2457 it got). The line goes to that room as chat type 2,
+/// which the game shows on everyone's TRADE tab (`0x435FD0`: 2 -> tab 1); other rooms and players outside don't hear it.
+#[test]
+fn a_rooms_trade_tab_reaches_the_room() {
+    let s = Server::new();
+    let (mut a, mut b, mut c) = (s.join(1001, "Yugi"), s.join(1002, "Kaiba"), s.join(1003, "Joey"));
+    enter(&mut a, 1);
+    enter(&mut b, 1);
+    enter(&mut c, 2);
+    let trade = |room: u32, text: &str| chat_request(&[("chat_str", Value::text(text)), ("chat_type", Value::U32(2)), ("to_id", Value::U32(room))]);
+    let replies = a.send(trade(1, "WTS Blue-Eyes"));
+    assert_eq!(replies[0].request(), Some(0x2456));
+    let got = b.pushed();
+    assert_eq!(got.len(), 1);
+    assert_eq!((got[0].items[0].get("chat_str"), got[0].items[0].get("chat_type")), (Some(&Value::text("WTS Blue-Eyes")), Some(&Value::U32(2))));
+    assert!(c.pushed().is_empty(), "other rooms don't hear it");
+    assert_eq!(a.send(trade(2, "not my room"))[0].request(), Some(0x2457));
+}
+
+/// Matched for a duel, the chat's Opponent tab sends `chat_type` 4 with `to_id` 0, as the trade scene's Trade Partner tab
+/// (one tab, `0x435FD0` tab 2; live, 2026-11-22, Select Deck after Auto Duel): the line goes to the opponent alone.
+#[test]
+fn the_opponent_tab_reaches_the_matched_opponent() {
+    let s = Server::new();
+    let (mut a, mut b, mut c) = (s.join(1001, "Yugi"), s.join(1002, "Kaiba"), s.join(1003, "Joey"));
+    let partner = |text: &str| chat_request(&[("chat_str", Value::text(text)), ("chat_type", Value::U32(4)), ("to_id", Value::U32(0))]);
+    assert_eq!(a.send(partner("hello?"))[0].request(), Some(0x2457), "not matched: no opponent");
+    s.hub.lock().unwrap().set_watchable(7, [1001, 1002], false);
+    assert_eq!(a.send(partner("gl hf"))[0].request(), Some(0x2456));
+    let got = b.pushed();
+    assert_eq!((got.len(), got[0].items[0].get("chat_str"), got[0].items[0].get("chat_type")), (1, Some(&Value::text("gl hf")), Some(&Value::U32(4))));
+    assert!(c.pushed().is_empty());
+    assert_eq!(b.send(partner("you too"))[0].request(), Some(0x2456));
+    assert_eq!(a.pushed()[0].items[0].get("chat_str"), Some(&Value::text("you too")));
+}
