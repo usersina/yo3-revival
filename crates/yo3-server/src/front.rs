@@ -613,6 +613,8 @@ pub struct World {
     pub test_extra: Option<Vec<u16>>,
     /// Testing aid: every duel between players' turn and total clocks in seconds (0: off), over a hosted duel's.
     pub test_times: Option<(u32, u32)>,
+    /// Testing aid: cards every duel between players starts with in the hand or on the field (`--duel-field`).
+    pub test_field: Option<Vec<crate::engine::Spawn>>,
     /// Testing aid: check every duel's client view against the rules engine after each step (`duelcheck.rs`).
     pub duel_check: bool,
     /// The rules engine's directory (engine/, once fetched); without it the server deals the opening itself.
@@ -695,6 +697,11 @@ pub const DUELS_UNAVAILABLE: (&str, &str) = (
 );
 
 impl World {
+    /// A Konami id's first CARD_Prop row (its lowest artwork's), for a testing aid that names cards by id.
+    pub fn row_of(&self, cid: u16) -> Option<u16> {
+        self.cards.iter().filter(|(_, c)| c.cid == cid).map(|(row, _)| *row).min()
+    }
+
     /// Records the duel `engine` plays between `seats` (`kind`: "npc" or "pvp") in the data folder's recordings, unless
     /// there is none or `recording-days` is 0. A recording that can't start is logged; the duel goes on.
     pub fn record_duel(&self, engine: &mut crate::engine::Engine, kind: &str, seats: &[crate::recordings::Seat]) {
@@ -761,6 +768,7 @@ impl World {
             test_regulation: None,
             test_deck: None,
             test_extra: None,
+            test_field: None,
             test_times: None,
             duel_check: false,
             duel_server: ("127.0.0.1".into(), 0),

@@ -54,3 +54,29 @@ function YO3Skill.DestinyDraw(p)
 	end)
 	Duel.RegisterEffect(e,p)
 end
+
+-- A testing aid (the server's --duel-field, scenario tests): when the duel starts, before the opening hands are drawn,
+-- the first card `code` of the player's Deck or Extra Deck goes to `loc` (the core's location bits) in position `pos`.
+-- The core reports the move as any other, so the client sees the card arrive. A monster put on the field this way was
+-- not summoned: effects that count its materials see none.
+function YO3Skill.Spawn(p,code,loc,pos)
+	local e=Effect.GlobalEffect()
+	e:SetType(EFFECT_TYPE_FIELD+EFFECT_TYPE_CONTINUOUS)
+	e:SetCode(EVENT_STARTUP)
+	e:SetOperation(function(e)
+		local tc=Duel.GetFirstMatchingCard(Card.IsCode,p,LOCATION_DECK+LOCATION_EXTRA,0,nil,code)
+		if tc then
+			if loc==LOCATION_HAND then Duel.SendtoHand(tc,nil,REASON_RULE)
+			elseif loc==LOCATION_GRAVE then Duel.SendtoGrave(tc,REASON_RULE)
+			elseif loc==LOCATION_REMOVED then Duel.Remove(tc,POS_FACEUP,REASON_RULE)
+			else
+				-- The first free zone, so the core asks no one where it goes.
+				local zone=0
+				for i=0,4 do if Duel.CheckLocation(p,loc,i) then zone=1<<i break end end
+				if zone~=0 then Duel.MoveToField(tc,p,p,loc,pos,true,zone) end
+			end
+		end
+		e:Reset()
+	end)
+	Duel.RegisterEffect(e,p)
+end

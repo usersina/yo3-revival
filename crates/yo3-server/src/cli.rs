@@ -84,6 +84,11 @@ pub struct Args {
     /// Every player's extra deck in a duel, as CARD_Prop rows (to test an extra deck summon).
     #[arg(long, value_delimiter = ',')]
     pub duel_extra: Vec<u16>,
+    /// Cards every duel between players starts with: `TEAM:PLACE:ID,...` (team 0 goes first, 1 second; places hand, mzone,
+    /// mzone-def, mzone-set, szone, szone-set, grave, banished; Konami ids), added to that player's deck and moved there as
+    /// the duel starts: `--duel-field 0:mzone:9709,1:hand:4342` (to test a card without summoning it first).
+    #[arg(long)]
+    pub duel_field: Option<String>,
     /// Every duel between players' turn and total clocks in seconds, 0 for off: `--duel-time 0,0` (to test slowly).
     #[arg(long, value_delimiter = ',')]
     pub duel_time: Option<Vec<u32>>,

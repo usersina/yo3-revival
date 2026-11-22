@@ -157,6 +157,9 @@ ss -ltnp | rg ':7443 '                          # the server's pid, to stop it
 #   Goyo Guardian 3437 works too, by its 2010 text: engine/overrides/ lets it take any Tuner, as Krebons is DARK),
 #   --duel-regulation 4 (check every duel's deck against that banlist, whatever the duel names: the starter deck breaks 4),
 #   --duel-time 0,0 (the turn and total clocks of duels between players off: live checks are slower than 180 s a turn),
+#   --duel-field 0:mzone:9709,1:hand:4342 (every duel between players starts with these cards in place: TEAM 0 goes first,
+#   PLACE hand|mzone|mzone-def|mzone-set|szone|szone-set|grave|banished, Konami ids; a card's effects without summoning it
+#   first; scenario tests: `Scenario::start_field`),
 #   --duel-check (compare model/engine state; the required DLL also logs native checkpoints; ERROR duel check on drift)
 #   Detailed diagnostics also records exact engine inputs/answers and dependency fingerprints for replay.
 #   state: server.db (SQLite, WAL, schema 2: one row per account, record, mail…) in data/ (ignored; --data-dir), backed up

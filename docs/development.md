@@ -284,7 +284,8 @@ else comes from the pinned EDOPro data (`engine/fetch.sh`) and the player's own 
    type, attribute or race no game card has, as Xyz, Link and Pendulum; a stat beyond 5100) or one the game already has.
 3. Run `tools/engine/anime-pictures.py`: Desktop's Get pictures then fetches its normal picture.
 4. Write a scenario test (`crates/yo3-server/tests/added_cards.rs`) that summons it from the game's cards and plays its
-   effects, and check it live with `give-cards` on the headless client (`YO3_ANIME_ART` points `vclient.sh` at a picture
+   effects (`Scenario::start_field` starts with it already on the field), and check it live with `give-cards` on the
+   headless client, or with the server's `--duel-field 0:mzone:ID,1:hand:ID` testing aid in a duel between two clients (`YO3_ANIME_ART` points `vclient.sh` at a picture
    folder: `card/<id>.png` 200x290 and `mini/<id>.png` 50x72).
 
 How it reaches the game: the server adds the rows to its card table and serves the list (`/web/added-cards`); the

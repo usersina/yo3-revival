@@ -124,6 +124,8 @@ pub struct Config {
     pub duel_deck: Vec<u16>,
     /// Testing aid: every player's extra deck in a duel, as CARD_Prop rows (empty: their own).
     pub duel_extra: Vec<u16>,
+    /// Testing aid: cards every duel between players starts with in place (`--duel-field`).
+    pub duel_field: Option<Vec<engine::Spawn>>,
     /// Testing aid: every duel between players' turn and total clocks in seconds, 0 for off (none: the duel's own).
     pub duel_time: Option<(u32, u32)>,
     /// Where accounts and duel records are kept (none: in memory only).
@@ -163,6 +165,7 @@ impl Config {
             duel_regulation: None,
             duel_deck: vec![],
             duel_extra: vec![],
+            duel_field: None,
             duel_time: None,
             data_dir: Some(log_dir.join("test-auth/data")),
             idle_timeout: net::IDLE_TIMEOUT,
@@ -547,6 +550,7 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
             test_regulation: cfg.duel_regulation,
             test_deck: (!cfg.duel_deck.is_empty()).then(|| cfg.duel_deck.clone()),
             test_extra: (!cfg.duel_extra.is_empty()).then(|| cfg.duel_extra.clone()),
+            test_field: cfg.duel_field.clone(),
             test_times: cfg.duel_time,
             duel_check: cfg.duel_check,
             npcs: data.npc_ids(),

@@ -68,6 +68,11 @@ pub fn engine_dir() -> Option<PathBuf> {
     Some(dir)
 }
 
+/// The engine's card type of a Konami id (a throwaway engine's card data), for where a spawned card is kept first.
+fn engine_type(engine: &mut Option<Engine>, cid: u16) -> Option<u64> {
+    engine.as_mut()?.cards(&[(cid, "")]).ok()?.first()?["data"]["type"].as_u64()
+}
+
 /// A duel between the planned side (engine team 0, which goes first) and a passive opponent.
 pub struct Scenario {
     engine: Engine,
@@ -100,21 +105,41 @@ const MAX_WAIT_TURNS: u32 = 8;
 impl Scenario {
     /// Starts the duel: `decks` by engine team, (main deck, extra deck) in Konami ids, team 0 planned.
     pub fn start(dir: &Path, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2]) -> Result<Scenario, String> {
-        Scenario::start_with(dir, false, seed, lp, decks, &[])
+        Scenario::start_with(dir, false, seed, lp, decks, &[], vec![])
+    }
+
+    /// `start` from a board: each of `field`'s cards (in its team's deck or Extra Deck, which this adds it to) moved to
+    /// its place as the duel starts (`Engine::spawn_at_start`), and both seats' client models told as for any move.
+    pub fn start_field(dir: &Path, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2], field: &[crate::engine::Spawn]) -> Result<Scenario, String> {
+        Scenario::start_with(dir, false, seed, lp, decks, &[], field.to_vec())
     }
 
     /// `start` with hidden skills given to a team (the engine's `skills`: (team, name), as an NPC's or Destiny Draw, #71).
     pub fn start_skills(dir: &Path, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2], skills: &[(u32, String)]) -> Result<Scenario, String> {
-        Scenario::start_with(dir, false, seed, lp, decks, skills)
+        Scenario::start_with(dir, false, seed, lp, decks, skills, vec![])
     }
 
     /// `start` with the anime card versions on (the `anime-cards` setting): the reviewed cards play by their anime effects.
     pub fn start_anime(dir: &Path, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2]) -> Result<Scenario, String> {
-        Scenario::start_with(dir, true, seed, lp, decks, &[])
+        Scenario::start_with(dir, true, seed, lp, decks, &[], vec![])
     }
 
-    fn start_with(dir: &Path, anime: bool, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2], skills: &[(u32, String)]) -> Result<Scenario, String> {
+    fn start_with(dir: &Path, anime: bool, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2], skills: &[(u32, String)],
+        field: Vec<crate::engine::Spawn>) -> Result<Scenario, String> {
         let mut engine = Engine::start_with(dir, anime).map_err(|e| format!("engine: {e}"))?;
+        // The spawned cards are deck cards first: `extra` lists the Extra Deck's, the engine knows which is which.
+        let mut owned: [(Vec<u16>, Vec<u16>); 2] = [(decks[0].0.to_vec(), decks[0].1.to_vec()), (decks[1].0.to_vec(), decks[1].1.to_vec())];
+        if !field.is_empty() {
+            let extra_of = |cid: u16| -> bool {
+                engine_type(&mut Engine::start(dir).ok(), cid).is_some_and(|t| t & (0x40 | 0x2000 | 0x80_0000) != 0)
+            };
+            for s in &field {
+                let deck = &mut owned[s.team as usize & 1];
+                if extra_of(s.cid) { deck.1.push(s.cid) } else { deck.0.insert(0, s.cid) }
+            }
+            engine.spawn_at_start(field);
+        }
+        let decks: [(&[u16], &[u16]); 2] = [(&owned[0].0, &owned[0].1), (&owned[1].0, &owned[1].1)];
         if anime && !engine.anime_on().map_err(|e| format!("engine: {e}"))? {
             return Err("the anime card versions are not available: engine/fetch.sh and engine/anime-cards.json".into());
         }

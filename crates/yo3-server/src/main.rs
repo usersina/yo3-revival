@@ -366,6 +366,7 @@ async fn run(mut a: Args) -> anyhow::Result<()> {
         duel_regulation: a.duel_regulation,
         duel_deck: a.duel_deck,
         duel_extra: a.duel_extra,
+        duel_field: a.duel_field.as_deref().map(yo3_server::engine::Spawn::parse_list).transpose().map_err(|e| anyhow::anyhow!("--duel-field: {e}"))?,
         duel_time: a.duel_time.map(|t| (t.first().copied().unwrap_or(0), t.get(1).copied().unwrap_or(0))),
         data_dir: Some(a.data_dir),
         idle_timeout: yo3_server::IDLE_TIMEOUT,

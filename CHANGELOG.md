@@ -20,6 +20,8 @@ Older entries describe their release at the time. For current setup, use the [RE
   Shooting Star Dragon when it leaves). Your host gives it for now. Its picture comes with Settings → Singleplayer →
   Get pictures.
 - Edit Deck now lists Blue Rose Dragon: the game's last card was missing from every trunk.
+- Hosts and developers: `--duel-field 0:mzone:ID,1:hand:ID` starts every duel between players with those cards in place,
+  to test a card without building the board first.
 
 ## v0.1.16 (2026-11-22)
 

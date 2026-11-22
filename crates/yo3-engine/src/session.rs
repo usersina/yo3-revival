@@ -196,6 +196,22 @@ impl Session {
                 }
             }
         }
+        // A testing aid: cards of the decks moved to the hand, a zone, the Graveyard or banished when the duel starts
+        // ({"player", "location", "position", "cid"}, the core's own bits; YO3Skill.Spawn). The core reports each move like
+        // any other, so the client is told where they went the usual way.
+        for card in req["field"].as_array().into_iter().flatten() {
+            let team = card["player"].as_u64().unwrap_or(0) as u8 & 1;
+            let location = card["location"].as_u64().unwrap_or(0) as u32;
+            if ![LOCATION_HAND, LOCATION_MZONE, LOCATION_SZONE, LOCATION_GRAVE, LOCATION_REMOVED].contains(&location) {
+                return Err(format!("a field card's location {location} is not the hand, a zone, the Graveyard or banished"));
+            }
+            let position = card["position"].as_u64().unwrap_or(1) as u32;
+            let cid = card["cid"].as_u64().unwrap_or(0) as u32;
+            match self.prints.resolve(&self.cards.borrow(), cid, names[cid.to_string()].as_str()) {
+                Some(code) if code != 0 => setup.skills.push((team, format!("YO3Skill.Spawn({team},{code},{location},{position})"))),
+                _ => return Err(format!("no passcode for the field card {cid}")),
+            }
+        }
         // Skills: {"player": team, "skill": name} (bot::skill_call).
         for s in req["skills"].as_array().into_iter().flatten() {
             let team = s["player"].as_u64().unwrap_or(0) as u8 & 1;
@@ -204,10 +220,27 @@ impl Session {
                 None => self.log.borrow_mut().lines.push(format!("no skill {}", s["skill"])),
             }
         }
+        let spawning = setup.skills.iter().any(|(_, call)| call.starts_with("YO3Skill.Spawn("));
         crate::bot::give_skills(self.duel.as_mut().unwrap(), &setup);
         self.duel.as_mut().unwrap().start();
         self.setup = Arc::new(setup);
-        self.run()
+        let (mut messages, mut status) = self.run()?;
+        // A spawned card's move to the field asks where it goes even with one free zone (MSG_SELECT_PLACE): before the
+        // first turn, the first free zone of the mask is the answer, so the duel starts with the board in place.
+        while spawning && status == "await" && messages.last().is_some_and(|m| m["type"] == 18) {
+            let prompt = messages.last().unwrap().clone();
+            let mask = prompt["field_mask"].as_u64().unwrap_or(u64::from(u32::MAX)) as u32;
+            let Some(bit) = (0..16).find(|b| mask & (1 << b) == 0) else { break };
+            let (location, sequence) = if bit < 8 { (LOCATION_MZONE, bit) } else { (LOCATION_SZONE, bit - 8) };
+            let answer = json!({"type": 10, "places": [{"player": prompt["player"], "location": location, "sequence": sequence}]});
+            self.duel.as_mut().unwrap().respond(&crate::encode::response(&answer));
+            messages.pop(); // the question answered here, never the server's
+            if messages.last().is_some_and(|m| m["type"] == 2 && m["hint_type"] == 3) { messages.pop(); }
+            let (more, next) = self.run()?;
+            messages.extend(more);
+            status = next;
+        }
+        Ok((messages, status))
     }
 
     fn query(&mut self, flags: u32, controller: u8, location: u32, sequence: u32) -> Result<Option<Queried>, String> {

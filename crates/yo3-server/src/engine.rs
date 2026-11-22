@@ -162,6 +162,8 @@ pub struct Engine {
     started: Option<(PathBuf, PathBuf)>,
     /// Counted in [`running`] (an engine `start` made, not a test's stand-in).
     counted: bool,
+    /// A testing aid: cards of the next duel's decks moved to the hand or the field as it starts ([`Engine::spawn_at_start`]).
+    field: Vec<Spawn>,
     /// Started with the anime card versions (and they were available).
     anime: bool,
 }
@@ -226,7 +228,7 @@ impl Engine {
                 }
             }
         });
-        Ok(Engine { child, stdin, lines, timeout, identity_timeout: timeout, recording: None, recorder: None, started: None, counted: false, anime: false })
+        Ok(Engine { child, stdin, lines, timeout, identity_timeout: timeout, recording: None, recorder: None, started: None, counted: false, field: vec![], anime: false })
     }
 
     pub fn identity(&mut self) -> io::Result<Json> {
@@ -277,6 +279,12 @@ impl Engine {
         }
     }
 
+    /// A testing aid: the next duel moves these cards (each must be in its team's deck or Extra Deck) to their places as it
+    /// starts, before the opening hands (`YO3Skill.Spawn`). The engine reports the moves, so the client follows them.
+    pub fn spawn_at_start(&mut self, cards: Vec<Spawn>) {
+        self.field = cards;
+    }
+
     /// Starts a duel with `lp` each; team 0 goes first. Decks are (main, extra) as Konami card ids.
     pub fn new_duel(&mut self, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2]) -> io::Result<Answer> {
         self.new_duel_named(seed, lp, decks, &HashMap::new())
@@ -298,7 +306,8 @@ impl Engine {
             .collect();
         let decks: Vec<Json> = decks.iter().map(|(main, extra)| json!({ "main": main, "extra": extra })).collect();
         let skills: Vec<Json> = skills.iter().map(|(team, skill)| json!({ "player": team, "skill": skill })).collect();
-        self.call(json!({ "op": "new", "seed": seed, "lp": lp, "decks": decks, "names": used, "skills": skills }))
+        let field: Vec<Json> = std::mem::take(&mut self.field).iter().map(Spawn::json).collect();
+        self.call(json!({ "op": "new", "seed": seed, "lp": lp, "decks": decks, "names": used, "skills": skills, "field": field }))
     }
 
     /// How the engine loads each card `(Konami id, English name)`: one answer per card, `{cid, passcode}` (null: the
@@ -604,5 +613,67 @@ mod tests {
     #[test]
     fn a_missing_engine_directory_is_a_problem() {
         assert!(problem(None, Path::new("yo3-engine")).unwrap().contains("rules engine is missing"));
+    }
+}
+
+/// Where a spawned card goes (`Engine::spawn_at_start`): the hand, a Monster Zone face-up in Attack or Defense or Set, a
+/// Spell & Trap Zone face-up or Set, the Graveyard or banished.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SpawnPlace { Hand, Monster, MonsterDefense, MonsterSet, Spell, SpellSet, Grave, Banished }
+
+impl SpawnPlace {
+    const NAMES: [(&'static str, SpawnPlace); 8] = [("hand", SpawnPlace::Hand), ("mzone", SpawnPlace::Monster),
+        ("mzone-def", SpawnPlace::MonsterDefense), ("mzone-set", SpawnPlace::MonsterSet), ("szone", SpawnPlace::Spell),
+        ("szone-set", SpawnPlace::SpellSet), ("grave", SpawnPlace::Grave), ("banished", SpawnPlace::Banished)];
+
+    /// The core's location and position bits.
+    fn bits(self) -> (u32, u32) {
+        match self {
+            SpawnPlace::Hand => (0x02, 0x1),
+            SpawnPlace::Monster => (0x04, 0x1),
+            SpawnPlace::MonsterDefense => (0x04, 0x4),
+            SpawnPlace::MonsterSet => (0x04, 0x8),
+            SpawnPlace::Spell => (0x08, 0x1),
+            SpawnPlace::SpellSet => (0x08, 0xA),
+            SpawnPlace::Grave => (0x10, 0x1),
+            SpawnPlace::Banished => (0x20, 0x1),
+        }
+    }
+}
+
+/// A card a duel starts with in a place (`Engine::spawn_at_start`): its team (0 goes first), place and Konami id.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Spawn { pub team: u32, pub place: SpawnPlace, pub cid: u16 }
+
+impl Spawn {
+    fn json(&self) -> Json {
+        let (location, position) = self.place.bits();
+        json!({ "player": self.team, "location": location, "position": position, "cid": self.cid })
+    }
+
+    /// `TEAM:PLACE:CID[,...]` (team 0 or 1, the player and their opponent; places `hand`, `mzone`, `mzone-def`,
+    /// `mzone-set`, `szone`, `szone-set`, `grave`, `banished`), as `--duel-field` takes them.
+    pub fn parse_list(text: &str) -> Result<Vec<Spawn>, String> {
+        text.split(',').filter(|s| !s.trim().is_empty()).map(|one| {
+            let parts: Vec<&str> = one.trim().split(':').collect();
+            let [team, place, cid] = parts[..] else { return Err(format!("{one:?}: TEAM:PLACE:CID")) };
+            let team = match team { "0" => 0, "1" => 1, _ => return Err(format!("{one:?}: the team is 0 (you) or 1 (the opponent)")) };
+            let place = SpawnPlace::NAMES.iter().find(|(n, _)| *n == place).map(|(_, p)| *p)
+                .ok_or_else(|| format!("{one:?}: the place is one of {}", SpawnPlace::NAMES.map(|(n, _)| n).join(", ")))?;
+            let cid = cid.parse().map_err(|_| format!("{one:?}: the card is a Konami id"))?;
+            Ok(Spawn { team, place, cid })
+        }).collect()
+    }
+}
+
+#[cfg(test)]
+mod spawn_tests {
+    use super::*;
+    #[test]
+    fn a_field_list_reads_teams_places_and_ids() {
+        let list = Spawn::parse_list("0:mzone:9709, 1:hand:4342").unwrap();
+        assert_eq!(list, [Spawn { team: 0, place: SpawnPlace::Monster, cid: 9709 }, Spawn { team: 1, place: SpawnPlace::Hand, cid: 4342 }]);
+        assert_eq!(list[0].json()["location"], 4);
+        for bad in ["2:mzone:1", "0:field:1", "0:mzone", "0:mzone:x"] { assert!(Spawn::parse_list(bad).is_err(), "{bad}") }
     }
 }

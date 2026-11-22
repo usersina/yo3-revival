@@ -64,3 +64,22 @@ fn it_negates_and_destroys_an_activation_then_brings_shooting_star_dragon_when_i
     assert_eq!(s.attack_of(0, QUASAR), None, "the second destroyed it");
     assert_eq!(s.attack_of(0, SHOOTING_STAR), Some(3300), "and Shooting Star Dragon came from the Extra Deck");
 }
+
+/// The spawn testing aid (`Scenario::start_field`, the server's `--duel-field`): Quasar starts on the field and the opponent
+/// holds Dark Hole, so the negation and Shooting Star Dragon need no nine turns of summoning. Both seats' client models
+/// follow the moves from the first step.
+#[test]
+fn a_spawned_quasar_negates_and_brings_shooting_star_dragon() {
+    use yo3_server::engine::{Spawn, SpawnPlace::*};
+    let Some(dir) = engine_dir() else { return };
+    let field = [Spawn { team: 0, place: Monster, cid: QUASAR }, Spawn { team: 1, place: Hand, cid: DARK_HOLE }, Spawn { team: 1, place: Hand, cid: DARK_HOLE }];
+    let mut s = Scenario::start_field(&dir, 5, 8000, [(&[KURIBOH; 40], &[SHOOTING_STAR]), (&[KURIBOH; 40], &[])], &field).unwrap();
+    assert_eq!(s.attack_of(0, QUASAR), Some(4000), "on the field from the start");
+    assert!(s.problems.is_empty(), "{:#?}", s.problems);
+    s.run_both([&[EndTurn, Chain(QUASAR)], &[Activate(DARK_HOLE)]]).unwrap();
+    assert!(s.problems.is_empty(), "{:#?}", s.problems);
+    assert_eq!(s.attack_of(0, QUASAR), Some(4000), "the first Dark Hole was negated");
+    s.run_both([&[], &[Activate(DARK_HOLE)]]).unwrap();
+    assert!(s.problems.is_empty(), "{:#?}", s.problems);
+    assert_eq!((s.attack_of(0, QUASAR), s.attack_of(0, SHOOTING_STAR)), (None, Some(3300)));
+}

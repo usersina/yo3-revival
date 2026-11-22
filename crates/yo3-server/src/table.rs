@@ -182,6 +182,15 @@ impl Table {
     /// to its first prompt. Nothing without the engine.
     fn open(&mut self, first: usize) -> Out {
         let Some(dir) = self.world.engine_dir.clone() else { return Out::default() };
+        // A testing aid (--duel-field): the spawned cards join their player's deck (team 0 is the player who goes first),
+        // so both games' card tables have them, and the engine moves them to their places as the duel starts.
+        let spawns = self.world.test_field.clone().unwrap_or_default();
+        for s in &spawns {
+            let seat = if s.team == 0 { first } else { 1 - first };
+            let Some(row) = self.world.row_of(s.cid) else { tracing::warn!("--duel-field: no card {}", s.cid); continue };
+            let deck = &mut self.seats[seat].entry.deck;
+            if self.world.extra_deck_rows.contains(&row) { deck.extra.push(row) } else { deck.main.insert(0, row) }
+        }
         let cids = |rows: &[u16]| rows.iter().filter_map(|r| self.world.cards.get(r).map(|c| c.cid)).collect::<Vec<u16>>();
         let (lead, other) = (&self.seats[first].entry.deck, &self.seats[1 - first].entry.deck);
         let (mut m0, e0, mut m1, e1) = (cids(&lead.main), cids(&lead.extra), cids(&other.main), cids(&other.extra));
@@ -195,6 +204,7 @@ impl Table {
             }
         };
         if self.world.duel_check { engine.record(); }
+        if !spawns.is_empty() { engine.spawn_at_start(spawns.clone()); }
         let seats = { let hub = self.hub.locked(); [hub.recording_seat(self.seats[first].player_id), hub.recording_seat(self.seats[1 - first].player_id)] };
         self.world.record_duel(&mut engine, "pvp", &seats);
         // The settings at this duel's start (#24): a hosted duel's starting LP (Create Duel's lp_start), else the

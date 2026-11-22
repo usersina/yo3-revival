@@ -31,7 +31,6 @@ use board::{Board, Hidden};
 use yo3_ocg::{Response, battle, hint, hintmsg, idle, msg};
 
 const MODE_MR2: u64 = 0xD0600;
-const POSITION_FACEDOWN_DEFENSE: u32 = 0x8;
 
 /// An action only beats doing nothing by at least this much (in LP), so the bot doesn't spend cards for nothing.
 const MARGIN: f64 = 30.0;
@@ -96,6 +95,8 @@ impl Style {
         }
     }
 }
+
+const POSITION_FACEDOWN_DEFENSE: u32 = 0x8;
 
 /// How a duel began: what `new` gave the core, in order.
 #[derive(Clone, Default)]
