@@ -21,6 +21,8 @@ Older entries describe their release at the time. For current setup, use the [RE
 - Chat that never arrived now does: lines on the Opponent tab (before and during a duel against another player), on
   the trade screen's Trade Partner tab and on a chat room's TRADE tab used to answer "That command is not available."
   and reach no one.
+- The chat joins the Lobby by itself after you log in, so what you type on the map reaches the room straight away (you
+  can still pick another room, or leave it).
 - Hosts: every duel is now recorded for two weeks (about 10 KB each; the `recording-days` setting, 0 turns it off), and
   the duels players send with `bug` are kept until you delete them. They show on the Reports page.
 
