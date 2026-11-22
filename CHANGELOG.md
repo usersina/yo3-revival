@@ -13,7 +13,11 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.1.18 (2026-11-22)
+
+Multiplayer: update to v0.1.18 to join the hosted server after deployment. The hosted server never got v0.1.17 (its
+server image failed to build), so this release also brings v0.1.17's changes to it: Shooting Quasar Dragon,
+Doppelwarrior's question after a chain.
 
 - Fixed: your opponent's Fusion and Synchro Summons, a computer opponent's included (Jaden's Fusions), showed only the
   light: the summoned monster now appears in the animation (#79). The same fix shows the card when your opponent
