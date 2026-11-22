@@ -3,7 +3,7 @@
 a 200x290 card face the launcher ships and writes (with its 50x72 thumbnail) for such a card.
 
     tools/engine/no-picture.py IMAGE     the image, cropped to a card's shape from its centre and resized to 200x290
-    tools/engine/no-picture.py --drawn   the drawn stand-in (a card frame with a question mark)
+    tools/engine/no-picture.py --drawn   a plain drawn stand-in (a card frame with a question mark)
 
 Needs Pillow. The image must be the project's own (never Konami's artwork).
 """

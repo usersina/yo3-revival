@@ -479,7 +479,11 @@ impl State {
                     (false, true) => "Anime cards are off. The open game needs a restart to show the game's own cards: use RESTART THE GAME.",
                     (false, false) => "Anime cards are off from the next game start.",
                 });
-                if on {
+                // A download already running gets them; with Download automatically on, it starts without asking.
+                if on && self.getting.is_none() && ctx.settings.card_pictures && offer(self.pictures).is_some() {
+                    return self.update(Message::GetPictures, ctx, playing);
+                }
+                if on && self.getting.is_none() {
                     match (offer(self.pictures), self.pictures) {
                         (Some(_), _) => self.dialog = Some(Dialog::Offer),
                         (None, None) => self.offer_when_counted = true,
@@ -692,7 +696,8 @@ impl State {
     /// The Anime cards switch of Settings → Singleplayer: your own server's value, which the server owns. Its pictures
     /// sit right under it while it is on.
     fn anime_cards_view(&self, playing: bool) -> Element<'_, Message> {
-        let idle = self.busy.is_none() && self.getting.is_none();
+        // A picture download (often the automatic one) never holds the switch.
+        let idle = self.busy.is_none();
         let line = match (self.anime, playing) {
             (None, _) => "The setting can't be read right now.",
             (Some(_), true) => "Some cards play and look as in the anime. With the game open, changing it offers RESTART THE GAME.",
@@ -1026,6 +1031,18 @@ mod tests {
         full.pictures = Some((418, 418));
         turn_on(&mut full, &mut ctx);
         assert_eq!((full.anime, full.dialog.clone()), (Some(true), None));
+        // A download under way, or Download automatically on: no question, the pictures come anyway.
+        let mut running = State::new(&ctx, Section::Singleplayer);
+        running.pictures = Some((167, 418));
+        running.getting = Some((3, 418, Arc::new(AtomicBool::new(false))));
+        turn_on(&mut running, &mut ctx);
+        assert_eq!((running.anime, running.dialog.clone()), (Some(true), None));
+        ctx.settings.card_pictures = true;
+        let mut quiet = State::new(&ctx, Section::Singleplayer);
+        quiet.pictures = Some((167, 418));
+        turn_on(&mut quiet, &mut ctx);
+        assert!(quiet.dialog.is_none() && quiet.getting.is_some(), "it starts the download instead of asking");
+        ctx.settings.card_pictures = false;
         // Turning it off never opens one.
         let _ = state.update(Message::AnimeSet(false, Ok(false)), &mut ctx, false);
         assert_eq!((state.anime, state.dialog.clone()), (Some(false), None));
