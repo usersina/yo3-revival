@@ -13,9 +13,12 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.1.16 (2026-11-22)
 
-- New chat command `bug what happened` (`/p Server bug …`): if a card effect went wrong, send it right after the duel.
+Multiplayer: update to v0.1.16 to join the hosted server after deployment.
+
+- New chat command `bug what happened` (`/p Server bug …`): if a card effect went wrong, send it right after the duel
+  (or during a duel against another player, on the Opponent tab).
   Your duel goes to the host's staff with your note, and they can play it again exactly as it happened to find the
   cause.
 - Chat that never arrived now does: lines on the Opponent tab (before and during a duel against another player), on
