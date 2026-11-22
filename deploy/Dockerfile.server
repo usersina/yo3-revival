@@ -34,7 +34,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,targe
     strip --strip-unneeded /out/yo3-server /out/yo3-engine
 # A card override or a change to the anime card map only repackages data; it never recompiles the native programs.
 COPY engine/overrides engine/overrides
-COPY engine/anime-cards.json engine/anime-cards.json
+COPY engine/anime-cards.json engine/added-cards.json engine/
 COPY tools/engine/engine-files.sh tools/engine/engine-files.sh
 RUN tools/engine/engine-files.sh /out
 COPY LICENSE /out/LICENSE

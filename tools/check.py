@@ -36,6 +36,7 @@ PY = [
     'tools/containers/test_deployment.py',
     'tools/containers/test_dashboard_delivery.py',
     'tools/containers/test_dashboard_workflow.py',
+    'tools/containers/test_server_image_inputs.py',
     'tools/containers/test_local_cargo_cache.py',
     'tools/docs/test_docs_check.py',
     'tools/engine/test_coverage.py',
