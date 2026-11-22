@@ -44,6 +44,8 @@ pub enum Message {
     Setup(setup::Message),
     Settings(settings::Message),
     OpenSettings(settings::Section),
+    /// Settings, Game, scrolled to Card pictures (the footer's download link).
+    ShowPictures,
     Help(help::Message),
     OpenHelp(Option<&'static str>),
     OpenReport(String),
@@ -156,8 +158,24 @@ impl App {
             listen_for_second_starts(&ctx.root, claim),
         ];
         if let Some(setup) = &mut setup { tasks.push(setup.start(&ctx).map(Message::Setup)) }
-        (Self { ctx, home, setup, settings: None, help: help::State::at(None), report: Report::default(), foreign: None, host: host::State::default(), dialog: None, updater, transfer: Default::default(), startup, quitting: false, good_toast: None, pictures: None },
-            Task::batch(tasks))
+        let mut app = Self { ctx, home, setup, settings: None, help: help::State::at(None), report: Report::default(), foreign: None, host: host::State::default(), dialog: None, updater, transfer: Default::default(), startup, quitting: false, good_toast: None, pictures: None };
+        // Card pictures download by themselves (setup's tick): the missing ones, quietly, with their progress in the footer.
+        if app.ctx.settings.setup_complete && app.ctx.settings.card_pictures { tasks.push(app.get_missing_pictures()) }
+        (app, Task::batch(tasks))
+    }
+
+    /// Starts getting the card pictures that are missing, unless a download runs already or none is missing: in Settings
+    /// when it is open (its bar), else in the background, shown in the footer and ending in a toast.
+    fn get_missing_pictures(&mut self) -> Task<Message> {
+        if let Some(state) = &mut self.settings {
+            return state.update(settings::Message::GetPictures, &mut self.ctx, self.home.playing()).map(Message::Settings);
+        }
+        if self.pictures.is_some() { return Task::none() }
+        let (have, total) = yo3_desktop::pictures::count(&yo3_launcher::art::folder_in(&self.ctx.root));
+        if have >= total { return Task::none() }
+        let (run, task) = settings::begin_download(&self.ctx);
+        self.pictures = Some(run);
+        task.map(Message::Settings)
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -201,7 +219,8 @@ impl App {
                 self.ctx.settings = *settings;
                 self.setup = None;
                 if let Some(note) = note { self.home.fail(&self.ctx, note) }
-                return Task::batch([self.home.check(&self.ctx).map(Message::Home), self.home.load_banlists(&self.ctx).map(Message::Home)]);
+                let pictures = if self.ctx.settings.card_pictures { self.get_missing_pictures() } else { Task::none() };
+                return Task::batch([self.home.check(&self.ctx).map(Message::Home), self.home.load_banlists(&self.ctx).map(Message::Home), pictures]);
             }
             Message::Setup(setup::Message::Open(setup::GETTING_THE_GAME)) => return self.update(Message::OpenHelp(Some("game"))),
             Message::Setup(setup::Message::Open(url)) => return self.update(Message::OpenLink(url.into())),
@@ -220,6 +239,10 @@ impl App {
                 let load = self.home.multi.load(&self.ctx).map(|m| Message::Home(home::Message::Multi(m)));
                 self.settings = Some(state);
                 return Task::batch([start, load]);
+            }
+            Message::ShowPictures => {
+                let open = self.update(Message::OpenSettings(settings::Section::Game));
+                return Task::batch([open, self.settings_update(settings::Message::ShowPictures)]);
             }
             Message::Help(help::Message::Topic(id)) => self.help.update(&help::Message::Topic(id)),
             Message::Help(help::Message::Report) => return self.update(Message::OpenReport(String::new())),
@@ -479,11 +502,11 @@ impl App {
                         match result {
                             Ok(out) => {
                                 let (good, sentence) = yo3_desktop::pictures::download_sentence(&out);
-                                if let Some(backend) = &self.ctx.backend { backend.diagnostics.line(&format!("Anime pictures: {} saved, {} had, {} not fetched", out.saved.len(), out.had, out.failed.len())) }
-                                let sentence = format!("Anime pictures: {sentence}");
+                                if let Some(backend) = &self.ctx.backend { backend.diagnostics.line(&format!("Card pictures: {} saved, {} had, {} not fetched", out.saved.len(), out.had, out.failed.len())) }
+                                let sentence = format!("Card pictures: {sentence}");
                                 if good { self.home.good(sentence) } else { self.home.fail(&self.ctx, sentence) }
                             }
-                            Err(error) => self.home.fail(&self.ctx, format!("The anime pictures couldn't be saved.\n{error}")), // → Details
+                            Err(error) => self.home.fail(&self.ctx, format!("The card pictures couldn't be saved.\n{error}")), // → Details
                         }
                     }
                 }
@@ -611,6 +634,12 @@ impl App {
         if let Some(offered) = self.updater.offered() {
             middle = middle.push(container(Space::new().width(8).height(8)).style(|_| dot(color::WARN)))
                 .push(yo3_skin::link(update_line(offered, self.updater.ready().is_some()), Message::Home(home::Message::WhatsNew), true));
+        }
+        // A card pictures download running while Settings is closed: its progress, which opens Settings → Game's bar.
+        if let Some((done, total, _)) = self.pictures.as_ref().filter(|_| self.settings.is_none()) {
+            let words = if *done == 0 { "Card pictures: starting…".to_owned() } else { format!("Card pictures · {done} of {total}") };
+            middle = middle.push(container(Space::new().width(8).height(8)).style(|_| dot(color::PLAY_TOP)))
+                .push(yo3_skin::hint(yo3_skin::link(words, Message::ShowPictures, true), "Downloading from ProjectIgnis: open Card pictures"));
         }
         if self.host.hosted.is_some() {
             // Hosting for friends runs while the launcher is open: the footer says so and opens its dialog.

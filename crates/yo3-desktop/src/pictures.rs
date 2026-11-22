@@ -1,5 +1,5 @@
 //! The anime card pictures (#60) on the player's path: Get pictures (downloaded from ProjectIgnis' picture server on the
-//! player's click, converted here), Add pictures from a file and Save pictures to a file. The rules live in
+//! player's click, converted here), Add from a file and Save to a file. The rules live in
 //! `yo3_launcher::art` (`get`, `pack`); this is the HTTPS asker, the thread the download runs on and the sentences.
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -71,13 +71,13 @@ pub fn download_sentence(out: &Outcome) -> (bool, String) {
     let got = out.saved.len();
     let pictures = |n: usize| if n == 1 { "1 picture".to_owned() } else { format!("{n} pictures") };
     if out.unreachable.is_some() {
-        return (false, format!("We couldn't reach the picture server{}. Check your internet connection and try again, or use Add pictures from a file.",
+        return (false, format!("We couldn't reach the picture server{}. Check your internet connection and try again, or use Add from a file.",
             if got > 0 { format!(", so it stopped after {}", pictures(got)) } else { String::new() }))
     }
-    if out.cancelled { return (true, format!("Stopped after {}. Get pictures carries on from there.", pictures(got))) }
+    if out.cancelled { return (true, format!("Stopped after {}. Get the rest carries on from there.", pictures(got))) }
     if out.failed.is_empty() { return (true, if got == 0 { "You already have every picture.".into() } else { format!("Got {}.", pictures(got)) }) }
     let missing = out.failed.len();
-    (false, format!("Got {}. {} couldn't be fetched: the game keeps its own artwork for {}. Get pictures tries them again, or use Add pictures from a file.",
+    (false, format!("Got {}. {} couldn't be fetched: the game keeps its own artwork for {}. Get the rest tries them again, or use Add from a file.",
         pictures(got), if missing == 1 { "1 card".to_owned() } else { format!("{missing} cards") }, if missing == 1 { "it" } else { "them" }))
 }
 
@@ -184,7 +184,7 @@ mod tests {
             import_sentence(&pack::Imported { faces: 3, minis: 1, kept: 2, refused: vec![("a".into(), "b".into())], ignored: 4 }), import_sentence(&pack::Imported::default()),
             (true, export_sentence(&pack::Exported { faces: 1, minis: 1 }))];
         for (_, text) in &sentences { assert_eq!(technical(text), None, "{text}") }
-        assert!(down_text(&sentences[2]).contains("Add pictures from a file") && !sentences[2].0);
+        assert!(down_text(&sentences[2]).contains("Add from a file") && !sentences[2].0);
         assert!(down_text(&sentences[1]).contains("game keeps its own artwork"));
         assert_eq!(sentences[0], (true, "Got 2 pictures.".to_owned()));
     }

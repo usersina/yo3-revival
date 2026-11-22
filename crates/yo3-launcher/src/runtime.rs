@@ -32,8 +32,10 @@ pub async fn windows_path(path: &Path, prefix: Option<&Path>) -> anyhow::Result<
     let mut cmd = tokio::process::Command::new(wine_tool("winepath"));
     cmd.arg("-w").arg(path).stderr(Stdio::null()).kill_on_drop(true);
     if let Some(prefix) = prefix { cmd.env("WINEPREFIX", prefix); }
-    let out = tokio::time::timeout(std::time::Duration::from_secs(30), cmd.output()).await
-        .context("Wine path setup timed out. Close the game, check that Wine is installed and its prefix is writable, then try again")?
+    // A first start of a Wine prefix can take most of a minute on a busy PC. The timeout's own words ("deadline has elapsed")
+    // are left out: the sentence says what happened.
+    let out = tokio::time::timeout(std::time::Duration::from_secs(60), cmd.output()).await
+        .map_err(|_| anyhow::anyhow!("Wine took too long to start. Close the game and any stuck Wine windows, then retry the check"))?
         .context("Wine path setup could not start. Install Wine, then retry the check")?;
     anyhow::ensure!(out.status.success(), "Wine path setup failed. Check that Wine is installed and its prefix is writable");
     Ok(String::from_utf8(out.stdout)?.trim().to_string())
@@ -53,7 +55,7 @@ pub async fn check(game: &Path, injector: &Path, prefix: Option<&Path>) -> anyho
     #[cfg(windows)] cmd.creation_flags(0x08000000); // Keep the console-only checker out of the desktop flow.
     cmd.stdin(Stdio::null()).kill_on_drop(true);
     let out = tokio::time::timeout(std::time::Duration::from_secs(45), cmd.output()).await
-        .context("Game runtime check timed out. Close any stuck game/Wine processes, then retry the check. Export logs if this repeats")?
+        .map_err(|_| anyhow::anyhow!("The game's check took too long. Close any stuck game or Wine windows, then retry the check. Export logs if this repeats"))?
         .context("Cannot start the runtime checker (yo3-auth-launch.exe). Restore the complete application bundle; check security-software detection history if the file disappeared")?;
     if !out.status.success() {
         // Diagnostics are bounded before being shown; no credentials are supplied to this probe.

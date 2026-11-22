@@ -61,9 +61,14 @@ pub enum Direct {
     Conflict(String),
 }
 
+/// The section's scrollable, for [`Message::ShowPictures`].
+const SCROLL: &str = "settings-section";
+
 #[derive(Clone, Debug)]
 pub enum Message {
     Section(Section),
+    /// Game, scrolled to Card pictures (its last group): the footer's download link and the anime switch's link.
+    ShowPictures,
     Change(Change),
     Changed(Change, Result<Box<Settings>, String>),
     /// Handled by the window: the setup wizard, to change the game folder.
@@ -101,8 +106,10 @@ pub enum Message {
     /// Put a file moved aside from the game folder back (#68).
     PutBack(String),
     PutBackDone(Result<Vec<String>, String>),
-    /// The anime pictures (#60): how many the folder has, Get pictures, its progress and end, Cancel, Add pictures from a file, Save pictures to a file.
+    /// The card pictures (anime cards', #60, and added cards', #75): how many the folder has, Get pictures, its progress and
+    /// end, Cancel, Add from a file, Save to a file, and the switch that gets them by themselves.
     PicturesCounted((usize, usize)),
+    AutoPictures(bool),
     GetPictures,
     Pictures(pictures::Event),
     CancelPictures,
@@ -155,6 +162,23 @@ fn missing_words(have: usize, total: usize) -> String {
     }
 }
 
+/// Starts getting the missing card pictures (`pictures::start`): the run to keep (its bar's numbers and the way to cancel)
+/// and the task that brings its progress and end as `Message::Pictures`, whether Settings is open or not.
+pub fn begin_download(ctx: &Ctx) -> (Run, Task<Message>) {
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let dir = yo3_launcher::art::folder_in(&ctx.root);
+    let run = (0, pictures::count(&dir).1 as u32, cancel.clone());
+    pictures::start(dir, pictures::SERVER.into(), cancel, tx);
+    let task = Task::run(iced::futures::stream::unfold(Some(rx), |rx| async move {
+        let mut rx = rx?;
+        let event = rx.recv().await?;
+        let next = (!matches!(event, pictures::Event::Done(_))).then_some(rx);
+        Some((event, next))
+    }), Message::Pictures);
+    (run, task)
+}
+
 pub fn offer(pictures: Option<(usize, usize)>) -> Option<usize> {
     pictures.map(|(have, total)| total.saturating_sub(have)).filter(|&missing| missing > 0)
 }
@@ -180,7 +204,7 @@ pub struct State {
     shortcut: bool,
     /// The other programs' files YO3 Revival moved aside in the game folder (#68), by their original names.
     moved: Vec<String>,
-    /// Anime pictures the folder has, of the cards that have one to get (`None` until counted).
+    /// Card pictures the folder has, of the cards that have one to get (`None` until counted).
     pictures: Option<(usize, usize)>,
     /// A download in progress: cards done, all cards, the way to cancel it.
     getting: Option<Run>,
@@ -235,9 +259,9 @@ impl State {
         Task::perform(async move { tokio::task::spawn_blocking(move || backend.anime_cards(&settings).map_err(|e| format!("{e:#}"))).await.unwrap_or_else(|e| Err(e.to_string())) }, Message::AnimeRead)
     }
 
-    /// Opening the Singleplayer section (the pictures sit under Anime cards) counts the pictures again, unless a download
-    /// or zip job is changing them right now.
-    fn recounts_on(&self, section: Section) -> bool { section == Section::Singleplayer && section != self.section && self.getting.is_none() && self.busy.is_none() }
+    /// Opening the Game section (Card pictures) counts the pictures again, unless a download or zip job is changing them
+    /// right now.
+    fn recounts_on(&self, section: Section) -> bool { section == Section::Game && section != self.section && self.getting.is_none() && self.busy.is_none() }
 
     fn count_pictures(&self, ctx: &Ctx) -> Task<Message> {
         let dir = yo3_launcher::art::folder_in(&ctx.root);
@@ -271,8 +295,12 @@ impl State {
             Message::Section(section) => {
                 let recount = self.recounts_on(section);
                 self.section = section; self.note = None; self.confirm_reset = false; self.confirm_game_reset = false;
-                // Pictures added or removed by hand while Settings was open show when Singleplayer is opened again.
+                // Pictures added or removed by hand while Settings was open show when Game is opened again.
                 if recount { return self.count_pictures(ctx) }
+            }
+            Message::ShowPictures => {
+                let shown = self.update(Message::Section(Section::Game), ctx, playing);
+                return Task::batch([shown, iced::widget::operation::snap_to_end(SCROLL)]);
             }
             Message::Change(change) => {
                 let Some(store) = ctx.store.clone() else { return Task::none() };
@@ -288,6 +316,9 @@ impl State {
                     Change::WineBinary(_) => self.good("Saved. The next PLAY uses this Wine program."),
                     Change::DirectStart(_) => return self.check_direct(ctx),
                     Change::ProblemReports(_) => if let Some(backend) = &ctx.backend { backend.sync_problem_reports(&ctx.settings) },
+                    // Turned on with pictures missing: they start now, as they would at the next start.
+                    Change::CardPictures(true) if offer(self.pictures).is_some() && self.getting.is_none() => return self.update(Message::GetPictures, ctx, playing),
+                    Change::CardPictures(_) => {}
                     _ => {}
                 }
             }
@@ -478,19 +509,11 @@ impl State {
                 if self.getting.is_some() { return Task::none() }
                 // Started from the offer: the offer closes, and the bar under the switch shows the download.
                 self.dialog = None;
-                let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-                let cancel = Arc::new(AtomicBool::new(false));
-                let dir = yo3_launcher::art::folder_in(&ctx.root);
-                self.getting = Some((0, pictures::count(&dir).1 as u32, cancel.clone()));
+                let (run, task) = begin_download(ctx);
+                self.getting = Some(run);
                 self.note = None;
                 self.art_problem = None;
-                pictures::start(dir, pictures::SERVER.into(), cancel, tx);
-                return Task::run(iced::futures::stream::unfold(Some(rx), |rx| async move {
-                    let mut rx = rx?;
-                    let event = rx.recv().await?;
-                    let next = (!matches!(event, pictures::Event::Done(_))).then_some(rx);
-                    Some((event, next))
-                }), Message::Pictures);
+                return task;
             }
             Message::Pictures(pictures::Event::Progress(done, total)) => if let Some(run) = &mut self.getting { run.0 = done; run.1 = total },
             Message::Pictures(pictures::Event::Done(result)) => {
@@ -500,7 +523,7 @@ impl State {
                     Ok(out) => {
                         let (good, sentence) = pictures::download_sentence(&out);
                         if !good { self.art_problem = Some(if out.unreachable.is_some() { "The picture server can't be reached".to_owned() } else { format!("{} not fetched", out.failed.len()) }) }
-                        if let Some(backend) = &ctx.backend { backend.diagnostics.line(&format!("Anime pictures: {} saved, {} had, {} not fetched{}", out.saved.len(), out.had, out.failed.len(),
+                        if let Some(backend) = &ctx.backend { backend.diagnostics.line(&format!("Card pictures: {} saved, {} had, {} not fetched{}", out.saved.len(), out.had, out.failed.len(),
                             out.unreachable.as_deref().map(|why| format!(" (server not reached: {why})")).unwrap_or_default())) }
                         let mut sentence = sentence;
                         if good || !out.saved.is_empty() { sentence.push_str(if playing { " The open game shows them after you close it and press PLAY again." } else { " They show from the next PLAY." }) }
@@ -511,6 +534,7 @@ impl State {
                 return self.count_pictures(ctx);
             }
             Message::CancelPictures => if let Some((_, _, cancel)) = &self.getting { pictures::stop(cancel) },
+            Message::AutoPictures(on) => return self.update(Message::Change(Change::CardPictures(on)), ctx, playing),
             Message::AddPictures => {
                 let dir = yo3_launcher::art::folder_in(&ctx.root);
                 self.busy = Some("Adding the pictures…");
@@ -581,7 +605,7 @@ impl State {
         };
         // What is happening and what just happened float as toasts in the corner (the window lays them out).
         let content = column![body].spacing(16);
-        let panel = yo3_skin::panel(Some(self.section.title()), scrollable(content.padding([0, 14])).height(Fill));
+        let panel = yo3_skin::panel(Some(self.section.title()), scrollable(content.padding([0, 14])).id(SCROLL).height(Fill));
         let screen: Element<'_, Message> = row![container(tabs).width(200).height(Fill), container(panel).width(Fill).height(Fill)].spacing(16).padding([16, 18]).height(Fill).into();
         match &self.dialog {
             Some(dialog) => yo3_skin::modal(screen, self.pictures_dialog(dialog), Message::PicturesDialogClose),
@@ -646,6 +670,7 @@ impl State {
                 yo3_skin::setting("Desktop shortcut", if self.shortcut { "On your desktop. Make it again if it no longer opens YO3 Revival." } else { "A shortcut to YO3 Revival on your desktop." },
                     Some(pill(if self.shortcut { "Make again" } else { "Add" }, self.busy.is_none().then_some(Message::Shortcut), Kind::Secondary, 120, 32)), None),
             ]),
+            self.card_pictures_view(ctx, playing),
         ].spacing(18).into()
     }
 
@@ -655,12 +680,13 @@ impl State {
         let (have, total) = self.pictures.unwrap_or((0, 0));
         let Dialog::Offer = dialog;
         let body: Element<'_, Message> = column![
-            text("Anime cards are on. To see their anime artwork, YO3 Revival can get the pictures now.").size(15).color(color::INK),
-            text(format!("The download is {} from ProjectIgnis' picture server, one card at a time. {} A card without a picture keeps the game's artwork. \
-                Nothing is downloaded unless you press Get pictures.", pictures::SIZE_NOTE, missing_words(have, total))).size(14).color(color::INK_SOFT),
+            text("Anime cards are on. To see their anime artwork, YO3 Revival can get the card pictures now.").size(15).color(color::INK),
+            text(format!("The download is {} from ProjectIgnis' picture server, one card at a time, and goes on in the background. {} \
+                A card without a picture keeps the game's artwork. To get them automatically from now on, turn on Card pictures in Settings, Game.",
+                pictures::SIZE_NOTE, missing_words(have, total))).size(14).color(color::INK_SOFT),
             Space::new().height(Fill),
             row![Space::new().width(Fill), pill("Not now", Some(close.clone()), Kind::Secondary, 130, 38), pill("Get pictures", Some(Message::GetPictures), Kind::Primary, 160, 38)].spacing(10)].spacing(14).into();
-        yo3_skin::dialog("Anime pictures", None, close, 520.0, 250.0, body)
+        yo3_skin::dialog("Card pictures", None, close, 520.0, 250.0, body)
     }
 
     /// The Anime cards switch of Settings → Singleplayer: your own server's value, which the server owns. Its pictures
@@ -673,7 +699,10 @@ impl State {
             (Some(_), false) => "Some cards play and look as they did in the anime. From the next game start.",
         };
         let switch = toggler(self.anime == Some(true)).on_toggle_maybe((idle && self.anime.is_some()).then_some(Message::AnimeCards)).style(yo3_skin::switch).size(22);
-        let below = (self.anime == Some(true)).then(|| self.pictures_view(playing));
+        // Their pictures are Settings → Game's Card pictures (with the added cards'): a short way there while some are missing.
+        let below: Option<Element<'_, Message>> = (self.anime == Some(true) && offer(self.pictures).is_some() && self.getting.is_none()).then(|| row![
+            text("Some anime cards have no picture yet.").size(13).color(color::INK_SOFT),
+            yo3_skin::link("Card pictures", Message::ShowPictures, false)].spacing(8).align_y(Center).into());
         yo3_skin::setting("Anime cards", line, Some(switch.into()), below)
     }
 
@@ -711,22 +740,28 @@ impl State {
     }
 
     /// The anime card pictures (#60): how many there are and the three ways to get more.
-    fn pictures_view(&self, playing: bool) -> Element<'_, Message> {
+    /// Settings → Game's Card pictures: the anime cards' and the added cards' pictures from ProjectIgnis (the game's own
+    /// cards keep their artwork), the switch that gets them by themselves, the bar and the three ways to get more.
+    fn card_pictures_view<'a>(&'a self, ctx: &'a Ctx, playing: bool) -> Element<'a, Message> {
         let idle = self.getting.is_none() && self.busy.is_none();
         let all = self.pictures.is_some_and(|(have, total)| have >= total);
         let get = match &self.getting {
             Some(_) => pill("Cancel", Some(Message::CancelPictures), Kind::Secondary, 150, 32),
-            None => pill("Get pictures", (idle && !all && self.pictures.is_some()).then_some(Message::GetPictures), Kind::Primary, 150, 32),
+            None => pill(if self.pictures.is_some_and(|(have, _)| have > 0) { "Get the rest" } else { "Get pictures" },
+                (idle && !all && self.pictures.is_some()).then_some(Message::GetPictures), Kind::Primary, 150, 32),
         };
-        let hint = format!("Pictures: {} from ProjectIgnis, only when you press Get pictures. {}", pictures::SIZE_NOTE,
-            if playing { "They show after the game's next PLAY." } else { "From the next PLAY." });
+        let auto = toggler(ctx.settings.card_pictures).on_toggle_maybe(self.busy.is_none().then_some(Message::AutoPictures)).style(yo3_skin::switch).size(22);
+        let line = format!("Anime cards and cards added to the game, from ProjectIgnis ({}). Until then, an added card shows a stand-in. {}",
+            pictures::SIZE_NOTE, if playing { "New pictures show from the game's next PLAY." } else { "They show from the next PLAY." });
         let (bar, words) = self.pictures_bar();
-        column![
-            text(hint).size(13).color(color::INK_SOFT),
+        let below: Element<'_, Message> = column![
             yo3_skin::progress_bar(bar, words, 22.0),
-            row![get, pill("Add pictures from a file…", idle.then_some(Message::AddPictures), Kind::Secondary, 240, 32),
-                pill("Save pictures to a file…", idle.then_some(Message::SavePictures), Kind::Secondary, 230, 32)].spacing(10),
-        ].spacing(6).into()
+            row![get, pill("Add from a file…", idle.then_some(Message::AddPictures), Kind::Secondary, 180, 32),
+                pill("Save to a file…", idle.then_some(Message::SavePictures), Kind::Secondary, 170, 32)].spacing(10),
+        ].spacing(8).into();
+        yo3_skin::setting_group("Card pictures", vec![
+            yo3_skin::setting("Download automatically", line, Some(auto.into()), Some(below)),
+        ])
     }
 
     fn singleplayer<'a>(&'a self, ctx: &'a Ctx, home: &'a home::State, playing: bool) -> Element<'a, Message> {
@@ -855,21 +890,22 @@ mod tests {
     }
 
     #[test]
-    fn opening_the_singleplayer_section_again_counts_the_pictures_again() {
-        // Live on Windows 11: pictures deleted by hand kept the old count while the player only switched sections.
+    fn opening_the_game_section_again_counts_the_pictures_again() {
+        // Live on Windows 11: pictures deleted by hand kept the old count while the player only switched sections. The count
+        // shows in Game's Card pictures since #75.
         let ctx = ctx();
-        let mut state = State::new(&ctx, Section::Game);
-        assert!(state.recounts_on(Section::Singleplayer));
+        let mut state = State::new(&ctx, Section::Singleplayer);
+        assert!(state.recounts_on(Section::Game));
         assert!(!state.recounts_on(Section::Advanced), "only the section that shows the count");
-        state.section = Section::Singleplayer;
-        assert!(!state.recounts_on(Section::Singleplayer), "staying there is no reason to count");
+        state.section = Section::Game;
+        assert!(!state.recounts_on(Section::Game), "staying there is no reason to count");
         state.section = Section::About;
         state.getting = Some((3, 418, Arc::new(AtomicBool::new(false))));
-        assert!(!state.recounts_on(Section::Singleplayer), "a running download keeps its own count");
+        assert!(!state.recounts_on(Section::Game), "a running download keeps its own count");
     }
 
     #[test]
-    fn the_anime_pictures_line_counts_and_a_finished_download_says_when_the_pictures_show() {
+    fn the_card_pictures_line_counts_and_a_finished_download_says_when_the_pictures_show() {
         use yo3_launcher::art::get::Outcome;
         let mut ctx = ctx();
         let mut state = State::new(&ctx, Section::Game);
@@ -893,8 +929,27 @@ mod tests {
         assert_eq!((ended(false, got.clone()).good, ended(false, got.clone()).sentence), (true, "Got 3 pictures. They show from the next PLAY.".to_owned()));
         assert!(ended(true, got).sentence.contains("open game shows them after you close it"));
         let down = ended(false, Outcome { unreachable: Some("x".into()), ..Outcome::default() });
-        assert!(!down.good && down.sentence.contains("Add pictures from a file") && !down.sentence.contains("next PLAY"), "{}", down.sentence);
+        assert!(!down.good && down.sentence.contains("Add from a file") && !down.sentence.contains("next PLAY"), "{}", down.sentence);
         assert!(yo3_desktop::words::technical(&down.sentence).is_none());
+    }
+
+    #[test]
+    fn the_card_pictures_switch_is_saved_and_turning_it_on_gets_what_is_missing() {
+        // #75: Settings → Game's switch; on with pictures missing, the download starts at once.
+        let mut ctx = ctx();
+        let mut state = State::new(&ctx, Section::Game);
+        state.pictures = Some((10, 419));
+        let mut on = ctx.settings.clone();
+        on.card_pictures = true;
+        let _ = state.update(Message::Changed(Change::CardPictures(true), Ok(Box::new(on))), &mut ctx, false);
+        assert!(ctx.settings.card_pictures);
+        assert!(state.getting.is_some(), "the missing pictures start downloading");
+        let mut full = State::new(&ctx, Section::Game);
+        full.pictures = Some((419, 419));
+        let mut again = ctx.settings.clone();
+        again.card_pictures = true;
+        let _ = full.update(Message::Changed(Change::CardPictures(true), Ok(Box::new(again))), &mut ctx, false);
+        assert!(full.getting.is_none(), "nothing to get");
     }
 
     #[test]

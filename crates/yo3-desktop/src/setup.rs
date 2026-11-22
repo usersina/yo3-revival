@@ -31,6 +31,8 @@ pub enum Message {
     Shortcut(bool),
     /// Send a broken game's logs to the server it played on (problem reports).
     Logs(bool),
+    /// Get the card pictures from ProjectIgnis (anime cards' and added cards').
+    Pictures(bool),
     Done,
     Saved(Result<(Box<Settings>, Option<String>), String>),
     Cancel,
@@ -58,6 +60,8 @@ pub struct State {
     shortcut: bool,
     /// Problem reports: on unless the player unticks it.
     logs: bool,
+    /// Card pictures: ticked unless the player unticks it (or, from Settings, as the launcher has it).
+    pictures: bool,
     picking: bool,
     saving: bool,
     error: Option<String>,
@@ -75,7 +79,7 @@ impl State {
         Self { step, candidates: Vec::new(), path: ctx.settings.game_dir.clone(), prefix: ctx.settings.wine_prefix.clone(),
             more_options: !ctx.settings.wine_prefix.is_empty(), revision: 0, lines: None, details: None,
             direct: ctx.settings.direct_start && ctx.settings.setup_complete, asking: false, direct_note: None, shortcut: !ctx.settings.setup_complete,
-            logs: ctx.settings.problem_reports, picking: false, saving: false, error: None, error_details: None, error_open: false, cancellable }
+            logs: ctx.settings.problem_reports, pictures: ctx.settings.card_pictures || !ctx.settings.setup_complete, picking: false, saving: false, error: None, error_details: None, error_open: false, cancellable }
     }
 
     /// The first tasks: find installed copies, and check the folder when the wizard opens at the Game step.
@@ -142,6 +146,7 @@ impl State {
             }
             Message::Shortcut(on) => self.shortcut = on,
             Message::Logs(on) => self.logs = on,
+            Message::Pictures(on) => self.pictures = on,
             Message::Done => return self.finish(ctx),
             Message::Saved(Err(error)) => {
                 self.saving = false;
@@ -215,7 +220,7 @@ impl State {
         if self.saving { return Task::none() }
         let (Some(backend), Some(store)) = (ctx.backend.clone(), ctx.store.clone()) else { return Task::none() };
         let draft = self.settings(ctx);
-        let (direct, shortcut, logs) = (self.direct, self.shortcut, self.logs);
+        let (direct, shortcut, logs, pictures) = (self.direct, self.shortcut, self.logs, self.pictures);
         self.saving = true;
         self.error = None;
         Task::perform(async move {
@@ -224,6 +229,7 @@ impl State {
                 settings.setup_complete = true;
                 settings.direct_start = direct;
                 settings.problem_reports = logs;
+                settings.card_pictures = pictures;
                 settings.game_fingerprint = setup_check::fingerprint(std::path::Path::new(&settings.game_dir))?;
                 db.save_settings(&settings)?;
                 backend.sync_problem_reports(&settings);
@@ -354,6 +360,10 @@ impl State {
         ].spacing(10).padding([10, 0]);
         if let Some(note) = &self.direct_note { list = list.push(text(note).size(13).color(color::INK)) }
         list = list.push(checkbox(self.shortcut).label("Put a YO3 Revival shortcut on the desktop").on_toggle(Message::Shortcut).style(yo3_skin::tick).size(16).text_size(15));
+        list = list.push(checkbox(self.pictures).label("Download card pictures").on_toggle(Message::Pictures).style(yo3_skin::tick).size(16).text_size(15));
+        list = list.push(text(format!("Pictures for the anime cards and the cards added to the game, from ProjectIgnis ({}). \
+            They download in the background after setup; the game's own cards keep their artwork. Change it later in Settings, Game, Card pictures.",
+            yo3_desktop::pictures::SIZE_NOTE)).size(13).color(color::INK_SOFT));
         list = list.push(checkbox(self.logs).label("Send logs when something breaks, to help fix it").on_toggle(Message::Logs).style(yo3_skin::tick).size(16).text_size(15));
         list = list.push(text("When a game's connection breaks or it closes with an error, its logs go to the server you played on. \
             Passwords and keys are never in them. You can turn this off later in Settings, Advanced.").size(13).color(color::INK_SOFT));
@@ -379,7 +389,7 @@ mod tests {
 
     fn state() -> State {
         State { step: Step::Game, candidates: vec![], path: "/games/yo3".into(), prefix: String::new(), more_options: false, revision: 3,
-            lines: None, details: None, direct: true, asking: false, direct_note: None, shortcut: true, logs: true, picking: false, saving: false, error: None, error_details: None, error_open: false, cancellable: false }
+            lines: None, details: None, direct: true, asking: false, direct_note: None, shortcut: true, logs: true, pictures: true, picking: false, saving: false, error: None, error_details: None, error_open: false, cancellable: false }
     }
     fn line(check: Check, state: Outcome) -> Line { Line { check, state, sentence: String::new(), details: None } }
 

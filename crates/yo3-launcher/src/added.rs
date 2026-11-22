@@ -71,19 +71,37 @@ pub fn prepare(base: &Path, game_dir: &Path, added: &yo3_data::added::Added, pic
     Ok(Prepared { folder: Some(folder), written: files.len() })
 }
 
+/// The face an added card shows while it has no picture of its own (`tools/engine/no-picture.py` makes it, 200x290).
+pub const NO_PICTURE: &[u8] = include_bytes!("../assets/no-picture.png");
+
 /// Each added card's picture from the picture folder (`card/<id>.png`, `mini/<id>.png`: Desktop's Get pictures fetches
 /// them with the anime ones, by the card's official passcode) into `folder`, at every start, so a picture fetched since the
-/// last one shows. A card without one shows no picture in the game.
+/// last one shows. A card without one shows [`NO_PICTURE`] (and its thumbnail), never an empty frame.
 fn copy_pictures(folder: &Path, added: &yo3_data::added::Added, pictures: Option<&Path>) {
-    let Some(pictures) = pictures else { return };
     for card in &added.cards {
-        for kind in ["card", "mini"] {
-            let from = pictures.join(kind).join(format!("{}.png", card.cid));
-            if from.is_file() && std::fs::create_dir_all(folder.join(kind)).is_ok() {
-                let _ = std::fs::copy(&from, folder.join(kind).join(format!("{}.png", card.cid)));
+        let have = |kind: &str| pictures.map(|p| p.join(kind).join(format!("{}.png", card.cid))).filter(|p| p.is_file());
+        let (face, mini) = (have("card"), have("mini"));
+        for (kind, from) in [("card", &face), ("mini", if face.is_some() { &mini } else { &None })] {
+            let to = folder.join(kind).join(format!("{}.png", card.cid));
+            if std::fs::create_dir_all(folder.join(kind)).is_err() { continue }
+            match (from, kind) {
+                (Some(from), _) => { let _ = std::fs::copy(from, &to); }
+                (None, "card") => { let _ = std::fs::write(&to, NO_PICTURE); }
+                // A downloaded face without its thumbnail: the game's own folder thumbnail is made from the face it shows.
+                (None, _) => { let _ = write_mini(face.as_deref(), &to); }
             }
         }
     }
+}
+
+/// The 50x72 thumbnail of `face` (or of [`NO_PICTURE`]) written to `to`.
+fn write_mini(face: Option<&Path>, to: &Path) -> Result<(), String> {
+    let (w, h, rgba) = match face {
+        Some(face) => crate::art::decode_png(std::io::BufReader::new(std::fs::File::open(face).map_err(|e| e.to_string())?))?,
+        None => crate::art::decode_png(std::io::Cursor::new(NO_PICTURE))?,
+    };
+    if rgba.is_empty() { return Err("the face is too large".into()) }
+    crate::art::write_png(to, crate::art::MINI, &crate::art::downscale(&rgba, (w, h), crate::art::MINI)).map_err(|e| e.to_string())
 }
 
 /// Removes every list's folder in `base` but `keep`.
@@ -110,6 +128,34 @@ pub fn point(pointer: &Path, folder: Option<&str>) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn quasar() -> yo3_data::added::Added {
+        yo3_data::added::Added::parse(include_str!("../../../engine/added-cards.json")).unwrap()
+    }
+
+    #[test]
+    fn a_card_without_a_picture_shows_the_shipped_one_until_its_own_arrives() {
+        let dir = std::env::temp_dir().join(format!("yo3-added-pics-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (folder, pictures) = (dir.join("list"), dir.join("art"));
+        let added = quasar();
+        let cid = added.cards[0].cid;
+        copy_pictures(&folder, &added, None);
+        assert_eq!(std::fs::read(folder.join(format!("card/{cid}.png"))).unwrap(), NO_PICTURE);
+        let (w, h, _) = crate::art::decode_png(std::io::BufReader::new(std::fs::File::open(folder.join(format!("mini/{cid}.png"))).unwrap())).unwrap();
+        assert_eq!((w, h), crate::art::MINI);
+        let (fw, fh, _) = crate::art::decode_png(std::io::Cursor::new(NO_PICTURE)).unwrap();
+        assert_eq!((fw, fh), crate::art::FACE, "the shipped face is a card face");
+        // Its own face arrives (Get pictures): it replaces the stand-in at the next start, thumbnail included.
+        std::fs::create_dir_all(pictures.join("card")).unwrap();
+        let own = vec![200u8; (crate::art::FACE.0 * crate::art::FACE.1 * 4) as usize];
+        crate::art::write_png(&pictures.join(format!("card/{cid}.png")), crate::art::FACE, &own).unwrap();
+        copy_pictures(&folder, &added, Some(&pictures));
+        assert_ne!(std::fs::read(folder.join(format!("card/{cid}.png"))).unwrap(), NO_PICTURE);
+        let (_, _, mini) = crate::art::decode_png(std::io::BufReader::new(std::fs::File::open(folder.join(format!("mini/{cid}.png"))).unwrap())).unwrap();
+        assert_eq!(mini[0], 200, "the thumbnail is made from its own face");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn nothing_added_prepares_nothing_and_a_pointer_can_be_empty() {

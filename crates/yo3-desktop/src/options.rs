@@ -24,6 +24,8 @@ pub enum Change {
     DetailedLogs(bool),
     /// Send a broken game's logs to the server it played on (problem reports).
     ProblemReports(bool),
+    /// Card pictures download by themselves (Settings → Game, setup's tick).
+    CardPictures(bool),
     /// Host for friends: the port friends connect to.
     HostPort(u16),
     /// Host for friends: the address friends dial ("" for this PC's network address).
@@ -61,6 +63,7 @@ impl Change {
             }
             Change::DetailedLogs(on) => settings.log_level = if *on { DETAILED.into() } else { String::new() },
             Change::ProblemReports(on) => settings.problem_reports = *on,
+            Change::CardPictures(on) => settings.card_pictures = *on,
             Change::HostPort(port) => {
                 ensure!(*port >= 1024, "Choose a port from 1024 to 65535.");
                 settings.host_port = *port;

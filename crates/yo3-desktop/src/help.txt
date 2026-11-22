@@ -46,9 +46,9 @@ Check reachability tests the port from this computer's side.
 
 # settings | Settings
 Settings, at the bottom right, opens Settings; press it again or Back to return. Every change applies at the next PLAY, without restarting YO3 Revival.
-- Game: the game folder, Verify and repair, the screen size, opening the game without the launcher (ticking it may ask Windows for permission once), and a desktop shortcut.
+- Game: the game folder, Verify and repair, the screen size, opening the game without the launcher (ticking it may ask Windows for permission once), a desktop shortcut, and Card pictures (the anime cards' and the new cards' pictures, downloaded automatically or on a click).
 - Accounts: your sign-ins on each server.
-- Singleplayer: Anime cards (some cards play as they did in the anime) with their pictures right under it, Destiny Draw (once per duel against the computer, at 1000 LP or less, you pick the card you draw), the banlist, backups, Unlock all cards (three of every card for every player) and a reset.
+- Singleplayer: Anime cards (some cards play as they did in the anime), Destiny Draw (once per duel against the computer, at 1000 LP or less, you pick the card you draw), the banlist, backups, Unlock all cards (three of every card for every player) and a reset.
 - Advanced: Wine on Linux, detailed logs, exporting logs, and resetting the game's local data.
 - About: the version, updates, licences and links.
 

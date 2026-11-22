@@ -50,7 +50,7 @@ fn read_png(path: &Path) -> Result<(u32, u32, Vec<u8>), String> {
 }
 
 /// A PNG as RGBA, judged exactly as the folder's files are: pictures much larger than a face come back without pixels.
-fn decode_png(input: impl io::BufRead + io::Seek) -> Result<(u32, u32, Vec<u8>), String> {
+pub(crate) fn decode_png(input: impl io::BufRead + io::Seek) -> Result<(u32, u32, Vec<u8>), String> {
     let mut decoder = png::Decoder::new(input);
     decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
     let mut reader = decoder.read_info().map_err(|e| e.to_string())?;

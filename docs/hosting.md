@@ -296,8 +296,8 @@ time to be running at the start (a Championship the server missed by more than a
   each game fetches once at start, so **a change needs the players to restart their games** (Desktop offers RESTART THE GAME while a game runs the old cards, and until they do
   the server refuses every duel of an open game that loaded another profile, with a chat line saying why; a server restart
   applies the saved setting, and the games that were open must be restarted anyway); `yo3 card-profile FILE` writes the
-  file for a check). Artwork is not shipped or hosted: each player gets the pictures through Desktop (Settings → Singleplayer → Anime pictures, under the Anime cards tick:
-  downloaded from ProjectIgnis on their click, or from a zip; [how](anime-cards.md#artwork)). What changes for players: [playing](playing.md#anime-card-versions); the list of cards:
+  file for a check). Artwork is not shipped or hosted: each player gets the pictures through Desktop (Settings → Game → Card pictures:
+  downloaded from ProjectIgnis automatically or on their click, or from a zip; [how](anime-cards.md#artwork)). What changes for players: [playing](playing.md#anime-card-versions); the list of cards:
   [anime cards](anime-cards.md).
 - **Destiny Draw.** `yo3 set destiny-draw on` (a [live setting](guide.md#live-settings), off by default, at the next
   duel) lets each player, in NPC duels only (not duels between players, events or the Ultimate Match's computer match),

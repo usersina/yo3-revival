@@ -76,6 +76,10 @@ pub struct Settings {
     /// When a game breaks, its logs go to the server it played on, for the host (problem reports). Asked in setup; on
     /// unless the player turns it off.
     pub problem_reports: bool,
+    /// Card pictures (anime cards' and the cards the game never had, #75) come from ProjectIgnis by themselves: at
+    /// setup's end and whenever some are missing at the launcher's start. Asked in setup (ticked); off for a launcher set
+    /// up before it, which keeps Settings → Game's Get pictures.
+    pub card_pictures: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -83,7 +87,7 @@ impl Default for Settings {
             host_address: "localhost".into(), data_dir: String::new(), bind_address: "0.0.0.0".into(), bind_interface: None, listen_port: 7443,
             player_name: "Duelist".into(), local_account: String::new(), resolution: String::new(),
             banlist: String::new(), setup_complete: false, game_fingerprint: String::new(), direct_start: true,
-            wine_binary: String::new(), log_level: String::new(), host_port: 7443, host_share: String::new(), host_name: String::new(), problem_reports: true }
+            wine_binary: String::new(), log_level: String::new(), host_port: 7443, host_share: String::new(), host_name: String::new(), problem_reports: true, card_pictures: false }
     }
 }
 

@@ -43,13 +43,14 @@ macOS does not have a supported build. [Game installation help](#getting-the-ori
 5. Wait for the checklist. Each line is green, amber (a warning) or red, with one sentence on how to fix it and
    **Details** for the technical text. **Next** opens once nothing is red.
 6. On **Ready**, choose whether the game may open without the launcher, whether to put a shortcut on your
-   desktop, and whether to **send logs when something breaks** (on unless you untick it:
+   desktop, whether to **download card pictures** (on unless you untick it: [card pictures](#card-pictures)), and whether
+   to **send logs when something breaks** (on unless you untick it:
    [problem reports](#problem-reports)), then click **Done**.
 7. Click **PLAY**. In the game, choose **ONLINE**, then select your player. [Start your first duel](playing.md#your-first-duel).
 
 ![Setup's Game step: the copy found in Program Files and its checklist](../screenshots/setup-game.png)
 
-![Setup's Ready step: direct start and the desktop shortcut](../screenshots/setup-ready.png)
+![Setup's Ready step: direct start, the desktop shortcut, card pictures and problem reports](../screenshots/setup-ready.png)
 
 The checklist:
 
@@ -194,13 +195,30 @@ press **I saved it**), then Settings. In a text box the first Escape only leaves
 
 | Section | What it has |
 | --- | --- |
-| Game | The game folder (**Change…** opens Setup), **Verify** (checks the game and YO3 Revival's own files in full, and says how to fix what isn't right), the [screen size](#screen-size), [opening the game without the launcher](#open-the-game-directly) (a tick: pressing it sets it up at once, asking Windows for permission when the game folder needs it), and **Add** for a desktop shortcut |
+| Game | The game folder (**Change…** opens Setup), **Verify** (checks the game and YO3 Revival's own files in full, and says how to fix what isn't right), the [screen size](#screen-size), [opening the game without the launcher](#open-the-game-directly) (a tick: pressing it sets it up at once, asking Windows for permission when the game folder needs it), **Add** for a desktop shortcut, and [**Card pictures**](#card-pictures) |
 | Accounts | Each server you're signed in to on this PC: **Sign out**, **Sign out everywhere** (every PC signed in to the account must sign in again; asks for the password when this PC didn't stay signed in) and **Change password** (signs every PC out, this one too) |
-| Singleplayer | **Anime cards** (your own server's `anime-cards` setting, [see below](#anime-cards)) with, right under it while it is on, **Anime pictures** ("N of M", [**Get pictures**, **Add pictures from a file…** and **Save pictures to a file…**](anime-cards.md#artwork)), **Destiny Draw** (your own server's `destiny-draw` setting, [see below](#destiny-draw)), the [banlist](#banlist), **Back up now**, **Restore…** (a backup from a recent start), **Unlock all cards** (three of every card, in every artwork, for every player of your own server; it asks first), **Reset…** (starts your Singleplayer data again; the old data is kept beside it, renamed) and **Open data folder** |
+| Singleplayer | **Anime cards** (your own server's `anime-cards` setting, [see below](#anime-cards); while some of their pictures are missing, a link under it leads to Card pictures), **Destiny Draw** (your own server's `destiny-draw` setting, [see below](#destiny-draw)), the [banlist](#banlist), **Back up now**, **Restore…** (a backup from a recent start), **Unlock all cards** (three of every card, in every artwork, for every player of your own server; it asks first), **Reset…** (starts your Singleplayer data again; the old data is kept beside it, renamed) and **Open data folder** |
 | Advanced | On Linux, the Wine prefix and the Wine program (empty for Wine's defaults; **Save** checks it); **Detailed logs** for your servers; **Send logs when something breaks** ([problem reports](#problem-reports)); **Export logs…** and **Open logs folder**; [Reset local game data](#reset-local-game-data) |
 | About | The version, **Check for updates**, release notes, the project, licences and credits |
 
-**Anime pictures (since v0.1.5 (2026-11-20); under the Anime cards tick in Settings → Singleplayer, since v0.1.6 (2026-11-20)):** it lists how many of the anime cards have a picture. **Get pictures** downloads the missing ones (about 10 MB) from ProjectIgnis' picture server when you press it, with a progress count and **Cancel**; a second press carries on. The download goes on while you use the rest of the launcher and ends in a toast; each picture is tried three times (a timeout, a refused request or a picture that arrived broken) before it counts as not fetched (since v0.1.8 (2026-11-20)). **Add pictures from a file…** adds a zip of pictures and **Save pictures to a file…** makes one. Pictures show from the next PLAY, and your own pictures are never replaced.
+### Card pictures
+
+Settings → Game → **Card pictures** (Unreleased; before, **Anime pictures** under the Anime cards switch in Settings →
+Singleplayer) holds the pictures of the anime cards and of the [cards the game never had](anime-cards.md#artwork) (Shooting
+Quasar Dragon): about 10 MB from ProjectIgnis' picture server. The game's own cards keep their artwork.
+
+![Settings, Game, Card pictures: the switch, the bar and its buttons](../screenshots/settings-card-pictures.png)
+
+- **Download automatically**: on, Desktop gets the missing pictures by itself, at each start and as soon as you turn it on.
+  Setup's last step has the same tick (**Download card pictures**), ticked: untick it to download nothing. Off (the
+  setting of a launcher set up before), nothing downloads unless you press **Get pictures**.
+- The bar counts the pictures you have ("N of M pictures ready"). **Get pictures** (**Get the rest** once you have some)
+  downloads the missing ones, with **Cancel**; each picture is tried three times before it counts as not fetched. The
+  download goes on while you use the rest of the launcher: the footer then shows **Card pictures · N of M**, which opens
+  this group, and it ends in a toast.
+- **Add from a file…** adds a zip of pictures and **Save to a file…** makes one.
+- Pictures show from the next PLAY, and your own pictures are never replaced. Until its picture arrives, a card the game
+  never had shows a stand-in picture that ships with YO3 Revival.
 
 **Since v0.1.4 (2026-11-19):** clicking the version at the bottom (now in the middle of the footer, with an "About YO3 Revival" hint) also opens **About**, from Settings too.
 
@@ -231,7 +249,7 @@ saved settings while it is stopped) and writes it the same way. It takes effect 
 **RESTART THE GAME** appears on the main screen. Turning it on while some pictures are missing opens a dialog: what is about to be
 downloaded (about 10 MB from ProjectIgnis' picture server, how many of the cards still have no picture, that a card without one keeps
 the game's artwork), **Get pictures** (the dialog closes and the bar under the switch shows the download; the result is a toast) or **Not now**. The switch stays on
-whatever you choose, and **Anime pictures**, right under the switch, downloads later. A server you join never shows this switch: its host
+whatever you choose, and [Card pictures](#card-pictures) downloads later. A server you join never shows this switch: its host
 decides.
 
 ### Destiny Draw

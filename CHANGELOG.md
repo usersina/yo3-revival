@@ -17,8 +17,13 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 - New card: **Shooting Quasar Dragon**, the first card the game never had. It plays by its real effects (two Synchro
   Monsters and a Synchro Tuner summon it; it attacks once per non-Tuner, negates an activation once per turn and brings
-  Shooting Star Dragon when it leaves). Your host gives it for now. Its picture comes with Settings → Singleplayer →
-  Get pictures.
+  Shooting Star Dragon when it leaves). Your host gives it for now. Its picture comes with the other card pictures; until
+  then it shows a stand-in picture. With anime cards on, it plays as the anime's Shooting Quasar Dragon (when it leaves the field it destroys
+  every monster and brings Shooting Star Dragon).
+- Card pictures moved to Settings → Game → **Card pictures**: the anime cards' and the new cards' pictures, with
+  **Download automatically**. Setup's last step has the same tick, ticked, so new players get them in the background
+  after setup. While they download, the footer shows the progress; click it to open the group.
+- Setup's game check now says "Wine took too long to start" in plain words, and waits longer for a slow first start.
 - Edit Deck now lists Blue Rose Dragon: the game's last card was missing from every trunk.
 - Hosts and developers: `--duel-field 0:mzone:ID,1:hand:ID` starts every duel between players with those cards in place,
   to test a card without building the board first.
