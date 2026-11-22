@@ -222,6 +222,7 @@ Anything else, such as `!lol`, is ordinary chat.
 | `pack` or `pack NAME` | Every card a booster pack can give, the rarest first, and its price: `pack 12`, `pack beginner`. A long list (a beginner's pack has 155 commons) is given as a count. `pack` alone lists the packs on sale. The same lists are on the Packs page ([website pages](#website-pages)). |
 | `recipes` or `recipes NAME` | Lists the theme deck recipes the shop's shelf can't show, or buys one for the structure decks' price: the recipe on Load Deck's Official tab and its cards, as a present you open from the map. |
 | `report PLAYER reason` | Tells the host's staff about a player (cheating, abuse in chat). Use quotes for a name with spaces: `report "Joey Wheeler" spamming the chat`. The reported player is not told. You can send a few an hour. |
+| `bug what happened` | Tells the host's staff a duel went wrong (an effect did nothing, a wrong card moved): your last duel is sent with your note, so the staff can play it again exactly as it happened. Send it right after the duel (up to two hours later); the game doesn't send chat during a duel against the computer. Say which card and turn: `bug Mirror Force destroyed nothing on turn 4`. It counts towards the same few an hour as `report`. |
 
 ![The chat commands in the game's chat window](../screenshots/chat-commands.png)
 

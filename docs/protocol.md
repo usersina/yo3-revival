@@ -405,7 +405,7 @@ until when and why. **Status: confirmed**, `moderation_contract.rs`, live ("[Mod
 refused locally ("That command is not available.", text 14951): no packet leaves (live, scratch server's packet log).
 `/p NAME MESSAGE` goes out as a whisper (`0x2134` item tag 10 `{chat_str: MESSAGE, chat_type: 0, to_name: NAME}`), and
 the game keeps `/p NAME ` in its text box. So the server answers as a player named `Server`: a whisper to `Server`, or a
-chat line starting with `!` and a command's word (`help`, `banlist`, `draw`, `draw5`, `where`, `report`), is a command:
+chat line starting with `!` and a command's word (`help`, `banlist`, `draw`, `draw5`, `where`, `report`, `bug`), is a command:
 **not delivered to anyone**, answered with `0x2456` then one `0x2455` push per line from `pname` "Server" (`chat_type` 0, as the server's other notes), to the sender only and even when muted. An unknown word whispered to `Server` gets the help.
 Any other `!` line is ordinary chat. The client masks some words with `*` before sending (a chat filter: "black", "drag", "flood" arrive starred), so `where` reads `*` as a wildcard. The text box refuses to send a line over its own length. `banlist` keeps the choice per account (`accounts.json` `banlist`): the login replies
 `0x219A`/`0x2201` come before Select Player, so the player isn't known yet. The client's deck check and Auto Duel then

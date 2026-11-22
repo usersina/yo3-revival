@@ -577,6 +577,10 @@ impl DuelSession {
         let anime = self.world.settings.now().anime_cards;
         let mut engine = Engine::start_with(dir, anime).map_err(|e| tracing::warn!("rules engine not started: {e}")).ok()?;
         if self.world.duel_check { engine.record(); }
+        let player = self.player_id.map(|id| self.hub.locked().recording_seat(id))
+            .unwrap_or(crate::recordings::Seat { player_id: None, name: String::new() });
+        let npc_name = entry.npc_id.and_then(|id| self.world.npc_names.get(&id)).cloned().unwrap_or_else(|| "the computer".into());
+        self.world.record_duel(&mut engine, "npc", &[player, crate::recordings::Seat { player_id: None, name: npc_name }]);
         let seed = self.next();
         // The LP at this duel's start (the `start-lp` setting now, #24), kept for the whole duel.
         let lp = self.world.test_lp.unwrap_or_else(|| self.world.settings.now().start_lp);

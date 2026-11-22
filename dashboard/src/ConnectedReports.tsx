@@ -146,7 +146,14 @@ export function ConnectedReports({ session }: { session: StaffSession }) {
                       <td data-label="About">
                         <Player name={r.target} user={r.target_user_id} />
                       </td>
-                      <td data-label="Reason">{r.reason}</td>
+                      <td data-label="Reason">
+                        {r.reason}
+                        {r.recording && (
+                          <span className="block muted">
+                            Recording <code>{r.recording}</code>
+                          </span>
+                        )}
+                      </td>
                       <td data-label="Status">
                         <Badge tone={tone[r.status]}>{label[r.status]}</Badge>
                       </td>

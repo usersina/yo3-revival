@@ -14,7 +14,7 @@ use crate::lock::Locked;
 pub const SERVER: &str = "Server";
 
 /// The commands, by the word that starts them.
-const COMMANDS: [&str; 9] = ["help", "banlist", "draw", "draw5", "where", "pack", "report", "recipes", "h"];
+const COMMANDS: [&str; 10] = ["help", "banlist", "draw", "draw5", "where", "pack", "report", "bug", "recipes", "h"];
 
 /// The longest reason a command's help line and answers may run: the game's chat window wraps longer lines.
 const LINE: usize = 110;
@@ -100,6 +100,7 @@ impl FrontSession {
             "where" => crate::sources::answer(&rest, &self.world.card_names, &self.world.card_sources),
             "pack" | "packs" => pack_command(&rest, &self.world.pack_lists, self.world.settings.now().shop.pack_cost),
             "report" => self.report_command(&rest),
+            "bug" => self.bug_command(&rest),
             "recipes" => self.recipes_command(&rest),
             _ => help(),
         })
@@ -271,6 +272,44 @@ impl FrontSession {
         }
     }
 
+    /// `bug what happened` tells the staff a duel went wrong: a report about the player's current or last duel (within
+    /// `recordings::BUG_WINDOW`), with that duel's recording pinned so it can be replayed exactly. Without a recent
+    /// recorded duel the note goes alone. Under the same hourly limit as `report`.
+    fn bug_command(&mut self, note: &str) -> Vec<String> {
+        let settings = self.world.settings.now();
+        if settings.report_limit == 0 { return vec!["Reports are turned off on this server.".into()] }
+        let note = note.trim();
+        if note.chars().count() < 3 {
+            return vec!["Usage: bug what happened (during or right after the duel; your duel is sent with it so it can be replayed).".into()]
+        }
+        let me = self.player().clone();
+        let latest = self.world.recordings.as_ref().and_then(|r| r.latest(me.player_id).map(|l| (r.clone(), l)));
+        let (opponent, recording) = match &latest {
+            Some((recordings, duel)) => match recordings.pin(&duel.id) {
+                Ok(_) => ((duel.opponent.player_id.unwrap_or(0), duel.opponent.name.clone()), Some(duel.id.as_str())),
+                Err(e) => {
+                    tracing::warn!("[bug] recording {} not pinned: {e}", duel.id);
+                    ((duel.opponent.player_id.unwrap_or(0), duel.opponent.name.clone()), None)
+                }
+            },
+            None => ((0, "(no recent duel)".to_string()), None),
+        };
+        match self.hub().reports.add_duel_problem((me.player_id, &me.name), (opponent.0, &opponent.1), note, recording, settings.report_limit) {
+            Ok(id) => {
+                tracing::info!("[bug] #{id} from {} (recording {})", me.name, recording.unwrap_or("none"));
+                match recording {
+                    Some(_) => vec![format!("Thank you: your duel against {} was sent to the staff with your note (#{id}).", opponent.1)],
+                    None => vec![format!("Thank you: your note was sent to the staff (#{id}). No recent duel of yours was recorded, so say which duel and card it was.")],
+                }
+            }
+            Err(e) if e == "too many reports" => vec![format!("You have sent {} reports in the last hour: please wait before sending another.", settings.report_limit)],
+            Err(e) => {
+                tracing::warn!("[bug] not saved: {e}");
+                vec!["Your note could not be saved: try again later.".into()]
+            }
+        }
+    }
+
     /// The player named `name` (ignoring case): their id and their name as spelled. Among the saved players, else
     /// online ones.
     fn player_named(&self, name: &str) -> Option<(u32, String)> {
@@ -291,6 +330,7 @@ fn help() -> Vec<String> {
         "pack NAME: every card a booster pack can give, rarest first (pack alone lists the packs)".into(),
         "recipes [NAME]: the theme deck recipes for sale, or buy one with BP".into(),
         "report PLAYER reason: tell the staff about a player".into(),
+        "bug what happened: tell the staff a duel went wrong (your duel is sent with it)".into(),
     ]
 }
 

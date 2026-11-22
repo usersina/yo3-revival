@@ -195,6 +195,8 @@ impl Table {
             }
         };
         if self.world.duel_check { engine.record(); }
+        let seats = { let hub = self.hub.locked(); [hub.recording_seat(self.seats[first].player_id), hub.recording_seat(self.seats[1 - first].player_id)] };
+        self.world.record_duel(&mut engine, "pvp", &seats);
         // The settings at this duel's start (#24): a hosted duel's starting LP (Create Duel's lp_start), else the
         // `start-lp` setting, unless a test set every duel's (--duel-lp).
         let settings = self.world.settings.now();

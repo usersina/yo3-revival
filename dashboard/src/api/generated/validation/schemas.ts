@@ -1164,11 +1164,13 @@ export const reportTargetIdMin = 0;
 
 export const Report = zod.object({
   "at": zod.string().describe('RFC 3339 UTC, to the second.'),
+  "duel_problem": zod.boolean().optional().describe('A duel problem (`bug`) rather than a report about a player.'),
   "handled_at": zod.string().nullish(),
   "handled_by": zod.string().nullish(),
   "id": zod.int().min(reportIdMin).max(reportIdMax),
   "note": zod.string().nullish(),
   "reason": zod.string(),
+  "recording": zod.string().nullish().describe('A duel problem\'s recording id (`bug` in the chat), pinned in the data folder\'s `recordings/pinned/`. Null for a\nreport about a player, and for a duel problem sent without a recent duel.'),
   "reporter": zod.string(),
   "reporter_id": zod.int().min(reportReporterIdMin),
   "status": Status,

@@ -677,3 +677,43 @@ fn a_duel_between_players_opens_the_same_with_the_anime_versions_on() {
     assert!(!off.is_empty());
     assert_eq!(on.len(), off.len(), "Normal Monsters are the same cards with the setting on");
 }
+
+/// Every duel is recorded (`recordings.rs`): the header names both players in the engine's order, each engine call
+/// follows, and both players have the duel as their latest for `bug`.
+#[test]
+fn a_duel_between_players_is_recorded_for_replay() {
+    let mut world = world(true);
+    if world.engine_dir.is_none() { eprintln!("engine not fetched; skipping"); return }
+    let dir = std::env::temp_dir().join(format!("yo3-pvp-recording-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let recordings = Arc::new(yo3_server::recordings::Recordings::at(&dir));
+    world.recordings = Some(recordings.clone());
+    let world = Arc::new(world);
+    let hub = Arc::new(Mutex::new(Hub::default()));
+    let deck = |row| Deck { main: vec![row; 40], ..Deck::default() };
+    for ((me, them), deck) in [(1001, 1002), (1002, 1001)].into_iter().zip([deck(1), deck(2)]) {
+        hub.lock().unwrap().enter_duel(me, DuelEntry { deck, duel_id: Some(DUEL), opponent: Some(them), best_of: 1, ..DuelEntry::default() });
+    }
+    let seat = |seed| {
+        let (tx, inbox) = unbounded_channel();
+        Seat { session: DuelSession::new(world.clone(), hub.clone(), seed).with_outbox(tx), inbox, world: world.clone() }
+    };
+    let (mut a, mut b) = (seat(3), seat(5));
+    enter(&mut a, 1001);
+    enter(&mut b, 1002);
+    a.send(0xC, &[("selectHand", 0)]);
+    b.send(0xC, &[("selectHand", 1)]);
+    a.send(0xD, &[("choice", 2)]);
+    let latest = recordings.latest(1001).expect("1001's duel");
+    assert_eq!(latest.opponent.player_id, Some(1002));
+    assert_eq!(recordings.latest(1002).expect("1002's duel").id, latest.id);
+    let path = recordings.find(&latest.id).expect("its file");
+    let lines = yo3_server::recordings::read(&path).unwrap();
+    assert_eq!((lines[0]["format"].as_str(), lines[0]["kind"].as_str()), (Some("yo3-duel-recording"), Some("pvp")));
+    let ids: Vec<u64> = lines[0]["players"].as_array().unwrap().iter().filter_map(|p| p["player_id"].as_u64()).collect();
+    assert_eq!(ids, [1002, 1001], "1002 went first: engine team 0");
+    assert!(lines[0]["identity"]["core"].as_str().is_some_and(|c| c.len() == 64), "the engine's dependency identity: {}", lines[0]);
+    assert_eq!(lines[1]["request"]["op"], "new");
+    assert_eq!(lines[1]["call"], 1);
+    assert!(lines[1]["answer"]["messages"].is_array());
+}

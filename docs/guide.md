@@ -125,6 +125,7 @@ while the server runs or stopped, and each applies at its own moment:
 | `handshake-burst`, `handshakes-per-second` | 120, 10 | At once | New TLS connections one address may open; this PC's are not counted |
 | `request-burst`, `requests-per-second` | 200, 20 | At each new connection | Requests one game connection may make at once, then how fast more are answered. Past the burst requests wait; none is dropped. Real play peaks near 32 a second, briefly |
 | `outbox-max` | 4096 | At each new connection | Messages that may wait for a game that reads nothing; past it, or after a minute with no read, its connection ends |
+| `recording-days` | 14 | At once | Days every duel's rules-engine recording is kept (`recordings/` in the data folder, about 10 KB a duel); older days are removed at start and daily, pinned ones (a player's `bug`) stay; 0: duels aren't recorded |
 | `audit-keep-days` | 365 | At once | Days the audit log keeps a row; older rows are removed at start, daily and when this changes (0: for ever) |
 | `maintenance-at`, `maintenance-message` | (none) | At once | Set by `maintenance` ([moderation](#moderation-and-maintenance)) |
 
@@ -254,6 +255,20 @@ that change something also with it stopped. They are admin API operations like t
 A report keeps who sent it, who it is about, the reason (300 characters), the time and, once closed, who handled it and
 the note. It stays in `server.db` (so in backups) until its account is deleted. A player can send `report-limit` an hour.
 The reported player is never told.
+
+**Duel problems.** `bug what happened` in the chat (playing: [chat commands](playing.md#chat-commands)) is a report too,
+listed with the others: its reason starts with "Duel problem:", it is about the duel's opponent (an NPC by name) and it
+names the duel's recording. Every duel writes one, `recordings/<date>/<id>.jsonl.gz` in the data folder, kept for
+`recording-days`; `bug` pins the player's last duel as `recordings/pinned/<id>.jsonl.gz`, which the pruning leaves.
+A recording holds the decks, the moves and the rules engine's answers, no account or address. Replay it with the same
+release's engine (the header names the server version):
+
+```bash
+python3 tools/monkey/duel-replay.py --recording recordings/pinned/20261122-075334-001.jsonl.gz --engine engine
+```
+
+It replays the duel call by call and says PASS when every answer matches; from there the problem gets a scenario test
+([development](development.md#which-tool-sees-what)). Delete pinned recordings by hand once their reports are closed.
 
 ## The admin panel
 

@@ -156,12 +156,20 @@ pub struct Engine {
     timeout: Duration,
     identity_timeout: Duration,
     recording: Option<(u64, u32)>,
+    /// This duel's recording file (`crate::recordings`): every call but the bot's thinking.
+    recorder: Option<crate::recordings::Recorder>,
+    /// The engine directory and program it was started with (`start_with`), the key of its cached identity.
+    started: Option<(PathBuf, PathBuf)>,
     /// Counted in [`running`] (an engine `start` made, not a test's stand-in).
     counted: bool,
     /// Started with the anime card versions (and they were available).
     anime: bool,
 }
 static RECORDING_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+/// Each engine's dependency identity, by (directory, program, anime): hashing thousands of files takes a moment, and
+/// they don't change while the server runs, so a duel's recording asks once.
+type IdentityKey = (PathBuf, PathBuf, bool);
+static IDENTITIES: std::sync::Mutex<Vec<(IdentityKey, Json)>> = std::sync::Mutex::new(Vec::new());
 
 impl Engine {
     /// The engine directory: `YO3_ENGINE_DIR`, else `engine/` under the current directory, else `engine/` beside this
@@ -184,7 +192,8 @@ impl Engine {
             None => true,
             Some(problem) => { tracing::warn!("anime card versions are on but not available, duels play the game's cards: {problem}"); false }
         };
-        let mut command = Command::new(program(dir));
+        let program = program(dir);
+        let mut command = Command::new(&program);
         command.arg(dir);
         // Always set: a variable of the server's own environment must not turn the versions on by itself.
         if anime { command.env("YO3_ANIME", "1"); } else { command.env_remove("YO3_ANIME"); }
@@ -193,6 +202,7 @@ impl Engine {
         engine.identity_timeout = IDENTITY_TIMEOUT;
         engine.counted = true;
         engine.anime = anime;
+        engine.started = Some((dir.to_path_buf(), program));
         RUNNING.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Ok(engine)
     }
@@ -216,7 +226,7 @@ impl Engine {
                 }
             }
         });
-        Ok(Engine { child, stdin, lines, timeout, identity_timeout: timeout, recording: None, counted: false, anime: false })
+        Ok(Engine { child, stdin, lines, timeout, identity_timeout: timeout, recording: None, recorder: None, started: None, counted: false, anime: false })
     }
 
     pub fn identity(&mut self) -> io::Result<Json> {
@@ -233,6 +243,26 @@ impl Engine {
     pub fn record(&mut self) {
         self.recording = Some((RECORDING_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed), 0));
         if let Err(e) = self.identity() { tracing::error!("duel check: recording identity unavailable: {e}"); }
+    }
+
+    /// This engine's dependency identity, asked once per engine directory, program and anime setting (`IDENTITIES`).
+    /// None for a test's stand-in or an engine that can't tell.
+    pub fn cached_identity(&mut self) -> Option<Json> {
+        let key = self.started.clone().map(|(dir, program)| (dir, program, self.anime))?;
+        if let Some((_, known)) = IDENTITIES.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|(k, _)| *k == key) { return Some(known.clone()) }
+        let identity = self.identity().map_err(|e| tracing::warn!("duel recording: no engine identity: {e}")).ok()?;
+        IDENTITIES.lock().unwrap_or_else(|e| e.into_inner()).push((key, identity.clone()));
+        Some(identity)
+    }
+
+    /// Records every later call of this duel in `recorder` (`crate::recordings`).
+    pub fn record_to(&mut self, recorder: crate::recordings::Recorder) {
+        self.recorder = Some(recorder);
+    }
+
+    /// This duel's recording id, if it is recorded.
+    pub fn recording_id(&self) -> Option<&str> {
+        self.recorder.as_ref().map(crate::recordings::Recorder::id)
     }
 
     fn record_line(&self, direction: &str, data: &str) {
@@ -339,6 +369,7 @@ impl Engine {
             Err(RecvTimeoutError::Disconnected) => return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "the engine exited")),
         };
         self.record_line("answer", &line);
+        if let Some(recorder) = &mut self.recorder { recorder.call(&request, &line); }
         serde_json::from_str(&line).map_err(io::Error::other)
     }
 

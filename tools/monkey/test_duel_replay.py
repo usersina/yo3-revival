@@ -1,4 +1,7 @@
+import gzip
 import importlib.util
+import os
+import tempfile
 import json
 from pathlib import Path
 import sys
@@ -57,5 +60,40 @@ class ReplayTests(unittest.TestCase):
         for r in records:
             if r['call'] == 1 and r['direction'] == 'answer': r['data'] = ['7b7d' if r['part'] == 0 else '']
         with self.assertRaises(ValueError): replay.assemble(records, 1)
+
+
+
+class RecordingTests(unittest.TestCase):
+    identity = ReplayTests.identity
+    def write(self, rows, cut=0):
+        path = Path(tempfile.mkdtemp())/'20261122-120000-001.jsonl.gz'
+        # Flushed line by line, as the server writes (a sync flush after each), so a cut file keeps its earlier lines.
+        with gzip.open(path, 'wb') as f:
+            for r in rows: f.write((json.dumps(r)+'\n').encode()); f.flush()
+        if cut: path.write_bytes(path.read_bytes()[:-cut])
+        return path
+
+    def header(self, **changes):
+        return {'format': 'yo3-duel-recording', 'version': 1, 'id': '20261122-120000-001', 'kind': 'npc', 'anime': False,
+                'players': [{'player_id': 1001, 'name': 'Yugi'}, {'player_id': None, 'name': 'Pegasus'}], 'identity': self.identity, **changes}
+
+    def test_a_server_recording_replays_with_its_identity_first(self):
+        rows = [self.header(), {'call': 1, 'request': {'op': 'new', 'seed': 1}, 'answer': {'fixture': True}},
+                {'call': 2, 'request': {'op': 'respond', 'response': {}}, 'answer': {'fixture': True}}]
+        header, calls = replay.read_recording(self.write(rows))
+        self.assertEqual((header['kind'], len(calls), calls[0][0], calls[1][0]['op']), ('npc', 3, {'op': 'identity'}, 'new'))
+        command = [sys.executable, '-u', '-c', f'import sys,json; identity={self.identity!r}; [print(json.dumps(identity if json.loads(line)["op"]=="identity" else {{"fixture":True}}),flush=True) for line in sys.stdin]']
+        self.assertEqual(replay.run(calls, command, dict(os.environ)), [])
+
+    def test_a_duel_still_running_reads_up_to_its_open_end(self):
+        rows = [self.header()] + [{'call': n, 'request': {'op': 'respond', 'response': {'n': n}}, 'answer': {'x': 'y'*200}} for n in range(1, 40)]
+        header, calls = replay.read_recording(self.write(rows, cut=30))
+        self.assertGreater(len(calls), 1)
+        self.assertEqual([r['response']['n'] for r, _ in calls[1:]], list(range(1, len(calls))))
+
+    def test_a_recording_without_identity_or_with_gaps_is_refused(self):
+        with self.assertRaises(ValueError): replay.read_recording(self.write([self.header(identity=None)]))
+        with self.assertRaises(ValueError): replay.read_recording(self.write([self.header(), {'call': 2, 'request': {'op': 'new'}, 'answer': {}}]))
+        with self.assertRaises(ValueError): replay.read_recording(self.write([{'format': 'other'}]))
 
 if __name__ == '__main__': unittest.main()

@@ -38,6 +38,10 @@ async fn main() -> anyhow::Result<()> {
             let (reporter, target) = (who(from), who(to));
             hub.reports.add((reporter.0, &reporter.1), (target.0, &target.1), reason, 100).expect("sample report");
         }
+        // A duel problem (`bug` in the chat): about an NPC, with the duel's recording.
+        let reporter = who("TestPlayer");
+        hub.reports.add_duel_problem((reporter.0, &reporter.1), (0, "Seto Kaiba"), "Lei Lei went to defense by itself", Some("20261122-075334-001"), 100)
+            .expect("sample duel problem");
     }
     // A sample official event with two entrants' standings (the Stadium's events, #18).
     hub.keep_official(&dir);

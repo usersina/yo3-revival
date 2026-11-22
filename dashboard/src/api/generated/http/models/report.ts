@@ -7,6 +7,8 @@ import type { Status } from './status';
 export interface Report {
   /** RFC 3339 UTC, to the second. */
   at: string;
+  /** A duel problem (`bug`) rather than a report about a player. */
+  duel_problem?: boolean;
   /** @nullable */
   handled_at?: string | null;
   /** @nullable */
@@ -19,6 +21,12 @@ export interface Report {
   /** @nullable */
   note?: string | null;
   reason: string;
+  /**
+     * A duel problem's recording id (`bug` in the chat), pinned in the data folder's `recordings/pinned/`. Null for a
+     * report about a player, and for a duel problem sent without a recent duel.
+     * @nullable
+     */
+  recording?: string | null;
   reporter: string;
   /** @minimum 0 */
   reporter_id: number;

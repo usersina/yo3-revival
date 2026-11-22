@@ -40,6 +40,7 @@ pub mod prizes;
 mod social;
 mod mail;
 pub mod reports;
+pub mod recordings;
 pub mod problems;
 pub mod sources;
 mod teams;
@@ -473,6 +474,16 @@ fn prizes(data: &yo3_data::GameData, official_items: &[u16]) -> prizes::Prizes {
     }
 }
 
+/// Removes the duel recordings older than `days` (`recording-days`; 0 removes the dated ones), off the async threads.
+async fn prune_recordings(recordings: Arc<recordings::Recordings>, days: u32) {
+    match tokio::task::spawn_blocking(move || recordings.prune(days)).await {
+        Ok(Ok(n)) if n > 0 => tracing::info!("duel recordings: {n} older than {days} days removed (recording-days)"),
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => tracing::error!("duel recordings not pruned: {e}"),
+        Err(e) => tracing::error!("duel recordings not pruned: {e}"),
+    }
+}
+
 fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> {
     let duel_server = (cfg.advertise.clone().unwrap_or_default(), duel_port);
     let world = match yo3_data::GameData::load(&cfg.game_dir) {
@@ -630,9 +641,11 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         settings.set(name, value).map_err(anyhow::Error::msg)?;
     }
     world.settings = Arc::new(settings);
-    // The audit log keeps `audit-keep-days` (#39): pruned now and then daily.
+    world.recordings = cfg.data_dir.as_deref().map(|dir| Arc::new(recordings::Recordings::at(dir)));
+    // The audit log keeps `audit-keep-days` (#39), the duel recordings `recording-days`: pruned now and then daily.
     let audit_task = cfg.data_dir.clone().map(|dir| {
         let settings = world.settings.clone();
+        let recordings = world.recordings.clone();
         tokio::spawn(async move {
             let day = std::time::Duration::from_secs(24 * 3600);
             let mut every = tokio::time::interval_at(tokio::time::Instant::now() + day, day);
@@ -645,6 +658,10 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
                     Ok(Err(e)) => tracing::error!("audit log not pruned: {e}"),
                     Err(e) => tracing::error!("audit log not pruned: {e}"),
                 }
+                if let Some(recordings) = recordings.clone() {
+                    let days = settings.now().recording_days;
+                    prune_recordings(recordings, days).await;
+                }
             }
         })
     });
@@ -652,6 +669,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         let n = store::prune_audit(dir, world.settings.now().audit_keep_days)?;
         if n > 0 { tracing::info!("audit log: {n} row(s) older than audit-keep-days removed") }
     }
+    if let Some(recordings) = world.recordings.clone() { prune_recordings(recordings, world.settings.now().recording_days).await; }
     tracing::info!("players log in with regulation {}", world.settings.now().login_regulation);
     world.engine_problem = cfg.engine_problem.clone().or_else(|| engine::problem(world.engine_dir.as_deref(), &engine::program(world.engine_dir.as_deref().unwrap_or(std::path::Path::new("engine")))));
     if cfg.duel_check {

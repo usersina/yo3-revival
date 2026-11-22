@@ -263,7 +263,7 @@ the [working guide](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md#
 | UI probe (`vclient.sh ui`, [details](client-internals.md#the-ui-probe)) | Open screens, windows and dialogs by class; the last UI texts looked up, by id; the game's calls into its Flash screens (NPC talk, dialogs opening, janken, list data); each duel slot's card, face and position | Which screen or dialog is open, which menu, prompt or line just appeared, what the client holds on the field | Words written into a movie itself (the "Start Duel?" box's wording); which talk line is showing; rendering and animation |
 | `vclient.sh shot`, `pixel` | The rendered frame, or one pixel's colour | Final visual checks, Flash-only prompts, animations | Needs reading an image; a pixel is only a colour |
 | Duel check (`--duel-check`), native checkpoints, `duel-report.py` | The server's model of each client, the engine, and the client's own card manager, compared after every step; the summon commands' order (`duelcheck/summon.rs`) | State drift between engine, server and client; summon commands in an order the client's animations crash on | Rendering, menus, animations themselves |
-| Duel replay (`duel-replay.py`) | The engine run again on the recorded inputs | Reproducing an engine-side problem exactly | Mouse input and the client |
+| Duel replay (`duel-replay.py`) | The engine run again on the recorded inputs: any duel's recording (`--recording`, every duel writes one; a player's `bug` pins it) or a `--duel-check` session's log | Reproducing an engine-side problem exactly, a player's reported duel included | Mouse input and the client |
 | Self-play tests (`duel_check.rs`, card sweep, real-deck sweep, `npc_bot.rs`) | Thousands of duel steps through translator and engine, offline | Regressions after translator, engine or bot changes | The real client; situations random play rarely reaches (`tools/engine/coverage.py` lists the cards it never exercised) |
 | Scenario tests (`duelcheck::scenario`: `card_scenarios.rs`, `junk_warrior.rs`) | One card's situation played by plan through the real core, both seats' client models checked every step | That an effect does what its text says, and the client sees it | The real client's screen |
 | UI scenarios (`ui-scenario.py`) | What the UI probe reports after scripted clicks and typing on the headless client | Screens that don't involve the server (the deck editor's search) | Anything the probe doesn't report; needs a running, logged-in client |
@@ -357,6 +357,7 @@ review them before sharing. Privacy-filtered exports omit replay inputs and cann
 python3 tools/monkey/duel-report.py --server SERVER.log --client GAME_A.log GAME_B.log
 python3 tools/monkey/duel-replay.py --server SERVER.log
 python3 tools/monkey/duel-replay.py --server SERVER.log --duel 1
+python3 tools/monkey/duel-replay.py --recording DATA/recordings/pinned/ID.jsonl.gz   # any duel the server recorded
 ```
 
 The report fails on missing/failed checkpoints and reports coverage gaps. Replay requires the same engine program, card

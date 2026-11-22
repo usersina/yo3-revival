@@ -9774,6 +9774,10 @@
             "type": "string",
             "description": "RFC 3339 UTC, to the second."
           },
+          "duel_problem": {
+            "type": "boolean",
+            "description": "A duel problem (`bug`) rather than a report about a player."
+          },
           "handled_at": {
             "type": [
               "string",
@@ -9800,6 +9804,13 @@
           },
           "reason": {
             "type": "string"
+          },
+          "recording": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A duel problem's recording id (`bug` in the chat), pinned in the data folder's `recordings/pinned/`. Null for a\nreport about a player, and for a duel problem sent without a recent duel."
           },
           "reporter": {
             "type": "string"

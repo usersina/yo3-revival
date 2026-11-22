@@ -467,3 +467,56 @@ fn no_player_can_take_the_servers_name() {
     }
     assert!(d.lock().unwrap().create_player(user, 1, "Servers").is_ok());
 }
+
+/// `bug what happened` sends the player's last duel to the staff: a report about the opponent with the duel's
+/// recording id, pinned so the daily pruning keeps it. Without a recent duel the note goes alone.
+#[test]
+fn bug_sends_the_players_last_duel_pinned_with_the_note() {
+    use yo3_server::recordings::{Recordings, Seat};
+    let dir = std::env::temp_dir().join(format!("yo3-bug-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    yo3_server::store::initialize(&dir).unwrap();
+    let recordings = Arc::new(Recordings::at(&dir));
+    let s = Server::with_world(World { recordings: Some(recordings.clone()), ..world() });
+    s.hub.lock().unwrap().reports = Reports::at(&dir);
+    let d = directory();
+    let mut a = s.join_from(&d, addr(1));
+    assert!(ask(&mut a, "bug").contains("Usage: bug"));
+    assert!(ask(&mut a, "help").contains("bug what happened"));
+    let alone = ask(&mut a, "bug my trap did nothing");
+    assert!(alone.contains("(#1)") && alone.contains("No recent duel"), "{alone}");
+    let me = Reports::at(&dir).list(None, 10).unwrap()[0].reporter_id;
+
+    let duel = recordings.start("npc", &[Seat { player_id: Some(me), name: "Yugi".into() }, Seat { player_id: None, name: "Pegasus".into() }], false, None).unwrap();
+    let id = duel.id().to_string();
+    // During the duel (the recording still open) as after it.
+    let sent = ask(&mut a, "!bug Mirror Force destroyed nothing");
+    assert!(sent.contains("against Pegasus") && sent.contains("(#2)"), "{sent}");
+    drop(duel);
+    let list = Reports::at(&dir).list(None, 10).unwrap();
+    let report = &list[0];
+    assert_eq!((report.recording.as_deref(), report.duel_problem, report.target.as_str(), report.target_id), (Some(id.as_str()), true, "Pegasus", 0));
+    assert_eq!(report.reason, "Duel problem: Mirror Force destroyed nothing");
+    assert_eq!((list[1].recording.as_deref(), list[1].duel_problem, list[1].target.as_str()), (None, true, "(no recent duel)"));
+    assert!(dir.join(format!("recordings/pinned/{id}.jsonl.gz")).is_file());
+    recordings.prune(0).unwrap();
+    assert!(recordings.find(&id).is_some(), "pinned: the pruning keeps it");
+    // An ordinary report has no recording and isn't a duel problem.
+    let staff_view = Reports::at(&dir);
+    assert!(staff_view.list(None, 10).unwrap().iter().all(|r| r.duel_problem));
+    s.world.settings.set("report-limit", "0").unwrap();
+    assert!(ask(&mut a, "bug again").contains("turned off"));
+}
+
+/// A database made before duel problems gets the reports' `recording` column at the next start.
+#[test]
+fn an_older_database_gets_the_recording_column() {
+    let dir = std::env::temp_dir().join(format!("yo3-bug-schema-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    yo3_server::store::initialize(&dir).unwrap();
+    rusqlite::Connection::open(dir.join("server.db")).unwrap().execute_batch("ALTER TABLE reports DROP COLUMN recording;").unwrap();
+    yo3_server::store::initialize(&dir).unwrap();
+    let mut reports = Reports::at(&dir);
+    reports.add_duel_problem((1, "Yugi"), (0, "Pegasus"), "it froze", Some("20261122-120000-001"), 5).unwrap();
+    assert_eq!(reports.list(None, 1).unwrap()[0].recording.as_deref(), Some("20261122-120000-001"));
+}

@@ -373,7 +373,8 @@ impl Api {
                     let query = reports::ReportQuery { status: s.as_deref().filter(|s| !s.is_empty() && *s != "all").map(status).transpose()?, limit: *limit };
                     let list = self.list_reports(&query, caller).map_err(|e| e.to_string())?;
                     let lines: Vec<String> = list.reports.iter().map(|r| format!("#{}\t{}\t{} -> {}\t{}{}", r.report.id, serde_json::to_value(r.report.status).ok().and_then(|v| v.as_str().map(str::to_owned)).unwrap_or_default(),
-                        r.report.reporter, r.report.target, r.report.reason, r.report.note.as_ref().map(|n| format!(" [{n}]")).unwrap_or_default())).collect();
+                        r.report.reporter, r.report.target, r.report.reason, r.report.note.as_ref().map(|n| format!(" [{n}]")).unwrap_or_default())
+                        + &r.report.recording.as_ref().map(|id| format!("\trecording {id}")).unwrap_or_default()).collect();
                     let message = if lines.is_empty() { "no reports".to_string() } else { lines.join("\n") };
                     Ok(json!({ "reports": list.reports, "open": list.open, "message": message }))
                 }

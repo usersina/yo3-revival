@@ -69,6 +69,13 @@ test.describe.serial('Player reports', () => {
     await expect(row(page, 'Insults in duels')).toContainText('Open')
   })
 
+  test("a duel problem shows its duel's recording", async ({ page }) => {
+    await signIn(page)
+    const problem = row(page, 'Duel problem: Lei Lei went to defense by itself')
+    await expect(problem).toContainText('Seto Kaiba')
+    await expect(problem).toContainText('Recording 20261122-075334-001')
+  })
+
   test('the reporter and the reported player link to their account pages', async ({ page }) => {
     await signIn(page)
     const link = row(page, 'Insults in duels').getByRole('link', {

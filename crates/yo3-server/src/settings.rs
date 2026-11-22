@@ -148,6 +148,10 @@ pub const REGISTRY: &[Setting] = &[
     // moderation history still shows a repeat offender. 0 keeps every row.
     Setting { name: "audit-keep-days", help: "Days the admin audit log keeps a row, pruned at start, daily and when this changes (0: for ever)",
         kind: Kind::Number { min: 0, max: 36_500 }, applies: Applies::AtOnce, default: || json!(365) },
+    // Two weeks: long enough for a player to mention a duel that went wrong; a duel's file is tens of kilobytes.
+    Setting { name: "recording-days", help: "Days every duel's rules-engine recording is kept, for replaying a reported problem \
+        (pinned ones, from the `bug` chat command, stay); pruned at start and daily (0: duels aren't recorded)",
+        kind: Kind::Number { min: 0, max: 365 }, applies: Applies::AtOnce, default: || json!(14) },
     Setting { name: "handshake-burst", help: "TLS connections one address may open at once before it waits (this PC's are not counted)",
         kind: Kind::Number { min: 1, max: 10_000 }, applies: Applies::AtOnce, default: || json!(120) },
     Setting { name: "handshakes-per-second", help: "How fast an address gets its TLS connections back",
@@ -209,6 +213,8 @@ pub struct Settings {
     pub pace: crate::net::Pace,
     /// Days the audit log keeps a row (0: for ever).
     pub audit_keep_days: u32,
+    /// Days a duel's recording is kept (0: duels aren't recorded).
+    pub recording_days: u32,
     /// The shop's prices (#16) and the reports a player may send in an hour.
     pub shop: Shop,
     pub report_limit: u32,
@@ -260,6 +266,7 @@ impl Settings {
             handshake_burst: number("handshake-burst"),
             handshakes_per_second: number("handshakes-per-second"),
             audit_keep_days: number("audit-keep-days"),
+            recording_days: number("recording-days"),
             shop: Shop { pack_cost: number("pack-cost"), deck_cost: number("deck-cost"), trade_cards: number("trade-cards"),
                 rental_cards: number("rental-cards"), rental_bp: number("rental-bp"), rental_days: number("rental-days") },
             report_limit: number("report-limit"),

@@ -642,6 +642,8 @@ pub struct World {
     pub card_sources: Vec<crate::sources::CardSource>,
     /// The Special Pack, the alternate artworks and the NPCs' recipes (`crate::prizes`).
     pub prizes: Arc<crate::prizes::Prizes>,
+    /// Every duel's engine traffic, in the data folder (`crate::recordings`); None without one (tests).
+    pub recordings: Option<Arc<crate::recordings::Recordings>>,
 }
 
 /// The Information list (0x21FC, read by the global dispatcher `0x4F4700` whenever it arrives, so the server may push
@@ -690,6 +692,18 @@ pub const DUELS_UNAVAILABLE: (&str, &str) = (
 );
 
 impl World {
+    /// Records the duel `engine` plays between `seats` (`kind`: "npc" or "pvp") in the data folder's recordings, unless
+    /// there is none or `recording-days` is 0. A recording that can't start is logged; the duel goes on.
+    pub fn record_duel(&self, engine: &mut crate::engine::Engine, kind: &str, seats: &[crate::recordings::Seat]) {
+        let Some(recordings) = &self.recordings else { return };
+        if self.settings.now().recording_days == 0 { return }
+        let identity = engine.cached_identity();
+        match recordings.start(kind, seats, engine.plays_anime(), identity) {
+            Ok(recorder) => engine.record_to(recorder),
+            Err(e) => tracing::warn!("duel not recorded: {e}"),
+        }
+    }
+
     /// The card data duels, deck checks and deck placement use now: the game's own, or the selected profile's.
     pub fn card_view(&self) -> crate::profile::CardView {
         match self.profiles.selected(self.settings.now().anime_cards) {
@@ -764,6 +778,7 @@ impl World {
             rental_pool: Default::default(),
             card_sources: vec![],
             prizes: Default::default(),
+            recordings: None,
         }
     }
 
@@ -1070,6 +1085,12 @@ impl Hub {
     }
 
     /// A player as a replay shows them (`duellog::Side`): their record as the opponent's client gets it.
+    /// A duel's seat for a duel recording (`crate::recordings`): the player and their name while online.
+    pub fn recording_seat(&self, player_id: u32) -> crate::recordings::Seat {
+        let name = self.online.values().find(|o| o.player_id == player_id).map_or_else(|| format!("player {player_id}"), |o| o.name.clone());
+        crate::recordings::Seat { player_id: Some(player_id), name }
+    }
+
     pub fn side(&self, player_id: u32, deck: &Deck, player_type: u32) -> crate::duellog::Side {
         let record = self.online.values().find(|o| o.player_id == player_id).map(|o| &o.record);
         let int = |k: &str| record.and_then(|r| r.get(k)).and_then(Value::as_u32).unwrap_or(0);

@@ -236,6 +236,8 @@ pub fn initialize(dir: &Path) -> io::Result<()> {
     tx.execute_batch(DUEL_LOGS_TABLE).map_err(sql)?;
     tx.execute_batch(AUDIT_TABLE).map_err(sql)?;
     tx.execute_batch(crate::reports::TABLE).map_err(sql)?;
+    let has_recording: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM pragma_table_info('reports') WHERE name='recording')", [], |r| r.get(0)).map_err(sql)?;
+    if !has_recording { tx.execute_batch(crate::reports::RECORDING_COLUMN).map_err(sql)?; }
     tx.execute_batch(crate::official::TABLES).map_err(sql)?;
     tx.execute_batch(crate::championship::TABLES).map_err(sql)?;
     tx.execute_batch(RECEIPTS_TABLE).map_err(sql)?;
