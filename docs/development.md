@@ -275,26 +275,10 @@ the [working guide](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md#
 
 ## Add a card the game never had
 
-Since #75 the server can add cards after the game's own (the first: Shooting Quasar Dragon). A card is a row; everything
-else comes from the pinned EDOPro data (`engine/fetch.sh`) and the player's own game:
-
-1. Add a line to `engine/added/cards.tsv`: the next free `row` (rows are permanent: never reuse or reorder one, decks and
-   saves store them), the Konami id (`engine/card-ids.json`'s `konami_id`), the name as the database spells it, a note.
-2. Run `tools/engine/added-cards.py`. It writes `engine/added-cards.json` and refuses a card the client can't show (a
-   type, attribute or race no game card has, as Xyz, Link and Pendulum; a stat beyond 5100) or one the game already has.
-3. Run `tools/engine/anime-pictures.py`: Desktop's Card pictures then fetches its normal picture (until then the game shows the shipped stand-in, `tools/engine/no-picture.py`). For an anime version
-   (the `anime-cards` setting), add its row to `engine/anime/cards.tsv` (Konami id, name, passcode, anime passcode,
-   `Anime`) and run `tools/engine/anime-map.py` first, as for a card of the game: the picture list then asks for the anime
-   picture, its official one standing in.
-4. Write a scenario test (`crates/yo3-server/tests/added_cards.rs`) that summons it from the game's cards and plays its
-   effects (`Scenario::start_field` starts with it already on the field), and check it live with `give-cards` on the
-   headless client, or with the server's `--duel-field 0:mzone:ID,1:hand:ID` testing aid in a duel between two clients (`YO3_ANIME_ART` points `vclient.sh` at a picture
-   folder: `card/<id>.png` 200x290 and `mini/<id>.png` 50x72).
-
-How it reaches the game: the server adds the rows to its card table and serves the list (`/web/added-cards`); the
-launcher builds the game's card files with them from the player's own game into `added-cards/<hash>/` beside its
-profile and points the connection DLL at that folder before the game is released; the DLL hands the game those files
-and the cards' pictures ([internals](client-internals.md#data-formats)). Nothing in the game folder is written.
+Since #75 the server can add cards after the game's own (the first: Shooting Quasar Dragon): a row in
+`engine/added/cards.tsv` (`tools/engine/added-cards.py --find NAME` checks a card fits and prints it), then
+`tools/engine/added-cards.py`, `tools/engine/anime-pictures.py`, a scenario test per effect and a live check. The
+whole procedure, batches, testing, pictures and how the cards reach the game: [Adding cards](added-cards.md).
 
 ## Duel diagnostics
 

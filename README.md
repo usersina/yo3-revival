@@ -1,7 +1,9 @@
 # YO3 Revival
 
 A private server and launcher for the retired **Yu-Gi-Oh! ONLINE 3 (Duel Accelerator)**. Duel the computer on your
-own PC, or play with others on our server or a friend's, using the original game client.
+own PC, or play with others on our server or a friend's, using the original game client. Beyond the game as it closed
+in 2012, Revival adds what it never had: cards printed since (starting with Shooting Quasar Dragon), the cards' anime
+versions, Destiny Draw, a Championship and more, all inside the original client.
 
 ![Stardust Dragon on the field in the original game client, running on Revival](screenshots/duel.png)
 

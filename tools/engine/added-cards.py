@@ -3,6 +3,9 @@
 
     tools/engine/added-cards.py            write engine/added-cards.json
     tools/engine/added-cards.py --check    compare the committed file with a fresh build (exit 1 when it differs)
+    tools/engine/added-cards.py --find NAME [NAME...]
+                                           whether each card (its English name, any case) can be added, and the line
+                                           for engine/added/cards.tsv when it can (rows continue after the table's)
 
 Input (committed): engine/added/cards.tsv, one line per added card: its permanent `row` (4834 on, after the game's last;
 never reused or reordered: decks and saves store rows), its Konami id, its name (for reading the table) and a note.
@@ -115,15 +118,21 @@ def table():
         return list(csv.DictReader(f, delimiter='\t'))
 
 
-def build():
+def load():
+    """Everything a card is checked against: the database, the passcodes, the game's rows and what they teach."""
     db = sqlite3.connect(os.path.join(ENGINE, 'vendor', 'BabelCDB', 'cards.cdb'))
     alias = {r[0]: r[1] for r in db.execute('select id, alias from datas')}
     data = {r[0]: {'type': r[1], 'atk': r[2], 'def': r[3], 'level': r[4] & 0xFF, 'race': r[5], 'attribute': r[6], 'name': r[7], 'desc': r[8]}
             for r in db.execute('select d.id, d.type, d.atk, d.def, d.level, d.race, d.attribute, t.name, t.desc from datas d join texts t on t.id = d.id')}
     passcode = passcodes(alias)
     rows = client_rows()
-    learned = learn(rows, data, passcode)
-    in_game = {a & 0x3FFF for a, _ in rows} - {0}
+    return {'data': data, 'passcode': passcode, 'rows': rows, 'learned': learn(rows, data, passcode),
+            'in_game': {a & 0x3FFF for a, _ in rows} - {0}}
+
+
+def build():
+    ctx = load()
+    data, passcode, rows, learned, in_game = ctx['data'], ctx['passcode'], ctx['rows'], ctx['learned'], ctx['in_game']
     out, problems = [], []
     for i, line in enumerate(table()):
         row, cid = int(line['row']), int(line['konami_id'])
@@ -167,6 +176,47 @@ def build():
     return {'format': FORMAT, 'version': 1, 'first_row': len(rows), 'cards': out}
 
 
+def find(names, ctx=None):
+    """For each name: (the cards.tsv line or None, the reasons it can't be added). Rows follow the table's last."""
+    ctx = ctx or load()
+    by_name = {}
+    for code, d in ctx['data'].items():
+        by_name.setdefault(d['name'].casefold(), []).append(code)
+    cid_of = {}
+    for cid, code in ctx['passcode'].items():
+        cid_of.setdefault(code, cid)
+    listed = {int(line['konami_id']) for line in table()}
+    row = len(ctx['rows']) + len(table())
+    out = []
+    for name in names:
+        codes = [c for c in by_name.get(name.casefold(), []) if c in cid_of]
+        if not codes:
+            out.append((name, None, ['no card of that name with a Konami id in the pinned data (check the spelling)']))
+            continue
+        code = codes[0]
+        d, cid = ctx['data'][code], cid_of[code]
+        why = []
+        if cid in ctx['in_game']:
+            why.append('the game already has it')
+        if cid in listed:
+            why.append('engine/added/cards.tsv already has it')
+        for what, value in (('kind', d['type']), ('attribute', d['attribute']), ('race', d['race'])):
+            if ctx['learned'][what].get(value) is None:
+                why.append(f'no game card has its {"type" if what == "kind" else what} ({value:#x}): Xyz, Link, Pendulum and newer kinds can\'t be shown')
+        if not 1 <= d['level'] <= 12:
+            why.append(f'level {d["level"]}')
+        for what in ('atk', 'def'):
+            v = d[what]
+            if v != -2 and not (0 <= v <= STAT_MAX and v % 10 == 0):
+                why.append(f'{what.upper()} {v} is beyond what the client can show')
+        if why:
+            out.append((d['name'], None, why))
+        else:
+            out.append((d['name'], f'{row}\t{cid}\t{d["name"]}\t', []))
+            row += 1
+    return out
+
+
 def render(doc):
     return json.dumps(doc, indent=1, ensure_ascii=False) + '\n'
 
@@ -174,7 +224,17 @@ def render(doc):
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--check', action='store_true', help='compare the committed file with a fresh build')
+    p.add_argument('--find', nargs='+', metavar='NAME', help='whether these cards can be added, and their table lines')
     args = p.parse_args(argv)
+    if args.find:
+        results = find(args.find)
+        for name, line, why in results:
+            print(f'{name}: ' + ('ok' if line else 'cannot be added: ' + '; '.join(why)))
+        lines = [line for _, line, _ in results if line]
+        if lines:
+            print('\nLines for engine/added/cards.tsv (add a note after the last tab):')
+            print('\n'.join(lines))
+        return 0 if all(line for _, line, _ in results) else 1
     text = render(build())
     if args.check:
         with open(OUT, encoding='utf-8') as f:

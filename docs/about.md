@@ -3,6 +3,10 @@
 YO3 Revival is a private server and connection app for the retired **Yu-Gi-Oh! ONLINE 3 (Duel Accelerator)**.
 Play on your own computer or join a friend's server. There is no project-operated public server.
 
+It preserves the game as Konami left it and goes past it: cards printed after the game closed in 2012
+([adding cards](added-cards.md)), the cards' [anime versions](anime-cards.md), and features of our own such as Destiny
+Draw and the Championship, all in the original client.
+
 The server is written in Rust and reverse-engineered from the original client. Duels use EDOPro's core, built
 into the `yo3-engine` program. The [playing guide](playing.md#features-and-limitations) describes what works;
 the [roadmap](roadmap.md) records the remaining work. This is a beta, so expect bugs.

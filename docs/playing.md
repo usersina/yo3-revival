@@ -247,7 +247,8 @@ The main playable features are:
 
 - **Duels:** NPC opponents, Auto Duel, Create Duel, Single and Match Mode, spectating, and the client's choice dialogs
   and animations.
-- **Cards and decks:** Edit Deck, official character decks, booster packs, structure decks, trading and rentals.
+- **Cards and decks:** Edit Deck, official character decks, booster packs, structure decks, trading and rentals; cards the
+  game never had (Shooting Quasar Dragon so far: your host gives them) and the cards' [anime versions](#anime-card-versions).
 - **Community:** chat rooms, whispers, [chat commands](#chat-commands), player search, friends, D-Mail, teams and player-run knockout tournaments.
 - **Customization:** avatar settings, card protectors and avatar items bought in the shop.
 
