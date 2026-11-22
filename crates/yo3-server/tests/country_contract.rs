@@ -126,3 +126,67 @@ fn search_by_country_matches_the_flag() {
     assert_eq!(ask(&mut yugi, "GB"), ["Yugi2"]);
     assert!(ask(&mut yugi, "FR").is_empty());
 }
+
+/// `/p Server TEXT`, as the client sends it: a whisper in one tag-10 item; the server's answer lines.
+fn ask(c: &mut common::Client, line: &str) -> String {
+    let body = Message { tag: 10, fields: vec![("chat_str".into(), Value::text(line)), ("chat_type".into(), Value::U32(0)), ("to_name".into(), Value::text("Server"))], items: vec![] };
+    let replies = c.send(yo3_proto::Packet::Message(Message::reply(0x2134).item(body)));
+    replies[1..].iter().filter_map(|m| m.items.first().and_then(|i| text(i, "chat_str"))).collect::<Vec<_>>().join("\n")
+}
+
+#[test]
+fn a_player_chooses_their_own_flag_and_others_see_it_at_once_issue_81() {
+    // A player from Brazil asked for its flag: the game has it (BR) but no place to choose it, and its Portuguese-less
+    // language gave Spanish or English. `flag CODE` keeps the code for the account, like the host's set-country, and the
+    // record others get changes at once.
+    let world = yo3_server::front::World { countries: ["BR", "DE", "ES", "FR", "GB", "US"].map(String::from).to_vec(), ..yo3_server::front::World::new(vec![]) };
+    let s = Server::with_world(world);
+    let d = directory();
+    let other = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 8));
+    let (mut yugi, mut kaiba) = (s.join_from(&d, addr()), s.join_from(&d, other));
+    login(&mut yugi, 5);
+    login(&mut kaiba, 1);
+    let id_at = |a: IpAddr| d.lock().unwrap().account_for(a).players[0].player_id;
+    let (yugi_id, kaiba_id) = (id_at(addr()), id_at(other));
+    yugi.send(req_with(0x1F4C, &[("player_id", Value::U32(yugi_id))]));
+    kaiba.send(req_with(0x1F4C, &[("player_id", Value::U32(kaiba_id))]));
+    let search = |c: &mut common::Client| {
+        let found = one(c.send(req_with(0x2CF0, &[("search_flag", Value::U32(1)), ("search_type", Value::U32(1)), ("base_point", Value::U32(0)), ("front_num", Value::U32(100)), ("back_num", Value::U32(0))])));
+        found.items.iter().find(|i| text(i, "pname").as_deref() == Some("Yugi")).and_then(|i| text(i, "country"))
+    };
+    assert_eq!(search(&mut kaiba).as_deref(), Some("ES"), "Spanish (5) gives ES until the player chooses");
+    assert!(ask(&mut yugi, "flag").contains("ES (from your game's language)"));
+
+    assert!(ask(&mut yugi, "flag br").contains("now BR"));
+    assert_eq!(d.lock().unwrap().account_for(addr()).country, "BR", "kept for the account");
+    assert_eq!(search(&mut kaiba).as_deref(), Some("BR"), "the other player sees it without a new login");
+    // The next login carries it.
+    let user = d.lock().unwrap().account_for(addr()).user_id;
+    let item = login(&mut s.join_saved(&d, user), 5).items.remove(0);
+    assert_eq!(text(&item, "country").as_deref(), Some("BR"));
+
+    // A code the game has no flag for is refused, and the choice stays.
+    assert!(ask(&mut yugi, "flag XX").contains("no flag for"));
+    assert!(ask(&mut yugi, "flag Brazil").contains("no flag for"));
+    assert_eq!(d.lock().unwrap().account_for(addr()).country, "BR");
+    // auto: the language's again.
+    assert!(ask(&mut yugi, "flag auto").contains("now ES"));
+    assert_eq!(d.lock().unwrap().account_for(addr()).country, "");
+    assert_eq!(search(&mut kaiba).as_deref(), Some("ES"));
+}
+
+#[test]
+fn the_players_own_record_after_the_map_reads_it_again_keeps_the_flag() {
+    // The game reads its own player again (0x2CEE) as it enters the map and after a duel: the accounts' copy, which
+    // has the account's own flag only. Without one, the reply had no `country` and the game showed Germany for itself.
+    let s = Server::new();
+    let d = directory();
+    let mut c = s.join_from(&d, addr());
+    login(&mut c, 3);
+    let id = d.lock().unwrap().account_for(addr()).players[0].player_id;
+    c.send(req_with(0x1F4C, &[("player_id", Value::U32(id))]));
+    let own = one(c.send(req_with(0x2CEE, &[("player_id", Value::U32(id)), ("type", Value::U32(0))])));
+    assert_eq!(own.request(), Some(0x2CF3));
+    assert_eq!(text(&own.items[0], "country").as_deref(), Some("FR"), "the language's flag, French: {own:?}");
+    assert!(ask(&mut c, "flag").contains("FR (from your game's language)"));
+}

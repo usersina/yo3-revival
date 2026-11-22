@@ -17,6 +17,9 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 - The computer Sets its Flip monsters, such as Morphing Jar and Man-Eater Bug, face down instead of summoning them in
   Attack Position, so their effects work when they are flipped (#80).
+- Choose the flag others see next to your name: whisper `flag BR` to the server (`/p Server flag BR`) with your
+  country's two-letter code, or `flag auto` to follow your game's language again (#81). Others see it at once.
+- Fixed: your own game could show you the German flag after you entered the map, whatever your language.
 
 ## v0.1.18 (2026-11-22)
 

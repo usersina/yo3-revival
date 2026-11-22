@@ -567,6 +567,9 @@ pub struct World {
     pub settings: Arc<crate::settings::Live>,
     /// The client's banlists, id and name (from its text table), to read a banlist setting by name.
     pub banlists: Vec<(u32, String)>,
+    /// The client's country codes (`countrytbl.bin`): the flags a player may choose with `flag` (#81). Empty without the
+    /// game's data: then any two-letter code is taken (the client shows Germany for one it doesn't have).
+    pub countries: Vec<String>,
     /// The highest CARD_Prop row: the client's per-card arrays have one byte per row (row 0 is a dummy).
     pub card_rows: usize,
     /// Every player's deck until decks are stored per player (from the client's preset decks).
@@ -745,6 +748,7 @@ impl World {
             regulations: HashMap::new(),
             settings: Arc::new(crate::settings::Live::open(None, vec![]).expect("the default settings are valid")),
             banlists: vec![],
+            countries: vec![],
             card_rows: 0,
             starter_deck: None,
             official_decks: vec![],
@@ -3336,6 +3340,8 @@ impl FrontSession {
                 let (left, stored) = d.locked().purchase(self.account.players[at].player_id, cost, item, add)?;
                 self.account.dpoint = left;
                 self.account.players[at] = stored;
+                // The stored player has the account's own flag only: the language's comes from this session.
+                self.apply_country();
             }
             None => {
                 self.account.dpoint = self.account.dpoint.checked_sub(cost).ok_or("not enough BP")?;
@@ -3387,6 +3393,8 @@ impl FrontSession {
                 change(&mut self.account.players[at]);
             }
         }
+        // The stored player has the account's own flag only: the language's comes from this session.
+        self.apply_country();
         // A card no booster pack holds (the extra pool's rentals) has no pack to name: it arrives as a gift of one card.
         let present = match world.packs.iter().find(|p| p.tiers.iter().flatten().any(|&c| c == card)) {
             Some(p) => crate::shop::Present::Card { pack: p.id, card },
@@ -3915,6 +3923,7 @@ impl FrontSession {
                     && let Some(p) = self.directory.as_ref().and_then(|d| d.locked().player(self.account.players[at].player_id).cloned())
                 {
                     self.account.players[at] = p;
+                    self.apply_country();
                 }
                 let record = self.hub().own_record(self.player(), &self.world.granted_items(self.player()));
                 Message::reply(0x2CF3).item(record)

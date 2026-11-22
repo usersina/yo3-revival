@@ -14,7 +14,7 @@ use crate::lock::Locked;
 pub const SERVER: &str = "Server";
 
 /// The commands, by the word that starts them.
-const COMMANDS: [&str; 10] = ["help", "banlist", "draw", "draw5", "where", "pack", "report", "bug", "recipes", "h"];
+const COMMANDS: [&str; 12] = ["help", "banlist", "draw", "draw5", "where", "pack", "report", "bug", "recipes", "flag", "country", "h"];
 
 /// The longest reason a command's help line and answers may run: the game's chat window wraps longer lines.
 const LINE: usize = 110;
@@ -102,6 +102,7 @@ impl FrontSession {
             "report" => self.report_command(&rest),
             "bug" => self.bug_command(&rest),
             "recipes" => self.recipes_command(&rest),
+            "flag" | "country" => self.flag_command(&rest),
             _ => help(),
         })
     }
@@ -148,6 +149,41 @@ impl FrontSession {
         let now = name_of(chosen.unwrap_or(server_default));
         let kind = if chosen.is_some() { "your choice" } else { "the server's" };
         vec![format!("Your banlist is now {now} ({kind})."), "It applies when you next log in: log out of the game and back in, then Select Deck and Auto Duel follow it.".into()]
+    }
+
+    /// `flag CODE` chooses the country flag others see (#81): the game has no place to choose it (its Detailed Search only
+    /// filters by it, and Konami's server took it from the account), so the account keeps the code, as the host's
+    /// `set-country` does, and others see it at once. `flag auto` follows the game's language again; `flag` alone shows it.
+    fn flag_command(&mut self, arg: &str) -> Vec<String> {
+        let usage = "Type flag CODE with your country's two-letter code (flag BR for Brazil, flag US, flag FR), or flag auto for your game's language.";
+        let Some(directory) = self.directory.clone() else { return vec!["Your flag can't be saved on this server.".into()] };
+        let arg = arg.trim();
+        if arg.is_empty() {
+            let chosen = directory.locked().account_of(self.account.user_id).is_some_and(|a| !a.country.is_empty());
+            let flag = self.player().country.clone();
+            let whose = if chosen { "" } else { " (from your game's language)" };
+            return vec![format!("Your flag is {flag}{whose}."), usage.into()];
+        }
+        let code = if arg.eq_ignore_ascii_case("auto") { String::new() } else { arg.to_ascii_uppercase() };
+        let known = |c: &str| if self.world.countries.is_empty() { c.len() == 2 && c.bytes().all(|b| b.is_ascii_uppercase()) } else { self.world.countries.iter().any(|k| k == c) };
+        if !code.is_empty() && !known(&code) {
+            return vec![format!("The game has no flag for \"{}\".", arg.chars().take(20).collect::<String>()), usage.into()];
+        }
+        if let Err(e) = directory.locked().set_country_of(self.account.user_id, &code) {
+            tracing::warn!("[chat] flag not saved: {e}");
+            return vec!["Your flag could not be saved: try again.".into()];
+        }
+        self.account.country = code.clone();
+        self.apply_country();
+        {
+            let mut hub = self.hub();
+            for player in &self.account.players {
+                hub.refresh(player);
+            }
+        }
+        let flag = self.player().country.clone();
+        let whose = if code.is_empty() { " (from your game's language)" } else { "" };
+        vec![format!("Your flag is now {flag}{whose}. Others see it now; your own game shows it from your next login.")]
     }
 
     /// `draw [N] [DECK]` (and `draw5`) deals N cards (5 by default, at most [`MAX_DRAW`]) at random from the player's
@@ -329,6 +365,7 @@ fn help() -> Vec<String> {
         "where CARD: where a card comes from (packs, decks, Trade Card, rental)".into(),
         "pack NAME: every card a booster pack can give, rarest first (pack alone lists the packs)".into(),
         "recipes [NAME]: the theme deck recipes for sale, or buy one with BP".into(),
+        "flag CODE: the country flag others see (flag BR for Brazil; flag auto for your game's language)".into(),
         "report PLAYER reason: tell the staff about a player".into(),
         "bug what happened: tell the staff a duel went wrong (your duel is sent with it)".into(),
     ]

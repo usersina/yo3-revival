@@ -641,11 +641,11 @@ The client reads `country` (text, an ISO code it looks up in `data/text/countryt
 `AL`... `HN`; `0x51BC80` returns the id, -1 for a code it doesn't have) in the login item (`0x2201`, the leaderboard link
 `0x46FC14`), the player records (`0x2260`, Player Information `0x4B7350`, a duel's `vsPlayerData` `0x4A2D30`/`0x4A4460`), the
 search entries (`0x2CF7`) and the bracket's seats (`0x32FD`, `0x4CEBE0`). No request carries the client's country, so the host
-sets one per account (`yo3-server set-country ADDRESS CODE`, `countries` lists the codes, `auto` clears it), kept in
+sets one per account (`yo3-server set-country ADDRESS CODE`, `countries` lists the codes, `auto` clears it), or the player with the chat command `flag CODE` (#81; the game's own "Select Country" and "Filter by nationality", texts 12140/12122, go with the search's country criterion `0x8`: **guess** from the texts, no request sends the player's own), kept in
 the accounts (`server.db`); without a setting it follows the language the client gives at login (`0x1F48 {lang}`): Japanese JP,
 English GB, German DE, French FR, Italian IT, Spanish ES, Korean KR, Chinese CN (**guess**: the client has no language-to-country table. It derives `lang` itself in `0x40DE50` from the Windows primary language id: ja 0, de 2, fr 3, it 4, es 5, ko 6, zh 7, else 1, which confirms our numbering; `country` is always server data and `countrytbl.bin` is only an id lookup). A missing or unknown `country`
 shows the Germany flag (what every player showed until 2026-11-08). The search's country criterion (`0x8`) compares the code.
-Live: Player Information showed the UK flag for an English client, the Japanese flag once the account was set to JP.
+Live: Player Information showed the UK flag for an English client, the Japanese flag once the account was set to JP. The player's own record (`0x2CF3`, after `0x2CEE`, sent as the game enters the map and after a duel) carries the language's flag too: it was once rebuilt from the stored player, which has only the account's own setting, and went without `country` (the game showed Germany).
 
 ### Manner ratings (`dlg_manner.swf`, DuelResult `0x512A40`, dialog `0x4C2A10`/`0x4C3F20`)
 

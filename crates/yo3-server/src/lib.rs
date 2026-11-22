@@ -594,6 +594,7 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
             avatar_items: data.avatar_items_for_sale().iter().map(|e| (e.id, e.b)).collect(),
             free_items: data.free_items().iter().map(|e| e.id).collect(),
             banlists: data.regulations.iter().map(|r| (r.id, data.text(r.name_id).unwrap_or_default().to_string())).collect(),
+            countries: yo3_data::countries(&cfg.game_dir).unwrap_or_default(),
             regulations: data.regulations.iter().map(|r| (r.id, r.clone())).collect(),
             card_sources: player_card_sources(&data, &prizes(&data, &official_items)),
             prizes: Arc::new(prizes(&data, &official_items)),
