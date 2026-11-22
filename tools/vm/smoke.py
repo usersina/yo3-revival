@@ -148,7 +148,8 @@ def smoke(args):
         z = 'Z:'
         vm('run', args.vm, '--timeout', '300', '--',
            f'taskkill /f /im yo3.exe >nul 2>&1 & rmdir /s /q {GUEST} 2>nul & '
-           f'powershell -NoProfile -Command "Expand-Archive -Force {z}\\{bundle.name} {GUEST}" & '
+           # Windows' own tar unpacks the bundle's 20000-odd files in seconds; Expand-Archive took over five minutes.
+           f'mkdir {GUEST} & tar -xf {z}\\{bundle.name} -C {GUEST} & '
            f'copy /y {z}\\yo3-smoke-client-1.json {GUEST}\\client-1.json >nul & copy /y {z}\\yo3-smoke-server.crt {GUEST}\\server.crt >nul & '
            f'copy /y {z}\\yo3-smoke-play.bat {GUEST}\\play.bat >nul & echo unpacked', timeout=360)
         log_start = (server_dir / 'server.log').stat().st_size
