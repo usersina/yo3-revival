@@ -289,8 +289,10 @@ In Match Mode, a player whose deck has a side deck gets the Card Swap screen bet
 side deck and the main or extra deck, then press the arrow at the top left to go on. Build a side deck in Edit Deck.
 
 The shop also sells card protectors (200 BP) and avatar items (100 BP): Avatar Settings and the deck editor offer
-them once bought. Avatar Settings is the tent on the right of the map; every player starts with a few hair styles,
-eyes, clothes, a duel disk and the BEGINNER DUELIST title.
+them once bought. The avatar items are every part the game has that a new player doesn't own already, 326 of them:
+hair, eyes, masks, clothes, glasses and 104 duel disks (Battle City, Duel Academy, Yusei's, Luna's, Leo's...).
+Avatar Settings is the tent on the right of the map; every player starts with a few hair styles, eyes, clothes, a
+duel disk and the BEGINNER DUELIST title.
 
 **Titles** are earned as you play, and a chat line tells you when; wear one in Avatar Settings → Title:
 
