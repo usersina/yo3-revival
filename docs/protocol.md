@@ -418,7 +418,11 @@ not; the partner tab `chat_type` 4 with `to_id` 0 (Trade Partner in a trade or r
 the duel: the server delivers it to the player's trade or rental partner, else the opponent of their newest match);
 a whisper `chat_type` 0 with `to_name`. Before joining a room the first tab reads "----" and Enter sends nothing. A
 room's entry can't be pushed: ChatWindow's `0x245A` case acts only while its pending choice (`param_1[0x16]`, set when
-the player picks a room) is ≥ 0, and otherwise just closes the list. In a duel against the computer the chat sends nothing.
+the player picks a room) is ≥ 0, and otherwise just closes the list. So the connection DLL makes the pick itself once
+per login (`tools/mod/chat-lobby.h`, [client internals](client-internals.md#the-chat-joins-the-lobby)): when the map's
+chat appears it sends `0x2135`, and on the `0x2458` list `0x2136 {room_id: 1}` with the pending choice set, so the
+game prints "In>>Lobby". **Status: confirmed** live (2026-11-22, two headless clients: both in the Lobby without a
+click, a line from one shown on the other; switching rooms and leaving unchanged). In a duel against the computer the chat sends nothing.
 
 `0x2455`'s `chat_type` picks the tab (`0x435FD0`: 0 → tab 7, 1 → 0, 2 → 1, 4 → 2, 3 → 3, 5 → 4, else 5) and the
 name's colour (`0x435DAF`, table at `0x7F67C0`: chat type 0 red `#F00000`; the player's own line `#00E8FF`; a team

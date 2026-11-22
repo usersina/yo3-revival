@@ -258,6 +258,7 @@ BOOL WINAPI DllMain(HINSTANCE dll, DWORD reason, LPVOID reserved) {
     if (!rental_return_install()) return mod_failure("stage=mod-rental-return: Game rental record code is unsupported. Validate the original v1.153 executable.\r\n");
     if (!teardown_install()) return mod_failure("stage=mod-teardown: Game exit code is unsupported. Validate the original v1.153 executable.\r\n");
     signout_install(); /* Delete Login Data signs direct start out; another build keeps its own */
+    chat_lobby_install(); /* the chat joins the Lobby once per login; another build keeps its own chat */
     web_links_install(); /* the old website links to the host's pages; a game without ShellExecuteA has none */
     ui_probe_install(); /* debugging aid, off unless YO3_UI_PROBE is set; never a reason to refuse the game */
     mod_ready = 1;

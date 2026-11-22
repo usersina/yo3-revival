@@ -208,8 +208,9 @@ chat window says at the start that it is on.
 The chat window at the bottom has a tab per place your lines go:
 
 - **A chat room's tab** (Lobby, Free Talk, Trading, Duel Recruiting) and its **TRADE** tab: everyone in that room.
-  **Join a room first**: the speech-bubble button at the chat window's top left lists them. Until you do, the first tab
-  reads "----" and the game sends nothing you type there (Enter does nothing).
+  You join the **Lobby** by yourself when you sign in ("In>>Lobby"); the speech-bubble button at the chat window's top
+  left lists the rooms to switch or leave. Out of every room the first tab reads "----" and the game sends nothing you
+  type there (Enter does nothing) until you pick one; after you leave, you stay out until your next sign-in.
 - **Team**: your team, from anywhere, in a room or not.
 - **Trade Partner** in a trade or rental, **Opponent** once you are matched for a duel and during it: that player alone.
 - A whisper, `/p NAME message`: that player alone, from anywhere.

@@ -461,6 +461,28 @@ RentalRecord vtable entries in `.rdata`, after checking each still holds the gam
 
 Like the other wave hooks, the launcher's preflight (`inspect_game`) doesn't check these slots; the DLL does.
 
+### The chat joins the Lobby
+
+`tools/mod/chat-lobby.h` (pure parts in `chat-lobby-logic.h`, tested by `chat-lobby-test.c`) makes the chat window
+enter room 1, the Lobby, by itself once per login, as a click in its room list would. Without it the first tab reads
+"----" and a line typed on the map goes nowhere until the player picks a room. The server can't do it alone: ChatWindow's
+`0x245A {room_id}` case acts only while its pending choice `+0x58` (an index into its room list) is ≥ 0,
+else it just closes the list. It writes no code bytes: it replaces two ChatWindow vtable entries (`0x7A48DC`) in
+`.rdata`, after checking each still holds the game's own function at the actual base (another build: nothing changes,
+never a reason to refuse the game).
+
+- **Armed** by the player-select reply `0x2266` (the global dispatch hook, `starter.h`): once per login.
+- **The reset** (slot 14, `0x7A4914` → `0x435710`, thiscall `(window)`: clears the tabs and prints the three welcome
+  lines when the map's chat appears) asks for the room list, `0x4F3C10` (`0x2135`, the chat agent `+0x12C` in EDI, plain
+  `ret`), when the window is in no room (`+0x55` 0 or `+0x50` < 0) and picking none (`+0x58` < 0).
+- **Events** (slot 6, `0x7A48F4` → `0x4358F0`, thiscall `(window, event)`, `ret 4`; the agent's `0x1004` events go to
+  the dispatcher `0x435950`): once the `0x2458` case has filled the room list (`+0x13C`/`+0x140`, `0x34`-byte entries:
+  `id` `+0`, `name` `+4`, `type` `+0x30`; it fills it with or without the list's movie at `+0x128`), the wrapper finds
+  room 1 (type 0) and does what the click callback `0x437300` does: `+0x58` = its index, then `0x4F3CF0` (`0x2136
+  {room_id}`, EDI the agent, the id on the stack, `ret 4`). The game's own `0x245A` case prints "In>>Lobby", names the
+  tab and adds TRADE (live, 2026-11-22).
+- A player already in a room, picking one, or who leaves or switches rooms later is left alone: it acts once per login.
+
 ### What else runs in the game (#68)
 
 Evidence for a player whose shop disconnected them (#65): the game's own connection was aborted on their PC (Windows
