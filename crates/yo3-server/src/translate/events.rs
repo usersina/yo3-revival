@@ -176,6 +176,7 @@ impl Translator {
                 Event::ShuffleSetCard(sh) => out.extend(self.shuffle_set(&sh)),
                 Event::SwapGraveDeck(g) => out.extend(self.swap_grave_deck(&g)),
                 Event::ChainEnd => {
+                    self.after_chain = true;
                     self.chaining = None;
                     self.chain.clear();
                     self.target_marks.clear();

@@ -10,6 +10,7 @@ impl Translator {
         let prompt = self.prompt_for(m);
         // A window's hint is for the prompt right after it, whichever it was.
         self.phase_window = false;
+        self.after_chain = false;
         match prompt {
             Prompt::Client(out) => {
                 let mut all = self.unstage_n(staged);
@@ -529,7 +530,7 @@ impl Translator {
     pub(super) fn chain_chance(&mut self, m: &Json, chain: &SelectChain) -> Prompt {
         let selects = &chain.selects;
         let forced = chain.forced;
-        let phase_window = self.phase_window;
+        let phase_window = self.phase_window || self.after_chain;
         if selects.is_empty() {
             return Prompt::Answer(Response::Chain(None).json());
         }
@@ -561,7 +562,8 @@ impl Translator {
         } else if self.chaining.is_some() || timing & !QUIET_TIMINGS != 0 || phase_window {
             // A phase's own window counts its optional triggers in spe_count (Stardust Dragon's return in the End
             // Phase): at the phase level the default Activation Message answered No for the player, and the chance
-            // was gone (#53). The core doesn't say which cards are triggers, so the whole window shows.
+            // was gone (#53). The core doesn't say which cards are triggers, so the whole window shows. The same for the
+            // chance right after a chain resolved: Doppelwarrior's offer after Junk Synchron's revival (2026-11-22).
             dialog::LEVEL_EVENT
         } else {
             dialog::LEVEL_PHASE

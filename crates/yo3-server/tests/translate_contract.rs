@@ -1536,6 +1536,26 @@ fn a_phase_window_that_may_hold_an_optional_trigger_shows_by_default() {
 }
 
 #[test]
+fn the_window_after_a_chain_resolves_shows_what_it_made_possible() {
+    // A player's report (2026-11-22): Junk Synchron brought Glow-Up Bulb back from the Graveyard, and Doppelwarrior's
+    // "When a monster(s) is Special Summoned from your GY: You can Special Summon this card from your hand" was never
+    // offered. The core offers it right after the chain resolves (MSG_CHAIN_END, then MSG_SELECT_CHAIN at the quiet
+    // TIMING_CHAIN_END, 0x8000, the effect counted in spe_count): at level 1 the default Activation Message answered No for
+    // the player. A chance right after a chain now shows; one with nothing counted, or at another quiet moment, doesn't.
+    let mut t = with_cards();
+    let doppel = json!([card_at(0, 2, 0, 4101)]);
+    let after_chain = |spe: u32| json!({ "type": 16, "player": 0, "spe_count": spe, "forced": false, "hint_timing": 0x8000,
+        "hint_timing_other": 0x8000, "selects": doppel });
+    t.events(&[json!({ "type": 74 })]);
+    assert_eq!(chain_level(&mut t, after_chain(1)), 3, "the chance right after the chain shows");
+    t.dialog_result(0);
+    assert_eq!(chain_level(&mut t, after_chain(1)), 1, "for that one chance only");
+    t.dialog_result(0);
+    t.events(&[json!({ "type": 74 })]);
+    assert_eq!(chain_level(&mut t, after_chain(0)), 0, "nothing counted: nothing worth asking");
+}
+
+#[test]
 fn the_cores_chain_windows_are_all_classified() {
     // A census of the core's own source, like ENGINE_MESSAGES for its message types: every window it marks with MSG_HINT
     // HINT_EVENT (processor.cpp) has a row in CHAIN_WINDOWS, and the Phase rows are exactly the values its PhaseEvent

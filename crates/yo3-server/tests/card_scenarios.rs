@@ -515,3 +515,61 @@ fn sogen_marks_the_warriors_it_powers_up() {
     assert!(field.iter().any(|&&(a, b, _)| a == 10 << 8 && b & 0xFF == 0 && b >> 8 <= 4), "{:?}", s.markers(0));
     clean(&s);
 }
+
+// Doppelwarrior (a player's report, 2026-11-22: "I Synchro Summon Bulb using Junk Synchron's effect but it didn't let me
+// trigger its effect"): the engine offered it, but at the level the game's default Activation Message answers No to. Its 2008 text: "When a monster(s) is Special Summoned from your GY: You can Special Summon this
+// card from your hand. If this card is sent to the GY as Synchro Material: You can Special Summon 2 Doppel Tokens".
+const DOPPELWARRIOR: u16 = 9293;
+const GLOW_UP_BULB: u16 = 9095;
+const JUNK_WARRIOR: u16 = 7696;
+
+/// Glow-Up Bulb in the Graveyard, Junk Synchron and Doppelwarrior in the hand.
+fn doppelwarrior_board(extra: &[u16]) -> Option<Scenario> {
+    use yo3_server::engine::{Spawn, SpawnPlace::*};
+    let dir = engine_dir()?;
+    let field = [Spawn { team: 0, place: Grave, cid: GLOW_UP_BULB }, Spawn { team: 0, place: Hand, cid: JUNK_SYNCHRON },
+        Spawn { team: 0, place: Hand, cid: DOPPELWARRIOR }];
+    let deck: Vec<u16> = [WARWOLF; 37].into_iter().chain([GLOW_UP_BULB, JUNK_SYNCHRON, DOPPELWARRIOR]).collect();
+    Some(Scenario::start_field(&dir, 7, 8000, [(&deck, extra), (&[WARWOLF; 40], &[])], &field).unwrap())
+}
+
+#[test]
+fn doppelwarrior_comes_from_the_hand_when_junk_synchron_brings_a_monster_back_from_the_graveyard() {
+    let Some(mut s) = doppelwarrior_board(&[]) else { return };
+    s.prefer(&[(0, GLOW_UP_BULB)]);
+    s.run(&[Summon(JUNK_SYNCHRON), Chain(DOPPELWARRIOR)]).unwrap();
+    assert!(s.problems.is_empty(), "{:#?}", s.problems);
+    assert_eq!(s.count(0, "mzone", GLOW_UP_BULB), 1, "Junk Synchron brought Glow-Up Bulb back");
+    assert_eq!(s.count(0, "mzone", DOPPELWARRIOR), 1, "Doppelwarrior came from the hand");
+}
+
+#[test]
+fn the_player_is_asked_about_doppelwarrior_in_the_hand_and_yes_summons_it() {
+    // The same moment through the game's windows: the effect question shows Doppelwarrior, and Yes reaches the engine.
+    let Some(mut s) = doppelwarrior_board(&[]) else { return };
+    s.prefer(&[(0, GLOW_UP_BULB)]);
+    let offers = |p: &serde_json::Value| p["type"] == 16 && p["selects"].as_array().is_some_and(|v| v.iter().any(|c| c["cid"] == DOPPELWARRIOR));
+    s.run_to(&[Summon(JUNK_SYNCHRON)], offers).unwrap();
+    let out = s.windows(0).expect("the player is asked");
+    let id = |m: &yo3_proto::Message, k: &str| m.get(k).and_then(|v| v.as_u32());
+    assert!(out.iter().any(|m| id(m, "id") == Some(0x3F2)), "the question shows the card: {out:?}");
+    // The effect dialog's level (param3): 3 shows whatever the player's Activation Message option; at 1 the default
+    // option answered No by itself, which is what the player saw.
+    let dialog = out.iter().find(|m| id(m, "id") == Some(0x36)).expect("the effect dialog");
+    assert_eq!(id(dialog, "param3"), Some(3), "{dialog:?}");
+    s.answer_in_windows(0, &[], 1).unwrap();
+    s.run(&[]).unwrap();
+    assert!(s.problems.is_empty(), "{:#?}", s.problems);
+    assert_eq!(s.count(0, "mzone", DOPPELWARRIOR), 1, "Yes summoned it");
+}
+
+#[test]
+fn doppelwarrior_as_synchro_material_brings_two_doppel_tokens() {
+    let Some(mut s) = doppelwarrior_board(&[JUNK_WARRIOR]) else { return };
+    s.prefer(&[(0, GLOW_UP_BULB), (0, DOPPELWARRIOR)]);
+    s.run(&[Summon(JUNK_SYNCHRON), Chain(DOPPELWARRIOR), SpSummon(JUNK_WARRIOR), Chain(DOPPELWARRIOR)]).unwrap();
+    assert!(s.problems.is_empty(), "{:#?}", s.problems);
+    assert_eq!(s.count(0, "mzone", JUNK_WARRIOR), 1, "Junk Warrior from Junk Synchron and Doppelwarrior");
+    let monsters = s.state()[0]["mzone"].as_array().map_or(0, |m| m.iter().filter(|c| !c.is_null()).count());
+    assert_eq!(monsters, 4, "Junk Warrior, Glow-Up Bulb and two Doppel Tokens: {:#?}", s.state()[0]["mzone"]);
+}

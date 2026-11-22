@@ -160,13 +160,12 @@ impl Scenario {
         let tuners: HashSet<u16> =
             all.iter().zip(&data).filter(|(_, d)| d["data"]["type"].as_u64().is_some_and(|t| t & TYPE_TUNER != 0)).map(|(c, _)| *c).collect();
         let mut cards: HashMap<u16, CardStats> = all.iter().map(|&c| (c, CardStats { cid: c, ..CardStats::default() })).collect();
-        // The anime cards' tokens are the client's token cards, found by name.
-        let tokens = if anime {
+        // The client's token cards (Doppel Token, Sheep Tokens...), as a real duel's card table has them: found by Konami id
+        // or by name. Every scenario has them, the game's cards' tokens as much as the anime cards'.
+        let tokens = {
             let (rows, names) = super::selfplay::client_tokens(dir)?;
             cards.extend(rows);
             names
-        } else {
-            HashMap::new()
         };
         let views = (0..2)
             .map(|seat| {
@@ -434,10 +433,23 @@ impl Scenario {
     /// [`run`](Self::run) with a plan for each team (team 1 goes second): each team's actions happen on its own
     /// prompts, in order. Returns at the first idle prompt after both plans are done.
     pub fn run_both(&mut self, plans: [&[Action]; 2]) -> Result<(), String> {
+        self.play(plans, None)
+    }
+
+    /// [`run`](Self::run) that stops at the first prompt `until` holds for (after the plan is done or not), with the
+    /// prompt left unanswered: to answer it through the client's windows ([`windows`](Self::windows)).
+    pub fn run_to(&mut self, plan: &[Action], until: impl Fn(&Json) -> bool) -> Result<(), String> {
+        self.play([plan, &[]], Some(&until))
+    }
+
+    fn play(&mut self, plans: [&[Action]; 2], until: Option<&dyn Fn(&Json) -> bool>) -> Result<(), String> {
         let mut next = [0usize; 2];
         let mut waited = [0u32; 2];
         loop {
             let p = self.prompt().clone();
+            if until.is_some_and(|until| until(&p)) {
+                return Ok(());
+            }
             let team = p["player"].as_u64().unwrap_or(0) as usize & 1;
             let kind = p["type"].as_u64().unwrap_or(0);
             let done = next[0] == plans[0].len() && next[1] == plans[1].len();

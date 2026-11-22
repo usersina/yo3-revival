@@ -495,6 +495,9 @@ pub struct Translator {
     chain_list: bool,
     /// The next chain chance is a phase's own window (HINT_EVENT): it may hold an optional trigger.
     phase_window: bool,
+    /// The next chain chance comes right after a chain resolved (MSG_CHAIN_END): what the chain did may have made a
+    /// "When ...: You can" effect possible (Doppelwarrior from the hand), which the core counts in spe_count.
+    after_chain: bool,
     /// The chain's last link (MSG_CHAINING) until the chain ends, and each link's {player, zone} by its number - 1.
     chaining: Option<Chaining>,
     chain: Vec<(u32, u32)>,
@@ -688,6 +691,7 @@ impl Translator {
             unshown: HashSet::new(),
             chain_list: false,
             phase_window: false,
+            after_chain: false,
             chaining: None,
             in_battle: false,
             battle_phase: false,
