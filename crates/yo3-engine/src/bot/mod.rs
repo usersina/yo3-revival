@@ -38,6 +38,8 @@ const MAX_OPTIONS: usize = 16;
 /// follow-ups each.
 const COMBO_FIRSTS: usize = 2;
 const COMBO_FOLLOWUPS: usize = 8;
+/// The longest line of actions tried at an idle prompt: an action and one follow-up.
+const COMBO_DEPTH: usize = 2;
 /// A copy plays at most this many answers past the option before it is judged.
 const MAX_STEPS: usize = 600;
 /// Copies kept in step with the real duel: one for each thread, so a decision's first options start without a
@@ -82,6 +84,10 @@ pub struct Style {
     pub reach: Reach,
     /// The numbers the bot weighs a position by ([`Weights`]): today's by default, others to tune them in the arena.
     pub weights: Weights,
+    /// The longest line of actions tried at an idle prompt ([`COMBO_DEPTH`] when 0), and how many of the best lines go
+    /// one action deeper at each step ([`COMBO_FIRSTS`] when 0).
+    pub depth: usize,
+    pub firsts: usize,
 }
 
 /// The numbers a position is weighed by (`Board::value`), in LP. The defaults are the bot's; a style may name others
@@ -133,6 +139,8 @@ impl Style {
             sees: v["sees"] == true,
             reach: if v["reach"] == "action" { Reach::Action } else { Reach::Turn },
             weights: Weights::from_json(&v["weights"]),
+            depth: v["depth"].as_u64().unwrap_or(0).min(6) as usize,
+            firsts: v["firsts"].as_u64().unwrap_or(0).min(8) as usize,
         }
     }
 }
@@ -429,11 +437,12 @@ impl Thinker<'_> {
         self.observe(&mut duel, me, hidden).value()
     }
 
-    /// The bot's next idle prompt after answering `first` in a copy (the bot's rules answering what comes between),
-    /// with the board then: None when the turn moves on first.
-    fn next_idle(&self, first: &Json, me: u8, hidden: &Hidden) -> Option<(Json, Board)> {
+    /// The bot's idle prompt after the actions `line` in a copy (each answering the bot's next idle prompt, the bot's
+    /// rules answering what comes between), with the board then: None when the turn moves on first.
+    fn next_idle(&self, line: &[Json], me: u8, hidden: &Hidden) -> Option<(Json, Board)> {
         let mut duel = self.copy()?;
-        duel.respond(&crate::encode::response(first));
+        duel.respond(&crate::encode::response(&line[0]));
+        let mut next = 1;
         let mut hint = None;
         for _ in 0..MAX_STEPS {
             let (status, messages) = settle(&mut duel, true);
@@ -447,6 +456,11 @@ impl Thinker<'_> {
             }
             let prompt = messages.last().filter(|_| status == Status::Awaiting)?;
             if prompt["player"] == me && prompt["type"] == msg::SELECT_IDLECMD {
+                if next < line.len() {
+                    duel.respond(&crate::encode::response(&line[next]));
+                    next += 1;
+                    continue;
+                }
                 let board = self.observe(&mut duel, me, hidden);
                 return Some((prompt.clone(), board));
             }
@@ -534,28 +548,44 @@ impl Thinker<'_> {
         best.map_or_else(|| options[0].clone(), |i| options[i].clone())
     }
 
-    /// Two-step lines: the [`COMBO_FIRSTS`] best `actions` (by `values`) each tried with every follow-up action at the
-    /// bot's next idle prompt; an action's value becomes its best line's when that is better.
+    /// Longer lines: the best lines so far (the [`Style::firsts`] best, starting from the single `actions` by `values`)
+    /// each go one action deeper with every follow-up at the bot's next idle prompt, up to [`Style::depth`] actions or
+    /// the deadline; an action's value becomes its best line's when that is better. With the defaults: the two best
+    /// actions, each with its follow-ups.
     fn combos(&self, actions: &[Json], values: &mut [f64], me: u8, hidden: &Hidden) {
-        let mut order: Vec<usize> = (0..actions.len()).collect();
-        order.sort_by(|a, b| values[*b].total_cmp(&values[*a]));
-        let firsts: Vec<usize> = order.into_iter().take(COMBO_FIRSTS).collect();
-        let nexts: Vec<Option<(Json, Board)>> = std::thread::scope(|scope| {
-            let handles: Vec<_> = firsts.iter().map(|&i| scope.spawn(move || self.next_idle(&actions[i], me, hidden))).collect();
-            handles.into_iter().map(|h| h.join().unwrap_or(None)).collect()
-        });
-        let mut lines = vec![];
-        for (&i, next) in firsts.iter().zip(&nexts) {
-            let Some((prompt, board)) = next else { continue };
-            let Some(follow) = options(prompt, board, None) else { continue };
-            // The follow-up actions, not doing nothing (that line is the action's own value).
-            for f in follow.iter().take(follow.len() - 1).take(COMBO_FOLLOWUPS) {
-                lines.push((i, vec![actions[i].clone(), f.clone()]));
+        let depth = if self.style.depth == 0 { COMBO_DEPTH } else { self.style.depth };
+        let firsts = if self.style.firsts == 0 { COMBO_FIRSTS } else { self.style.firsts };
+        // (the first action's index, the line, its value)
+        let mut frontier: Vec<(usize, Vec<Json>, f64)> = actions.iter().enumerate().map(|(i, a)| (i, vec![a.clone()], values[i])).collect();
+        for _ in 1..depth {
+            if std::time::Instant::now() >= self.deadline {
+                break;
             }
-        }
-        let found = self.values(&lines.iter().map(|(_, l)| l.clone()).collect::<Vec<_>>(), me, hidden);
-        for ((i, _), v) in lines.iter().zip(found) {
-            values[*i] = values[*i].max(v);
+            frontier.sort_by(|a, b| b.2.total_cmp(&a.2));
+            frontier.truncate(firsts);
+            let nexts: Vec<Option<(Json, Board)>> = std::thread::scope(|scope| {
+                let handles: Vec<_> = frontier.iter().map(|(_, line, _)| scope.spawn(move || self.next_idle(line, me, hidden))).collect();
+                handles.into_iter().map(|h| h.join().unwrap_or(None)).collect()
+            });
+            let mut lines = vec![];
+            for ((i, line, _), next) in frontier.iter().zip(&nexts) {
+                let Some((prompt, board)) = next else { continue };
+                let Some(follow) = options(prompt, board, None) else { continue };
+                // The follow-up actions, not doing nothing (that line is the shorter line's own value).
+                for f in follow.iter().take(follow.len() - 1).take(COMBO_FOLLOWUPS) {
+                    let mut longer = line.clone();
+                    longer.push(f.clone());
+                    lines.push((*i, longer));
+                }
+            }
+            if lines.is_empty() {
+                break;
+            }
+            let found = self.values(&lines.iter().map(|(_, l)| l.clone()).collect::<Vec<_>>(), me, hidden);
+            frontier = lines.into_iter().zip(found).map(|((i, line), v)| {
+                values[i] = values[i].max(v);
+                (i, line, v)
+            }).collect();
         }
     }
 }

@@ -5,6 +5,7 @@
 //!
 //!     YO3_RIVAL_ENGINE=/path/to/yo3-engine YO3_ARENA_DUELS=40 cargo nextest run --release -p yo3-server --test bot_arena --run-ignored only --no-capture
 //!     YO3_ARENA_OURS='{"card":900}' YO3_ARENA_DUELS=40 cargo nextest run ...   (this build on both sides, other numbers on ours)
+//!     YO3_ARENA_OURS_STYLE='{"depth":3}' ...   (more of the bot's style for our side; YO3_ARENA_THEIRS_STYLE for theirs)
 //!
 //! `YO3_ARENA_DUELS` (default 20) duels; deck pairs spread over the NPCs, each pair played twice with the sides swapped
 //! (each bot plays each deck, first and second). The report goes to `bot-arena.tsv` in Cargo's test temporary
@@ -45,7 +46,14 @@ fn duel(ours: &mut Engine, theirs: &mut Engine, seed: u64, decks: [(&[u16], &[u1
         let team = a.messages.last().and_then(|m| m["player"].as_u64()).unwrap_or(0);
         let side = if team == ours_team { 0 } else { 1 };
         let started = Instant::now();
-        let style = with_weights(styles[team as usize], &weights[side]);
+        let mut style = with_weights(styles[team as usize], &weights[side]);
+        // YO3_ARENA_OURS_STYLE / YO3_ARENA_THEIRS_STYLE: more of the bot's style for that side ({"depth": 3}).
+        let extra = std::env::var(["YO3_ARENA_OURS_STYLE", "YO3_ARENA_THEIRS_STYLE"][side]).ok().and_then(|e| serde_json::from_str::<Json>(&e).ok());
+        if let Some(Json::Object(extra)) = extra {
+            for (k, v) in extra {
+                style[k] = v;
+            }
+        }
         let response = if side == 0 { ours.think(style) } else { theirs.think(style) }.expect("an answer");
         out.ms[side] += started.elapsed().as_secs_f64() * 1000.0;
         out.answers[side] += 1;
