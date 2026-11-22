@@ -32,8 +32,6 @@ use yo3_ocg::{Response, battle, hint, hintmsg, idle, msg};
 
 const MODE_MR2: u64 = 0xD0600;
 
-/// An action only beats doing nothing by at least this much (in LP), so the bot doesn't spend cards for nothing.
-const MARGIN: f64 = 30.0;
 /// At most this many options are tried at one decision.
 const MAX_OPTIONS: usize = 16;
 /// The most promising actions of an idle prompt that are also tried with each follow-up action, and how many
@@ -82,6 +80,48 @@ pub struct Style {
     /// Sees the opponent's hand and Set cards, and expects the opponent to use them (Pegasus' Millennium Eye).
     pub sees: bool,
     pub reach: Reach,
+    /// The numbers the bot weighs a position by ([`Weights`]): today's by default, others to tune them in the arena.
+    pub weights: Weights,
+}
+
+/// The numbers a position is weighed by (`Board::value`), in LP. The defaults are the bot's; a style may name others
+/// (`"weights": {"card": 800, ...}`, any subset), which is how the arena tunes them (docs/development.md).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Weights {
+    /// A card in the hand or on the field.
+    pub card: f64,
+    /// Per point of a monster's strength on the field (its ATK in Attack Position, its DEF in Defense).
+    pub strength: f64,
+    /// Per LP the opponent's next battle after the look-ahead's horizon would cost.
+    pub exposure: f64,
+    /// A Set Trap or Quick-Play Spell, ready (a Set Normal Spell counts `spell_set`, usually against).
+    pub trap_set: f64,
+    pub spell_set: f64,
+    /// A Set Flip monster of the bot's own: its effect still to come (#80).
+    pub flip_set: f64,
+    /// What an action must gain over doing nothing more.
+    pub margin: f64,
+}
+
+impl Default for Weights {
+    fn default() -> Weights {
+        Weights { card: 700.0, strength: 0.6, exposure: 0.2, trap_set: 60.0, spell_set: -100.0, flip_set: 700.0, margin: 30.0 }
+    }
+}
+
+impl Weights {
+    /// The defaults, with each number `v` names instead.
+    pub fn from_json(v: &Json) -> Weights {
+        let mut w = Weights::default();
+        for (key, field) in [("card", &mut w.card), ("strength", &mut w.strength), ("exposure", &mut w.exposure),
+            ("trap_set", &mut w.trap_set), ("spell_set", &mut w.spell_set), ("flip_set", &mut w.flip_set), ("margin", &mut w.margin)]
+        {
+            if let Some(x) = v[key].as_f64().filter(|x| x.is_finite()) {
+                *field = x;
+            }
+        }
+        w
+    }
 }
 
 impl Style {
@@ -92,6 +132,7 @@ impl Style {
             caution: v["caution"].as_f64().unwrap_or(0.0).clamp(0.0, 1.0),
             sees: v["sees"] == true,
             reach: if v["reach"] == "action" { Reach::Action } else { Reach::Turn },
+            weights: Weights::from_json(&v["weights"]),
         }
     }
 }
@@ -484,7 +525,7 @@ impl Thinker<'_> {
         }
         if idle {
             let stay = if deep { values[values.len() - 1] } else { board.value() };
-            let margin = MARGIN * (1.0 + 4.0 * self.style.caution);
+            let margin = self.style.weights.margin * (1.0 + 4.0 * self.style.caution);
             return match best {
                 Some(i) if i < options.len() - 1 && best_value > stay + margin => options[i].clone(),
                 _ => options[options.len() - 1].clone(),

@@ -26,9 +26,6 @@ const TYPE_MONSTER: i64 = 0x1;
 const TYPE_TRAP: i64 = 0x4;
 const TYPE_QUICKPLAY: i64 = 0x10000;
 const TYPE_FLIP: i64 = 0x200000;
-/// What a Set Flip monster of the bot's own is worth beyond its DEF: its effect, still to come when it is flipped (about
-/// a card's). Without it a Jar's ATK in Attack Position looked better than its DEF face down (#80).
-const FLIP_SET: f64 = 700.0;
 
 #[derive(Clone, Debug)]
 pub struct Monster {
@@ -191,17 +188,19 @@ impl Board {
         }
         // An aggressive style values the opponent's LP more: it trades its own for damage.
         let mut v = me.lp as f64 - (1.0 + 0.3 * self.style.aggression) * them.lp as f64;
-        v += 700.0 * (me.cards() as f64 - them.cards() as f64);
+        let w = &self.style.weights;
+        v += w.card * (me.cards() as f64 - them.cards() as f64);
         let strength = |s: &Side| s.monsters.iter().map(|m| m.worth() as f64).sum::<f64>();
-        v += 0.6 * (strength(me) - strength(them));
+        v += w.strength * (strength(me) - strength(them));
         // Looking through the opponent's turn already plays its next battle out; what is left is the one after.
-        let exposed = if self.style.reach == Reach::Turn { 0.2 } else { 0.6 };
-        v -= exposed * (1.0 + self.style.caution) * exposure(me, them);
-        v += FLIP_SET * me.monsters.iter().filter(|m| m.flip_set).count() as f64;
+        let exposed = if self.style.reach == Reach::Turn { w.exposure } else { 0.6 };
+        v -= exposed * (1.0 + self.style.caution) * exposure(me, them, w);
+        // A Set Flip monster's effect is still to come: without it a Jar's ATK face up beat its DEF face down (#80).
+        v += w.flip_set * me.monsters.iter().filter(|m| m.flip_set).count() as f64;
         for s in me.spells.iter().filter(|s| !s.faceup) {
             match s.kind {
-                Some(k) if k & (TYPE_TRAP | TYPE_QUICKPLAY) != 0 => v += 60.0,
-                Some(_) => v -= 100.0,
+                Some(k) if k & (TYPE_TRAP | TYPE_QUICKPLAY) != 0 => v += w.trap_set,
+                Some(_) => v += w.spell_set,
                 None => {}
             }
         }
@@ -220,7 +219,7 @@ fn is_flip(library: &Library, code: u32) -> bool {
 /// attackers, strongest first, destroys the most valuable of `me`'s monsters it beats (losing that card and, from
 /// Attack Position, the damage), or attacks directly once `me` has no monsters left. Only monsters the bot knows
 /// attack: a face-down one might not be able to.
-pub fn exposure(me: &Side, them: &Side) -> f64 {
+pub fn exposure(me: &Side, them: &Side, w: &super::Weights) -> f64 {
     let mut attackers: Vec<i32> = them.monsters.iter().filter(|m| m.known && m.attack_pos).map(|m| m.atk).collect();
     attackers.sort_unstable_by(|a, b| b.cmp(a));
     let mut mine: Vec<&Monster> = me.monsters.iter().collect();
@@ -236,7 +235,7 @@ pub fn exposure(me: &Side, them: &Side) -> f64 {
             .map(|(i, _)| i);
         if let Some(i) = beaten {
             let m = mine.remove(i);
-            cost += 700.0 + 0.6 * m.worth() as f64 + if m.attack_pos { (atk - m.atk) as f64 } else { 0.0 };
+            cost += w.card + w.strength * m.worth() as f64 + if m.attack_pos { (atk - m.atk) as f64 } else { 0.0 };
         }
     }
     cost
