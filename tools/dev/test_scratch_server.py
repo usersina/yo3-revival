@@ -2,8 +2,11 @@
 """Hermetic checks for scratch-server.py; the real-server check is in test_scratch_server_live.py."""
 import importlib.util
 import socket
+import subprocess
+import sys
 import sqlite3
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -20,6 +23,23 @@ def free_port():
 
 
 class Checks(unittest.TestCase):
+    def test_the_server_is_known_by_its_data_folder_not_its_program_file(self):
+        # A rebuild replaces the program file under a running server; stop must still find it (it left it running).
+        with tempfile.TemporaryDirectory() as d:
+            mine, other = Path(d) / 'mine', Path(d) / 'other'
+            child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)', '--data-dir', str(mine / 'data')])
+            try:
+                for _ in range(50):  # until the child has replaced the test's own command line with its own
+                    if scratch.alive(child.pid, mine):
+                        break
+                    time.sleep(0.05)
+                self.assertTrue(scratch.alive(child.pid, mine))
+                self.assertFalse(scratch.alive(child.pid, other))
+            finally:
+                child.kill()
+                child.wait()
+            self.assertFalse(scratch.alive(child.pid, mine))
+
     def test_a_taken_port_is_seen(self):
         with socket.socket() as s:
             s.bind(('127.0.0.1', 0))

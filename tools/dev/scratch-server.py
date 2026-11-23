@@ -109,11 +109,16 @@ def state_of(directory):
     return directory, json.loads((directory / 'state.json').read_text())
 
 
-def alive(pid, binary):
+def alive(pid, directory):
+    """Whether `pid` is still this scratch server: its command line names this directory's data folder. Not its program
+    file: a rebuild replaces target/release/yo3-server, and the running server's /proc/PID/exe then no longer matches
+    (stop used to leave it running)."""
     try:
-        return Path(f'/proc/{pid}/exe').resolve() == Path(binary).resolve()
+        args = Path(f'/proc/{pid}/cmdline').read_bytes().split(b'\0')
     except OSError:
         return False
+    data = str(Path(directory) / 'data').encode()
+    return any(a == b'--data-dir' and b == data for a, b in zip(args, args[1:]))
 
 
 def exports(directory, profile):
@@ -201,7 +206,7 @@ def main(argv):
                 raise Fail('7443 and 8080 are the live server\'s ports')
             return start(args, extra)
         directory, state = state_of(args.dir)
-        running = alive(state['pid'], state['binary'])
+        running = alive(state['pid'], directory)
         if args.command == 'status':
             print(f'{directory}: {"running" if running else "stopped"} (pid {state["pid"]}), TLS {state["port"]}, '
                   f'HTTP {state["http"]}, profiles {", ".join(state["profiles"]) or "none"}')
@@ -219,9 +224,11 @@ def main(argv):
             if running:
                 os.kill(state['pid'], 15)  # the server's graceful stop
                 for _ in range(100):
-                    if not alive(state['pid'], state['binary']):
+                    if not alive(state['pid'], directory):
                         break
                     time.sleep(0.1)
+                else:
+                    raise Fail(f'pid {state["pid"]} still runs 10 s after SIGTERM; see {directory / "server.log"}')
             print(f'stopped; its files stay in {directory}')
             return 0
     except Fail as error:
