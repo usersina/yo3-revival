@@ -1,7 +1,7 @@
 # Linux VPS with Docker Compose
 
 Run the Rust server/native duel engine and the React/nginx dashboard as separate services. This arrived in **v0.1.0**. The dashboard is public HTTPS; staff sign in with
-a password **and an authenticator code** (unreleased: [staff MFA](dashboard.md#staff-mfa-and-recovery)). The old HTML panel
+a password **and an authenticator code** (since v0.1.4: [staff MFA](dashboard.md#staff-mfa-and-recovery)). The old HTML panel
 and host-token API remain container-local. A web session never grants host authority. Public database downloads are
 disabled; use SSH for backups.
 
@@ -9,7 +9,7 @@ disabled; use SSH for backups.
 you created with `bootstrap-admin` reaches only a setup screen: scan the QR code with an authenticator app, confirm a
 code, and save the ten recovery codes it shows once. The authenticator seeds are sealed with `data/staff-mfa.key` in the
 `data` volume: keep a copy with your other secrets, because a backup of `server.db` does not hold it. Lost phone and
-recovery codes: `docker compose exec server yo3-server staff-mfa-reset USER`, run on the host (it is not reachable from
+recovery codes: `docker compose exec server /opt/yo3/yo3-server --config /etc/yo3/server.toml staff-mfa-reset USER`, run on the host (it is not reachable from
 the web), then enroll again. `YO3_STAFF_MFA=optional` is a transition setting for staff who have not enrolled yet; remove
 it afterwards. Backups are never downloadable through the public side unless the server is also started with
 `--dashboard-public-backups` (admin, a code checked in the last five minutes, audited).

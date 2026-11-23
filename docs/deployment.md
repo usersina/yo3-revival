@@ -3,7 +3,7 @@
 Run Ansible **from your local checkout**, supplying the VPS IP and a DNS name pointing to it. It sets up Docker,
 HTTPS, the server and dashboard. After the one-time deployment-key setup below, a new changelog/Cargo version
 pushed or merged to `main` runs checks, publishes the release and its images, then updates this VPS automatically. This arrived in v0.1.0. Staff sign in with a password and an authenticator
-code (unreleased; [enrollment and recovery](hosting.md#staff-sign-in-with-an-authenticator)); `YO3_STAFF_MFA=optional` is a documented
+code (since v0.1.4; [enrollment and recovery](hosting.md#staff-sign-in-with-an-authenticator)); `YO3_STAFF_MFA=optional` is a documented
 transition setting only.
 
 ## Independent dashboard updates (#62)

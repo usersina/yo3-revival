@@ -9,7 +9,7 @@ CSRF and socket-only proxy authority. Host-token management stays local and publ
 downloads are disabled. [Deployment boundaries](dashboard.md#separate-authority-and-listeners). The historical review
 below is not a completed review of the new local Ansible setup/release image workflow or a real VPS deployment.
 
-Staff MFA (#43, unreleased): the dashboard requires password plus an authenticator code (TOTP) for every staff
+Staff MFA (#43, since v0.1.4): the dashboard requires password plus an authenticator code (TOTP) for every staff
 account. Seeds are sealed at rest with `data/staff-mfa.key`, codes work once per 30-second step, recovery codes are hashed
 and single-use, every attempt is throttled, sensitive operations need a check in the last five minutes, sessions end on
 password recovery, MFA reset and sign-out everywhere, and recovery is a local command the staff router cannot reach.

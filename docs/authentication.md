@@ -190,8 +190,8 @@ Every connection starts with TLS, an 8-byte opener and one operation byte:
    its Sign out. Expiry also closes live connections. Restarting the server ends all sessions and tickets; devices
    stay signed in.
 
-The session and ticket stores and simultaneous TLS connections have fixed caps (1024 sessions, 4096 tickets, 256
-connections). TLS and credential handshakes have a 10-second deadline. Randomness comes from the operating system.
+Sign-ins stop at the `max-players` setting (default 500; the staff still come in) under a hard ceiling of 100,000
+sessions, tickets at 4096, and simultaneous TLS connections at the `max-connections` setting (default 2048). TLS and credential handshakes have a 10-second deadline. Randomness comes from the operating system.
 The game's fixed Blowfish encryption is kept inside TLS for compatibility; it is not a security boundary.
 
 Every reply is a complete, bounded message. After a reply has been fully read and validated, failure to send the
@@ -228,7 +228,7 @@ The errors:
 | `password_too_short`, `password_too_long`, `password_characters`, `password_too_common` | Sign-up, a password change or recovery |
 | `rules_not_accepted`, `invite_required`, `invite_invalid`, `registration_closed` | Sign-up |
 | `update_required` | The launcher is older than `min_launcher` |
-| `bad_request`, `unknown_op`, `server_error`, `server_full` | Malformed requests; a save that failed; 1024 sessions |
+| `bad_request`, `unknown_op`, `server_error`, `server_full` | Malformed requests; a save that failed; `max-players` signed in |
 
 A device token is 32 random bytes. The server keeps only its SHA-256 digest, a label, its creation and last-use
 times and an expiry 90 days after the last use. An account keeps at most ten; the oldest goes first.

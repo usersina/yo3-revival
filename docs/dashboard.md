@@ -134,7 +134,7 @@ cards only when opened; the catalogue query remains fresh in memory for one minu
 server is stopped, then restart: the new file timestamp/size yields new URLs, so no browser-cache clearing is needed.
 This API, generated client and nginx allowlist change ship together in a full server release.
 
-All 33 documented staff operations are available to the dashboard (image elements use the generated catalogue URLs).
+Every documented staff operation is available to the dashboard (image elements use the generated catalogue URLs).
 Account pages use the released API without
 changing its schema or generated client. Their new nginx route requires a full release; the independent UI gate
 must not deliver it against an older nginx configuration. Responsive and accessibility checks are in
@@ -493,7 +493,7 @@ enrollment and when regenerated, and kept only as SHA-256 digests; each works on
 Using one is audited (`staff-recovery-code-used`).
 
 **Throttling.** Every code attempt (sign-in, enrollment, step-up, recovery) takes from the address's bucket and then waits
-the account's doubling backoff after a wrong code (1 s, up to the `max-backoff` setting; a success resets it): the same
+the account's doubling backoff after a wrong code (1 s, up to the `backoff-max-seconds` setting; a success resets it): the same
 `Throttle` as password sign-in, in its own state. nginx adds an outer `limit_req` on the password, code, enrollment and
 step-up routes. A wrong code answers `invalid_code` (403) and a wait `rate_limited` (429, `Retry-After`).
 
