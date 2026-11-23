@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# The loader regression tests under Wine (private display :78, prefix .wine-b by default): WINMM forwarding, Unicode
+# config, a missing or changed DLL and missing state (AGENTS.md, Commands).
+case "${1:-}" in -h|--help) awk 'NR>1 && /^#/{sub(/^# ?/,""); print; next} NR>1{exit}' "$0"; exit 0 ;; esac
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 export DISPLAY="${YO3_DISPLAY:-:78}"

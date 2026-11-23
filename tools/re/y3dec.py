@@ -1,4 +1,7 @@
 """Decrypt YO3 data files (.y3d/.y3a/.y3r): BE u32 length ^ 0x77777777, then Blowfish-ECB("12345678") with per-word byte swap."""
+import sys as _sys
+if _sys.argv[1:2] in (["-h"], ["--help"]):
+    print(__doc__); raise SystemExit(0)
 import sys, struct
 from Crypto.Cipher import Blowfish
 

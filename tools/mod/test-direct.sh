@@ -4,6 +4,7 @@
 # connection DLL, against scratch servers on private ports. Needs a private Wine prefix without an installed
 # LoaderConfig, the Windows helper (cargo build --release --target x86_64-pc-windows-gnu -p yo3-launcher) and the
 # Linux server (cargo build --release -p yo3-server).
+case "${1:-}" in -h|--help) awk 'NR>1 && /^#/{sub(/^# ?/,""); print; next} NR>1{exit}' "$0"; exit 0 ;; esac
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 export DISPLAY="${YO3_DISPLAY:-:78}" WINEPREFIX="${YO3_WINEPREFIX:?Choose a private test Wine prefix}" WINEDEBUG=-all

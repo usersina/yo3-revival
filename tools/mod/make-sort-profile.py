@@ -4,6 +4,9 @@ and range search"): every Monster of the game gets one of the stats the anime ha
 by its order, with the DEF shifted so ATK and DEF differ. Rows keep their own type words and genre; only ATK/DEF change.
 Reads a .ypk extract (--bin DIR holds CARD_Prop.bin, CARD_Genre.bin, CARD_Indx_E.bin, CARD_Name_E.bin: `tools/re/ypk.py x`).
 Usage: make-sort-profile.py BIN_DIR OUT [--table]   (--table also prints name, ATK, DEF per card, to compare with the screen)"""
+import sys as _sys
+if _sys.argv[1:2] in (["-h"], ["--help"]):
+    print(__doc__); raise SystemExit(0)
 import struct
 import sys
 

@@ -1,4 +1,7 @@
 """List or extract .ypk archives (ZIP local headers with 'YO' signature, no central directory)."""
+import sys as _sys
+if _sys.argv[1:2] in (["-h"], ["--help"]):
+    print(__doc__); raise SystemExit(0)
 import sys, struct, zlib, os, fnmatch
 
 def entries(path):

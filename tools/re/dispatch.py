@@ -6,6 +6,9 @@ used by the case body it lands in.
 
     python3 tools/re/dispatch.py 0x4f4a4f 0x2398 0x21fc 0x2cf7
 """
+import sys as _sys
+if _sys.argv[1:2] in (["-h"], ["--help"]):
+    print(__doc__); raise SystemExit(0)
 import re
 import struct
 import sys

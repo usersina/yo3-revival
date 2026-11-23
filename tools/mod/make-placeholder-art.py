@@ -2,6 +2,9 @@
 """Makes placeholder card pictures for checking the anime artwork folder (docs/anime-cards.md): a plain, generated PNG
 per card id, never a game or anime image. Usage: make-placeholder-art.py FOLDER CID [CID...] [--mini]
 FOLDER/card/<cid>.png is 200x290 (the full face); with --mini FOLDER/mini/<cid>.png is 50x72 as well."""
+import sys as _sys
+if _sys.argv[1:2] in (["-h"], ["--help"]):
+    print(__doc__); raise SystemExit(0)
 import os
 import struct
 import sys

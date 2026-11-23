@@ -17,7 +17,8 @@
 #   tools/client/vclient.sh ui [--raw]      what the client shows, from the connection DLL's UI probe: open components,
 #                                           recent UI texts and, in a duel, each field slot (face up / defense)
 #   tools/client/vclient.sh check           process state, client trace, crash, last packets
-#   tools/client/vclient.sh stop            close this instance's client (wineserver -k on its prefix)
+#   tools/client/vclient.sh stop            close this instance's client (wineserver -k on its prefix); without
+#                                           YO3_INSTANCE it refuses unless YO3_STOP_DEFAULT=1 (the default ~/.wine)
 #   tools/client/vclient.sh prefix          create this instance's Wine prefix (reflinked copy of ~/.wine)
 #
 # Several games on one display (the Desktop's Play as…): `xdotool search --name '^Yu-Gi-Oh! ONLINE 3'` lists their windows;
@@ -200,7 +201,15 @@ for d in rows:
     print(d["server"], d["dir"], what)
 ' "$latest" ;;
   stop)
+    # Without an instance this is the default prefix (~/.wine) and display :77: the host's own game. Only on purpose.
+    if [ -z "$INSTANCE" ] && [ "${YO3_STOP_DEFAULT:-}" != 1 ]; then
+      echo "stop: no YO3_INSTANCE, so this would close the default ~/.wine prefix's game (display :77)." >&2
+      echo "Set YO3_INSTANCE=b (or c, d) for a private client, or YO3_STOP_DEFAULT=1 to really close the default one." >&2
+      exit 2
+    fi
     wineserver -k || true ;;
+  -h|--help|help)
+    sed -n '2,21p' "$0"; exit 0 ;;
   *)
     sed -n '2,14p' "$0"; exit 2 ;;
 esac

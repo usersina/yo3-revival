@@ -28,7 +28,7 @@ def build(data, added=()):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--check', action='store_true', help='compare the committed list with a fresh build')
     args = parser.parse_args()
     with open(os.path.join(ENGINE, 'anime-cards.json'), encoding='utf-8') as f:

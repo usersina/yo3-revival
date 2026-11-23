@@ -1,5 +1,9 @@
-# Usage: python3 emp.py <file.y3d|.y3a|.y3r> ...  (decrypts, then parses the EasyMultiPlay key/value format)
-"""Exploratory parser for the EasyMultiPlay serializer seen in decrypted YO3 data files."""
+"""Usage: python3 emp.py <file.y3d|.y3a|.y3r> ...  (decrypts, then parses the EasyMultiPlay key/value format)
+
+Exploratory parser for the EasyMultiPlay serializer seen in decrypted YO3 data files."""
+import sys as _sys
+if _sys.argv[1:2] in (["-h"], ["--help"]):
+    print(__doc__); raise SystemExit(0)
 import sys, struct, json, collections
 sys.path.insert(0, sys.argv[0].rsplit('/', 1)[0])
 from y3dec import decrypt

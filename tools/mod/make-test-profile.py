@@ -3,6 +3,9 @@
 layer: Flame Swordsman as a Normal Monster (Main Deck), Mystical Elf as an Effect Monster with 1 ATK and "?" DEF, and Negate
 Attack as a Quick-Play Spell, each with a test text and art. Reads the game's CARD_Prop.bin (a .ypk extract: --bin DIR
 holds CARD_Prop.bin, CARD_Indx_E.bin, CARD_Name_E.bin; `tools/re/ypk.py x` makes it). Usage: make-test-profile.py BIN_DIR OUT"""
+import sys as _sys
+if _sys.argv[1:2] in (["-h"], ["--help"]):
+    print(__doc__); raise SystemExit(0)
 import struct
 import sys
 

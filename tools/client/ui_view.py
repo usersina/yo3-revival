@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Readable view of the connection DLL's UI probe answer (`vclient.sh ui`; raw JSON with `--raw`)."""
+import sys as _sys
+if _sys.argv[1:2] in (["-h"], ["--help"]):
+    print(__doc__); raise SystemExit(0)
 import json
 import sys
 

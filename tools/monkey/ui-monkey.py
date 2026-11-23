@@ -281,7 +281,7 @@ class Monkey:
             if not documents.exists():
                 documents.mkdir()
                 if DOCS.exists(): shutil.copytree(DOCS, documents / DOCS.name, symlinks=True)
-            link = prefix / "drive_c/users" / os.environ.get("USER", "sina") / "Documents"
+            link = prefix / "drive_c/users" / os.environ.get("USER") or __import__("getpass").getuser() / "Documents"
             if link.is_symlink(): link.unlink()
             elif link.exists(): shutil.rmtree(link)
             link.symlink_to(documents)

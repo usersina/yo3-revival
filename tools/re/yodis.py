@@ -1,8 +1,14 @@
 """Tiny yo3.exe disassembler: linear sweep of one function with string/RTTI annotations."""
+import sys as _sys
+if __name__ == "__main__" and _sys.argv[1:2] in (["-h"], ["--help"]):
+    print(__doc__); raise SystemExit(0)
 import sys, struct, re
 import capstone, pefile
 
-EXE = "/home/sina/.wine/drive_c/Program Files (x86)/Konami/Yu-Gi-Oh! ONLINE 3/yo3.exe"
+import os
+GAME = os.environ.get("YO3_GAME_DIR") or os.path.join(os.environ.get("WINEPREFIX") or os.path.expanduser("~/.wine"),
+                                                      "drive_c/Program Files (x86)/Konami/Yu-Gi-Oh! ONLINE 3")
+EXE = os.path.join(GAME, "yo3.exe")
 pe = pefile.PE(EXE, fast_load=True)
 BASE = pe.OPTIONAL_HEADER.ImageBase
 IMG = pe.get_memory_mapped_image()

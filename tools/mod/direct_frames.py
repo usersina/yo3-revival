@@ -1,5 +1,8 @@
 """Game frames for tools/mod/test-direct.sh (the fixture sends them, this reads the replies): the opener, the login request
 0x1F47, and the reply ids. Blowfish with key "12345678", each 32-bit word little-endian (crates/yo3-proto)."""
+import sys as _sys
+if _sys.argv[1:2] in (["-h"], ["--help"]):
+    print(__doc__); raise SystemExit(0)
 import struct, sys
 from Crypto.Cipher import Blowfish
 

@@ -8,6 +8,9 @@ engine/fetch.sh), and the answers must be the same JSON, numbers compared as Jav
 duel fails, and is described in YO3_PARITY_LOG (default: parity-failures.log in the current directory).
 Usage: YO3_ENGINE=$PWD/tools/engine/parity.py cargo test --release -p yo3-server --test duel_check
 """
+import sys as _sys
+if _sys.argv[1:2] in (["-h"], ["--help"]):
+    print(__doc__); raise SystemExit(0)
 import json, os, subprocess, sys
 
 repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

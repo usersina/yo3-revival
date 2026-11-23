@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Copy license notices for the Rust executables shipped in a platform bundle."""
+import sys as _sys
+if _sys.argv[1:2] in (["-h"], ["--help"]):
+    print(__doc__); raise SystemExit(0)
 import json
 from pathlib import Path
 import shutil

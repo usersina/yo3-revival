@@ -5,6 +5,7 @@
 # scripts and card database, a launcher and the setup guide. No game files go in: the server reads the host's own game
 # install. The Windows build needs the x86_64-pc-windows-gnu target and mingw-w64. Building needs the network once: the
 # engine's sources and data (engine/fetch.sh, when not fetched yet).
+case "${1:-}" in -h|--help) awk 'NR>1 && /^#/{sub(/^# ?/,""); print; next} NR>1{exit}' "$0"; exit 0 ;; esac
 set -e
 cd "$(dirname "$0")/../.."
 # The version in the bundles' names: YO3_VERSION (the release workflow passes the CHANGELOG.md version), else git's.

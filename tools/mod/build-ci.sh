@@ -3,6 +3,7 @@
 # msvcrt.dll. A local Arch mingw-w64 links the Universal CRT instead, which Windows 7 lacks, so use this to test a C
 # helper on a real Windows VM. YO3_BUILD_VERSION and YO3_BUILD_COMMIT pass through: give a release's (v0.1.0,
 # c0c497b206a0) to swap one file into that release's bundle for a test.
+case "${1:-}" in -h|--help) awk 'NR>1 && /^#/{sub(/^# ?/,""); print; next} NR>1{exit}' "$0"; exit 0 ;; esac
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 image=${YO3_MOD_CI_IMAGE:-ubuntu:26.04}

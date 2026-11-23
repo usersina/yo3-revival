@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Split prebuilt platform files into Desktop, Scripts and (Linux) Server releases with stable archive roots."""
+import sys as _sys
+if _sys.argv[1:2] in (["-h"], ["--help"]):
+    print(__doc__); raise SystemExit(0)
 from pathlib import Path
 import os
 import re

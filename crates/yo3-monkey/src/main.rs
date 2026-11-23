@@ -38,13 +38,15 @@ struct Args {
     corpus_files: usize,
     #[arg(long, global = true, default_value = "127.0.0.1")]
     host: String,
-    #[arg(long, global = true, default_value_t = 5730)]
+    /// The launcher proxy's local game ports and the server's HTTP port: 0 (the default) picks a free one, so a run never
+    /// meets a live server's ports.
+    #[arg(long, global = true, default_value_t = 0)]
     gate_port: u16,
-    #[arg(long, global = true, default_value_t = 1213)]
+    #[arg(long, global = true, default_value_t = 0)]
     front_port: u16,
-    #[arg(long, global = true, default_value_t = 1214)]
+    #[arg(long, global = true, default_value_t = 0)]
     duel_port: u16,
-    #[arg(long, global = true, default_value_t = 8080)]
+    #[arg(long, global = true, default_value_t = 0)]
     http_port: u16,
     /// Duel and soak runs start the server with `--duel-check`, so every duel's client view is compared with the rules
     /// engine after each step (a difference is an ERROR, so a failure); this turns that off.
@@ -225,7 +227,10 @@ async fn setup(a: &Args) -> anyhow::Result<Arc<Env>> {
         corpus.names.len(),
         corpus.deck_update.is_some()
     );
-    let ports = Ports { host: a.host.clone(), gate: a.gate_port, front: a.front_port, duel: a.duel_port, http: a.http_port, pids: [1001, 1002] };
+    let free = |port: u16| if port != 0 { port } else {
+        std::net::TcpListener::bind("127.0.0.1:0").and_then(|l| l.local_addr()).map(|a| a.port()).expect("a free local port")
+    };
+    let ports = Ports { host: a.host.clone(), gate: free(a.gate_port), front: free(a.front_port), duel: free(a.duel_port), http: free(a.http_port), pids: [1001, 1002] };
     let mut ports = ports;
     let cwd = std::env::current_dir()?;
     let mut server_args = a.server_arg.clone();

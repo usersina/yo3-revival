@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Contract tests of named/ordinal imports, local socket guarding, and fail-closed injection. No game is needed.
+case "${1:-}" in -h|--help) awk 'NR>1 && /^#/{sub(/^# ?/,""); print; next} NR>1{exit}' "$0"; exit 0 ;; esac
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 export DISPLAY="${YO3_DISPLAY:-:78}"

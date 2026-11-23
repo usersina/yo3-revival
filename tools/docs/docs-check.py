@@ -76,7 +76,7 @@ def check(root=ROOT):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--root", type=Path, default=ROOT, help="repository or extracted bundle root")
     parser.add_argument("--toc", type=Path, help="print a Markdown table of contents")
     args = parser.parse_args()

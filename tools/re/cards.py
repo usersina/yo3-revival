@@ -1,4 +1,7 @@
-# Usage: python3 cards.py <dir with CARD_Prop.bin, CARD_Indx_E.bin, CARD_Name_E.bin>
+"""Usage: python3 cards.py <dir with CARD_Prop.bin, CARD_Indx_E.bin, CARD_Name_E.bin>"""
+import sys as _sys
+if _sys.argv[1:2] in (["-h"], ["--help"]):
+    print(__doc__); raise SystemExit(0)
 import sys, struct, collections
 X = sys.argv[1]
 prop = open(f'{X}/CARD_Prop.bin', 'rb').read()

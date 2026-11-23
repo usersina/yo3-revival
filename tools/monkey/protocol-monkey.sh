@@ -14,12 +14,10 @@
 # info.txt, the server log's tail and the plans sent around it as plan-*.txt, which `repro` replays). The corpus is
 # the packet logs in logs/ (the real client's requests). Seeds reproduce a run only while the corpus is the same;
 # the saved plan files always do. Exit status 1 when anything failed.
+case "${1:-}" in -h|--help) awk 'NR>1 && /^#/{sub(/^# ?/,""); print; next} NR>1{exit}' "$0"; exit 0 ;; esac
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 SCRATCH="${SCRATCH:-/tmp/yo3-monkey}"
-for p in 5730 1213 1214 8080; do
-  if ss -ltn "sport = :$p" | grep -q LISTEN; then echo "port $p is in use: stop the server first" >&2; exit 2; fi
-done
 cargo build --release -p yo3-server -p yo3-launcher -p yo3-monkey 2>&1 | tail -1
 exec target/release/yo3-monkey --scratch "$SCRATCH" "$@"

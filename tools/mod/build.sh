@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Builds the required 32-bit connection DLL, its injector and test helpers into tools/mod/build/ (mingw-w64; CC to
+# override i686-w64-mingw32-gcc). `task build:dev` runs it; `task build:mod:ci` is the msvcrt build released bundles use.
+case "${1:-}" in -h|--help) awk 'NR>1 && /^#/{sub(/^# ?/,""); print; next} NR>1{exit}' "$0"; exit 0 ;; esac
 set -euo pipefail
 cd "$(dirname "$0")"
 mkdir -p build

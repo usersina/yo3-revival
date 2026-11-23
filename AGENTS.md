@@ -131,7 +131,7 @@ tools/docs/docs-check.py --root /path/to/bundle   # the link checks against an e
 tools/release/test-packaged-update.sh v0.0.5 dist/yo3-revival-desktop-v0.0.5-linux-x86_64.tar.gz
 #   after building that stable-version test archive; private Xvfb/xauth and fresh app data, no game/server start.
 #   once: rustup target add x86_64-pc-windows-gnu (mingw-w64 links it). A Windows build under Wine needs its own prefix
-#   (WINEPREFIX=.wine-c): vclient.sh stop kills every process of the default prefix
+#   (WINEPREFIX=.wine-c): a bare `vclient.sh stop` would kill every process of the default prefix (it now refuses without YO3_INSTANCE unless YO3_STOP_DEFAULT=1)
 ```
 
 Releasing (`task release` builds the bundles into `dist/`): add a section at the top of CHANGELOG.md (`## vX.Y.Z (date)`,
@@ -256,8 +256,8 @@ GhidraMCP tools (`mcp__ghidra__*`): `decompile_function_by_address`, `get_xrefs_
 `list_strings`, `rename_function_by_address`, `set_decompiler_comment`. Name what we understand, so the project keeps
 the knowledge.
 
-Monkey testing (a scratch dir for the server's data and logs, never the repo's `data/`; the server's ports must be free,
-so never while a live server runs; exit status 1 on a failure):
+Monkey testing (a scratch dir for the server's data and logs, never the repo's `data/`; the protocol monkey picks free
+ports, so it runs beside a live server; exit status 1 on a failure):
 
 ```bash
 tools/monkey/protocol-monkey.sh fuzz --seed 1 --plans 2000 --par 8      # plans of recorded, mutated, random, garbage requests

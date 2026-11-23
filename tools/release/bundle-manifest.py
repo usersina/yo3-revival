@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Inventory the executable components of a release, never game data or user credentials."""
+import sys as _sys
+if _sys.argv[1:2] in (["-h"], ["--help"]):
+    print(__doc__); raise SystemExit(0)
 import hashlib,json,os,re,subprocess,sys
 from pathlib import Path
 out=Path(sys.argv[1]); edition=sys.argv[2]; assert edition in ('desktop','scripts','server'); windows=(out/'yo3-server.exe').is_file(); ext='.exe' if windows else ''

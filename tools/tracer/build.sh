@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Build the field-read tracer (32-bit, needs mingw-w64) into tools/tracer/build/.
+case "${1:-}" in -h|--help) awk 'NR>1 && /^#/{sub(/^# ?/,""); print; next} NR>1{exit}' "$0"; exit 0 ;; esac
 set -euo pipefail
 cd "$(dirname "$0")"
 mkdir -p build
