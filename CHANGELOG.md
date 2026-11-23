@@ -13,6 +13,13 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## v0.1.21 (2026-11-23)
+
+Multiplayer: update to v0.1.21 to join the hosted server after deployment.
+
+- A draw in the rock-paper-scissors against the computer now says so in the chat window: the game asks for another
+  hand with no message, which looked like a freeze (#83).
+
 ## v0.1.20 (2026-11-23)
 
 Multiplayer: update to v0.1.20 to join the hosted server after deployment.
