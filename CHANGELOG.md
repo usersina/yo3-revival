@@ -13,6 +13,15 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## v0.1.20 (2026-11-23)
+
+Multiplayer: update to v0.1.20 to join the hosted server after deployment.
+
+- Blister greets you in your game's language when you open the shop: the first line was always in English (#84).
+- A Starter Deck you delete in Edit Deck stays deleted instead of coming back the next time you open the editor (#85).
+  Its recipe stays under Load Deck → Official.
+- A booster pack no longer holds the same card twice (#86).
+
 ## v0.1.19 (2026-11-22)
 
 Multiplayer: update to v0.1.19 to join the hosted server after deployment.
