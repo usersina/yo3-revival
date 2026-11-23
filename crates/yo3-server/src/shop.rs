@@ -271,14 +271,26 @@ pub fn tiers(cards: &[u16]) -> Vec<Vec<u16>> {
 }
 
 /// The cards of one pack: four of the first tier, then one of a higher tier, each tier half as likely as the one
-/// below it (**guess**); a pack of one tier gives five of it.
+/// below it (**guess**); a pack of one tier gives five of it. No card comes twice while its tier has others left, as in
+/// a printed pack (#86): a tier smaller than what the pack takes from it repeats only once each of its cards came up.
 pub fn open(tiers: &[Vec<u16>], arts: &Arts, rng: &mut u64) -> Vec<u16> {
     let Some(first) = tiers.first().filter(|t| !t.is_empty()) else { return vec![] };
-    let pick = |tier: &[u16], rng: &mut u64| {
-        let row = tier[(crate::duel::next(rng) % tier.len() as u64) as usize];
-        arts.pull(row, rng)
+    // Picks from `left` (refilled from `tier` once empty) a card not in `taken` when there is one.
+    let pick = |tier: &[u16], left: &mut Vec<u16>, taken: &[u16], rng: &mut u64| {
+        if left.is_empty() {
+            left.extend_from_slice(tier);
+        }
+        let fresh: Vec<usize> = (0..left.len()).filter(|&i| !taken.contains(&left[i])).collect();
+        let at = if fresh.is_empty() { (crate::duel::next(rng) % left.len() as u64) as usize }
+            else { fresh[(crate::duel::next(rng) % fresh.len() as u64) as usize] };
+        left.swap_remove(at)
     };
-    let mut cards: Vec<u16> = (0..COMMONS).map(|_| pick(first, rng)).collect();
+    let mut rows: Vec<u16> = vec![];
+    let mut left = vec![];
+    for _ in 0..COMMONS {
+        let row = pick(first, &mut left, &rows, rng);
+        rows.push(row);
+    }
     let higher: Vec<&Vec<u16>> = tiers[1..].iter().filter(|t| !t.is_empty()).collect();
     let weight = |i: usize| 1u64 << (higher.len() - 1 - i);
     let mut roll = crate::duel::next(rng) % (0..higher.len()).map(weight).sum::<u64>().max(1);
@@ -290,8 +302,13 @@ pub fn open(tiers: &[Vec<u16>], arts: &Arts, rng: &mut u64) -> Vec<u16> {
         }
         roll -= weight(i);
     }
-    cards.push(pick(last, rng));
-    cards
+    // A one-tier pack draws its fifth card from what the first four left.
+    if !std::ptr::eq(last, first) {
+        left.clear();
+    }
+    let row = pick(last, &mut left, &rows, rng);
+    rows.push(row);
+    rows.into_iter().map(|row| arts.pull(row, rng)).collect()
 }
 
 /// A pack on the shelves (a 0x1C22 item, read by 0x485E50): item_type 0 puts it on the Booster Packs shelf

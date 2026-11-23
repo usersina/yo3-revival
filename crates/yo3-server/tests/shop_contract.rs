@@ -193,6 +193,24 @@ fn a_pack_holds_four_of_its_first_tier_and_one_rarer_card() {
 }
 
 #[test]
+fn a_pack_never_repeats_a_card_its_tier_has_enough_of_issue_86() {
+    // Three copies of one card in a pack (#86): the four first-tier cards are drawn without putting one back, as a
+    // printed pack's are, so a card repeats only when its tier holds fewer than four; the rarer card is never one of
+    // them.
+    let pack = ShopPack { id: 1, released: String::new(), modified: String::new(), tiers: vec![(1..=6).collect(), vec![1, 7]] };
+    let small = ShopPack { tiers: vec![vec![1, 2], vec![3]], ..pack.clone() };
+    let mut rng = 11;
+    for _ in 0..500 {
+        let cards = shop::open(&pack.tiers, &shop::Arts::default(), &mut rng);
+        let distinct: std::collections::HashSet<_> = cards.iter().collect();
+        assert_eq!(distinct.len(), 5, "{cards:?}");
+        let cards = shop::open(&small.tiers, &shop::Arts::default(), &mut rng);
+        let commons: std::collections::HashSet<_> = cards[..4].iter().collect();
+        assert_eq!(commons.len(), 2, "both cards of a two-card tier, twice each at most: {cards:?}");
+    }
+}
+
+#[test]
 fn duels_earn_bp_that_the_next_purchase_spends() {
     // The client's BP (UserData +0x76C) is set only by the login's dpoint, 0x1C24, 0x2D77 (rental) and 0x23F0 (the
     // BOOSTERPASS code window): nothing after a duel. The server pays each counted duel result into the account (win
