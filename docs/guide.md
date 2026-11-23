@@ -53,7 +53,7 @@ storage. Select the complete installation with `--game-dir` and retry; keep exis
 | `--no-packet-log`           | Disable separate raw packet files; decoded packet traces remain in bounded session diagnostics       |
 | `--no-packet-trace`         | Keep decoded packet traces out of the session diagnostics too (beta; `packet_log = false` sets both) |
 | `--config`                  | The [server file](#the-server-file) (beta); default `server.toml` in the current folder when it is there |
-| `--owned`                   | The launcher's own server (Singleplayer, on the `beta` branch): standard input stays open while the launcher lives; once it closes, the server stops after nobody has played for `--owned-idle` seconds (default 120)|
+| `--owned`                   | The launcher's own server (Singleplayer): standard input stays open while the launcher lives; once it closes, the server stops after nobody has played for `--owned-idle` seconds (default 120)|
 
 Desktop listens on `127.0.0.1` while no sharing address is saved, even when **Listen on** is all interfaces.
 
@@ -63,7 +63,7 @@ The game's connection ports are private loopback endpoints assigned by its launc
 
 ## The server file
 
-On the `beta` branch, what only a restart changes can live in a TOML file instead of flags: the listeners, the TLS
+What only a restart changes can live in a TOML file instead of flags: the listeners, the TLS
 files, the folders and the rules engine's program. The server reads `--config FILE`, or `server.toml` in the current
 folder when there is one. A flag wins over the file, and relative paths in the file are from its folder.
 
@@ -87,7 +87,7 @@ at start with the list of keys it takes.
 
 ## Live settings
 
-On the `beta` branch, these change without a restart. They are kept in the server's database (`server.db`), work
+These change without a restart. They are kept in the server's database (`server.db`), work
 while the server runs or stopped, and each applies at its own moment:
 
 ```bash
@@ -139,7 +139,7 @@ the files, so a running server is not touched.
 
 ## Moderation and maintenance
 
-On the `beta` branch. WHO is a User ID or one of its players' names; `--by NAME` records the moderator in the audit
+WHO is a User ID or one of its players' names; `--by NAME` records the moderator in the audit
 log (default: host). They work on a running server; the ones that change an account also work with it stopped.
 
 ```bash
@@ -272,7 +272,7 @@ It replays the duel call by call and says PASS when every answer matches; from t
 
 ## The admin panel
 
-On the `beta` branch (#36). The server serves a web panel on its loopback HTTP port, at
+Since v0.1.0 (#36). The server serves a web panel on its loopback HTTP port, at
 `http://localhost:8080/panel/` (`--http-port`). It answers this PC only: on a server you reach it through an SSH
 tunnel ([hosting guide](hosting.md#the-admin-panel-through-an-ssh-tunnel)). Sign in with a password account whose
 role is admin or moderator:
@@ -311,13 +311,12 @@ first admin with an audit row and permanent bootstrap receipt. It requires the s
 directory. Matching retries keep the current password; deletion/demotion or a different target closes bootstrap
 with an error. It is offline-only and never an HTTP operation. [One-time setup](deployment.md).
 
-On the `beta` branch every command works while the server runs (#25): it goes to the running server's admin API
+Every command works while the server runs (#25): it goes to the running server's admin API
 (loopback, with the private token in `data/admin.json`) and changes it at once. With no server running, the command
 works on the data folder itself, holding its lock (`server.lock`) meanwhile. `init-auth`, `bootstrap-admin`, `restore` and
 `backups` always work on the files. Every change is recorded in the audit log: `audit` lists the newest, with who,
 from where, what, on what, and the values before and after. `problem-reports [--who WHO] [--limit N]` lists players'
-problem reports and `problem-report ID [--out FILE]` shows one ([hosting](hosting.md#logs-and-privacy)). Released versions still need the server stopped for all
-but the BP and code commands. Add `--data-dir PATH` to target a non-default setup. Players sign in with password
+problem reports and `problem-report ID [--out FILE]` shows one ([hosting](hosting.md#logs-and-privacy)). Add `--data-dir PATH` to target a non-default setup. Players sign in with password
 accounts (`invite`, `add-user`); `share` prints the invite link to send them. `add-account` and `profile` make key
 accounts for the Scripts edition on your own PC. Keep each key profile private ([accounts](authentication.md#accounts)).
 
@@ -350,7 +349,7 @@ accounts for the Scripts edition on your own PC. Keep each key profile private (
 
 - `init-auth` creates the host's TLS identity once; include every hostname/IP friends will use. It refuses to replace
   an existing identity. Its certificate lasts a year; the server renews it within 30 days of expiry, with the same
-  key and names, so existing profiles and their copy of `server.crt` keep working. On the `beta` branch it also
+  key and names, so existing profiles and their copy of `server.crt` keep working. It also
   checks while running (every six hours), and serves a certificate replaced on disk without a restart.
 - `stop` stops the running server gracefully, as SIGTERM and Ctrl+C do: no new logins, the duels between players end
   as draws, and a last backup. Every change is already saved as it happens.
@@ -485,7 +484,7 @@ player would have to trust the server again.
 ## Existing data and backups
 
 `server.db` is SQLite in WAL mode, with one row per account (and its players), record, friendship, mail, team, event,
-rental and BP code; a save writes only the rows that changed. This dashboard branch uses schema 6 (row-based state, retry receipts and disconnect/stop/backup outcomes). Schemas 1–5
+rental and BP code; a save writes only the rows that changed. The current schema is 6 (row-based state, retry receipts and disconnect/stop/backup outcomes). Schemas 1–5
 upgrade transactionally in place; older server binaries cannot open the upgraded database. Keep a pre-upgrade backup
 if you need to return to an older binary. JSON files from versions before
 `server.db` are not read (the beta starts fresh). A path change selects a different server's data; it does not move it.

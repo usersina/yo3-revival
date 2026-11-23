@@ -8,7 +8,7 @@
 //! n, n spread over the table; or Konami ids (`7986,7687`). `YO3_CARD_SWEEP_SEEDS=n` plays n duels per card (1);
 //! `YO3_CARD_SWEEP_OFFSET=i` numbers the list from i (a card's duel from a larger sweep, seed 1000 + 7i, alone).
 //! The report, one line per card (id, name, result, activations, links resolved, resolved with a visible result,
-//! summons), goes to `card-sweep.tsv` in Cargo's test temporary directory (`tools/duel/coverage.py --sweep` reads
+//! summons), goes to `card-sweep.tsv` in Cargo's test temporary directory (`tools/engine/coverage.py --sweep` reads
 //! it). Skipped unless the game is installed and engine/fetch.sh has run.
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;

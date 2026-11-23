@@ -134,7 +134,7 @@ Never run `cargo fmt` across this repository; match its existing style.
 
 ## Check the launcher
 
-The beta launcher ([#20](https://github.com/usersina/yo3-revival/issues/20), on the `beta` branch) is built from the
+The beta launcher ([#20](https://github.com/usersina/yo3-revival/issues/20)) is built from the
 skin kit ([style guide](launcher-style.md)). Two example programs show the kit without the game:
 
 ```bash
@@ -338,7 +338,7 @@ one by one first, so its chain question may follow the player's option. Two chec
 of the 240 duels fail.
 
 For state validation and exact engine replay, run the server with `--duel-check` (the Desktop launcher has no server
-flags on the `beta` branch: use a server from the command line or the Scripts edition). Each player's play command
+flags: use a server from the command line or the Scripts edition). Each player's play command
 already captures client output. This extra engine work is optional and separate from automatic logging.
 
 The server compares its model of both clients with the rules engine after each step. The required DLL independently

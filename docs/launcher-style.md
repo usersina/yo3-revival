@@ -84,7 +84,7 @@ Sizes: 15 px body, 14 px captions and footer, 19 px frame titles, about half the
 
 | Component | Function | States |
 | --- | --- | --- |
-| Navy button | `pill(label, message, Kind::Primary, width, height)`: a form's or dialog's main action | normal, hover (lighter, cyan glow), pressed (darker, label down 1 px), disabled (flat, navy faded into the panel) |
+| Navy button | `pill(label, Some(message), Kind::Primary, width, height)` (`None`: disabled): a form's or dialog's main action | normal, hover (lighter, cyan glow), pressed (darker, label down 1 px), disabled (flat, navy faded into the panel) |
 | Quiet button | `pill(.., Kind::Secondary, ..)`: Back, Cancel, tools in Settings | light silver face, navy label; same states |
 | Red button | `pill(.., Kind::Danger, ..)`: Stop hosting, Sign out, a reset | red face, white label; same states |
 | Big action | `pill(.., Kind::Play, ..)`, about 70 px high; any kind 50 px or higher uses the display font | as above, with a soft glow at rest; disabled is steel, its label saying what is happening |
@@ -99,19 +99,19 @@ Sizes: 15 px body, 14 px captions and footer, 19 px frame titles, about half the
 | Checkbox | `checkbox(..).style(tick)` | navy when ticked |
 | Drop-down | `pick_list(..).style(choice).menu_style(choice_menu)` | white well; the open list highlights in navy |
 | Link | `link(label, message, on_dark)`; `danger_link` in red; `icon_link(icon, ..)` led by an icon; `support_link` the footer's red-heart chip; `dock_button(icon, ..)` the footer's Help and Settings | blue on panels, pale on bars; brighter on hover |
-| Icon | `icon(Icon::.., size, colour)`: line icons on a 24 px grid, tinted | copy, save, help, flag, heart, more, check, cross, pending, plus, trash, server, user, open, bell, link, refresh |
+| Icon | `icon(Icon::.., size, colour)`: line icons on a 24 px grid, tinted | copy, save, help, flag, heart, more, check, cross, pending, plus, trash, server, user, open, bell, link, refresh, cog, chat, book |
 | Icon button | `icon_button(icon, message, tip, on_dark)` | 30 px square, a tip under the pointer, a soft face on hover; faded when disabled |
 | Menu | `menu(items, width)` of `Item { icon, label, on_press, danger }` | a light card with a shadow; rows highlight on hover; red for a removal |
 | Checklist line | `rule(Rule::.., words)` | grey ring (not typed yet), green tick (met), red cross (broken) |
 | Progress bar | `progress_bar(Bar::.., label, height)`, full width; `Bar::of(done, total)` | a silver rim, a dark well and a navy fill with a cyan edge that glides to each value, the label ("12 of 418") on it; `Bar::Starting` a band that travels to and fro (length unknown), `Bar::Done` green, `Bar::Failed(fraction)` red; it only asks for frames while it moves |
 | Dialog | `dialog(title, help, close, width, height, content)` inside `modal(screen, dialog, on_blur)` | a frame with **?** and **×** in its strip; the modal darkens the screen; a click outside or Escape closes it |
 | Backdrop | `backdrop()` | the circuit board, cropped to fill; always the bottom layer |
-| Logo | `logo(height)` | the diamond mark and YO3 REVIVAL |
+| Logo | `logo(icon, height)` (the app icon's image, or `None`) | the diamond mark and YO3 REVIVAL |
 
 ## Layout
 
 - **Window:** fixed 1024×640 logical pixels, scaled by the display's scale factor. Borderless with our own title bar;
-  `--system-frame` (a setting later) falls back to the window manager's frame.
+  the `main_screen` example's `--system-frame` falls back to the window manager's frame (the launcher has no such option).
 - **Title bar** 50 px: logo left, the two tabs centred, window controls right. Dragging the bar moves the window.
 - **Footer** 34 px: version and update state left, Help and Discord right.
 - **Body:** 16 px between panels, 18 px from the window's sides. The side panel is 372 px wide.
