@@ -6,6 +6,8 @@
 //! the scenes (0x522A50). A negative request id counts as a lost connection (0x4F1860). A scene
 //! pops the next command only once its queued states (animations) are done (0x4D3220, 0x517B90),
 //! so several commands can be sent at once.
+mod common;
+
 use std::sync::{Arc, Mutex};
 
 use yo3_proto::{Message, Packet, Value};
@@ -90,6 +92,36 @@ fn a_hand_is_answered_with_both_hands_and_the_result() {
             }
         }
     }
+}
+
+#[test]
+fn after_a_draw_the_chat_window_says_to_pick_again_issue_83() {
+    // After a draw the scene shows both hands for a moment and goes back to choosing (selectJanken 0x518ED0) with no
+    // word, and the Ultimate Match's computer match shows its clock at 0: a player read it as a hang (#83). The
+    // player's chat window says it was a draw; nothing after a win or a loss.
+    let mut world = World::new((1..=20).collect());
+    world.npc_decks.insert(124, deck(1000, 41, 2));
+    let server = common::Server::with_world(world);
+    let mut front = server.join(1002, "Kaiba");
+    let (mut draws, mut others) = (0, 0);
+    for seed in 0..12 {
+        server.hub.lock().unwrap().enter_duel(1002, DuelEntry { deck: deck(100, 40, 0), npc_id: Some(124), ..DuelEntry::default() });
+        let mut s = DuelSession::new(server.world.clone(), server.hub.clone(), seed);
+        enter(&mut s);
+        front.pushed();
+        let cmds = commands(&s.handle(&duel_msg(0xC, &[("selectHand", 0)])));
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let said: Vec<String> = front.pushed().iter().filter(|m| m.request() == Some(0x2455))
+            .filter_map(|m| m.items[0].get("chat_str").and_then(Value::as_str)).collect();
+        if cmds[0].1[0] == 0 {
+            draws += 1;
+            assert_eq!(said, ["A draw: pick rock, paper or scissors again."]);
+        } else {
+            others += 1;
+            assert!(!said.iter().any(|l| l.contains("draw")), "{said:?}");
+        }
+    }
+    assert!(draws > 0 && others > 0, "both cases came up: {draws} draws, {others} others");
 }
 
 #[test]

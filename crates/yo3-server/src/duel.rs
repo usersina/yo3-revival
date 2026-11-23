@@ -522,7 +522,13 @@ impl DuelSession {
         let mut out = vec![command(cmd::JANKEN_RESOLVE, [result, theirs, mine, 0])];
         self.janken_seen = [result, theirs, mine];
         match result {
-            0 => {}
+            // The scene shows both hands for a moment and asks again with no word (and the Ultimate Match's computer
+            // match shows its clock at 0): a player read it as a hang (#83), so the chat window says so.
+            0 => {
+                if let Some((_, outbox)) = self.player_id.and_then(|id| self.hub.locked().front_of(id)) {
+                    let _ = outbox.send(banter::line_from("Duel", "A draw: pick rock, paper or scissors again."));
+                }
+            }
             1 => out.push(command(cmd::FIRST_BEGIN, [1, 0, 0, 0])),
             _ => {
                 out.push(command(cmd::FIRST_BEGIN, [0; 4]));
