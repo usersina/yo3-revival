@@ -604,6 +604,13 @@ copies that follow a spawned start). `kaiba_against_a_player_who_never_attacks` 
 of Kaiba's decks against a player who summons and never attacks (`YO3_KAIBA_LEVEL` 0-2, `YO3_WALL_MONSTER`,
 `YO3_WALL_SPAWN=1`).
 
+Tried and dropped (2026-11-23, 40 arena duels each against the defaults; every duel is replayed with the same seeds,
+so the duels whose winner changed show the effect): an opponent that plays its real hand by the bot's rules in the
+copies (5 changed, 2 won and 3 lost), a fair guess that the opponent summons a 1900 ATK monster before its next battle
+(none changed), the bot's own attacks tried in copies when nothing of the opponent's is face down (1 changed), and,
+before them, three-action lines at an idle prompt (none changed). With the NPC decks, the decks and draws decide most
+duels between bots this close; a skill change needs a reported situation as a scenario test, or hundreds of duels.
+
 Protocol and UI monkeys are documented in the
 [working guide](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md#commands).
 
