@@ -9,13 +9,15 @@ use yo3_server::front::{Deck, Player, World};
 use yo3_server::shop::{self, ExchangePool, ShopDeck, ShopPack};
 
 #[test]
-fn shop_text_carries_the_greeting() {
-    // 0x1C20 case: "text" (string) is shown in the shopkeeper's bubble. The case also reads evalnum,
-    // evaltotal and evallevel, but from the player's record (UserData+0x2C), not from this reply.
+fn shop_text_is_empty_so_the_game_greets_in_its_own_language_issue_84() {
+    // 0x1C20 case: "text" (string) is shown in the shopkeeper's bubble. When it is empty the case picks one of its
+    // own lines ($33003-$33007 by evallevel, in the game's language), so the server sends none: an English line of
+    // ours showed in a Japanese game (#84). The case also reads evalnum, evaltotal and evallevel, but from the
+    // player's record (UserData+0x2C), not from this reply.
     let mut c = Server::new().join(1001, "Yugi");
     let r = one(c.send(req(0x1B66)));
     assert_eq!(r.request(), Some(0x1C20));
-    assert!(r.get("text").and_then(Value::as_str).is_some_and(|t| !t.is_empty()));
+    assert_eq!(r.get("text").and_then(Value::as_str).as_deref(), Some(""));
     assert_eq!(r.fields.len(), 2, "request and text only: {r:?}");
 }
 

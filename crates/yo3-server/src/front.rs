@@ -3578,7 +3578,8 @@ impl FrontSession {
             // Shop (handler 0x48AA60): its text, then a chain where each reply asks for the next:
             // items (the booster packs), exchange items, protectors, event items, perks, rental terms, avatar
             // items (the last clears isLoading).
-            0x1B66 => Message::reply(0x1C20).with("text", Value::text("Welcome! Take a look at the packs.")),
+            // An empty text: the game greets with its own line, in its own language (#84).
+            0x1B66 => Message::reply(0x1C20).with("text", Value::text("")),
             0x1B67 => {
                 let shop = self.world.settings.now().shop;
                 let packs = self.world.packs.iter().map(|p| crate::shop::shelf_item(p, shop.pack_cost));
