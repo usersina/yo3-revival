@@ -1,0 +1,20 @@
+# Issue #83: the Stadium's Ultimate Match against the computer, from the map to the janken's answer. On the server
+# first (a scratch server, task dev:server): an open Ultimate Match and a short wait for the computer,
+#   yo3-server create-event --data-dir DATA ultimate "Ultimate Test" --end +6h
+#   yo3-server set --data-dir DATA ultimate-cpu-wait 3
+# The result is random: a draw also says "A draw: pick rock, paper or scissors again." in the chat window (#83), and
+# the scene asks for another hand (pick again by hand, or rerun from a fresh login).
+click 505 275                    # the map's Stadium (DUELKING TITLEMATCH)
+expect component OfficialEvent 15
+sleep 3
+click 380 151                    # the first event: ULTIMATE MATCH
+sleep 2
+click 636 437                    # Ready
+expect component HolderSelect 20  # the computer was found after the wait: Select Deck
+sleep 2
+click 393 533                    # Select Deck's OK
+expect flash "Janken.beginJanken" 20
+sleep 1
+click 350 470                    # rock
+expect flash "Janken.resolveJanken" 10
+shot stadium-janken
