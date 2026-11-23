@@ -158,12 +158,14 @@ def start(args, extra):
         process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                                    start_new_session=True)
     deadline = time.monotonic() + 30
-    while not listening(args.port, bind):
+    # Ready for the admin commands too: the server writes data/admin.json and opens its HTTP port (where they go)
+    # after the TLS port; until then a command finds the data folder locked.
+    while not (listening(args.port, bind) and (data / 'admin.json').is_file() and listening(args.http, '127.0.0.1')):
         if process.poll() is not None:
             raise Fail(f'the server exited ({process.returncode}); see {directory / "server.log"}')
         if time.monotonic() > deadline:
             process.terminate()
-            raise Fail(f'the server did not listen on {args.port} within 30 s; see {directory / "server.log"}')
+            raise Fail(f'the server was not ready on {args.port} and {args.http} within 30 s; see {directory / "server.log"}')
         time.sleep(0.2)
     state = {'pid': process.pid, 'binary': str(binary), 'port': args.port, 'http': args.http, 'profiles': profiles}
     (directory / 'state.json').write_text(json.dumps(state, indent=2))

@@ -27,12 +27,18 @@ class Live(unittest.TestCase):
         self.assertEqual(started.returncode, 0, started.stderr)
         directory = Path(started.stdout.split()[2])
         try:
+            set_ = subprocess.run([BINARY, 'set', '--data-dir', directory / 'data', 'turn-seconds', '0'], capture_output=True, text=True)
+            self.assertEqual(set_.returncode, 0, set_.stderr)
             self.assertFalse(scratch.port_free(port), 'the server listens')
             profile = json.loads((directory / 'client-2.json').read_text())
             self.assertTrue(profile['server'].endswith(f':{port}'))
             self.assertTrue((directory / 'server.crt').is_file())
             self.assertIn(f'YO3_AUTH_PROFILE={directory / "client-2.json"}', self.run_tool('env', str(directory), '--account', '2').stdout)
             self.assertEqual(self.run_tool('status', str(directory)).returncode, 0)
+            # An admin command right after start reaches the running server (it once found the data folder locked:
+            # start returned before the server had written data/admin.json).
+            set_ = subprocess.run([BINARY, 'set', '--data-dir', directory / 'data', 'ultimate-cpu-wait', '3'], capture_output=True, text=True)
+            self.assertEqual(set_.returncode, 0, set_.stderr)
         finally:
             self.assertEqual(self.run_tool('stop', str(directory)).returncode, 0)
         self.assertEqual(self.run_tool('status', str(directory)).returncode, 1)
