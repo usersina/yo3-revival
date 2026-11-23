@@ -449,6 +449,7 @@ impl Directory {
                 }
                 player.eval_num = p["eval_num"].as_u64().unwrap_or(0) as u32;
                 player.eval_total = p["eval_total"].as_i64().unwrap_or(0) as i32;
+                player.starter_deleted = p["starter_deleted"].as_bool().unwrap_or(false);
                 if let Some(counters) = p["counters"].as_object() {
                     player.counters = counters.iter().filter_map(|(k, v)| Some((k.clone(), v.as_u64()? as u32))).collect();
                 }
@@ -1065,7 +1066,8 @@ impl Directory {
             let uploaded: Vec<Json> = p.uploaded.iter().map(|d| json!({ "id": d.id, "name": d.name, "main": d.main, "extra": d.extra, "side": d.side })).collect();
             json!({ "player_id": p.player_id, "uploaded": uploaded, "name": p.name, "index": p.index, "level": p.level, "avatar": avatar,
                 "speeches": p.speeches, "comments": p.comments, "title": p.title, "cards": cards, "decks": p.decks,
-                "items": p.items, "given": given, "eval_num": p.eval_num, "eval_total": p.eval_total, "counters": p.counters })
+                "items": p.items, "given": given, "eval_num": p.eval_num, "eval_total": p.eval_total, "counters": p.counters,
+                "starter_deleted": p.starter_deleted })
         }).collect();
         let mut account = json!({ "user_id": a.user_id, "dpoint": a.dpoint, "players": players });
         if let Some(key) = &e.key { account["key"] = json!(key); }

@@ -97,6 +97,8 @@ pub struct Player {
     pub country: String,
     /// What the server counts of the player's duels for titles (`titles::count`), by name.
     pub counters: BTreeMap<String, u32>,
+    /// The player deleted the starter deck in Edit Deck (0x1F50): the deck list no longer brings it back (#85).
+    pub starter_deleted: bool,
 }
 
 /// The client language a session starts with (0x1F48 lang 1).
@@ -174,6 +176,7 @@ impl Player {
             eval_total: 0,
             counters: BTreeMap::new(),
             country: String::new(),
+            starter_deleted: false,
         }
     }
 
@@ -3160,6 +3163,14 @@ impl FrontSession {
     }
 
     /// The decks the selected player's clients uploaded, as the accounts keep them now.
+    /// The starter deck, unless the selected player deleted it (the newest account state, as `uploaded_decks`).
+    fn starter(&self) -> Option<&Deck> {
+        let at = self.selected?;
+        let me = &self.account.players[at];
+        let deleted = self.directory.as_ref().and_then(|d| d.locked().player(me.player_id).map(|p| p.starter_deleted));
+        if deleted.unwrap_or(me.starter_deleted) { None } else { self.world.starter_deck.as_ref() }
+    }
+
     fn uploaded_decks(&self) -> Vec<Deck> {
         let Some(at) = self.selected else { return vec![] };
         let me = &self.account.players[at];
@@ -3182,9 +3193,9 @@ impl FrontSession {
     }
 
     /// A deck the player picked at Select Deck or saved in Edit Deck: kept by name (a newer upload replaces it; the
-    /// oldest goes when ten are kept), unless the starter deck's name or an empty deck.
+    /// oldest goes when ten are kept), unless the starter deck's name (while the player has it) or an empty deck.
     fn keep_deck(&mut self, deck: Deck) {
-        let given = self.world.starter_deck.iter().any(|s| s.name == deck.name);
+        let given = self.starter().is_some_and(|s| s.name == deck.name);
         if deck.name.is_empty() || deck.main.is_empty() || given {
             return;
         }
@@ -3196,8 +3207,19 @@ impl FrontSession {
         });
     }
 
-    /// The editor deleted a deck: the server forgets its copy.
+    /// The editor deleted a deck: the server forgets its copy, and the starter deck is no longer listed (#85).
     fn forget_deck(&mut self, name: &str) {
+        if self.starter().is_some_and(|s| s.name == name)
+            && let Some(at) = self.selected
+        {
+            if let Some(d) = &self.directory
+                && let Err(why) = d.locked().update_player(self.account.players[at].player_id, |p| p.starter_deleted = true)
+            {
+                tracing::warn!("the starter deck's deletion not kept: {why}");
+                return;
+            }
+            self.account.players[at].starter_deleted = true;
+        }
         self.change_uploaded(|decks| decks.retain(|d| d.name != name));
     }
 
@@ -3568,7 +3590,7 @@ impl FrontSession {
                     // Owned official decks give a fresh profile an alternative when the starter is banned
                     // or its cards were traded away. Native validation
                     // remains authoritative and only one missing deck is installed.
-                    let decks = self.world.starter_deck.iter().chain(&self.world.official_decks)
+                    let decks = self.starter().into_iter().chain(&self.world.official_decks)
                         .filter(|deck| self.check_deck(None, deck).is_ok()).take(MAX_LISTED_DECKS)
                         .fold(Message::reply(0x22C8), |m, deck| m.item(deck.record()));
                     if !decks.items.is_empty() { replies.push(decks); }
@@ -3671,7 +3693,8 @@ impl FrontSession {
             // decks are on Load Deck's Official tab instead (their items in the player's pbin, `World::granted_items`).
             0x1F4E => {
                 let uploaded = self.uploaded_decks();
-                let decks = self.world.starter_deck.iter().chain(uploaded.iter().filter(|u| !self.world.starter_deck.iter().any(|s| s.name == u.name)));
+                let starter = self.starter();
+                let decks = starter.into_iter().chain(uploaded.iter().filter(|u| !starter.is_some_and(|s| s.name == u.name)));
                 decks.take(MAX_LISTED_DECKS).fold(Message::reply(0x22C8), |m, d| m.item(self.world.place_deck(d).record()))
             }
             0x17D4 => return self.duel_ready(msg),
@@ -3772,7 +3795,8 @@ impl FrontSession {
                 }
                 Message::reply(0x22CA)
             }
-            // Deck deleted (its local file is already gone); the starter deck comes back on the next list.
+            // Deck deleted (its local file is already gone). The starter deck too: the server stops listing it, or the
+            // editor would save it again from the next list (#85).
             0x1F50 => {
                 let name = msg.get("deck_name").and_then(Value::as_str).unwrap_or_default();
                 self.forget_deck(&name);

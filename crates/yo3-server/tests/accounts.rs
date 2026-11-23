@@ -91,6 +91,19 @@ fn accounts_are_kept_in_their_file() {
 }
 
 #[test]
+fn a_deleted_starter_deck_is_kept_in_the_file_issue_85() {
+    let path = accounts_file("starter");
+    let id = {
+        let mut d = Directory::open(vec!["Yugi".into()], &path).unwrap();
+        let id = d.account_for(ip(1)).players[0].player_id;
+        d.update_player(id, |p| p.starter_deleted = true).unwrap();
+        id
+    };
+    let d = Directory::open(vec!["Yugi".into()], &path).unwrap();
+    assert!(d.player(id).unwrap().starter_deleted);
+}
+
+#[test]
 fn the_host_names_a_friends_player_ahead_and_renames_players() {
     // The admin commands: a friend's account made with just the chosen player; a player can be renamed, never to a
     // name in use.

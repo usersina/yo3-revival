@@ -185,6 +185,27 @@ mod follow {
     }
 
     #[test]
+    fn a_deleted_starter_deck_stays_deleted_issue_85() {
+        // The editor saves every listed deck it lacks (0x43E550), so a starter deck the server kept listing came back
+        // after Delete (#85). Deleting it (0x1F50, after the editor removed the file) stops the list, on every machine
+        // and at the next selection's automatic list; a deck the player then names "Starter Deck" is their own.
+        let (server, d) = setup();
+        let mut here = server.join_from(&d, ADDR);
+        upload(&mut here, 1, "Dragons", &[10, 11, 12]);
+        let delete = |name: &str| req_with(0x1F50, &[("delete_type", Value::U32(0)), ("deck_name", Value::text(name))]);
+        assert_eq!(one(here.send(delete("Starter Deck"))).request(), Some(0x22CC));
+        assert_eq!(names(&mut here), ["Dragons"]);
+        let mut there = server.join_from(&d, ADDR);
+        assert_eq!(names(&mut there), ["Dragons"]);
+        there.send(req_with(0x1F4C, &[("player_id", Value::U32(1001))]));
+        let trunk = there.send(req_with(0x1FA4, &[("player_id", Value::U32(1001))]));
+        assert!(trunk.iter().all(|m| m.request() != Some(0x22C8)), "no starter at the selection's list either");
+        assert!(save_in_editor(&mut here, "Starter Deck", &[12]).is_empty());
+        assert_eq!(names(&mut there), ["Dragons", "Starter Deck"]);
+        assert!(d.lock().unwrap().player(1001).unwrap().starter_deleted, "kept with the player");
+    }
+
+    #[test]
     fn an_editor_save_is_kept_unchecked_but_not_an_empty_deck_or_the_starters_name() {
         // A save is not a duel: a deck the login banlist or the collection refuses is still the player's to keep (the
         // client and the server check it at Select Deck). Card 4000 is a row the collection lacks.
