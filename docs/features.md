@@ -109,6 +109,8 @@ release, and "—" a row that is not implemented or unsupported.
 | Feature | Status | Since | Verified by | Notes / issues |
 | --- | --- | --- | --- | --- |
 | Booster packs for BP | Implemented | v0.0.1 (2026-11-09) | `shop_contract.rs`, `bp_contract.rs`; live | Pack prices and the rarity runs are guesses (guesses table). 5000 BP at the start of an account. |
+| No card twice in one booster pack (#86) | Implemented | Unreleased | `shop_contract.rs` `a_pack_never_repeats_a_card_its_tier_has_enough_of_issue_86` (500 packs: five different cards; a two-card tier gives each card twice at most) | A card repeats only when its rarity tier holds fewer cards than the pack takes from it. |
+| Blister's greeting in the game's own language (#84) | Implemented | Unreleased | `shop_contract.rs` `shop_text_is_empty_so_the_game_greets_in_its_own_language_issue_84`; the client's case reads its own line when the text is empty (`0x1C20`, `$33003`–`$33007` in the Japanese and English text tables) | The line follows the player's manner rating, as in the original. |
 | Bought cards in Edit Deck at once: the trunk follows the last present of a pack, structure deck or exchange | Implemented | v0.1.6 (2026-11-20) | `shop_contract.rs` (`the_last_present_of_a_purchase_brings_the_trunk_so_edit_deck_has_the_cards_at_once`, and the pack, structure deck and exchange tests); live 2026-11-20 on the headless client: a pack bought, the shop still working (its shelves reloaded once), then Edit Deck's trunk 503 → 508 without opening the shop again | A player reported "can't use packs I bought". The client adds none of a present's cards to its trunk (protocol.md), so Edit Deck showed the old collection until the shop was opened again or the next login; since v0.0.1, not new in v0.1.5. |
 | BP from duels (win 100, draw 50, loss 30), BOOSTERPASS codes, `give-bp` | Implemented | v0.0.2 (2026-11-09) | `bp_contract.rs`, `shop_contract.rs`; live; Windows VM (a mid-duel BP gift) | `give-bp`, `add-code`, `remove-code`, `codes` also work while the server runs. |
 | Structure decks SD001-SD005 | Implemented | v0.0.1 (2026-11-09) | `shop_contract.rs`; live | The starters 1-3 have no art and are not on sale on the shelf: see the `recipes` command below. |
@@ -127,7 +129,7 @@ release, and "—" a row that is not implemented or unsupported.
 
 | Feature | Status | Since | Verified by | Notes / issues |
 | --- | --- | --- | --- | --- |
-| Collection (trunk), the starter deck | Implemented | v0.0.1 (2026-11-09) | `deck_contract.rs`, `front_contract.rs`; live |  |
+| Collection (trunk), the starter deck | Implemented | v0.0.1 (2026-11-09) | `deck_contract.rs`, `front_contract.rs`; live | A deleted starter deck stays deleted (#85, Unreleased: `deck_contract.rs` `a_deleted_starter_deck_stays_deleted_issue_85`, `accounts.rs` `a_deleted_starter_deck_is_kept_in_the_file_issue_85`). |
 | Official character decks on Load Deck's Official tab | Implemented | v0.0.12 (2026-11-13) | `original_decks.rs`, `deck_contract.rs`; live | Nine decks (Yami Yugi, Jaden, Yusei) plus CONCEALERS DECK. |
 | Decks follow the player to another machine (Select Deck and Edit Deck saves) | Implemented | v0.0.12 (2026-11-13) | `deck_contract.rs`; live on two machines; Windows VM (an Edit Deck save reached the server) | Edit Deck saves need the connection DLL. A same-named deck on another machine is not replaced (playing guide). |
 | Delete a deck; bought structure decks in the deck list | Implemented | v0.0.1 (2026-11-09) | `deck_contract.rs`; live |  |
