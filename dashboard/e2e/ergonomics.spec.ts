@@ -133,7 +133,9 @@ test('card gifts identify artworks, link to official card details and validate c
 test('every workspace keeps table data and actions readable without sideways scrolling', async ({
   page,
 }) => {
-  test.setTimeout(120000) // Ten workspaces at four widths, with real requests at each navigation.
+  // Twelve workspaces at four widths, with real requests at each navigation: 48 page loads. CI's runner took 2.1 min
+  // twice (v0.1.20, v0.1.21) and hit a 2 min limit, so it has 4.
+  test.setTimeout(240000)
   await page.route('**/panel/api/v1/bp-codes', async (route) => {
     const response = await route.fetch()
     await route.fulfill({
