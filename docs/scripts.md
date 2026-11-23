@@ -16,6 +16,7 @@ archive. Keep every file together in `yo3-revival-scripts/`. Open a terminal in 
     - [Windows](#windows)
     - [Linux](#linux)
   - [Join a friend's server](#join-a-friends-server)
+  - [Password setup and recovery](#password-setup-and-recovery)
   - [Host friends](#host-friends)
   - [Options and logs](#options-and-logs)
   - [When something fails](#when-something-fails)

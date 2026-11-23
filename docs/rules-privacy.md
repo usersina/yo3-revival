@@ -45,6 +45,8 @@ host removes it.
 | **Chat** (rooms, whispers, team) | Not kept: delivered to whoever is meant to get it | A hosted server (`packet_log = false`, Host for friends) writes no chat anywhere. With packet logging on (development, Scripts edition), lines are in the packet files and session logs. |
 | D-Mail | The server's database, until the recipient's mail window fetches it | Then only on the recipient's PC. At most 100 wait from players. |
 | Duel logs (replays) | The server's database | The newest 1,000 on the server |
+| **Duel recordings**: every duel's rules-engine traffic (decks, moves, the players' numbers and names), for replaying a reported problem | The server's `recordings/` folder | 14 days (the host's `recording-days`; 0 makes none). One you mark with the `bug` chat command is pinned and kept until the host deletes it. |
+| **Player reports and `bug` notes**: who reported whom, the reason you typed, and what the staff did with it | The server's database | Until the staff delete them, or the reporter's or reported player's account is deleted |
 | Admin audit log: who changed what, including moderation | The server's database | 365 days, then removed (the host's `audit-keep-days` setting; 0 keeps it for ever) |
 | BP grant retry receipts: request ID, host or staff account number, input fingerprint, target account number, resulting BP and time | The server's database | No expiry, independent of audit pruning, so a retry cannot pay twice. No player names, passwords or recovery codes. |
 | Recent server log lines (admin panel) | Server memory | The last 2,000 lines, until the server restarts |
@@ -81,12 +83,14 @@ What goes, at once:
 - D-Mail you sent that hasn't been read yet, and D-Mail waiting for you;
 - user events you host, and your entry in those not started yet;
 - your own copy of each duel log;
+- player reports you made or that were made about you;
 - the admin audit log's rows about your account.
 
 What stays:
 
 - one audit row: which admin deleted which User ID, and when;
 - other players' own records of their duels against you, and their copy of a duel log;
+- duel recordings with your player in them, until they age out (14 days) or, for a pinned one, until the host deletes it;
 - the database **backups**, until they are replaced: on the server the newest 24 (taken hourly, so about a day), and
   off-site copies as long as the host keeps them (see [what the server keeps](#what-the-server-keeps));
 - the server's session logs (IP addresses with your account number), until they age out after 14 days.

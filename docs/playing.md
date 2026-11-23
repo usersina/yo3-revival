@@ -9,7 +9,12 @@ game with the same connection DLL and rules engine.
   - [Play with a friend](#play-with-a-friend)
   - [Choose or edit a deck](#choose-or-edit-a-deck)
   - [Card effects and summon rules](#card-effects-and-summon-rules)
+  - [Anime card versions](#anime-card-versions)
+  - [Destiny Draw](#destiny-draw)
+  - [Chatting](#chatting)
+  - [Chat commands](#chat-commands)
   - [Features and limitations](#features-and-limitations)
+    - [Website pages](#website-pages)
 
 ## Enter the game
 
@@ -147,13 +152,13 @@ If a protected monster disappears, a slot appears empty but remains occupied, or
 
 Playing alone, turn on **Anime cards** in Desktop's Settings → Singleplayer: it is your own server's `anime-cards` setting, off
 by default, and it shows what the server really has. Turning it on offers the anime pictures right away (a dialog: about 10 MB
-from ProjectIgnis' picture server, N of 418 cards without one, **Get pictures** or **Not now**; the switch stays on either way).
+from ProjectIgnis' picture server, N of 419 cards without one, **Get pictures** or **Not now**; the switch stays on either way).
 A host of a server sets `anime-cards` to `on` ([the setting](guide.md#live-settings)) for everyone who plays there; a server you
 join is always its host's choice and has no switch for you. It is off by default, and takes effect at the next duel; a game that
-is already open shows RESTART THE GAME on the main screen, because the game fetches its cards once when it starts. Then NPC duels and duels between players play **411 cards by their anime
+is already open shows RESTART THE GAME on the main screen, because the game fetches its cards once when it starts. Then NPC duels and duels between players play **416 cards by their anime
 effects** instead of the game's: Card of Sanctity has both players draw until they hold six cards, Mirror Force also hurts
 you by the ATK difference to each of your weaker monsters it destroys, Junk Warrior's ATK follows the Level 2 or lower
-monsters you control from moment to moment, and so on. [The list](anime-cards.md) names every card and says why 7 others
+monsters you control from moment to moment, and so on. [The list](anime-cards.md) names every card and says why 3 others
 keep the game's version.
 
 The game shows those cards as their anime versions too (the **card profile**, [how it works](anime-cards.md#the-card-profile)):
@@ -189,7 +194,7 @@ Deck card.
   face up is not affected, until the next Skill Drain is activated: each activation negates the Gods on the field for
   that turn. Every other monster stays negated.
 - **Cards without an anime version**, the ones kept on purpose (Temple of the Kings, Time Wizard and Thousand Dragon: their anime
-  rules are not settled) and the few held for a fix play and show as the game has them ([list](anime-cards.md)).
+  rules are not settled), play and show as the game has them ([list](anime-cards.md)).
 
 The anime effects are ProjectIgnis' scripts. They load and play, but only a few have been checked against the episodes: if
 one looks wrong, [report it](launcher.md#logs-and-support) with the card and the steps.

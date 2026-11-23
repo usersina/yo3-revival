@@ -45,16 +45,17 @@ and our [download and antivirus help](guide.md#windows-smartscreen-and-antivirus
 
 The launcher checks GitHub for new releases at startup. Versions configured with an official server list also fetch
 that list from GitHub. These requests expose ordinary network metadata, such as your IP address, to GitHub; update
-checks do not include your Revival account credentials. Downloads and installation require your confirmation.
+checks do not include your Revival account credentials. An update downloads in the background only when its signature
+checks out, and installs when you restart the app ([application updates](launcher.md#application-updates)).
 
 Account and gameplay requests go to the Revival server you select. Its operator controls that server's account
 data and logs, including gameplay and chat. Hosting on your own computer keeps that server data on your computer.
 
-Diagnostic logs are retained locally. Exporting a ZIP saves a local file; it does not upload it. Publishing a bug
-report is a separate, user-confirmed action: it sends the reviewed issue and diagnostic text to GitHub, with logs
-in an unlisted Gist. Issues are public and anyone with the Gist link can read it. Logs can include player names,
-chat, decks, paths and network addresses. Review the report and its filtering options before sharing it.
-The exporter excludes credentials, databases, private profiles and original game files.
+Diagnostic logs are retained locally. **Report a problem** sends your recent logs, with passwords, keys and tokens
+removed, to the host of the server you are signed in to and gets back a report ID; it then opens a GitHub issue form
+filled in with your words and that ID, which you submit yourself. Without a server to send to, it saves the logs in a
+ZIP on your PC instead. Issues are public. Logs can include player names, chat, decks, paths and network addresses.
+The reports exclude credentials, databases, private profiles and original game files.
 See [reporting and log retention](launcher.md#logs-and-support) and [GitHub's privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
 
 SignPath processes the maintainer account and submitted build artifacts for signing, not player diagnostics.
@@ -62,8 +63,8 @@ Its [privacy policy](https://signpath.io/privacy-policy) applies to that service
 
 ## Removal and reporting concerns
 
-Close the game before removing Revival. Use the Desktop app's **Remove from game folder** option described in
-[direct start](launcher.md#open-the-game-directly) to remove its owned loader, then close the app and delete its
+Close the game before removing Revival. Turn off **Open the game without the launcher** in Settings → Game
+([direct start](launcher.md#open-the-game-directly)) to remove its owned loader, then close the app and delete its
 extracted folder. Keep or back up saved accounts and decks before removing application or server data
 ([data and backups](launcher.md#your-data-and-upgrades)).
 

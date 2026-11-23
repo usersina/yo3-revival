@@ -44,7 +44,7 @@ Other antivirus software may behave differently, and SmartScreen can change as i
 | Same folder                                                 | `yo3-revival.exe` (the app), `yo3-launcher.exe`, `yo3-server.exe`, `yo3-engine.exe` and the `engine\` folder |
 | Same folder, Desktop only                                   | `yo3-bootstrap.dll` and `yo3-launcher-windows.exe`, for opening the game directly                        |
 | After an in-app update                                      | the same files in `%LOCALAPPDATA%\YO3 Revival\updates\installs\<version>-<platform>\`, a new folder for each version |
-| The game's folder, beside `yo3.exe`                         | `winmm.dll`, put there by Desktop's PLAY so [the game opens directly](launcher.md#open-the-game-directly) |
+| The game's folder, beside `yo3.exe`                         | `winmm.dll`, put there only when [opening the game directly](launcher.md#open-the-game-directly) is on (off for a new player) |
 
 The helper and the DLL are the files most often flagged. PLAY loads the DLL from YO3 Revival's folder; it is not
 copied into the game's folder. The game's own folder doesn't need an exception.
@@ -59,7 +59,7 @@ On Windows, open PowerShell in the folder you downloaded to (in File Explorer, S
 **Open PowerShell window here**), and run:
 
 ```powershell
-Get-FileHash .\yo3-revival-desktop-v0.0.21-windows-x86_64.zip
+Get-FileHash .\yo3-revival-desktop-vX.Y.Z-windows-x86_64.zip
 ```
 
 Use the name of the file you downloaded. The `Hash` it prints must be the same as the archive's line in the release

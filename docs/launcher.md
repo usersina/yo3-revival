@@ -1,6 +1,6 @@
 # Desktop guide
 
-> **On the `beta` branch** the Desktop window is the new launcher of the public beta
+> The Desktop window is the launcher of the public beta
 > ([#20](https://github.com/usersina/yo3-revival/issues/20)). It downloads updates in the background and installs them
 > when it restarts ([#32](https://github.com/usersina/yo3-revival/issues/32), [Application updates](#application-updates)).
 
@@ -11,13 +11,18 @@ terminal. Both editions include the server, rules engine and required connection
   - [First launch](#first-launch)
   - [Singleplayer](#singleplayer)
   - [Join another server](#join-another-server)
+    - [Several games at once](#several-games-at-once)
   - [Host friends](#host-friends)
   - [Settings](#settings)
+    - [Card pictures](#card-pictures)
     - [Screen size](#screen-size)
+    - [Anime cards](#anime-cards)
+    - [Destiny Draw](#destiny-draw)
     - [Banlist](#banlist)
   - [Open the game directly](#open-the-game-directly)
   - [Help and errors](#help-and-errors)
   - [Logs and support](#logs-and-support)
+    - [Problem reports](#problem-reports)
   - [Application updates](#application-updates)
   - [Your data and upgrades](#your-data-and-upgrades)
   - [Reset local game data](#reset-local-game-data)
@@ -186,7 +191,7 @@ For a server that runs without the launcher (an always-on PC or a VPS), use the 
 ## Settings
 
 **Settings** at the bottom right opens **Settings**; **Back**, **Settings** again or Escape returns to the main screen. **Since v0.1.6 (2026-11-20):** it moved there from the title bar, and each section is grouped rows: a setting's name and one line on the left, its control (a switch for on and off) on the right.
-once and applies at the next PLAY (or your server's next start), without restarting YO3 Revival.
+Every change is saved at once and applies at the next PLAY (or your server's next start), without restarting YO3 Revival.
 
 **Escape** closes the topmost thing first (**Since v0.1.5 (2026-11-20)**): an open dialog, then the bell's list or the server tools, then a
 Multiplayer form (**Add a server**, **Create account**, **Forgot password?**; a recovery code shown once stays until you
@@ -385,7 +390,7 @@ updates** asks at once). When one is out:
   version Y" with the reason behind **Details**, and doesn't download that version again by itself (the release page
   still has it).
 - **A server that needs a newer YO3 Revival** shows **UPDATE** on its Play button in Multiplayer, which opens What's
-  new (or the release page before the update is known). A v0.1.1 server requires at least a v0.1.1 launcher. Let the
+  new (or the release page before the update is known). Each server names the oldest launcher it accepts (`min-launcher`). Let the
   signed update finish, then restart to install it. Your original game files do not need replacing. Singleplayer
   runs your own bundled server; other servers have their own version requirement.
 
@@ -503,7 +508,7 @@ Help in the footer has these topics too; an error's **Help** opens its own.
 | A card seems to behave incorrectly | Check [card rules](playing.md#card-effects-and-summon-rules), then [report it](#logs-and-support). |
 | "The program can't start because api-ms-win-core-synch-l1-2-0.dll is missing" (or `bcryptprimitives.dll`) | You're on Windows 7 or 8. Don't download that DLL: see [Windows 7](#windows-7). |
 
-The published Linux Desktop v0.1.0 also requires **glibc 2.43 or newer** (for example, Ubuntu 26.04).
+The Linux Desktop release was built against **glibc 2.43** in v0.1.0 (for example, Ubuntu 26.04); check the newest release's notes for what it needs.
 On Ubuntu 24.04 it exits before opening a window with `GLIBC_2.43 not found`. Use a newer distribution or
 [build from source](development.md#build-from-source) on your own system.
 

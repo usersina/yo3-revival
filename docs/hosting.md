@@ -1,13 +1,13 @@
 # Hosting a server
 
 For the separate React dashboard and container deployment, use [Docker Compose and HTTPS](docker.md).
-That option (v0.1.0) supports public HTTPS staff sign-in with a password and an authenticator code (staff MFA, unreleased; see
+That option (v0.1.0) supports public HTTPS staff sign-in with a password and an authenticator code (staff MFA, since v0.1.4; see
 [Staff sign-in with an authenticator](#staff-sign-in-with-an-authenticator)). This page
 covers the server bundle and its existing private HTML panel.
 
 How to run `yo3-server` as an always-on service on a Linux server (a VPS, or a spare PC) from the **server bundle**,
 and how to look after it: the admin panel through an SSH tunnel, backups on and off the machine, monitoring and
-alerts, and updates. On the `beta` branch (#36, #37); the released Desktop and Scripts editions host from a PC
+alerts, and updates (#36, #37). The server bundle ships with each release; Desktop and Scripts host from a PC instead
 ([Desktop](launcher.md), [Scripts](scripts.md#host-friends)).
 
 The guide doesn't name a provider. Replace the placeholders with your own values:
@@ -291,7 +291,7 @@ time to be running at the start (a Championship the server missed by more than a
   banlist NAME`. Auto Duel only pairs players on the same list. An account's page shows its list, and any staff may set
   it (`yo3 set-banlist Someone unlimited`, or `default`); it applies at the player's next login.
 - **Anime card versions.** `yo3 set anime-cards on` (a [live setting](guide.md#live-settings), off by default, at the
-  next duel) makes NPC and player duels play 314 cards by their anime effects, the others as the game has them, and the
+  next duel) makes NPC and player duels play 416 cards by their anime effects, the others as the game has them, and the
   game show them as the anime cards (the [card profile](anime-cards.md#the-card-profile): the server's `/web/card-profile`, which
   each game fetches once at start, so **a change needs the players to restart their games** (Desktop offers RESTART THE GAME while a game runs the old cards, and until they do
   the server refuses every duel of an open game that loaded another profile, with a chat line saying why; a server restart
