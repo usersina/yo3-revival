@@ -535,7 +535,8 @@ impl ClientModel {
 
     fn check_side(&self, p: usize, side: &Json) -> Vec<String> {
         let mut out = vec![];
-        if let Some(expected) = side["lp"].as_i64() && self.lp[p] != Some(expected) && self.surrendered != Some(p) {
+        // The client keeps LP up to 99,999 (the server sends no more): a player above it shows 99,999.
+        if let Some(expected) = side["lp"].as_i64().map(|lp| lp.min(99_999)) && self.lp[p] != Some(expected) && self.surrendered != Some(p) {
             out.push(format!("player {p}'s LP: engine {expected}, client {:?}", self.lp[p]));
         }
         let list = |k: &str| side[k].as_array().cloned().unwrap_or_default();

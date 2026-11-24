@@ -282,6 +282,7 @@ impl Session {
             self.fix_grave_swaps(&mut batch)?;
             self.add_tribute_positions(&mut batch)?;
             self.add_fits(&mut batch);
+            self.add_lp_beyond_the_client(&mut batch)?;
             let waiting = status == Status::Awaiting;
             // Before the prompt, which stays last.
             let field = if waiting && batch.is_empty() { None } else { self.field_report()? };
@@ -376,6 +377,39 @@ impl Session {
     }
 
     /// ANNOUNCE_CARD gets `fits`: Konami ids of cards its filter allows, this duel's cards first, at most 30.
+    /// The client keeps LP between 0 and 99,999: it clamps every change it is given (DuelCockpit 0x502EB0), so after a
+    /// player goes past 99,999 (Mystik Wok on an infinite ATK) a later change would leave its LP wrong, 0 while the
+    /// player still has LP. Where a step's LP changes leave a player above 99,999, or start from above it, the core's
+    /// LP is added after that player's last change as an LP update (MSG_LPUPDATE, which the server sends as the
+    /// player's LP, capped at 99,999). A duel that stays below 99,999 is unchanged.
+    fn add_lp_beyond_the_client(&mut self, batch: &mut Vec<Json>) -> Result<(), String> {
+        const CLIENT_MAX: i64 = 99_999;
+        let changes = |p: u64| batch.iter().enumerate().filter(move |(_, m)| {
+            [msg::DAMAGE, msg::RECOVER, msg::PAY_LPCOST].contains(&m["type"].as_u64().unwrap_or(0)) && m["player"] == p
+        });
+        if !(0..2).any(|p| changes(p).next().is_some()) {
+            return Ok(());
+        }
+        let field = self.duel.as_mut().ok_or("TypeError: no duel")?.query_field();
+        let players = decode::field(&mut Reader::new(&field)).map_err(|e| e.to_string())?.remove("players").unwrap_or_default();
+        let mut inserts = vec![];
+        for p in 0..2u64 {
+            let Some((last, _)) = changes(p).next_back() else { continue };
+            let after = i64::from(players[p as usize]["lp"].as_u64().unwrap_or(0) as u32 as i32).max(0);
+            let net: i64 = changes(p).map(|(_, m)| {
+                let amount = m["amount"].as_i64().unwrap_or(0);
+                if m["type"] == msg::RECOVER { amount } else { -amount }
+            }).sum();
+            if after > CLIENT_MAX || after - net > CLIENT_MAX {
+                inserts.push((last + 1, json!({ "type": msg::LPUPDATE, "player": p, "lp": after })));
+            }
+        }
+        for (at, m) in inserts.into_iter().rev() {
+            batch.insert(at, m);
+        }
+        Ok(())
+    }
+
     fn add_fits(&mut self, batch: &mut [Json]) {
         for m in batch.iter_mut().filter(|m| m["type"] == msg::ANNOUNCE_CARD) {
             let Some(opcodes) = m["opcodes"].as_array() else { continue };

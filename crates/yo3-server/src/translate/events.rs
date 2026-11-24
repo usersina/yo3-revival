@@ -216,7 +216,8 @@ impl Translator {
                 }
                 Event::AddCounter(c) => out.extend(self.counter(&c, true)),
                 Event::RemoveCounter(c) => out.extend(self.counter(&c, false)),
-                Event::LpUpdate(u) => out.push(command(cmd::SET_LP, [self.side(u.player), u.lp as u32, 0, 0])),
+                // The client shows and keeps LP up to 99,999 (its LP changes are clamped there, DuelCockpit 0x502EB0).
+                Event::LpUpdate(u) => out.push(command(cmd::SET_LP, [self.side(u.player), (u.lp as u32).min(99_999), 0, 0])),
                 Event::Equip(l) => self.link(&l, msg::EQUIP),
                 Event::CardTarget(l) => self.link(&l, msg::CARD_TARGET),
                 Event::CancelTarget(l) => self.link(&l, msg::CANCEL_TARGET),

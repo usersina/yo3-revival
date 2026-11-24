@@ -175,8 +175,12 @@ pub fn revival_rule() -> &'static str {
     }
 }
 
-/// Loads the house rules into `duel`, after utility.lua.
+/// The guards every duel plays with whatever the house rules (`guards.lua`: LP amounts kept within the core's 32 bits).
+pub const GUARDS: &str = include_str!("../guards.lua");
+
+/// Loads the guards and the house rules into `duel`, after utility.lua.
 pub fn load_house_rules(duel: &mut Duel) {
+    duel.load_script("yo3_guards.lua", GUARDS.as_bytes());
     duel.load_script("yo3_revival_rule.lua", format!("YO3_REVIVAL_RULE = \"{}\"", revival_rule()).as_bytes());
     duel.load_script("yo3_house_rules.lua", HOUSE_RULES.as_bytes());
 }
