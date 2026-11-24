@@ -236,7 +236,7 @@ impl crate::Backend {
 /// The report file's format (#87's follow-up): one ZIP the player keeps and can send to the developer however they
 /// like, whatever server is up. `docs/report-format.md` describes it.
 pub const REPORT_FORMAT: &str = "yo3-revival-report";
-pub const REPORT_VERSION: u32 = 3;
+pub const REPORT_VERSION: u32 = 4;
 /// Singleplayer's newest pinned duel recordings (the `bug` command) that go in the file, and the largest of them.
 const REPORT_RECORDINGS: usize = 3;
 const REPORT_RECORDING_BYTES: u64 = 8 * 1024 * 1024;

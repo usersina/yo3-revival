@@ -16,7 +16,7 @@ none. The result window shows its name, with **Open folder** and **Copy path**. 
 | `README.txt` | The report for a person: what happened, how to reach the player, the error, Singleplayer or which server, the app's version and commit, the PC (system, processor and threads, memory, graphics card, Wine), the IDs of reports the game sent hosts by itself, and the recordings included. It tells the player to send the whole ZIP. |
 | `report.json` | The same, for tools (below). |
 | `bug-report.md` | The report as the GitHub form's Markdown, for pasting into an issue. |
-| `sessions/` | This app session's log and the latest game's (the helper's, with the game's and the connection DLL's lines), and their metadata files. |
+| `sessions/` | This app session's log and the latest game's (the helper's, with the game's, the connection DLL's and Wine's lines), and their metadata files. Their lines are [yo3-log/1](logs.md) (a launcher from before it wrote text lines); `tools/logs/yo3log.py REPORT.zip` reads them as one timeline. |
 | `recordings/` | Singleplayer only: the newest three duels pinned with the `bug` chat command (`<id>.jsonl.gz`, up to 8 MB each), replayed exactly with `tools/monkey/duel-replay.py --recording FILE`. |
 
 ## `report.json`
@@ -24,7 +24,7 @@ none. The result window shows its name, with **Open folder** and **Copy path**. 
 ```json
 {
   "format": "yo3-revival-report",
-  "version": 3,
+  "version": 4,
   "created": 1795300000,
   "release": "v0.1.22", "commit": "…", "protocol": 3, "mod_abi": 3,
   "os": "windows", "arch": "x86_64",
@@ -52,7 +52,8 @@ none. The result window shows its name, with **Open folder** and **Copy path**. 
   setup check's fingerprint of `yo3.exe`, not its location.
 - `report.sent` lists the IDs of reports the helper sent hosts by itself after recent games that broke (operation 7),
   for reference. Report a problem itself sends nothing: the file is the report.
-- Version 2 (before) had the same top-level fields without `report`, `README.txt`, the PC's processor, memory and
+- Version 4 has the same fields as 3; its logs are [yo3-log/1](logs.md).
+- Version 3 had text logs. Version 2 (before) had the same top-level fields without `report`, `README.txt`, the PC's processor, memory and
   graphics card, and recordings; version 1 had no system details.
 
 ## Privacy

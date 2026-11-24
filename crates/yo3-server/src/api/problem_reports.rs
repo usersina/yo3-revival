@@ -92,6 +92,7 @@ impl Api {
             .ok_or_else(|| MutationError::new(MutationErrorCode::NotFound, "No problem report has that ID."))?;
         let text = report.text();
         let row = ProblemReportRow::from(report.listed());
-        Ok(ProblemReport { row, server_log: report.server_log, logs: report.logs, text })
+        let logs = report.readable_logs();
+        Ok(ProblemReport { row, server_log: report.server_log, logs, text })
     }
 }

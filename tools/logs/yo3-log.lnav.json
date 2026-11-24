@@ -1,0 +1,38 @@
+{
+  "$schema": "https://lnav.org/schemas/format-v1.schema.json",
+  "yo3_log": {
+    "title": "YO3 Revival log (yo3-log/1)",
+    "description": "YO3 Revival's session, server and packet logs: one JSON object per line (docs/logs.md).",
+    "url": "https://github.com/usersina/yo3-revival/blob/main/docs/logs.md",
+    "json": true,
+    "file-pattern": "(app|server|game|direct)-\\d+-\\d+-[0-9a-f]+\\.\\d{4}\\.log$|packets-.*\\.jsonl$",
+    "timestamp-field": "ts",
+    "level-field": "level",
+    "body-field": "msg",
+    "opid-field": "session",
+    "level": { "error": "error", "warning": "warn", "info": "info", "debug": "debug", "trace": "trace" },
+    "value": {
+      "src": { "kind": "string", "identifier": true },
+      "session": { "kind": "string", "identifier": true },
+      "topic": { "kind": "string", "identifier": true },
+      "user": { "kind": "integer", "identifier": true },
+      "player": { "kind": "integer", "identifier": true },
+      "peer": { "kind": "string", "identifier": true },
+      "duel": { "kind": "string", "identifier": true },
+      "report": { "kind": "string", "identifier": true },
+      "req": { "kind": "string", "identifier": true },
+      "conn": { "kind": "string", "identifier": true },
+      "dir": { "kind": "string" },
+      "error": { "kind": "string" },
+      "packet": { "kind": "json", "hidden": true },
+      "raw": { "kind": "string", "hidden": true },
+      "raw_len": { "kind": "integer", "hidden": true }
+    },
+    "line-format": [
+      { "field": "__timestamp__", "timestamp-format": "%H:%M:%S.%L" }, " ",
+      { "field": "__level__", "text-transform": "uppercase", "min-width": 5 }, " ",
+      { "field": "src", "min-width": 6 }, " ",
+      { "field": "msg" }
+    ]
+  }
+}

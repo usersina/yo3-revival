@@ -62,6 +62,10 @@ pub fn classify(text: &str, default: &str) -> (String, &'static str, Option<Stri
         let level = if rest.starts_with("err:") { "error" } else if rest.starts_with("warn:") { "warn" } else { "debug" };
         return ("wine".into(), level, None, text.into());
     }
+    // DXVK's lines (Direct3D under Wine): `info:  ...`, `warn:  ...`, `err:   ...`.
+    for (prefix, level) in [("info:  ", "debug"), ("warn:  ", "warn"), ("err:   ", "error")] {
+        if text.starts_with(prefix) { return ("wine".into(), level, None, text.into()) }
+    }
     // A server's text line: `2026-11-21T20:17:12.967137Z  INFO message`.
     if b.len() > 28 && b[4] == b'-' && b[10] == b'T' && let Some(z) = text[..32.min(text.len())].find('Z') {
         let mut words = text[z + 1..].trim_start().splitn(2, ' ');
@@ -346,6 +350,8 @@ mod tests {
         assert_eq!((wine.0.as_str(), wine.1), ("wine", "error"));
         let server = classify("2026-11-21T20:17:12.967137Z  WARN [tls] 127.0.0.1:5 handshake failed", "app");
         assert_eq!((server.0.as_str(), server.1, server.2.as_deref(), server.3.as_str()), ("server", "warn", Some("2026-11-21T20:17:12.967Z"), "[tls] 127.0.0.1:5 handshake failed"));
+        assert_eq!((classify("err:   DxvkAdapter: Failed to create device", "helper").0.as_str(), classify("err:   x", "helper").1), ("wine", "error"));
+        assert_eq!(classify("info:  extension supported : 1", "helper").1, "debug");
         assert_eq!(classify("Starting the game", "helper"), ("helper".into(), "info", None, "Starting the game".into()));
         let root = std::env::temp_dir().join(format!("yo3-log1-{}-{}", std::process::id(), now()));
         let session = Session::start(&root, "game", None).unwrap();

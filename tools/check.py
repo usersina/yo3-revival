@@ -46,6 +46,7 @@ PY = [
     'tools/vm/test_vm.py',
     'tools/vm/test_smoke.py',
     'tools/dev/test_scratch_server.py',
+    'tools/logs/test_yo3log.py',
     'tools/test_check.py',
 ]
 

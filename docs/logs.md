@@ -19,7 +19,7 @@ Code: `crates/yo3-tunnel/src/diagnostics.rs` (every session log), the server's J
 | --- | --- | --- |
 | `ts` | yes | When, in UTC, RFC 3339 with milliseconds (`2026-11-24T08:12:37.123Z`). |
 | `level` | yes | `error`, `warn`, `info`, `debug` or `trace`. |
-| `src` | yes | Who wrote it: `app` (the Desktop window), `helper` (the connection helper `yo3-launcher` that runs a game), `server`, `game` (the game's own output), `client` (the game's network trace), `dll` (the connection DLL, `[YO3 MOD]`), `wine`, `engine` (the rules engine's traffic), `packet` (a game packet). |
+| `src` | yes | Who wrote it: `app` (the Desktop window), `helper` (the connection helper `yo3-launcher` that runs a game, and the game's output without a marker), `server`, `client` (the game's network trace, `[YO3 CLIENT]`), `dll` (the connection DLL, `[YO3 MOD]`), `wine` (Wine's and DXVK's lines), `engine` (the rules engine's traffic), `packet` (a game packet). |
 | `session` | yes | The session log's id (`app-…`, `game-…`, `direct-…`, `server-…`): its metadata is `<session>.json` beside it, with the build, the parent session and the process. |
 | `msg` | yes | The text, credentials already removed. |
 

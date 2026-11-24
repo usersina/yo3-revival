@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """Prove native checkpoint coverage using matching server and game session logs (including rotated parts)."""
 import argparse
+import importlib.util
 from collections import Counter
 import json
 from pathlib import Path
 import re
+
+# yo3-log/1 lines read as the older text the markers are searched in (tools/logs/yo3log.py, docs/logs.md).
+_SPEC = importlib.util.spec_from_file_location("yo3log", Path(__file__).resolve().parent.parent / "logs" / "yo3log.py")
+yo3log = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(yo3log)
 
 def records(lines, marker):
     result = []
@@ -41,8 +47,8 @@ def main():
     parser.add_argument("--server", nargs="+", type=Path, required=True, help="matching server session .log parts")
     parser.add_argument("--client", nargs="+", type=Path, required=True, help="both games' session .log parts")
     args = parser.parse_args()
-    server = [line for p in args.server for line in p.read_text(errors="replace").splitlines()]
-    client = [line for p in args.client for line in p.read_text(errors="replace").splitlines()]
+    server = [yo3log.text(line) for p in args.server for line in p.read_text(errors="replace").splitlines()]
+    client = [yo3log.text(line) for p in args.client for line in p.read_text(errors="replace").splitlines()]
     expected, observed = records(server, "[YO3 EXPECT] "), records(client, "[YO3 CHECK] ")
     problems = compare(expected, observed) + coverage_problems(server)
     if any(re.search(r"ERROR.*duel check", line) for line in server):

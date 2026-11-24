@@ -146,7 +146,13 @@ impl Report {
     pub fn text(&self) -> String {
         let when = chrono::DateTime::from_timestamp(self.at, 0).map(|t| t.format("%Y-%m-%d %H:%M:%S UTC").to_string()).unwrap_or_default();
         format!("Problem report {}\nWhen: {when}\nAccount: {} (user {})\nKind: {}\nLauncher: {}\nSummary: {}\n\n== The server's log about this account ==\n{}\n\n== The launcher's log ==\n{}\n",
-            self.id, self.account, self.user_id, self.kind, self.launcher, self.summary, self.server_log.join("\n"), self.logs)
+            self.id, self.account, self.user_id, self.kind, self.launcher, self.summary, self.server_log.join("\n"), self.readable_logs())
+    }
+
+    /// The launcher's log for a person: its yo3-log/1 lines as `time LEVEL src message key=value`, older lines as they
+    /// are (docs/logs.md). The stored report keeps the lines as sent, for `tools/logs/yo3log.py`.
+    pub fn readable_logs(&self) -> String {
+        self.logs.lines().map(yo3_tunnel::diagnostics::human).collect::<Vec<_>>().join("\n")
     }
 }
 

@@ -16,6 +16,11 @@ from pathlib import Path
 import subprocess
 import zlib
 
+# yo3-log/1 lines read as the older text the markers are searched in (tools/logs/yo3log.py, docs/logs.md).
+_SPEC = importlib.util.spec_from_file_location("yo3log", Path(__file__).resolve().parent.parent / "logs" / "yo3log.py")
+yo3log = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(yo3log)
+
 spec = importlib.util.spec_from_file_location('duel_report', Path(__file__).with_name('duel-report.py'))
 report = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(report)
@@ -135,7 +140,7 @@ def main():
         for problem in problems: print('FAIL:', problem)
         if not problems: print(f'PASS: all {len(calls)} recorded engine calls replay exactly, with matching dependencies.')
         return int(bool(problems))
-    lines = [line for p in args.server for line in p.read_text(errors='replace').splitlines()]
+    lines = [yo3log.text(line) for p in args.server for line in p.read_text(errors='replace').splitlines()]
     records = report.records(lines, '[YO3 ENGINE] ')
     if args.duel is None:
         print('Recorded duels:', ', '.join(str(i) for i in sorted({r['duel'] for r in records})) or 'none')

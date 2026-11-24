@@ -97,6 +97,9 @@ tasks:
   client:
     desc: "The headless client on a private display: task client -- start | login 0 | ui | shot NAME | stop"
     cmds: ['tools/client/vclient.sh {{.CLI_ARGS}}']
+  logs:
+    desc: "Read logs as one timeline (yo3-log/1 and older): task logs -- PATH... [--level warn] [--user N] [--json] (docs/logs.md)"
+    cmds: ['python3 tools/logs/yo3log.py {{.CLI_ARGS}}']
   client:scenario:
     desc: "A scripted UI scenario on the running headless client: task client:scenario -- tools/client/scenarios/FILE.scn"
     cmds: ['python3 tools/client/ui-scenario.py {{.CLI_ARGS}}']
