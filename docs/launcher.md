@@ -370,18 +370,22 @@ the server with `--duel-check` ([developer replay and validation](development.md
 YO3 Revival checks for a new release when it starts and every 6 hours while it is open (Settings → About → **Check for
 updates** asks at once). When one is out:
 
-- **A dot on the version** in the footer. Click the version for **What's new**: that version's section of the
-  [changelog](https://github.com/usersina/yo3-revival/blob/main/CHANGELOG.md), where its download is, and a link to the release page.
+- **"Update X is available"** beside the version in the footer (with a dot). Clicking it opens the **Update to X**
+  window: that version's section of the [changelog](https://github.com/usersina/yo3-revival/blob/main/CHANGELOG.md),
+  where it is, a **Download** button and a link to the release page. Settings → About's **Check for updates** opens the
+  same window (**See the update**). **Since Unreleased:** nothing downloads until you press **Download**, unless you turn
+  on **Download updates automatically** in Settings → About (off by default; before, every new version downloaded by
+  itself). While it downloads the footer says "Downloading update X…", then "Update X is ready: restart to install".
 - **It downloads in the background, only if the project signed it.** Each release carries `SHA256SUMS` and the
   project's signature over it, `SHA256SUMS.sig`. Before downloading, YO3 Revival checks that signature with the
   project's key, which is built into the launcher, and checks that the signed list has the same SHA-256 that GitHub reports
   for the archive. The download is then checked against that SHA-256. A release without the signature, or with a
-  signature or checksum that doesn't match, is refused with the reason, written to the logs and never installed. A
-  download is tried again at the next check. The new
+  signature or checksum that doesn't match, is refused with the reason, written to the logs and never installed; the
+  window's **Download** tries again. The new
   version is unpacked beside this one: your settings, accounts, decks and server data stay where they are, and game
   files are never part of an update.
-- **A ribbon above PLAY: "Update X is ready · Restart to install".** **Restart to install** (or the same button in What's
-  new) opens the new version and closes this one once the new window is up. If you are hosting for friends it asks
+- **A ribbon above PLAY: "Update X is ready · Restart to install".** **Restart to install** (or the same button in the
+  Update window) opens the new version and closes this one once the new window is up. If you are hosting for friends it asks
   first, because restarting stops your server.
 - **Never while the game runs.** While you play, the ribbon says the update installs after you close the game. Closing
   YO3 Revival is enough too: the next time you open it, it installs the update before its window opens (and waits again
@@ -389,8 +393,8 @@ updates** asks at once). When one is out:
 - **If the new version doesn't start,** this version stays, says "Update X didn't start, so YO3 Revival kept
   version Y" with the reason behind **Details**, and doesn't download that version again by itself (the release page
   still has it).
-- **A server that needs a newer YO3 Revival** shows **UPDATE** on its Play button in Multiplayer, which opens What's
-  new (or the release page before the update is known). Each server names the oldest launcher it accepts (`min-launcher`). Let the
+- **A server that needs a newer YO3 Revival** shows **UPDATE** on its Play button in Multiplayer, which opens the
+  Update window (or the release page before the update is known). Each server names the oldest launcher it accepts (`min-launcher`). Let the
   signed update finish, then restart to install it. Your original game files do not need replacing. Singleplayer
   runs your own bundled server; other servers have their own version requirement.
 

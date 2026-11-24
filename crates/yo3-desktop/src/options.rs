@@ -26,6 +26,8 @@ pub enum Change {
     ProblemReports(bool),
     /// Card pictures download by themselves (Settings → Game, setup's tick).
     CardPictures(bool),
+    /// A new version downloads by itself (Settings → About).
+    AutoUpdates(bool),
     /// Host for friends: the port friends connect to.
     HostPort(u16),
     /// Host for friends: the address friends dial ("" for this PC's network address).
@@ -64,6 +66,7 @@ impl Change {
             Change::DetailedLogs(on) => settings.log_level = if *on { DETAILED.into() } else { String::new() },
             Change::ProblemReports(on) => settings.problem_reports = *on,
             Change::CardPictures(on) => settings.card_pictures = *on,
+            Change::AutoUpdates(on) => settings.auto_updates = *on,
             Change::HostPort(port) => {
                 ensure!(*port >= 1024, "Choose a port from 1024 to 65535.");
                 settings.host_port = *port;

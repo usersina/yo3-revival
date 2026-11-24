@@ -88,6 +88,10 @@ pub enum Message {
     BackedUp(Result<(), String>),
     /// Handled by the window: the backups dialog.
     Restore,
+    /// Handled by the window: the Update window of the version a check found.
+    ShowUpdate,
+    /// The Download updates automatically switch.
+    AutoUpdates(bool),
     ResetData(bool),
     DataReset(Result<(), String>),
     OpenData,
@@ -450,7 +454,7 @@ impl State {
             Message::UpdatesChecked(result) => {
                 self.busy = None;
                 match result {
-                    Ok(updates::Decision::Available(release)) => { self.update = Some(release.url.clone()); self.good(format!("Version {} is available.", release.tag.trim_start_matches('v'))) }
+                    Ok(updates::Decision::Available(release)) => { self.update = Some(release.url.clone()); self.good(format!("Version {} is available: See the update.", release.tag.trim_start_matches('v'))) }
                     Ok(updates::Decision::Current { .. }) => self.good("You have the latest version."),
                     Ok(updates::Decision::Development { latest } | updates::Decision::Manual { latest }) => self.good(format!("The latest release is {}.", latest.trim_start_matches('v'))),
                     Ok(updates::Decision::NoReleases) => self.good("There is no release yet."),
@@ -588,7 +592,8 @@ impl State {
             Message::PutBackDone(Err(error)) => if error.contains("declined") { self.note = Some(Note { good: false, sentence: yo3_desktop::foreign::DECLINED_PUT_BACK.into(), details: None, open: false }) } else { self.fail(ctx, &error) },
             Message::ToggleDetails => if let Some(note) = &mut self.note { note.open = !note.open },
             Message::Dismiss => self.note = None,
-            Message::ChangeGame | Message::Account(_) | Message::Restore | Message::Open(_) | Message::Copy(_) | Message::Report(_) | Message::Close => {}
+            Message::AutoUpdates(on) => return self.update(Message::Change(Change::AutoUpdates(on)), ctx, playing),
+            Message::ChangeGame | Message::Account(_) | Message::Restore | Message::ShowUpdate | Message::Open(_) | Message::Copy(_) | Message::Report(_) | Message::Close => {}
         }
         Task::none()
     }
@@ -605,7 +610,7 @@ impl State {
             Section::Accounts => home.multi.accounts_view().map(Message::Account),
             Section::Singleplayer => self.singleplayer(ctx, home, playing),
             Section::Advanced => self.advanced(ctx),
-            Section::About => self.about(),
+            Section::About => self.about(ctx),
         };
         // What is happening and what just happened float as toasts in the corner (the window lays them out).
         let content = column![body].spacing(16);
@@ -841,9 +846,11 @@ impl State {
         ])).into()
     }
 
-    fn about(&self) -> Element<'_, Message> {
+    fn about<'a>(&'a self, ctx: &'a Ctx) -> Element<'a, Message> {
         let mut updates = row![pill("Check for updates", self.busy.is_none().then_some(Message::CheckUpdates), Kind::Secondary, 190, 32)].spacing(14).align_y(Center);
-        if let Some(url) = &self.update { updates = updates.push(yo3_skin::link("See what's new", Message::Open(url.clone()), false)) }
+        // A version found opens the same Update window as the footer (its notes, Download, Restart to install), not GitHub.
+        if self.update.is_some() { updates = updates.push(yo3_skin::link("See the update", Message::ShowUpdate, false)) }
+        let auto = toggler(ctx.settings.auto_updates).on_toggle_maybe(self.busy.is_none().then_some(Message::AutoUpdates)).style(yo3_skin::switch).size(22);
         let mut links = column![row![yo3_skin::link("Release notes", Message::Open(updates::RELEASES.into()), false), yo3_skin::link("The project", Message::Open(updates::REPOSITORY.into()), false),
             yo3_skin::link("Licences and credits", Message::Licences, false)].spacing(18)].spacing(10);
         if self.licences { links = links.push(text(LICENCES).size(14).color(color::INK)) }
@@ -851,7 +858,8 @@ impl State {
             text(format!("YO3 Revival {} (beta)", yo3_tunnel::BUILD_VERSION.trim_start_matches('v'))).font(DISPLAY).size(22).color(color::NAVY),
             text("A private server and launcher to play Yu-Gi-Oh! ONLINE 3 again, with your own copy of the game.").size(15).color(color::INK),
             yo3_skin::setting_group("This version", vec![
-                yo3_skin::setting("Updates", "YO3 Revival checks by itself and says when one is ready.", Some(updates.into()), None),
+                yo3_skin::setting("Updates", "YO3 Revival checks by itself and says when a new version is out.", Some(updates.into()), None),
+                yo3_skin::setting("Download updates automatically", "It downloads in the background. When this is off, you choose when, in its window. Either way it installs only when you restart.", Some(auto.into()), None),
                 yo3_skin::setting("More about it", "What changed, where it lives, and who made what it uses.", None, Some(links.into())),
             ]),
         ].spacing(14).into()

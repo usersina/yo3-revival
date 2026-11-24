@@ -75,6 +75,8 @@ pub enum Message {
     UpdateChecked(Result<updates::Decision, String>),
     /// The background download of this version finished: staged and waiting for a restart, or refused.
     UpdatePrepared(String, Result<updates::install::Installed, String>),
+    /// The Update window's Download.
+    DownloadUpdate,
     /// Restart into the downloaded update (the game is closed; hosting confirmed).
     Restart,
     /// The restart didn't happen: this version stays.
@@ -162,6 +164,19 @@ impl App {
         // Card pictures download by themselves (setup's tick): the missing ones, quietly, with their progress in the footer.
         if app.ctx.settings.setup_complete && app.ctx.settings.card_pictures { tasks.push(app.get_missing_pictures()) }
         (app, Task::batch(tasks))
+    }
+
+    /// Downloads `release` in the background, checks it and unpacks it beside this version (installed on restart).
+    fn download_update(&mut self, release: updates::Release) -> Task<Message> {
+        let (root, tag) = (self.ctx.root.clone(), release.tag.clone());
+        self.transfer = Default::default();
+        let transfer = self.transfer.clone();
+        Task::perform(async move {
+            let installed = updates::download::prepare(root.clone(), release, transfer).await?;
+            let pending = installed.clone();
+            tokio::task::spawn_blocking(move || updates::install::set_pending(&root, &pending)).await??;
+            anyhow::Ok(installed)
+        }, move |result| Message::UpdatePrepared(tag.clone(), result.map_err(|e| format!("{e:#}"))))
     }
 
     /// Starts getting the card pictures that are missing, unless a download runs already or none is missing: in Settings
@@ -370,17 +385,14 @@ impl App {
                 return Task::perform(async { updates::check().await.map_err(|e| format!("{e:#}")) }, Message::UpdateChecked);
             }
             Message::UpdateChecked(result) => {
-                // A new version downloads and is checked in the background; it installs only on restart.
-                let Some(release) = self.updater.checked(result) else { return Task::none() };
-                let (root, tag) = (self.ctx.root.clone(), release.tag.clone());
-                self.transfer = Default::default();
-                let transfer = self.transfer.clone();
-                return Task::perform(async move {
-                    let installed = updates::download::prepare(root.clone(), release, transfer).await?;
-                    let pending = installed.clone();
-                    tokio::task::spawn_blocking(move || updates::install::set_pending(&root, &pending)).await??;
-                    anyhow::Ok(installed)
-                }, move |result| Message::UpdatePrepared(tag.clone(), result.map_err(|e| format!("{e:#}"))));
+                // A new version is offered; it downloads by itself only with Download updates automatically on (Settings
+                // → About), else from the Update window's Download. It installs only on restart.
+                let Some(release) = self.updater.checked(result, self.ctx.settings.auto_updates) else { return Task::none() };
+                return self.download_update(release);
+            }
+            Message::DownloadUpdate => {
+                let Some(release) = self.updater.download() else { return Task::none() };
+                return self.download_update(release);
             }
             Message::UpdatePrepared(tag, result) => {
                 // Refused (a checksum or signature that doesn't match) is reported, and never installed.
@@ -514,6 +526,7 @@ impl App {
             }
             settings::Message::Account(message) => self.home.update(home::Message::Multi(message), &mut self.ctx).map(Message::Home),
             settings::Message::Restore => { self.dialog = Some(Dialog::Backups); Task::none() }
+            settings::Message::ShowUpdate => { self.dialog = Some(Dialog::WhatsNew); Task::none() }
             settings::Message::Open(url) => self.update(Message::OpenLink(url)),
             settings::Message::Copy(text) => self.update(Message::Copy(text)),
             settings::Message::Report(error) => self.update(Message::OpenReport(error)),
@@ -633,7 +646,7 @@ impl App {
         let mut middle = row![yo3_skin::hint(yo3_skin::link(version, Message::OpenSettings(settings::Section::About), true), "About YO3 Revival")].spacing(10).align_y(Center);
         if let Some(offered) = self.updater.offered() {
             middle = middle.push(container(Space::new().width(8).height(8)).style(|_| dot(color::WARN)))
-                .push(yo3_skin::link(update_line(offered, self.updater.ready().is_some()), Message::Home(home::Message::WhatsNew), true));
+                .push(yo3_skin::link(update_line(offered, self.updater.ready().is_some(), self.updater.downloading()), Message::Home(home::Message::WhatsNew), true));
         }
         // A card pictures download running while Settings is closed: its progress, which opens Settings → Game's bar.
         if let Some((done, total, _)) = self.pictures.as_ref().filter(|_| self.settings.is_none()) {
@@ -780,7 +793,9 @@ impl App {
             column![iced::widget::scrollable(column![body, more].spacing(12)).height(Fill), actions].spacing(12))
     }
 
-    /// What's new in the offered version: its changelog section, where its download is, and Restart to install.
+    /// The Update window: what's new in the offered version (its changelog section), then one button for where it is:
+    /// Download (only on the player's click, unless Download updates automatically is on), its progress, or Restart to
+    /// install.
     fn whats_new(&self) -> Element<'_, Message> {
         let Some(release) = self.updater.release() else {
             return yo3_skin::dialog("What's new", None, Message::CloseDialog, 470.0, 170.0, text("You have the latest version.").size(15).color(color::INK));
@@ -801,7 +816,8 @@ impl App {
         }
         let mut buttons = row![yo3_skin::icon_link(Icon::Open, "Release page", Message::OpenLink(release.url.clone()), false), Space::new().width(Fill)].spacing(10).align_y(Center);
         if self.updater.ready().is_some() { buttons = buttons.push(pill("Restart to install", restart.then_some(Message::Home(home::Message::RestartToInstall)), Kind::Primary, 190, 38)) }
-        yo3_skin::dialog(&format!("What's new in {}", release.tag.trim_start_matches('v')), None, Message::CloseDialog, 620.0, 440.0, column![
+        else if self.updater.can_download() { buttons = buttons.push(pill("Download", Some(Message::DownloadUpdate), Kind::Primary, 190, 38)) }
+        yo3_skin::dialog(&format!("Update to {}", release.tag.trim_start_matches('v')), None, Message::CloseDialog, 620.0, 440.0, column![
             iced::widget::scrollable(notes).height(Fill),
             progress,
             text(self.updater.status(playing)).size(14).font(yo3_skin::BODY_BOLD).color(color::INK_SOFT),
@@ -881,9 +897,11 @@ pub const DISCUSSIONS: &str = "https://github.com/usersina/yo3-revival/discussio
 /// Where a donation goes (the footer's Support).
 pub const DONATE: &str = "https://donatr.ee/usersina/";
 
-/// Beside the version's dot: which version, and whether it waits for a restart.
-fn update_line(version: &str, ready: bool) -> String {
-    if ready { format!("Update {version} is ready") } else { format!("Update {version} is available") }
+/// Beside the version's dot: which version, and where it is: offered, downloading, or waiting for a restart.
+fn update_line(version: &str, ready: bool, downloading: bool) -> String {
+    if ready { format!("Update {version} is ready: restart to install") }
+    else if downloading { format!("Downloading update {version}…") }
+    else { format!("Update {version} is available") }
 }
 
 pub fn dot(c: Color) -> container::Style {

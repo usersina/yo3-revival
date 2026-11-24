@@ -80,6 +80,9 @@ pub struct Settings {
     /// setup's end and whenever some are missing at the launcher's start. Asked in setup (ticked); off for a launcher set
     /// up before it, which keeps Settings → Game's Get pictures.
     pub card_pictures: bool,
+    /// A new version downloads by itself as soon as the check finds it (Settings → About). Off: the footer says it is
+    /// available and the player downloads it from the Update window.
+    pub auto_updates: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -87,7 +90,7 @@ impl Default for Settings {
             host_address: "localhost".into(), data_dir: String::new(), bind_address: "0.0.0.0".into(), bind_interface: None, listen_port: 7443,
             player_name: "Duelist".into(), local_account: String::new(), resolution: String::new(),
             banlist: String::new(), setup_complete: false, game_fingerprint: String::new(), direct_start: true,
-            wine_binary: String::new(), log_level: String::new(), host_port: 7443, host_share: String::new(), host_name: String::new(), problem_reports: true, card_pictures: false }
+            wine_binary: String::new(), log_level: String::new(), host_port: 7443, host_share: String::new(), host_name: String::new(), problem_reports: true, card_pictures: false, auto_updates: false }
     }
 }
 

@@ -48,19 +48,40 @@ impl Updater {
     /// A check starts.
     pub fn checking(&mut self, now: Instant) { self.checking = true; self.last_check = Some(now) }
 
-    /// The check's answer. Returns the release to download, when there is a new one to fetch.
-    pub fn checked(&mut self, result: Result<Decision, String>) -> Option<Release> {
+    /// The check's answer. With `auto` (the player's Download updates automatically), returns the release to download
+    /// when there is a new one to fetch; otherwise it is only offered (the footer's dot, the Update window's Download).
+    pub fn checked(&mut self, result: Result<Decision, String>, auto: bool) -> Option<Release> {
         self.checking = false;
         let Ok(decision) = result else { return None };
         let offered = match &decision { Decision::Available(release) => Some(release.clone()), _ => None };
         self.latest = Some(decision);
         let release = offered?;
-        if self.failed_start.as_deref() == Some(release.tag.as_str()) { return None }
+        if !auto || self.failed_start.as_deref() == Some(release.tag.as_str()) { return None }
+        self.fetch(release)
+    }
+
+    /// The player's Download (or an automatic one): the offered release starts downloading, unless it is downloading or
+    /// ready already. Returns it to fetch.
+    pub fn download(&mut self) -> Option<Release> {
+        // The newest the check offered (a newer one than a version ready or failed), else the one the window shows.
+        let release = match &self.latest { Some(Decision::Available(r)) => r.clone(), _ => self.release()?.clone() };
+        self.fetch(release)
+    }
+
+    fn fetch(&mut self, release: Release) -> Option<Release> {
         match &self.stage {
             Stage::Downloading(r) | Stage::Ready(r, _) if r.tag == release.tag => None,
             _ => { self.stage = Stage::Downloading(release.clone()); Some(release) }
         }
     }
+
+    /// Offered and not downloaded yet (or its download failed): the Update window's Download button.
+    pub fn can_download(&self) -> bool {
+        self.release().is_some_and(|r| self.failed_start.as_deref() != Some(r.tag.as_str())) && matches!(self.stage, Stage::Idle | Stage::Failed(..))
+    }
+
+    /// Downloading now (the footer says so instead of "is available").
+    pub fn downloading(&self) -> bool { matches!(self.stage, Stage::Downloading(_)) }
 
     /// The background download of `tag` finished.
     pub fn prepared(&mut self, tag: &str, result: Result<Installed, String>) {
@@ -96,10 +117,10 @@ impl Updater {
             Stage::Downloading(_) => "Downloading in the background. You can keep playing.".into(),
             Stage::Ready(..) if playing => "Downloaded and checked. It installs when you close the game and restart YO3 Revival.".into(),
             Stage::Ready(..) => "Downloaded and checked. Restart YO3 Revival to install it.".into(),
-            Stage::Failed(..) => "The download didn't pass its check, so it wasn't installed. It is tried again later.".into(),
+            Stage::Failed(..) => "The download didn't pass its check, so it wasn't installed. Try again, or get it from the release page.".into(),
             Stage::Idle if self.release().is_some_and(|r| self.failed_start.as_deref() == Some(r.tag.as_str())) =>
                 "This version didn't start last time, so YO3 Revival kept your current version. Download it from the release page.".into(),
-            Stage::Idle => "Download it from the release page.".into(),
+            Stage::Idle => "Download it here: it is checked, then installs when you restart YO3 Revival. Your settings, accounts and decks stay.".into(),
         }
     }
 
@@ -189,74 +210,91 @@ mod tests {
     }
 
     #[test]
+    fn without_automatic_updates_a_new_version_is_only_offered_until_the_player_downloads_it() {
+        // The player asked that a click on "Update X is available" not start anything by itself: the check only offers it,
+        // the Update window's Download starts it, and a second Download changes nothing.
+        let mut updater = Updater::new(None);
+        assert!(updater.checked(Ok(Decision::Available(release("v0.2.1"))), false).is_none(), "nothing downloads by itself");
+        assert_eq!(updater.offered(), Some("0.2.1"), "the footer offers it");
+        assert!(updater.can_download() && matches!(updater.stage, Stage::Idle));
+        assert!(updater.status(false).starts_with("Download it here"));
+        assert_eq!(updater.download().map(|r| r.tag), Some("v0.2.1".into()), "Download starts it");
+        assert!(!updater.can_download() && updater.download().is_none(), "once");
+        updater.prepared("v0.2.1", Err("checksum".into()));
+        assert!(updater.can_download(), "a failed download can be tried again");
+        assert_eq!(updater.download().map(|r| r.tag), Some("v0.2.1".into()));
+        assert!(Updater::new(None).download().is_none(), "nothing offered, nothing to download");
+    }
+
+    #[test]
     fn checks_at_start_then_every_six_hours_and_never_twice_at_once() {
         let mut updater = Updater::new(None);
         let start = Instant::now();
         assert!(updater.due(start), "the first check is at start");
         updater.checking(start);
         assert!(!updater.due(start + CHECK_EVERY), "one check at a time");
-        assert!(updater.checked(Err("offline".into())).is_none());
+        assert!(updater.checked(Err("offline".into()), true).is_none());
         assert!(!updater.due(start + CHECK_EVERY - Duration::from_secs(1)));
         assert!(updater.due(start + CHECK_EVERY), "again six hours later");
         updater.checking(start + CHECK_EVERY);
-        assert!(updater.checked(Ok(Decision::Available(release("v0.2.1")))).is_some());
+        assert!(updater.checked(Ok(Decision::Available(release("v0.2.1"))), true).is_some());
         assert!(!updater.due(start + CHECK_EVERY * 3), "not while the download runs");
     }
 
     #[test]
     fn an_offered_version_downloads_once_and_is_ready_only_when_checked() {
         let mut updater = Updater::new(None);
-        assert_eq!(updater.checked(Ok(Decision::Available(release("v0.2.1")))).map(|r| r.tag), Some("v0.2.1".into()));
+        assert_eq!(updater.checked(Ok(Decision::Available(release("v0.2.1"))), true).map(|r| r.tag), Some("v0.2.1".into()));
         assert_eq!(updater.offered(), Some("0.2.1"), "the dot shows while it downloads");
         assert!(updater.ready().is_none(), "no ribbon before the download is checked");
-        assert!(updater.checked(Ok(Decision::Available(release("v0.2.1")))).is_none(), "the same version isn't fetched twice");
+        assert!(updater.checked(Ok(Decision::Available(release("v0.2.1"))), true).is_none(), "the same version isn't fetched twice");
         updater.prepared("v0.2.0", Ok(installed("v0.2.0")));
         assert!(updater.ready().is_none(), "a stale download's answer is ignored");
         updater.prepared("v0.2.1", Ok(installed("v0.2.1")));
         assert_eq!(updater.ready().map(|i| i.tag.as_str()), Some("v0.2.1"));
-        assert!(updater.checked(Ok(Decision::Available(release("v0.2.1")))).is_none(), "ready stays ready");
-        assert_eq!(updater.checked(Ok(Decision::Available(release("v0.2.2")))).map(|r| r.tag), Some("v0.2.2".into()), "a newer one replaces it");
+        assert!(updater.checked(Ok(Decision::Available(release("v0.2.1"))), true).is_none(), "ready stays ready");
+        assert_eq!(updater.checked(Ok(Decision::Available(release("v0.2.2"))), true).map(|r| r.tag), Some("v0.2.2".into()), "a newer one replaces it");
         assert!(updater.ready().is_none());
     }
 
     #[test]
     fn a_failed_check_of_the_download_is_reported_never_installed_and_tried_again() {
         let mut updater = Updater::new(None);
-        updater.checked(Ok(Decision::Available(release("v0.2.1"))));
+        updater.checked(Ok(Decision::Available(release("v0.2.1"))), true);
         updater.prepared("v0.2.1", Err("Update download checksum or length does not match GitHub".into()));
         assert!(updater.ready().is_none());
         assert!(updater.status(false).contains("wasn't installed"));
-        assert!(updater.checked(Ok(Decision::Available(release("v0.2.1")))).is_some(), "the next check tries again");
+        assert!(updater.checked(Ok(Decision::Available(release("v0.2.1"))), true).is_some(), "the next check tries again");
     }
 
     #[test]
     fn a_version_that_failed_to_start_stays_offered_but_isnt_downloaded_again() {
         let mut updater = Updater::new(Some("v0.2.1".into()));
-        assert!(updater.checked(Ok(Decision::Available(release("v0.2.1")))).is_none());
+        assert!(updater.checked(Ok(Decision::Available(release("v0.2.1"))), true).is_none());
         assert_eq!(updater.offered(), Some("0.2.1"));
         assert!(updater.status(false).contains("didn't start"));
-        assert!(updater.checked(Ok(Decision::Available(release("v0.2.2")))).is_some(), "a newer release is fetched");
+        assert!(updater.checked(Ok(Decision::Available(release("v0.2.2"))), true).is_some(), "a newer release is fetched");
     }
 
     #[test]
     fn a_restart_into_the_update_that_fails_keeps_this_version_and_drops_the_ribbon() {
         let mut updater = Updater::new(None);
-        updater.checked(Ok(Decision::Available(release("v0.2.1"))));
+        updater.checked(Ok(Decision::Available(release("v0.2.1"))), true);
         updater.prepared("v0.2.1", Ok(installed("v0.2.1")));
         updater.start_failed("v0.2.1");
         assert!(updater.ready().is_none(), "no Restart to install for a version that didn't start");
         assert_eq!(updater.offered(), Some("0.2.1"));
-        assert!(updater.checked(Ok(Decision::Available(release("v0.2.1")))).is_none());
+        assert!(updater.checked(Ok(Decision::Available(release("v0.2.1"))), true).is_none());
     }
 
     #[test]
     fn an_offline_check_keeps_what_was_known() {
         let mut updater = Updater::new(None);
-        updater.checked(Ok(Decision::Available(release("v0.2.1"))));
-        updater.checked(Err("offline".into()));
+        updater.checked(Ok(Decision::Available(release("v0.2.1"))), true);
+        updater.checked(Err("offline".into()), true);
         assert_eq!(updater.offered(), Some("0.2.1"));
         let mut current = Updater::new(None);
-        current.checked(Ok(Decision::Current { latest: "v0.2.0".into() }));
+        current.checked(Ok(Decision::Current { latest: "v0.2.0".into() }), true);
         assert_eq!(current.offered(), None, "no dot when up to date");
     }
 
@@ -266,7 +304,7 @@ mod tests {
         let (line, restart) = ribbon("0.2.1", true);
         assert!(!restart && line.contains("after you close the game"));
         let mut updater = Updater::new(None);
-        updater.checked(Ok(Decision::Available(release("v0.2.1"))));
+        updater.checked(Ok(Decision::Available(release("v0.2.1"))), true);
         updater.prepared("v0.2.1", Ok(installed("v0.2.1")));
         assert!(updater.status(true).contains("close the game"));
     }
@@ -275,7 +313,7 @@ mod tests {
     fn a_server_that_needs_a_newer_launcher_opens_whats_new_when_the_update_is_known() {
         let mut updater = Updater::new(None);
         assert_eq!(updater.remedy(), Remedy::Releases);
-        updater.checked(Ok(Decision::Available(release("v0.2.1"))));
+        updater.checked(Ok(Decision::Available(release("v0.2.1"))), true);
         assert_eq!(updater.remedy(), Remedy::WhatsNew);
     }
 
