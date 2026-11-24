@@ -72,6 +72,15 @@ fn problem_report(gate: &Gate, session: &yo3_tunnel::Token, body: &[u8]) -> Resu
     Ok(report)
 }
 
+/// Files a Report a problem from a launcher with no account here (operation 8): its id, or why not.
+fn anonymous_report(gate: &Gate, peer: std::net::IpAddr, body: &[u8]) -> Result<String, yo3_tunnel::ReportRefused> {
+    use yo3_tunnel::ReportRefused;
+    let settings = gate.settings.now();
+    if !settings.problem_reports || !settings.anonymous_reports { return Err(ReportRefused::Off) }
+    let request = crate::problems::inflate(body)?;
+    gate.problems.accept_anonymous(&request, peer, crate::logins::now())
+}
+
 /// `info(with_online)`: discovery's answer. Only discovery (operation 5) counts who is online, which takes the hub
 /// lock: that is the server list's and the launcher's liveness check of a hung hub, and the other operations (a
 /// sign-in, a ticket, a game connection) need not wait behind a busy hub.
@@ -155,6 +164,21 @@ async fn handshake(mut tls: TlsStream<TcpStream>, gate: &Gate, info: &(dyn Fn(bo
                 match &answer {
                     Ok(id) => tracing::info!("[report] {peer} problem report {id}"),
                     Err(refused) => tracing::info!("[report] {peer} problem report refused: {refused}"),
+                }
+                match answer {
+                    Ok(id) => { tls.write_u8(0).await?; tls.write_u8(id.len() as u8).await?; tls.write_all(id.as_bytes()).await?; }
+                    Err(refused) => tls.write_u8(refused.code()).await?,
+                }
+            }
+            8 => {
+                // Report a problem without an account (problems.rs): its deflated JSON alone.
+                let length = tls.read_u32().await? as usize;
+                anyhow::ensure!(length <= yo3_tunnel::MAX_PROBLEM_REPORT, "problem report too large");
+                let mut body = vec![0; length]; tls.read_exact(&mut body).await?;
+                let answer = anonymous_report(gate, peer, &body);
+                match &answer {
+                    Ok(id) => tracing::info!("[report] {peer} problem report {id} (no account)"),
+                    Err(refused) => tracing::info!("[report] {peer} problem report without an account refused: {refused}"),
                 }
                 match answer {
                     Ok(id) => { tls.write_u8(0).await?; tls.write_u8(id.len() as u8).await?; tls.write_all(id.as_bytes()).await?; }

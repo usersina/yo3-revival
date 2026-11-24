@@ -173,6 +173,7 @@ Every connection starts with TLS, an 8-byte opener and one operation byte:
 | 5 | Discovery | — | a length and JSON: build, protocol, readiness, and for the server list its name, players online, registration mode and minimum launcher |
 | 6 | Account request | a length (at most 4096) and a JSON object | a length and a JSON object ([Account requests](#account-requests)) |
 | 7 | Problem report | a session token, a u32 length (at most 256 KiB) and deflated JSON (`kind`: network, relay, server-lost, game-error or report; `summary`, `launcher`, `logs`; at most 1 MiB inflated) | 0, a u8 length and the report ID (`R-XXXX-XXXX`); or 1 the session ended, 2 the account's 20 a day are sent, 3 the host turned them off, 4 not taken |
+| 8 | Problem report without an account | a u32 length (at most 256 KiB) and the same deflated JSON (`kind` `report` only) | as 7 (status 2 for a day's limit: 5 per address, 200 in all; 3 when the host's `anonymous-reports` or `problem-reports` is off) | Desktop's Report a problem to the project's own server, so it reads every report whatever server the player plays on; filed under user 0, "anonymous"; the address counts the limit and isn't kept with the report |
 
 1. Rustls verifies the pinned identity (or the certificate and name of a certificate profile). TLS key-possession
    signatures are always verified. A credential-free compatibility check comes before a key login; the server refuses

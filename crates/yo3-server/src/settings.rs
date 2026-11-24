@@ -120,6 +120,9 @@ pub const REGISTRY: &[Setting] = &[
     Setting { name: "problem-reports", help: "on: players' launchers send their logs here when a game breaks (its connection dropped, an error) \
         and with Report a problem; read them with `reports` and `report ID`, or on the dashboard. off: nothing is sent or kept",
         kind: Kind::Choice(&["on", "off"]), applies: Applies::AtOnce, default: || json!("on") },
+    Setting { name: "anonymous-reports", help: "on: Report a problem from launchers with no account here (TLS operation 8: the \
+        project's server) is kept too, under no account, a few a day per address; off: only signed-in players' reports",
+        kind: Kind::Choice(&["on", "off"]), applies: Applies::AtOnce, default: || json!("off") },
     Setting { name: "news", help: "The game's Information list: \"TITLE | BODY\" for one entry, or a JSON list of {title, body}",
         kind: Kind::News, applies: Applies::NextRequest, default: default_news },
     Setting { name: "maintenance-at", help: "When maintenance starts, in Unix seconds (0: none); `maintenance --in MINUTES` sets it. \
@@ -225,6 +228,8 @@ pub struct Settings {
     pub clean_game: bool,
     /// Players' launchers may send problem reports (`problems.rs`).
     pub problem_reports: bool,
+    /// Launchers with no account here may send Report a problem (TLS operation 8).
+    pub anonymous_reports: bool,
     /// Every setting's value by name, defaults included.
     values: Map<String, Json>,
 }
@@ -274,6 +279,7 @@ impl Settings {
             linked_fair: text("linked-accounts") != "off",
             clean_game: text("clean-game") == "on",
             problem_reports: text("problem-reports") != "off",
+            anonymous_reports: text("anonymous-reports") == "on",
             pace: crate::net::Pace { burst: number("request-burst"), per_second: number("requests-per-second"), outbox_max: number("outbox-max") as usize },
             limits: Limits { burst: number("address-burst"), refill_seconds: number("address-refill-seconds"), max_backoff_seconds: number("backoff-max-seconds") },
             values,

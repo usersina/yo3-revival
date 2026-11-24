@@ -74,6 +74,7 @@ Old transports are refused.
 | 5 info    | none                                                 | u16 byte length, UTF-8 JSON (1–4096 bytes)               | credential-free build, commit, protocol, DLL interface, game version, readiness and generic engine problem; for the server list (#23) its name, players online, registration mode and minimum launcher |
 | 6 account | u16 byte length, a UTF-8 JSON object (at most 4096)  | u16 byte length, a UTF-8 JSON object                     | password accounts (#23): register, login, resume, sign_out, change_password, recover; see [authentication.md](authentication.md#account-requests). `tests/account_contract.rs` |
 | 7 problem | session token, u32 length (at most 256 KiB), deflated JSON (at most 1 MiB inflated) | 0, u8 length and the report ID (`R-…`), else an error status | a broken game's launcher log, or Report a problem (`problems.rs`); see [authentication](authentication.md) |
+| 8 anonymous problem | u32 length, deflated JSON (`kind` `report`) | as 7 | Report a problem without an account, to the project's server (`anonymous-reports`); see [authentication](authentication.md) |
 
 `tests/metadata_contract.rs` verifies discovery without an account, compatibility independent of patch-release labels,
 wrong host names/keys, certificate renewal preserving the identity, expired certificates and bounded metadata.

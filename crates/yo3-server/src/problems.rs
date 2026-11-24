@@ -17,6 +17,9 @@ use yo3_tunnel::ReportRefused;
 
 /// Reports one account may send in a day.
 pub const PER_DAY: usize = 20;
+/// Reports without an account (TLS operation 8) one address may send in a day, and all of them together.
+pub const ANONYMOUS_PER_ADDRESS: usize = 5;
+pub const ANONYMOUS_PER_DAY: usize = 200;
 /// Reports kept: the newest this many, and none older than [`KEEP_DAYS`] or past [`KEEP_BYTES`] in all.
 pub const KEEP_FILES: usize = 2000;
 pub const KEEP_DAYS: i64 = 30;
@@ -65,12 +68,28 @@ pub struct Listed { pub id: String, pub at: i64, pub user_id: u32, pub account: 
     /// The size of its logs in bytes.
     pub bytes: u64 }
 
-/// The reports' folder, and how many each account sent today.
-pub struct Problems { dir: Option<PathBuf>, sent: Mutex<HashMap<u32, Vec<i64>>> }
+/// The reports' folder, and how many each account (and each address, without one) sent today.
+pub struct Problems { dir: Option<PathBuf>, sent: Mutex<HashMap<u32, Vec<i64>>>, anonymous: Mutex<HashMap<std::net::IpAddr, Vec<i64>>> }
 
 impl Problems {
     /// Reports in `data_dir/reports/` (none kept without a data folder: they are refused as off).
-    pub fn new(data_dir: Option<&Path>) -> Problems { Problems { dir: data_dir.map(|d| d.join("reports")), sent: Mutex::default() } }
+    pub fn new(data_dir: Option<&Path>) -> Problems { Problems { dir: data_dir.map(|d| d.join("reports")), sent: Mutex::default(), anonymous: Mutex::default() } }
+
+    /// Files a Report a problem that came without an account (TLS operation 8) under user 0, "anonymous": only the
+    /// player's own report, never an automatic one, at most [`ANONYMOUS_PER_ADDRESS`] a day from `peer` and
+    /// [`ANONYMOUS_PER_DAY`] from everyone. The address is used for the count only, not kept with the report.
+    pub fn accept_anonymous(&self, request: &Json, peer: std::net::IpAddr, now: i64) -> Result<String, ReportRefused> {
+        if request["kind"] != "report" { return Err(ReportRefused::Invalid) }
+        {
+            let mut sent = self.anonymous.lock().unwrap_or_else(|e| e.into_inner());
+            sent.retain(|_, times| { times.retain(|t| now - t < 86_400); !times.is_empty() });
+            let all: usize = sent.values().map(Vec::len).sum();
+            let mine = sent.entry(peer).or_default();
+            if mine.len() >= ANONYMOUS_PER_ADDRESS || all >= ANONYMOUS_PER_DAY { return Err(ReportRefused::Limit) }
+            mine.push(now);
+        }
+        self.accept(0, "anonymous", request, vec![], now)
+    }
 
     /// Files `request` (the launcher's JSON, inflated) under `user_id`; its new id.
     pub fn accept(&self, user_id: u32, account: &str, request: &Json, server_log: Vec<String>, now: i64) -> Result<String, ReportRefused> {
@@ -83,8 +102,8 @@ impl Problems {
             let mut sent = self.sent.lock().unwrap_or_else(|e| e.into_inner());
             let times = sent.entry(user_id).or_default();
             times.retain(|t| now - t < 86_400);
-            if times.len() >= PER_DAY { return Err(ReportRefused::Limit) }
-            times.push(now);
+            if user_id != 0 && times.len() >= PER_DAY { return Err(ReportRefused::Limit) }
+            if user_id != 0 { times.push(now) }
         }
         let report = Report { id: new_id(), at: now, user_id, account: clip(account, 64), kind: kind.into(), launcher: text("launcher", 32),
             summary: text("summary", 300), logs, server_log };
