@@ -228,9 +228,11 @@ class Server:
         for line in files[-1].read_text(errors="replace").splitlines()[-n:]:
             try:
                 d = json.loads(line)
-                m = d.get("msg") or {}
+                # yo3-log/1 (ts, conn, packet) or the older packet log (t, server, msg): docs/logs.md.
+                m = d.get("packet") if isinstance(d.get("packet"), dict) else (d.get("msg") if isinstance(d.get("msg"), dict) else {})
                 rid = (m.get("fields") or {}).get("request")
-                rows.append(f"{d['t'][11:23]} {d['server']} {d['dir']} {hex(rid) if isinstance(rid, int) else m.get('version', '?')} {json.dumps(m.get('fields', {}))[:160]}")
+                when, conn = d.get("ts") or d.get("t", ""), d.get("conn") or d.get("server", "?")
+                rows.append(f"{when[11:23]} {conn} {d['dir']} {hex(rid) if isinstance(rid, int) else m.get('version', '?')} {json.dumps(m.get('fields', {}))[:160]}")
             except (ValueError, KeyError):
                 pass
         return "\n".join(rows)

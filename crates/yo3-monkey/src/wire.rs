@@ -282,7 +282,8 @@ impl Corpus {
             let mut per_target: Vec<(Target, Vec<Message>)> = vec![];
             for line in text.lines().filter(|l| l.contains("\"dir\":\"<-\"")) {
                 let Ok(j) = serde_json::from_str::<serde_json::Value>(line) else { continue };
-                let (Some(server), Some(raw)) = (j["server"].as_str(), j["raw"].as_str()) else { continue };
+                // yo3-log/1 names the connection `conn`; logs from before it, `server` (docs/logs.md).
+                let (Some(server), Some(raw)) = (j["conn"].as_str().or(j["server"].as_str()), j["raw"].as_str()) else { continue };
                 if j["raw_len"].as_u64().is_some_and(|n| n as usize > raw.len() / 2) {
                     continue; // logged in part
                 }

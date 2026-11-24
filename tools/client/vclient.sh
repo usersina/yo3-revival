@@ -195,10 +195,10 @@ case "${1:-}" in
 import json, sys
 rows = [json.loads(l) for l in open(sys.argv[1])][-10:]
 for d in rows:
-    m = d.get("msg") or {}
+    m = d.get("packet") if isinstance(d.get("packet"), dict) else (d.get("msg") if isinstance(d.get("msg"), dict) else {})
     rid = (m.get("fields") or {}).get("request")
     what = hex(rid) if isinstance(rid, int) else ("version" if "version" in m else "?")
-    print(d["server"], d["dir"], what)
+    print(d.get("conn") or d.get("server", "?"), d["dir"], what)
 ' "$latest" ;;
   stop)
     # Without an instance this is the default prefix (~/.wine) and display :77: the host's own game. Only on purpose.

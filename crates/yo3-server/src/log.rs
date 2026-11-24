@@ -125,15 +125,29 @@ impl PacketLog {
         }
     }
 
-    fn write(&self, who: &str, dir: &str, plain: &[u8], msg: Json, error: Option<&str>) {
-        let line = json!({
-            "t": chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, false),
-            "server": who, "dir": dir, "msg": msg,
-            "raw": plain.iter().take(RAW_MAX).map(|b| format!("{b:02x}")).collect::<String>(),
-            "raw_len": plain.len(),
-            "error": error,
-        });
-        let text = format!("{line}\n");
+    /// One packet as a yo3-log/1 line (docs/logs.md): `src` packet, the connection (`conn`), its direction, the request
+    /// id in hex (`req`), the message with its values' own types (`packet`), and the frame's bytes (`raw`).
+    fn write(&self, who: &str, dir: &str, plain: &[u8], packet: Json, error: Option<&str>) {
+        let req = packet["fields"]["request"].as_u64().map(|r| format!("{r:#06x}"));
+        let summary = match (&req, packet["version"].as_str()) {
+            (_, Some(version)) => format!("{dir} version {version}"),
+            (Some(req), None) => format!("{dir} {req}"),
+            (None, None) => format!("{dir} {}", error.map_or("(no request id)".to_owned(), |e| format!("undecodable: {e}"))),
+        };
+        let mut line = serde_json::Map::new();
+        line.insert("ts".into(), yo3_tunnel::diagnostics::timestamp(std::time::SystemTime::now()).into());
+        line.insert("level".into(), if error.is_some() { "warn" } else { "debug" }.into());
+        line.insert("src".into(), "packet".into());
+        line.insert("session".into(), yo3_tunnel::diagnostics::current_id().unwrap_or_default().into());
+        line.insert("msg".into(), summary.into());
+        line.insert("conn".into(), who.into());
+        line.insert("dir".into(), dir.into());
+        if let Some(req) = req { line.insert("req".into(), req.into()); }
+        line.insert("packet".into(), packet);
+        line.insert("raw".into(), plain.iter().take(RAW_MAX).map(|b| format!("{b:02x}")).collect::<String>().into());
+        line.insert("raw_len".into(), plain.len().into());
+        if let Some(error) = error { line.insert("error".into(), error.into()); }
+        let text = format!("{}\n", yo3_tunnel::diagnostics::log_line(&line));
         let mut cur = self.cur.locked();
         if cur.bytes > 0 && cur.bytes + text.len() as u64 > self.max_bytes {
             self.rotate(&mut cur);
@@ -169,6 +183,8 @@ pub fn summarize(m: &Message) -> String {
     format!("{id} {{{}}}{items}", fields.join(", "))
 }
 
+/// A message for the packet log: its fields with their own types (numbers, text without quotes around it, binary as
+/// `bin:<hex>`), its items the same way.
 fn message_json(m: &Message) -> Json {
     let fields: serde_json::Map<String, Json> = m
         .fields
@@ -176,7 +192,11 @@ fn message_json(m: &Message) -> Json {
         .take(FIELDS_MAX)
         .map(|(k, v)| (k.clone(), match v {
             Value::U32(n) | Value::U32Alt(n) => json!(n),
-            other => json!(show(other)),
+            Value::Text(_) | Value::TextAlt(_) => {
+                let text = v.as_str().unwrap_or_default();
+                json!(match text.char_indices().nth(TEXT_MAX) { Some((end, _)) => format!("{}…", &text[..end]), None => text })
+            }
+            Value::Bin(b) => json!(format!("bin:{}{}", b.iter().take(RAW_MAX / 4).map(|x| format!("{x:02x}")).collect::<String>(), if b.len() > RAW_MAX / 4 { "…" } else { "" })),
         }))
         .collect();
     json!({

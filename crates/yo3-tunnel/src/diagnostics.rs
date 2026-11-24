@@ -15,6 +15,8 @@ const LINE_BYTES: usize = 16 * 1024;
 static CURRENT: std::sync::OnceLock<Session> = std::sync::OnceLock::new();
 pub fn set_current(session: Session) { let _ = CURRENT.set(session); }
 pub fn event(message: &str) { if let Some(session) = CURRENT.get() { session.line(message); } }
+/// The id of this process's session log ([`set_current`]), for logs of its own that carry it (a server's packets).
+pub fn current_id() -> Option<String> { CURRENT.get().map(Session::id) }
 pub fn now() -> u64 { SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() }
 /// The log schema every session log line follows (docs/logs.md).
 pub const LOG_FORMAT: &str = "yo3-log/1";
@@ -29,6 +31,20 @@ pub fn timestamp(t: SystemTime) -> String {
     let mp = (5 * doy + 2) / 153; let day = doy - (153 * mp + 2) / 5 + 1; let month = if mp < 10 { mp + 3 } else { mp - 9 };
     let year = yoe + era * 400 + i64::from(month <= 2);
     format!("{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}.{ms:03}Z", rem / 3600, rem % 3600 / 60, rem % 60)
+}
+/// A yo3-log/1 line's JSON with `ts`, `level`, `src`, `session` and `msg` first, in that order, for a person reading
+/// the file, then the other keys.
+pub fn log_line(fields: &serde_json::Map<String, serde_json::Value>) -> String {
+    const FIRST: [&str; 5] = ["ts", "level", "src", "session", "msg"];
+    let quote = |v: &str| serde_json::to_string(v).unwrap_or_default();
+    let mut json = String::from("{");
+    let keys = FIRST.iter().filter(|k| fields.contains_key(**k)).map(|k| k.to_string()).chain(fields.keys().filter(|k| !FIRST.contains(&k.as_str())).cloned());
+    for (i, key) in keys.enumerate() {
+        if i > 0 { json.push(',') }
+        json.push_str(&format!("{}:{}", quote(&key), serde_json::to_string(&fields[&key]).unwrap_or_default()));
+    }
+    json.push('}');
+    json
 }
 /// The `src` of a session's own lines: the Desktop window, the helper that runs a game, or the server.
 fn own_src(kind: &str) -> &'static str { match kind { "app" => "app", "server" => "server", _ => "helper" } }
@@ -145,16 +161,12 @@ impl Session {
         let clean = redact_secrets(msg, &inner.secrets);
         let msg = if clean.len() > LINE_BYTES - 512 { "[overlong diagnostic line omitted]".to_owned() } else { clean };
         for value in fields.values_mut() { if let serde_json::Value::String(text) = value { *text = redact_secrets(text, &inner.secrets) } }
-        // ts, level, src, session and msg first, in that order, for a person reading the file; then the fields.
-        let quote = |v: &str| serde_json::to_string(v).unwrap_or_else(|_| "\"\"".into());
-        let mut json = format!("{{\"ts\":{},\"level\":{},\"src\":{},\"session\":{},\"msg\":{}",
-            quote(&ts.unwrap_or_else(|| timestamp(SystemTime::now()))), quote(level), quote(src), quote(&inner.meta.id), quote(&msg));
-        for (key, value) in fields {
-            if ["ts", "level", "src", "session", "msg"].contains(&key.as_str()) { continue }
-            if let Ok(value) = serde_json::to_string(&value) { json.push_str(&format!(",{}:{value}", quote(&key))); }
-        }
-        json.push('}');
-        let text = format!("{json}\n");
+        fields.insert("ts".into(), ts.unwrap_or_else(|| timestamp(SystemTime::now())).into());
+        fields.insert("level".into(), level.into());
+        fields.insert("src".into(), src.into());
+        fields.insert("session".into(), inner.meta.id.clone().into());
+        fields.insert("msg".into(), msg.into());
+        let text = format!("{}\n", log_line(&fields));
         if inner.bytes + text.len() as u64 > PART_BYTES {
             inner.part += 1;
             if let Ok(file) = private_create(&inner.root.join(format!("{}.{:04}.log", inner.meta.id, inner.part))) {

@@ -327,6 +327,7 @@ fn main() -> anyhow::Result<()> {
 async fn run(mut a: Args) -> anyhow::Result<()> {
     let log = if a.admin.is_none() { Some(yo3_tunnel::diagnostics::Session::start(&a.diagnostics_dir.clone().unwrap_or_else(|| a.log_dir.join("sessions")), "server", a.diagnostic_parent.clone())?) } else { None };
     let writer = log.clone();
+    if let Some(log) = &log { yo3_tunnel::diagnostics::set_current(log.clone()) }
     let color = yo3_tunnel::diagnostics::console_color();
     // The console (and the dashboard's recent lines) in readable text; the session log in yo3-log/1 (docs/logs.md).
     {
