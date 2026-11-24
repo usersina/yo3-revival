@@ -350,7 +350,11 @@ and `art CID`; unknown lines are skipped, every list is bounded, a line whose ro
   (27-29). Monster kinds carry Normal/Effect and the families (0 Normal, 1 Effect, 2/3 Fusion, 4/5 Ritual, 6 Toon, 7 Spirit, 8 Union, 9 Gemini,
   10 Token, 15/16 Tuner, 17/18 Synchro, 19 Tuner Synchro); 13 is a Spell and 14 a Trap, with attribute 8/9 and race 23/24. Subtype: Spell 0 Normal,
   2 Field, 3 Equip, 4 Continuous, 5 Quick-Play, 6 Ritual; Trap 0 Normal, 1 Counter, 4 Continuous. "Special Summon only" and Flip are not
-  kinds (Flip is genre bit 22): the client cannot show Special Summon only. `CARD_Genre` is **not** a type bitmap: it holds the effect categories
+  kinds (Flip is genre bit 22): the client cannot show Special Summon only. Bits 24-26 are the card's **rarity**, the same for every artwork
+  of a card: 0 Common, 4 Rare, 3 Super Rare, 2 Ultra Rare (as the pack files' tiers place them), 1 and 5 the top tiers, 6 and 7 a few
+  promotional cards. `0x418890` reads them for the new-card reveal and the pack opening (`0x4784f0`, `0x479690`), which hand the Flash screen a
+  glow of 0 (0, 5), 1 (4: silver), 2 (3) or 3 (2, 1, 6, 7: gold). Bits 0-2 have no reader among the card table's getters (every
+  `0x537230` caller and `0x537420`); they are 1 on most rows and 0 on the newest. `CARD_Genre` is **not** a type bitmap: it holds the effect categories
   the card panel names (`0x4529F0`, `0x417A10` test one bit per category through `0x5372A0`).
 - **Exact ATK/DEF.** An `a` word holds tens (0-5100) and `?`; the profile's number is only exact when it is such a value. The getters
   `0x5373C0`/`0x5373F0` (prologue `sub esp, 0xC; call 0x537230`) and the trunk list's `0x418600`/`0x418660` (a stub on their `CALL 0x537230`

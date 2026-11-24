@@ -3,7 +3,8 @@
 # Row = 8 bytes: word a (low u32) and word b (high u32).
 #   a: cid = a & 0x3FFF; ATK = (a>>14 & 0x1FF) * 10 (0x1FF shows "?"); DEF = (a>>23 & 0x1FF) * 10 (0x1FF = "?")
 #   b: kind = b>>3 & 0x1F; attribute = b>>8 & 0xF; level = b>>12 & 0xF; subclass = b>>16 & 7; race = b>>19 & 0x1F;
-#      art = b>>27 & 7. b & 7 and b>>24 & 7 are unknown (leave them as the row has them).
+#      art = b>>27 & 7. b>>24 & 7 is the rarity (0 Common, 4 Rare, 3 Super, 2 Ultra, 1/5 top tiers, 6/7 promos; read by
+#      0x418890 for the reveal's glow). b & 7 has no reader among the card getters (1 on most rows, 0 on the newest).
 # Monster "kind" (b>>3 & 0x1F) carries Normal/Effect and the Extra Deck / special families:
 #   0 Normal           1 Effect              2 Fusion (no effect)    3 Fusion+Effect
 #   4 Ritual (Normal)  5 Ritual+Effect       6 Toon+Effect           7 Spirit+Effect
@@ -21,3 +22,5 @@
 #   special summon...: bits 0-45 each set on 13..921 cards, no bit tracks Normal/Effect/Continuous/Equip). Only
 #   bit 22 (Flip) and 24 (Spirit), 25 (Union), 26 (Gemini) track a type flag, and they duplicate the kind.
 #   A profile's genre word is therefore copied from the row unless a card's effect categories are decided.
+#   Names: UI texts 1101 + bit for bits 0-26 (Recover Life Points, Reduce Life Points, Increase draw, Special Summon...).
+#   An added card's genre word is learned from EDOPro's datas.category and type (tools/engine/added-cards.py learn_genre).

@@ -48,6 +48,15 @@ engine (`engine/added-cards.json`'s `cid`) all know the card by it, and `konami_
 takes a card's id (a scenario test, `--duel-field`, `tools/engine/cardtext.py`, the picture's file name) takes the
 stand-in. About 1,200 ids are free that way.
 
+**What the tool also writes.** Edit Deck's **Search Key** filters (Special Summon, Destroy monster, Pierce, Flip
+Effect...) read a card's genre bits (`CARD_Genre`). The tool learns them from the game's own cards: each genre bit is
+set from the EDOPro categories and type flags that mark it on the game's cards with at least 85% precision (95% over
+all), so Shooting Quasar Dragon is found under Special Summon, Cancel out Effect, Destroy monster, Multiple Attack and
+Synchro. Bits with no such rule (Recover cards from Graveyard, Hand destruction, Increase/Decrease ATK/DEF, about half
+of the game's marks) are left unset. A card's **rarity** (the gold or silver frame of the new-card reveal) is the
+table's optional `rarity` column: empty for Common, or `rare`, `super`, `ultra`. The pinned data has no rarity, so
+`--find` leaves it empty.
+
 ## Add one card
 
 1. **Check it fits** and get its line, by its English name (any case), its passcode, or `cid:N` (its Konami id):
@@ -58,7 +67,7 @@ stand-in. About 1,200 ids are free that way.
    ```
 
    It says `ok` with the line for `engine/added/cards.tsv` (the next row, the Konami id, the stand-in id when it needs
-   one, the name), or why the card can't be added.
+   one, an empty rarity, the name), or why the card can't be added.
 2. **Add the line** to `engine/added/cards.tsv` with a short note after the last tab (who asked, the issue number).
 3. **Build the list:** `tools/engine/added-cards.py`. It writes `engine/added-cards.json`, the file the server and the
    launcher read, and refuses anything wrong with the table: a row out of order, a card the game has, a kind the client
@@ -193,7 +202,7 @@ comes with the next Desktop release; until then it shows the stand-in.
 | `no card of that name, passcode or Konami id in the pinned data` | The spelling differs from the database's (`--find` ignores case only: try the passcode), or the card is newer than the pins: `engine/fetch.sh --update` |
 | `Konami id N is beyond the client's 14 bits` | A newer card's line without its stand-in: take the line `--find` prints |
 | `stand-in N is a card of the game` / `already a card's Konami id` | A stand-in must be an id no card has: take the one `--find` prints |
-| The card is missing from Edit Deck's genre search | Added cards have no genre bits yet (`CARD_Genre` 0): name, type, attribute, Level and ATK/DEF searches find them |
+| The card is missing from one of Edit Deck's Search Key filters | Its genre bits are learned from the EDOPro categories (below, [what a card needs](#what-a-card-needs)): about half of the game's marks have such a rule, the others (Recover cards from Graveyard, Hand destruction...) are never set for an added card |
 | `row N, the next is M` | Rows must follow the game's last row without a gap: use the row `--find` prints |
 | `ATK … is beyond what the client can show` | Above 5100 or not in tens: it can't be added |
 | The card is missing from Edit Deck | The launcher that started the game predates the server's list, or the game was opened without the launcher before its first PLAY: close it and PLAY from the launcher |
