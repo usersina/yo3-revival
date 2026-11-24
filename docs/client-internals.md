@@ -798,13 +798,16 @@ the connection DLL's Rental Card List Return button already passes), while the L
 need a picture the game doesn't have.
 
 The connection DLL does it (`tools/mod/duel-numbers.h`, logic and test in `duel-numbers-logic.h`/`duel-numbers-test.c`):
-it detours the invoke `0x5CB1B0` and, in `call("setProp", prop, value)`, sends an ATK or DEF (prop 6, 7) of 9,999,999 or
-more as the string "∞" (UTF-8 `char *`, type 4). The colour compares `atk` with `orgAtk` (white equal, blue above, red
+it detours the invoke `0x5CB1B0` and, in `call("setProp", prop, value)`, sends an ATK or DEF (prop 6, 7) above the
+five digits the field shows (99,999; the engine's infinity is 9,999,999, and the game counts an ATK up to it through the
+values between) as the string "∞" (UTF-8 `char *`, type 4). That field is then scaled to 180% through the movie's
+SetVariable (`_root.current.txAtk._xscale`...) and moved to keep its middle (the text is centred: DefineEditText align 2
+is centre), and back to 100% for a number; the movie never changes a field's scale or place itself. The colour compares `atk` with `orgAtk` (white equal, blue above, red
 below), so the originals (prop 4, 5) always go as their decimal string: ActionScript 2 (SWF 8) then compares "∞" with
 them as strings, where U+221E is above every digit, and numbers with them as numbers, as before. The movie does nothing
 else with these four. The detour also reports each call to the UI probe (`ui-probe.h` observes through it instead of a
 detour of its own; `detour.h` is their shared helper). Live, 2026-11-24: Geh shows "∞ / 0" and Avatar beside it "∞ / ∞",
-in blue; Obelisk "4000 / 4000".
+in blue, the ∞ about the digits' height; Obelisk "4000 / 4000".
 
 ## Data formats
 
