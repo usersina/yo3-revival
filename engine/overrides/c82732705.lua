@@ -1,8 +1,10 @@
 --スキルドレイン
 --Skill Drain
---yo3-revival override, for the anime Egyptian Gods (Obelisk the Tormentor, Slifer the Sky Dragon, The Winged Dragon of Ra:
---the anime scripts 511600398/9/400, played only with the `anime-cards` setting). Skill Drain against any other monster is
---ProjectIgnis' script, unchanged. The rule for the Gods (#60):
+--yo3-revival override, for the Gods as the `anime-cards` setting plays them: the manga Egyptian Gods (Obelisk the
+--Tormentor, Slifer the Sky Dragon, The Winged Dragon of Ra: 513000135/6/4) and the manga Wicked Gods (Dreadroot, Avatar,
+--Eraser: 513000137/8/9), whose text says "Other cards' effects only apply to this card for 1 turn", and the anime Gods'
+--scripts (511600398/9/400) the map played before. Skill Drain against any other monster is ProjectIgnis' script,
+--unchanged. The rule for the Gods (#60):
 --  * a God already on the field when Skill Drain is activated has its effects negated at once, until the end of that turn;
 --    its effects come back when the turn ends, though Skill Drain stays face-up (Ra's ATK, the Tributes' total, is 0 for
 --    the rest of that turn, and the total again from the next one: its effect that sets it is negated like the rest);
@@ -17,7 +19,7 @@
 --with that flag is negated by Skill Drain. The recovery at the end of the turn is the engine's reset of that flag, not an effect of the God, so no negation
 --(Skill Drain's own included) can keep it from coming back.
 local s,id=GetID()
-s.gods={511600398,511600399,511600400}
+s.gods={511600398,511600399,511600400,513000134,513000135,513000136,513000137,513000138,513000139}
 s.negated=id+(1<<27)
 function s.initial_effect(c)
 	--Activate

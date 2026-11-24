@@ -21,7 +21,7 @@ const NOTE: &str = yo3_server::engine::STALE_GAME_NOTE;
 /// A world whose anime profile changes one card, the `anime-cards` setting as given.
 fn world(anime: bool) -> World {
     let card = Card { row: 100, cid: 4021, atk: 1800, def: 1600, level: 5, attribute: 2, race: 2, kind: 3, art: 1, words: [4021, 3 << 3], genre: 0xAB, name: String::new(), desc: String::new() };
-    let data = HashMap::from([(4021, AnimeData { code: 511000000, ty: 0x11, atk: 1800, def: 1600, level: 5, race: 1, attribute: 4, text: "Anime.".into(), differs: vec![] })]);
+    let data = HashMap::from([(4021, AnimeData { code: 511000000, ty: 0x11, atk: 1800, def: 1600, level: 5, race: 1, attribute: 4, text: "Anime.".into(), tag: yo3_server::profile::ANIME_TAG, differs: vec![] })]);
     let (profile, _) = Profile::build("anime", [&card], &data);
     let world = World { profiles: Profiles::with_anime(CardView::over(&CardView::default(), Arc::new(profile))), ..World::new((1..=20).collect()) };
     if anime { world.settings.set("anime-cards", "on").unwrap(); }

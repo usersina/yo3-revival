@@ -26,6 +26,10 @@ Older entries describe their release at the time. For current setup, use the [RE
   conditions" ignore that too (Illusion Gate takes a Divine Serpent Geh that was only ever sent to the Graveyard), or
   every revival from the Graveyard does, as in the anime (Monster Reborn revives a discarded Ritual monster). Playing alone, pick it in
   Settings, Singleplayer, **Revival**.
+- With anime cards on, Obelisk, Slifer and Ra, and the Wicked Gods Dreadroot, Avatar and Eraser, play their manga
+  versions, marked [Manga]: each with its Divine Hierarchy, so a God is no longer destroyed in battle by a stronger
+  ordinary monster, and Obelisk's Soul Energy Max (Tribute two in the Battle Phase) wins the duel. Skill Drain negates
+  a God's effects for one turn only, as its text says.
 - Added cards are found by Edit Deck's Search Key filters (Special Summon, Destroy monster...), and their new-card reveal
   shows their rarity's frame.
 

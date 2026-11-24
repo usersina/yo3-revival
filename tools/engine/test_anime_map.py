@@ -30,7 +30,7 @@ class AnimeMap(unittest.TestCase):
             self.assertIn(r['status'], anime_map.STATUSES, r)
             self.assertEqual(bool(r['anime_id']), r['status'] in anime_map.WITH_ANIME, r)
         by = {r['name']: r for r in ROWS}
-        self.assertEqual((by['The Winged Dragon of Ra']['anime_id'], by['The Winged Dragon of Ra']['edopro_id']), ('511600400', '10000010'))
+        self.assertEqual((by['The Winged Dragon of Ra']['anime_id'], by['The Winged Dragon of Ra']['edopro_id']), ('513000134', '10000010'))
         self.assertEqual(by['Deck Devastation Virus']['anime_id'], '', 'its anime appearance is the game card; 511001119 is another card')
 
 
@@ -39,7 +39,7 @@ class AnimeMap(unittest.TestCase):
         self.assertEqual(len(TABLE), len(CARDS), 'a Konami id twice')
         counts = {s: sum(1 for c in CARDS.values() if c['status'] == s) for s in ('mapped', 'default', 'held')}
         self.assertEqual(counts, MAP['counts'])
-        self.assertEqual(sum(counts.values()), 421, '415 candidates, the 3 cards that needed custom work and the added cards with anime versions (#75: Shooting Quasar Dragon, Divine Serpent Geh, Underworld Circle)')
+        self.assertEqual(sum(counts.values()), 424, '415 candidates, the 3 cards that needed custom work, the added cards with anime versions (#75: Shooting Quasar Dragon, Divine Serpent Geh, Underworld Circle) and the three Wicked Gods (their manga versions)')
         for c in CARDS.values():
             self.assertEqual(bool(c.get('holds')), c['status'] == 'held', c['name'])
 
@@ -106,13 +106,14 @@ class AnimeMap(unittest.TestCase):
         self.assertEqual((CARDS[4804]['status'], CARDS[4804]['anime']), ('mapped', 511004341))
         self.assertTrue(CARDS[4804]['profile'][0].startswith('kind:'))
 
-    def test_the_egyptian_gods_are_mapped_and_skill_drain_is_ours_but_unchanged_elsewhere(self):
-        for cid, anime in ((4998, 511600398), (4999, 511600399), (5000, 511600400)):
-            self.assertEqual((CARDS[cid]['status'], CARDS[cid]['anime']), ('mapped', anime))
+    def test_the_gods_play_their_manga_versions_and_skill_drain_is_ours_but_unchanged_elsewhere(self):
+        manga = ((4998, 513000135), (4999, 513000136), (5000, 513000134), (6405, 513000137), (7091, 513000138), (7092, 513000139))
+        for cid, anime in manga:
+            self.assertEqual((CARDS[cid]['status'], CARDS[cid]['anime'], CARDS[cid]['label']), ('mapped', anime, 'Manga'))
         text = (ROOT / 'engine/overrides/c82732705.lua').read_text(encoding='utf-8')
-        for anime in (511600398, 511600399, 511600400):
-            self.assertIn(str(anime), text, 'the override names the anime Gods by their passcodes only')
-        for official in (10000000, 10000010, 10000020):
+        for _, anime in manga:
+            self.assertIn(str(anime), text, 'the override names the manga Gods by their passcodes only')
+        for official in (10000000, 10000010, 10000020, 62180201, 21208154, 57793869):
             self.assertNotIn(str(official), text, 'the official Gods are not touched')
 
     def test_every_reviewed_card_ends_with_one_of_three_dispositions(self):
@@ -234,9 +235,9 @@ class AnimeMap(unittest.TestCase):
 
     def test_a_card_is_looked_up_by_name_or_konami_id(self):
         ra = '\n'.join(anime_map.card_report('winged dragon of ra', MAP))
-        self.assertIn('anime_id 511600400', ra)
-        self.assertIn('map: mapped; script unofficial/c511600400.lua', ra)
-        self.assertIn('anime text: 2406 characters', ra)
+        self.assertIn('anime_id 513000134', ra)
+        self.assertIn('map: mapped; script unofficial/c513000134.lua', ra)
+        self.assertIn('anime text: 2096 characters', ra)
         virus = '\n'.join(anime_map.card_report('6284', MAP))
         self.assertIn('anime_id none', virus)
         self.assertIn("plays and shows as the game's card", virus)
@@ -256,12 +257,12 @@ class AnimeMap(unittest.TestCase):
             shutil.copy(ROOT / 'engine/vendor/BabelCDB/cards-unofficial.cdb', db)
             with sqlite3.connect(db) as c:
                 c.execute("update texts set desc = 'changed' where id = 513000009")
-            shutil.copy(ROOT / 'engine/vendor/CardScripts/unofficial/c511600400.lua', os_app / 'script/unofficial/c511600400.lua')
-            with open(os_app / 'script/unofficial/c511600400.lua', 'a', encoding='utf-8') as f:
+            shutil.copy(ROOT / 'engine/vendor/CardScripts/unofficial/c513000134.lua', os_app / 'script/unofficial/c513000134.lua')
+            with open(os_app / 'script/unofficial/c513000134.lua', 'a', encoding='utf-8') as f:
                 f.write('\n-- changed\n')
             report = '\n'.join(anime_map.compare_report(app))
         self.assertIn('Crush Card Virus (4667, anime 513000009): text differs', report)
-        self.assertIn('The Winged Dragon of Ra (5000, anime 511600400): script differs', report)
+        self.assertIn('The Winged Dragon of Ra (5000, anime 513000134): script differs', report)
         self.assertIn('Dark Strike Fighter (8035, anime 513000079): ours is our own record', report)
 
 

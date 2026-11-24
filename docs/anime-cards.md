@@ -2,7 +2,7 @@
 
 <!-- Made by tools/engine/anime-map.py from engine/anime/cards.tsv: do not edit by hand. -->
 
-With the `anime-cards` setting on (a host sets it; a single player turns on **Anime cards** in Desktop's Settings → Singleplayer: [playing](playing.md#anime-card-versions)), the 418 cards below play by their anime effects, ProjectIgnis' unofficial scripts (CardScripts `915c6ff`), in NPC and player duels, and the game shows them as their anime versions: the **card profile**. The other cards, and the 3 retained or held back below, play and show as they always did. The reviewed table is the issue [#60](https://github.com/usersina/yo3-revival/issues/60); an unofficial script loading without an error is not proof of anime accuracy, only that it plays.
+With the `anime-cards` setting on (a host sets it; a single player turns on **Anime cards** in Desktop's Settings → Singleplayer: [playing](playing.md#anime-card-versions)), the 421 cards below play by their anime effects, ProjectIgnis' unofficial scripts (CardScripts `915c6ff`), in NPC and player duels, and the game shows them as their anime versions: the **card profile**. The other cards, and the 3 retained or held back below, play and show as they always did. The reviewed table is the issue [#60](https://github.com/usersina/yo3-revival/issues/60); an unofficial script loading without an error is not proof of anime accuracy, only that it plays.
 
 ## The card profile
 
@@ -144,6 +144,9 @@ These cards differ from the game's in what the client draws; the profile covers 
 | Supersonic Skull Flame | atk: 2600 -> 3000<br>def: 2000 -> 2300 |
 | Swordstalker | type: -Normal, +Effect |
 | The Eye of Truth | kind: the game's card is a Trap, the anime one a Spell |
+| The Wicked Avatar | race: 8 -> 2097152<br>attribute: 32 -> 64 |
+| The Wicked Dreadroot | race: 8 -> 2097152<br>attribute: 32 -> 64 |
+| The Wicked Eraser | race: 8 -> 2097152<br>attribute: 32 -> 64 |
 | Theinen the Great Sphinx | flags: -Special Summon only |
 | Thor, Lord of the Aesir | race: 32768 -> 2097152<br>attribute: 1 -> 64 |
 | Tragedy | kind: the game's card is a Trap, the anime one a Spell |
@@ -167,8 +170,8 @@ A card is released only when the client side of each difference is proven: the c
 | type | Normal, Effect, Tuner, Ritual and the other kinds of monster | 24 | Boost Warrior: a Tuner, so it Synchro Summons |
 | deck | Main or Extra Deck: a Fusion Monster is an Extra Deck card, a Normal one a Main Deck card | 10 | Perfect Machine King: a Fusion Monster, Fusion Summoned from the Extra Deck |
 | level | Level | 10 | Rapid Warrior: Level 3, so it makes the Level 6 Synchro Monster |
-| attribute | attribute | 13 | Granadora: DARK, so Umiiruka does not raise it |
-| race | type of monster (Warrior, Beast...) | 11 | Chiron the Mage: a Beast, so Sogen does not raise it |
+| attribute | attribute | 16 | Granadora: DARK, so Umiiruka does not raise it |
+| race | type of monster (Warrior, Beast...) | 14 | Chiron the Mage: a Beast, so Sogen does not raise it |
 | atk | ATK, also a number that is not a multiple of ten, and `?` | 11 | Pumpking the King of Ghosts: 1500 ATK, the damage it takes |
 | def | DEF, as ATK | 11 | Earthbound Immortal Chacu Challhua: 1600 DEF |
 | kind | Monster, Spell or Trap | 15 | Mind Control: a Trap, activated on the opponent's turn |
@@ -177,7 +180,7 @@ Negate Attack is the pinned database's anime card (a Quick-Play Spell that negat
 
 Every reviewed card has one disposition: anime enabled, the game's version retained as the default with a reason (Time Wizard and Thousand Dragon, reviewed together, and Temple of the Kings), or held for a technical fix (none now). Power Bond (it stays Power Bond and is treated as Polymerization), Multiply and Cloning (the copy shows as the monster itself), the Sphinxes that summon themselves from the Deck, Theinen the Great Sphinx (its trigger from the Deck: offered, accepted and declined, in tests and in the real client) and Clear Vice Dragon and Blackwing - Aurora the Northern Lights (the game's "?" ATK kept by a corrected record, [below](#upstream-scripts-with-the-games-)) are released, each with a test in `tests/anime_cards.rs`.
 
-**Source of truth for effects:** EDOPro/ProjectIgnis's anime scripts at the pinned commit. Effects are not re-checked against the episodes; a disagreement is fixed upstream or with a documented override in `engine/overrides/`. Two exceptions (#60): cards for which ProjectIgnis has only a placeholder (Dark Strike Fighter and Fortune Lady Fire) are researched and get our own record and script ([below](#reconstructions)); and Skill Drain against the three Egyptian Gods was a bug, fixed by an override of Skill Drain (`engine/overrides/c82732705.lua`, which changes only how it treats the anime Gods; every other monster is as before). The Gods are unaffected by most effects, but Skill Drain, when activated, negates the effects of the Gods already on the field until the end of that turn; then they come back, though Skill Drain stays face up. Ra's ATK (the Tributes' total) is 0 for the rest of that turn and the total again from the next one. A God summoned while Skill Drain is already face up is not affected at all. Each activation counts on its own, as the anime's Gods are affected by an activated card only until the End Phase: a second copy, or the same card activated again, negates the Gods on the field for that turn, and a God that leaves the field and comes back is a new card, unaffected by the Skill Drain already face up and negated by the next activation. The end-of-turn recovery is the engine's reset of a marker on the God, not an effect, so no negation can hold it back. With the setting off, the official Gods and Skill Drain are the game's. Each point has a real-core test in `tests/anime_reconstructions.rs`.
+**Source of truth for effects:** EDOPro/ProjectIgnis's anime scripts at the pinned commit. Effects are not re-checked against the episodes; a disagreement is fixed upstream or with a documented override in `engine/overrides/`. Three exceptions (#60): cards for which ProjectIgnis has only a placeholder (Dark Strike Fighter and Fortune Lady Fire) are researched and get our own record and script ([below](#reconstructions)); the six Gods play their manga versions, not the anime ones (the owner's choice, [below](#the-gods-manga-versions)); and Skill Drain against the Gods was a bug, fixed by an override of Skill Drain (`engine/overrides/c82732705.lua`, which changes only how it treats the Gods; every other monster is as before). The Gods are unaffected by most effects, but Skill Drain, when activated, negates the effects of the Gods already on the field until the end of that turn; then they come back, though Skill Drain stays face up. Ra's ATK (the Tributes' total) is 0 for the rest of that turn and the total again from the next one. A God summoned while Skill Drain is already face up is not affected at all. Each activation counts on its own, as the Gods' text says other cards' effects apply to them for 1 turn only: a second copy, or the same card activated again, negates the Gods on the field for that turn, and a God that leaves the field and comes back is a new card, unaffected by the Skill Drain already face up and negated by the next activation. The end-of-turn recovery is the engine's reset of a marker on the God, not an effect, so no negation can hold it back. ProjectIgnis' own Skill Drain negates the Gods for as long as it stays face up, which their text rules out. With the setting off, the official Gods and Skill Drain are the game's. Each point has a real-core test in `tests/anime_reconstructions.rs` and `tests/manga_gods.rs`.
 
 ## Reconstructions
 
@@ -212,9 +215,26 @@ the rule the anime card's text gives too; if the opponent has none, the trigger 
 (a protected monster, one that left the field before the effect resolved) means no damage, and the damage is the destroyed monster's ATK
 as it was before it was destroyed.
 
-### Skill Drain and the Egyptian Gods
+### Skill Drain and the Gods
 
-See above: not a reconstruction but a fix (`engine/overrides/c82732705.lua`); the three Gods are mapped, so it applies to all of them.
+See above: not a reconstruction but a fix (`engine/overrides/c82732705.lua`); it applies to the six manga Gods.
+
+### The Gods' manga versions
+
+Obelisk the Tormentor, Slifer the Sky Dragon and The Winged Dragon of Ra, and the Wicked Gods (Dreadroot, Avatar and Eraser) play
+ProjectIgnis' manga scripts (513000134-139), labelled `[Manga]` in the profile. Each has a Divine Hierarchy, a rule of the duel rather than
+an effect of the card, so Skill Drain does not take it: Ra and Avatar are 2, the others 1. A God is unaffected by Spell/Trap effects
+that would make it leave the field and by other monsters' effects, except a monster with the same or a higher Hierarchy; it is not destroyed
+by battle with a monster of a lower Hierarchy (an ordinary monster is 0), and its controller takes no damage from that battle; Special
+Summoned, it goes back where it came from at the End Phase. Their own effects: Obelisk's Soul Energy Max (in the Battle Phase, Tribute
+two monsters: it attacks with infinite ATK, damage of a hundred times the opponent's LP); Slifer's ATK of 1000 per card in the hand;
+Ra's the Tributes' total; Dreadroot halves every other monster's ATK and DEF but a Divine-Beast's; Avatar is 1 stronger than the strongest
+other monster; Eraser is 1000 per card the opponent controls and takes every monster with it when it goes. The Wicked Gods' rows keep the
+game's Type and Attribute; the profile shows them as the manga cards' (DIVINE, Divine-Beast).
+
+One fix to the shared procedure (`engine/overrides/proc_unofficial.lua`): the upstream Hierarchy check compared a God with a monster
+without a Hierarchy as if that monster outranked it, so a stronger ordinary monster destroyed a God by battle. A monster without one is
+now Hierarchy 0. Infinite ATK shows on the field as 99999, the most the game draws.
 
 ### Upstream scripts with the game's "?"
 
@@ -515,7 +535,7 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Neos Wiseman | 511000497 |  |
 | No Entry!! | 511600322 |  |
 | Null and Void | 810000055 |  |
-| Obelisk the Tormentor | 511600398 |  |
+| Obelisk the Tormentor | 513000135 |  |
 | Odin, Father of the Aesir | 511000264 | names other anime cards |
 | Offering to the Immortals | 511247015 | makes Ceremonial Token |
 | Orichalcos Shunoros | 170000167 | names other anime cards |
@@ -579,7 +599,7 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Skull Flame | 511050012 |  |
 | Skyscraper | 511002379 |  |
 | Skyscraper 2 - Hero City | 511777006 |  |
-| Slifer the Sky Dragon | 511600399 | names other anime cards |
+| Slifer the Sky Dragon | 513000136 |  |
 | Solemn Authority | 511777010 |  |
 | Sorcerer of Dark Magic | 513000095 |  |
 | Soul Exchange | 513000054 |  |
@@ -610,7 +630,10 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | The Eye of Truth | 511002295 |  |
 | The Golden Apples | 511003080 | makes Malus Token |
 | The Shallow Grave | 511002531 |  |
-| The Winged Dragon of Ra | 511600400 |  |
+| The Wicked Avatar | 513000138 |  |
+| The Wicked Dreadroot | 513000137 |  |
+| The Wicked Eraser | 513000139 | names other anime cards |
+| The Winged Dragon of Ra | 513000134 | names other anime cards |
 | Theinen the Great Sphinx | 513000030 |  |
 | Thor, Lord of the Aesir | 511000247 |  |
 | Thunder Unicorn | 511002706 |  |
@@ -691,7 +714,7 @@ Extra Deck), or when the research or the script is not settled. Each reason is k
 | Wolf | upstream 511003065: the anime Normal Monster is equivalent |
 | Zera the Mant | upstream 511002610 is a different card or a prize card |
 
-Every other card of the game (4,341 of 4,777 in `engine/anime/cards.tsv`) has no anime_id: no anime version, or none we use, and keeps its current behaviour.
+Every other card of the game (4,338 of 4,777 in `engine/anime/cards.tsv`) has no anime_id: no anime version, or none we use, and keeps its current behaviour.
 
 | Card | Note |
 | --- | --- |

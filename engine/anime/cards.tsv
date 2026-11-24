@@ -1022,9 +1022,9 @@ cid	name	edopro_id	anime_id	status	note
 4991	Earthshaker	60866277			
 4992	Enchanted Javelin	96355986			
 4993	Mirror Wall	22359980	513000002	Anime	
-4998	Obelisk the Tormentor	10000000	511600398	Anime	
-4999	Slifer the Sky Dragon	10000020	511600399	Anime	
-5000	The Winged Dragon of Ra	10000010	511600400	Anime	
+4998	Obelisk the Tormentor	10000000	513000135	Manga	the manga version (the owner's choice), Divine Hierarchy 1
+4999	Slifer the Sky Dragon	10000020	513000136	Manga	the manga version (the owner's choice), Divine Hierarchy 1
+5000	The Winged Dragon of Ra	10000010	513000134	Manga	the manga version (the owner's choice), Divine Hierarchy 2
 5001	Windstorm of Etaqua	59744639			
 5002	Valkyrion the Magna Warrior	75347539			
 5003	Alligator's Sword Dragon	3366982			
@@ -2205,7 +2205,7 @@ cid	name	edopro_id	anime_id	status	note
 6398	Power Bond	37630732	511002825	Anime	Upstream aliases Polymerization (24094653); never follow it.
 6399	Skyscraper	63035430	511002379	Anime	
 6400	Summoner Monk	423585			
-6405	The Wicked Dreadroot	62180201			
+6405	The Wicked Dreadroot	62180201	513000137	Manga	the manga version (the owner's choice), Divine Hierarchy 1
 6406	Winged Kuriboh LV10	98585345			
 6407	Transcendent Wings	25573054			
 6408	Bubble Shuffle	61968753			
@@ -2755,8 +2755,8 @@ cid	name	edopro_id	anime_id	status	note
 7088	Tri-Blaze Accelerator	21420702			
 7089	Wild Fire	68815401			
 7090	Firewall	94804055			
-7091	The Wicked Avatar	21208154			
-7092	The Wicked Eraser	57793869			
+7091	The Wicked Avatar	21208154	513000138	Manga	the manga version (the owner's choice), Divine Hierarchy 2
+7092	The Wicked Eraser	57793869	513000139	Manga	the manga version (the owner's choice), Divine Hierarchy 1
 7093	Spell Striker	93187568			
 7094	Exploder Dragon	20586572			
 7095	Destiny Hero - Disk Commander	56570271			

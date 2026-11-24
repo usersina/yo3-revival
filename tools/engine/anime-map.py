@@ -39,7 +39,7 @@ SCRIPT_FOLDERS = ["official", "pre-errata", "pre-release"]
 # engine/anime/cards.tsv: its columns, and the statuses of a card with an anime version (an anime_id) or one under review.
 TABLE = os.path.join(ENGINE, "anime", "cards.tsv")
 COLUMNS = ["cid", "name", "edopro_id", "anime_id", "status", "note"]
-WITH_ANIME = {"Anime", "Anime / Normal", "Reconstruction"}
+WITH_ANIME = {"Anime", "Anime / Normal", "Reconstruction", "Manga"}  # Manga: the manga version, the owner's choice
 STATUSES = WITH_ANIME | {"Held", "Kept", ""}
 # The longest card text the connection DLL shows (YO3_PROFILE_TEXT_CHARS in tools/mod/card-profile-logic.h).
 DLL_TEXT_CHARS = 4096
@@ -579,9 +579,26 @@ the rule the anime card's text gives too; if the opponent has none, the trigger 
 (a protected monster, one that left the field before the effect resolved) means no damage, and the damage is the destroyed monster's ATK
 as it was before it was destroyed.
 
-### Skill Drain and the Egyptian Gods
+### Skill Drain and the Gods
 
-See above: not a reconstruction but a fix (`engine/overrides/c82732705.lua`); the three Gods are mapped, so it applies to all of them."""
+See above: not a reconstruction but a fix (`engine/overrides/c82732705.lua`); it applies to the six manga Gods.
+
+### The Gods' manga versions
+
+Obelisk the Tormentor, Slifer the Sky Dragon and The Winged Dragon of Ra, and the Wicked Gods (Dreadroot, Avatar and Eraser) play
+ProjectIgnis' manga scripts (513000134-139), labelled `[Manga]` in the profile. Each has a Divine Hierarchy, a rule of the duel rather than
+an effect of the card, so Skill Drain does not take it: Ra and Avatar are 2, the others 1. A God is unaffected by Spell/Trap effects
+that would make it leave the field and by other monsters' effects, except a monster with the same or a higher Hierarchy; it is not destroyed
+by battle with a monster of a lower Hierarchy (an ordinary monster is 0), and its controller takes no damage from that battle; Special
+Summoned, it goes back where it came from at the End Phase. Their own effects: Obelisk's Soul Energy Max (in the Battle Phase, Tribute
+two monsters: it attacks with infinite ATK, damage of a hundred times the opponent's LP); Slifer's ATK of 1000 per card in the hand;
+Ra's the Tributes' total; Dreadroot halves every other monster's ATK and DEF but a Divine-Beast's; Avatar is 1 stronger than the strongest
+other monster; Eraser is 1000 per card the opponent controls and takes every monster with it when it goes. The Wicked Gods' rows keep the
+game's Type and Attribute; the profile shows them as the manga cards' (DIVINE, Divine-Beast).
+
+One fix to the shared procedure (`engine/overrides/proc_unofficial.lua`): the upstream Hierarchy check compared a God with a monster
+without a Hierarchy as if that monster outranked it, so a stronger ordinary monster destroyed a God by battle. A monster without one is
+now Hierarchy 0. Infinite ATK shows on the field as 99999, the most the game draws."""
 
 
 def doc(data):
@@ -687,17 +704,19 @@ def doc(data):
             " Deck, Theinen the Great Sphinx (its trigger from the Deck: offered, accepted and declined, in tests and in the real client) and Clear Vice Dragon and"
             " Blackwing - Aurora the Northern Lights (the game\'s \"?\" ATK kept by a corrected record, [below](#upstream-scripts-with-the-games-)) are released, each with a test in `tests/anime_cards.rs`.", "",
             "**Source of truth for effects:** EDOPro/ProjectIgnis's anime scripts at the pinned commit. Effects are not re-checked against the"
-            " episodes; a disagreement is fixed upstream or with a documented override in `engine/overrides/`. Two exceptions (#60): cards for which"
+            " episodes; a disagreement is fixed upstream or with a documented override in `engine/overrides/`. Three exceptions (#60): cards for which"
             " ProjectIgnis has only a placeholder (Dark Strike Fighter and Fortune Lady Fire) are researched and get our own record and script"
-            " ([below](#reconstructions)); and Skill Drain against the three Egyptian Gods was a bug, fixed by an override of Skill Drain"
-            " (`engine/overrides/c82732705.lua`, which changes only how it treats the anime Gods; every other monster is as before). The Gods are"
+            " ([below](#reconstructions)); the six Gods play their manga versions, not the anime ones (the owner's choice, [below](#the-gods-manga-versions));"
+            " and Skill Drain against the Gods was a bug, fixed by an override of Skill Drain"
+            " (`engine/overrides/c82732705.lua`, which changes only how it treats the Gods; every other monster is as before). The Gods are"
             " unaffected by most effects, but Skill Drain, when activated, negates the effects of the Gods already on the field until the end of"
             " that turn; then they come back, though Skill Drain stays face up. Ra's ATK (the Tributes' total) is 0 for the rest of that turn and the"
             " total again from the next one. A God summoned while Skill Drain is already face up is not affected at all. Each activation counts"
-            " on its own, as the anime's Gods are affected by an activated card only until the End Phase: a second copy, or the same card activated"
+            " on its own, as the Gods' text says other cards' effects apply to them for 1 turn only: a second copy, or the same card activated"
             " again, negates the Gods on the field for that turn, and a God that leaves the field and comes back is a new card, unaffected by the"
-            " Skill Drain already face up and negated by the next activation. The end-of-turn recovery is the engine's reset of a marker on the God, not an effect, so no negation can hold it back. With the"
-            " setting off, the official Gods and Skill Drain are the game's. Each point has a real-core test in `tests/anime_reconstructions.rs`.", "",
+            " Skill Drain already face up and negated by the next activation. The end-of-turn recovery is the engine's reset of a marker on the God, not an effect, so no negation can hold it back."
+            " ProjectIgnis' own Skill Drain negates the Gods for as long as it stays face up, which their text rules out. With the"
+            " setting off, the official Gods and Skill Drain are the game's. Each point has a real-core test in `tests/anime_reconstructions.rs` and `tests/manga_gods.rs`.", "",
             "## Reconstructions", "",
             "Where ProjectIgnis has no usable script, the data record and the script are ours (`engine/anime/records.json`, `engine/overrides/`) and"
             " the card's text in the game says it is a reconstruction. Everything else about the card (the engine, the profile, the duel check,"

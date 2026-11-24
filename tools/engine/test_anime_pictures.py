@@ -40,7 +40,7 @@ class AnimePictures(unittest.TestCase):
             self.assertTrue(anime.isdigit(), cid)
         by = {int(r[0]): r for r in rows}
         # The Gods use ProjectIgnis' anime passcodes like any card; Temple of the Kings has none, so its official picture is fetched.
-        self.assertEqual(by[4998][1:], ['511600398', '10000000'])
+        self.assertEqual(by[4998][1:], ['513000135', '10000000'])
         self.assertEqual(by[5231][1:], ['0', '29762407'])
         self.assertEqual(by[8035][1:], ['513000079', '32646477'])
 

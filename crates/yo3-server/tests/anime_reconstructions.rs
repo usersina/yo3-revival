@@ -486,18 +486,20 @@ fn obelisk_is_unaffected_by_a_trap_effect_without_skill_drain() {
     clean(&s);
 }
 
+/// The manga Gods' Divine Hierarchy is a rule of the duel, not an effect of the card (ProjectIgnis' manga procedure): Skill
+/// Drain negates a God's own effects for the turn, but the God stays "unaffected by Spell/Trap effects that would make this
+/// card leave the field". Raigeki Break, chained under Skill Drain, still doesn't destroy Obelisk; nor the next turn.
 #[test]
-fn skill_drain_negates_obelisks_effects_for_the_turn_only() {
+fn skill_drain_does_not_take_a_gods_divine_hierarchy() {
     let Some(mut s) = obelisk_duel(&[]) else { return };
     activate(&mut s, SKILL_DRAIN);
-    assert!(!obelisk_survives_raigeki_break(&mut s), "negated this turn, it is not unaffected: {}", s.context());
-    assert_eq!(s.count(0, "grave", OBELISK), 1);
+    assert!(obelisk_survives_raigeki_break(&mut s), "negated, it is still a God: {}", s.context());
     clean(&s);
     let Some(mut s) = obelisk_duel(&[]) else { return };
     activate(&mut s, SKILL_DRAIN);
     next_own_turn(&mut s);
     assert_eq!(s.count(0, "szone", SKILL_DRAIN), 1);
-    assert!(obelisk_survives_raigeki_break(&mut s), "the next turn its effects are back, Skill Drain still face-up: {}", s.context());
+    assert!(obelisk_survives_raigeki_break(&mut s), "the next turn too: {}", s.context());
     clean(&s);
 }
 
@@ -615,30 +617,27 @@ fn a_second_skill_drain_negates_a_god_again_for_its_turn() {
     clean(&s);
 }
 
-/// A God that leaves the field and returns is a new card to the game: Skill Drain face-up does not affect it, and the next
-/// Skill Drain activated does, once. Slifer is destroyed by Raigeki Break in the turn it is negated (it is unaffected otherwise)
-/// and brought back by Monster Reborn a turn later.
+/// A God that arrives while Skill Drain is face-up is a new card to it: not affected, until the next Skill Drain activated
+/// negates it for that turn. Slifer, brought back from the Graveyard by Monster Reborn after one Skill Drain resolved, has
+/// its ATK (1000 per card in the hand); the second Skill Drain negates it; and, Special Summoned, the manga God goes back
+/// where it came from at the End Phase.
 #[test]
 fn a_god_that_comes_back_is_a_new_card() {
-    let hand = [SKILL_DRAIN, SKILL_DRAIN, WARWOLF, WARWOLF, WARWOLF];
-    let Some(mut s) = start(true, [(&deck(&hand, &[RAIGEKI_BREAK, SLIFER, WARWOLF, WARWOLF, MONSTER_REBORN]), &[]), (&passive(), &[])]) else { return };
+    use yo3_server::engine::{Spawn, SpawnPlace};
+    let Some(dir) = engine_dir() else { return };
+    let field = [Spawn { team: 0, place: SpawnPlace::SpellSet, cid: SKILL_DRAIN }, Spawn { team: 0, place: SpawnPlace::SpellSet, cid: SKILL_DRAIN },
+        Spawn { team: 0, place: SpawnPlace::Grave, cid: SLIFER }, Spawn { team: 0, place: SpawnPlace::Hand, cid: MONSTER_REBORN }];
+    let mut s = Scenario::start_anime_field(&dir, 7, 8000, [(&passive(), &[]), (&passive(), &[])], &field).expect("the duel starts");
     s.prefer(&[(0, SLIFER)]);
-    s.run(&[SetSpell(SKILL_DRAIN), SetSpell(SKILL_DRAIN), Summon(WARWOLF), SetSpell(RAIGEKI_BREAK), Summon(WARWOLF), Summon(WARWOLF), Summon(SLIFER)]).unwrap();
+    settle(&mut s); // past the chain window the Set Traps open before the Main Phase
     activate(&mut s, SKILL_DRAIN);
-    assert!(s.attack_of(0, SLIFER).is_some_and(|a| a <= 0), "{}", s.context());
-    activate(&mut s, RAIGEKI_BREAK);
-    assert_eq!(s.count(0, "grave", SLIFER), 1, "negated, Slifer is destroyed: {}", s.context());
-    while !offers(&s, MONSTER_REBORN) {
-        next_own_turn(&mut s);
-    }
     activate(&mut s, MONSTER_REBORN);
     assert!(s.monster(0, SLIFER).is_some(), "Slifer is back: {}", s.context());
     assert_eq!(s.attack_of(0, SLIFER), Some(god_atk(&s, SLIFER)), "a new card, Skill Drain face-up does not affect it: {}", s.context());
     assert!(s.attack_of(0, SLIFER).is_some_and(|a| a > 0), "{}", s.context());
     activate(&mut s, SKILL_DRAIN);
     assert!(s.attack_of(0, SLIFER).is_some_and(|a| a <= 0), "the next Skill Drain activation negates the new card: {}", s.context());
-    // The anime Gods Special Summoned by a Spell effect go back to where they came from at the End Phase (their own rule).
     next_own_turn(&mut s);
-    assert_eq!(s.count(0, "grave", SLIFER), 1, "{}", s.context());
+    assert_eq!(s.count(0, "grave", SLIFER), 1, "Special Summoned, it went back to the Graveyard at the End Phase: {}", s.context());
     clean(&s);
 }

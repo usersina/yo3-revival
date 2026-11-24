@@ -32,6 +32,8 @@ pub const MAGIC: &str = "yo3-card-profile 1";
 /// The first line of an anime card's text in the game (Edit Deck, the Card Album, a duel's card panel), so a player sees
 /// which cards play as their anime versions.
 pub const ANIME_TAG: &str = "[Anime]";
+/// The line above a card that plays as its manga version (the map's label "Manga": the Egyptian and Wicked Gods).
+pub const MANGA_TAG: &str = "[Manga]";
 /// The longest card text the connection DLL takes, in UTF-16 units (`YO3_PROFILE_TEXT_CHARS` in
 /// `tools/mod/card-profile-logic.h`): a longer one is skipped and the game shows its own text (anime Ra's, 2406, was
 /// skipped at 2048 until v0.1.12).
@@ -188,6 +190,8 @@ pub struct AnimeData {
     pub race: u32,
     pub attribute: u32,
     pub text: String,
+    /// The line the game's text panel shows above it: [`ANIME_TAG`], or [`MANGA_TAG`] for a manga version.
+    pub tag: &'static str,
     /// What the anime version changes from the game's card (the map's `differs`: `level`, `atk`, `def`, `race`, `attribute`,
     /// `kind`...): what the duel check holds the engine to.
     pub differs: Vec<String>,
@@ -382,7 +386,7 @@ impl Profile {
                 a &= !MASK_STAT;
             }
             // The game's text panel names an anime card as one: its own line above the anime text.
-            let text = (!data.text.is_empty()).then(|| format!("{ANIME_TAG}\n{}", data.text));
+            let text = (!data.text.is_empty()).then(|| format!("{}\n{}", data.tag, data.text));
             targets.insert(card.row, Target { row: card.row, cid: card.cid, anime: data.code, words: [a, b], original: card.words, genre: card.genre, atk, def, text, differs: data.differs.clone() });
         }
         skipped.sort_unstable();
@@ -579,12 +583,13 @@ pub fn read_anime(engine_dir: &Path) -> Result<HashMap<u16, AnimeData>, String> 
     let mut out = HashMap::new();
     for card in json["cards"].as_array().into_iter().flatten().filter(|c| c["status"] == "mapped") {
         let (Some(cid), Some(code)) = (card["cid"].as_u64(), card["anime"].as_u64()) else { continue };
+        let tag = if card["label"] == "Manga" { MANGA_TAG } else { ANIME_TAG };
         // A corrected record (an anime card whose upstream entry is a placeholder) is the card's data, not the database's row.
         if let Some(r) = json["records"].as_array().into_iter().flatten().find(|r| r["code"].as_u64() == Some(code)) {
             let num = |key: &str| r[key].as_i64().ok_or_else(|| format!("{}: record {code} lacks \"{key}\"", file.display()));
             out.insert(cid as u16, AnimeData {
                 code: code as u32, ty: num("type")? as u32, atk: num("atk")?, def: num("def")?, level: (num("level")? & 255) as u32,
-                race: num("race")? as u32, attribute: num("attribute")? as u32, text: r["text"].as_str().unwrap_or_default().to_string(),
+                race: num("race")? as u32, attribute: num("attribute")? as u32, text: r["text"].as_str().unwrap_or_default().to_string(), tag,
                 differs: card["differs"].as_array().into_iter().flatten().filter_map(|d| d.as_str().map(String::from)).collect(),
             });
             continue;
@@ -594,7 +599,7 @@ pub fn read_anime(engine_dir: &Path) -> Result<HashMap<u16, AnimeData>, String> 
             [code as i64],
             |r| Ok(AnimeData {
                 code: code as u32, ty: r.get::<_, i64>(0)? as u32, atk: r.get(1)?, def: r.get(2)?, level: r.get::<_, i64>(3)? as u32,
-                race: r.get::<_, i64>(4)? as u32, attribute: r.get::<_, i64>(5)? as u32, text: r.get::<_, Option<String>>(6)?.unwrap_or_default(),
+                race: r.get::<_, i64>(4)? as u32, attribute: r.get::<_, i64>(5)? as u32, text: r.get::<_, Option<String>>(6)?.unwrap_or_default(), tag,
                 differs: card["differs"].as_array().into_iter().flatten().filter_map(|d| d.as_str().map(String::from)).collect(),
             }),
         );
@@ -617,7 +622,7 @@ mod tests {
     }
 
     fn anime(ty: u32, atk: i64, def: i64, level: u32, race: u32, attribute: u32) -> AnimeData {
-        AnimeData { code: 511000000, ty, atk, def, level, race, attribute, text: "Anime text.".into(), differs: vec![] }
+        AnimeData { code: 511000000, ty, atk, def, level, race, attribute, text: "Anime text.".into(), tag: ANIME_TAG, differs: vec![] }
     }
 
     #[test]
