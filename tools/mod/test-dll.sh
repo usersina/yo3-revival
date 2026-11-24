@@ -31,6 +31,7 @@ echo 'PASS: incompatible game hooks and missing launch state identify their fail
 wine "$MOD/yo3-resolution-test.exe"
 wine "$MOD/yo3-teardown-test.exe"
 wine "$MOD/yo3-rental-return-test.exe"
+wine "$MOD/yo3-duel-numbers-test.exe"
 wine "$MOD/yo3-web-links-test.exe"
 wine "$MOD/yo3-card-search-test.exe"
 wine "$MOD/yo3-card-profile-test.exe"

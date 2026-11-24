@@ -29,6 +29,8 @@ Older entries describe their release at the time. For current setup, use the [RE
 - Obelisk's Soul Energy Max and the anime Divine Serpent Geh always win the duel, even against a player with tens of
   millions of LP (it used to turn into a huge gain). LP above 99,999 shows as 99,999 and stays right as it changes, and a huge LP change no longer freezes the duel while the
   counter rolls.
+- An infinite ATK shows as ∞ on the field (Obelisk's Soul Energy Max, the anime Divine Serpent Geh, Avatar matching
+  them), instead of 99999.
 - Infinite damage is infinite: Ring of Destruction on the anime Divine Serpent Geh, or Avatar risen to infinity attacking
   directly, takes every LP a player has, however much Mystik Wok gave them.
 - A God turned face-down by Book of Moon is still a God (it can't be destroyed by Spell or Trap cards) and turns face-up

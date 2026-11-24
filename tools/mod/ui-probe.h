@@ -14,6 +14,7 @@
  * Flash invoke, each checked byte for byte first) are installed only when the probe is on, and YO3_UI_PROBE_HOOKS=0
  * leaves both out. The invoke hook reads the call's own arguments, which the game is about to hand to Flash. */
 #include "ui-state.h"
+#include "detour.h"
 static wchar_t ui_folder[MAX_PATH];
 #define UI_TEXTS 40
 static struct { DWORD at; uint32_t table,id; char text[160]; } ui_texts[UI_TEXTS];
@@ -23,7 +24,6 @@ static int ui_hooked,ui_flash_hooked;
 #define UI_CALLS 60
 static struct { DWORD at; unsigned repeat; char text[240]; } ui_calls[UI_CALLS];
 static volatile LONG ui_call_next;
-static int (__attribute__((thiscall)) *ui_invoke)(void *,const char *,const void *,unsigned);
 
 static int ui_read(void *ctx,uint32_t at,void *out,size_t n) {
     (void)ctx; SIZE_T got=0;
@@ -44,11 +44,12 @@ static wchar_t *__attribute__((stdcall,force_align_arg_pointer)) ui_text_hook(vo
 /* The game reads these arguments itself as soon as this returns, so they are read in place. */
 static int ui_direct_read(void *ctx,uint32_t at,void *out,size_t n) { (void)ctx; if(at<0x10000) return 0; memcpy(out,(const void *)(uintptr_t)at,n); return 1; }
 
-/* The Flash invoke's stand-in: the call kept as text (the same call again only counts), then the real invoke. */
-static int __attribute__((thiscall,force_align_arg_pointer)) ui_invoke_hook(void *movie,const char *name,const void *args,unsigned count) {
+/* Each Flash invoke kept as text (the same call again only counts), as duel-numbers.h's detour of the invoke reports
+ * it, with the arguments the movie gets. */
+static void ui_flash_observe(const char *name,const void *args,unsigned count) {
     char text[sizeof ui_calls[0].text];
     ui_flash_call(ui_direct_read,NULL,(uint32_t)(uintptr_t)name,(uint32_t)(uintptr_t)args,count,text,sizeof text);
-    if(!strncmp(text,"MousePos(",9)) return ui_invoke(movie,name,args,count); /* every frame: it would bury the rest */
+    if(!strncmp(text,"MousePos(",9)) return; /* every frame: it would bury the rest */
     LONG last=ui_call_next-1; unsigned slot=(unsigned)last%UI_CALLS;
     if(last>=0 && !strcmp(ui_calls[slot].text,text)) { ++ui_calls[slot].repeat; ui_calls[slot].at=GetTickCount(); }
     else {
@@ -56,28 +57,10 @@ static int __attribute__((thiscall,force_align_arg_pointer)) ui_invoke_hook(void
         ui_calls[slot].at=0; memcpy(ui_calls[slot].text,text,sizeof text); ui_calls[slot].repeat=1; ui_calls[slot].at=GetTickCount();
         InterlockedIncrement(&ui_call_next);
     }
-    return ui_invoke(movie,name,args,count);
 }
 
-/* Detours `address` when its first bytes are `prologue` (`n` ≥ 5 bytes, no relative addresses): a jump to `hook`,
- * and `*original` calls the copied bytes and jumps back. */
-static int ui_detour(uint32_t address,const BYTE *prologue,size_t n,void *hook,void **original) {
-    BYTE *site=(BYTE *)game_address(address);
-    if(n<5 || n>16 || memcmp(site,prologue,n)) return 0;
-    BYTE *trampoline=VirtualAlloc(NULL,32,MEM_COMMIT|MEM_RESERVE,PAGE_EXECUTE_READWRITE);
-    if(!trampoline) return 0;
-    memcpy(trampoline,prologue,n);
-    trampoline[n]=0xe9; LONG back=(LONG)((site+n)-(trampoline+n+5)); memcpy(trampoline+n+1,&back,4);
-    FlushInstructionCache(GetCurrentProcess(),trampoline,32);
-    *original=trampoline;
-    DWORD previous; if(!VirtualProtect(site,n,PAGE_EXECUTE_READWRITE,&previous)) return 0;
-    BYTE jump[16]; memset(jump,0x90,sizeof jump); jump[0]=0xe9;
-    LONG to=(LONG)((BYTE *)hook-(site+5)); memcpy(jump+1,&to,4);
-    memcpy(site,jump,n);
-    FlushInstructionCache(GetCurrentProcess(),site,n);
-    DWORD ignored; VirtualProtect(site,n,previous,&ignored);
-    return 1;
-}
+/* The detour helper is shared (detour.h): the infinite ATK display (duel-numbers.h) detours the Flash invoke too. */
+#define ui_detour yo3_detour
 
 static void ui_append(char **at,size_t *left,const char *format,...) {
     va_list args; va_start(args,format); int n=vsnprintf(*at,*left,format,args); va_end(args);
@@ -170,9 +153,8 @@ static int ui_probe_install(void) {
         /* 0x51E6C0: push ebp; mov ebp,esp; and esp,-8; sub esp,0xC. */
         static const BYTE lookup[]={0x55,0x8b,0xec,0x83,0xe4,0xf8,0x83,0xec,0x0c};
         ui_hooked=ui_detour(0x51e6c0,lookup,sizeof lookup,(void *)ui_text_hook,(void **)&ui_lookup);
-        /* 0x5CB1B0: sub esp,0x38; push esi; mov esi,ecx. */
-        static const BYTE invoke[]={0x83,0xec,0x38,0x56,0x8b,0xf1};
-        ui_flash_hooked=ui_detour(0x5cb1b0,invoke,sizeof invoke,(void *)ui_invoke_hook,(void **)&ui_invoke);
+        /* The Flash invoke 0x5CB1B0 is detoured by duel-numbers.h, installed first: the probe watches through it. */
+        if(duel_numbers_hooked) { yo3_invoke_observer=ui_flash_observe; ui_flash_hooked=1; }
     }
     HANDLE thread=CreateThread(NULL,0,ui_probe_thread,NULL,0,NULL);
     if(thread) CloseHandle(thread);

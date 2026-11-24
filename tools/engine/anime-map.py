@@ -615,7 +615,7 @@ random decks of the Gods, Geh's Orichalcos line and these cards.
 
 One fix to the shared procedure (`engine/overrides/proc_unofficial.lua`): the upstream Hierarchy check compared a God with a monster
 without a Hierarchy as if that monster outranked it, so a stronger ordinary monster destroyed a God by battle. A monster without one is
-now Hierarchy 0. Infinite ATK shows on the field as 99999, the most the game draws."""
+now Hierarchy 0. Infinite ATK shows on the field as ∞ (the connection DLL's `duel-numbers.h`); LP shows at most 99,999."""
 
 
 def doc(data):

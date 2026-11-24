@@ -27,6 +27,7 @@ PY
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-resolution-test.exe resolution-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-teardown-test.exe teardown-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-rental-return-test.exe rental-return-test.c
+"$CC" -O2 -Wall -Wextra -Werror -o build/yo3-duel-numbers-test.exe duel-numbers-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-web-links-test.exe web-links-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-card-search-test.exe card-search-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-card-profile-test.exe card-profile-test.c

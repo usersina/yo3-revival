@@ -775,8 +775,8 @@ needs a Play before opening `yo3.exe` alone.
 
 ### Numbers in the duel: LP and ATK (investigated 2026-11-24)
 
-How the duel shows LP and ATK, for showing more than 99999 (the engine's infinite ATK is 9,999,999). Nothing is built on
-this yet. All of it is drawn by Flash movies (Scaleform GFx), which the game feeds numbers through its one invoke
+How the duel shows LP and ATK, for showing more than 99999 (the engine's infinite ATK is 9,999,999). The field's ATK and
+DEF show "∞" since 2026-11-24 (`tools/mod/duel-numbers.h`, below); LP stays at most 99999. All of it is drawn by Flash movies (Scaleform GFx), which the game feeds numbers through its one invoke
 (`0x5CB1B0`, see "The UI probe"):
 
 - **LP**: DuelCockpit `0x502EB0` handles the LP commands. `0xF` stores the LP as sent and calls `0x5035A0`, which
@@ -796,6 +796,15 @@ this yet. All of it is drawn by Flash movies (Scaleform GFx), which the game fee
 So a text field can show "∞" given a string instead of a number (the invoke takes `char *` and `wchar_t *` values, as
 the connection DLL's Rental Card List Return button already passes), while the LP counter and the damage numbers would
 need a picture the game doesn't have.
+
+The connection DLL does it (`tools/mod/duel-numbers.h`, logic and test in `duel-numbers-logic.h`/`duel-numbers-test.c`):
+it detours the invoke `0x5CB1B0` and, in `call("setProp", prop, value)`, sends an ATK or DEF (prop 6, 7) of 9,999,999 or
+more as the string "∞" (UTF-8 `char *`, type 4). The colour compares `atk` with `orgAtk` (white equal, blue above, red
+below), so the originals (prop 4, 5) always go as their decimal string: ActionScript 2 (SWF 8) then compares "∞" with
+them as strings, where U+221E is above every digit, and numbers with them as numbers, as before. The movie does nothing
+else with these four. The detour also reports each call to the UI probe (`ui-probe.h` observes through it instead of a
+detour of its own; `detour.h` is their shared helper). Live, 2026-11-24: Geh shows "∞ / 0" and Avatar beside it "∞ / ∞",
+in blue; Obelisk "4000 / 4000".
 
 ## Data formats
 

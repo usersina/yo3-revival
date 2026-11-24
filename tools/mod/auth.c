@@ -187,6 +187,7 @@ static void close_report(SOCKET socket, unsigned short port) {
 #include "resolution.h"
 #include "documents.h"
 #include <stdarg.h>
+#include "duel-numbers.h"
 #include "ui-probe.h"
 #include "dialog-text.h"
 #include "npc-duel-log.h"
@@ -260,6 +261,7 @@ BOOL WINAPI DllMain(HINSTANCE dll, DWORD reason, LPVOID reserved) {
     signout_install(); /* Delete Login Data signs direct start out; another build keeps its own */
     chat_lobby_install(); /* the chat joins the Lobby once per login; another build keeps its own chat */
     web_links_install(); /* the old website links to the host's pages; a game without ShellExecuteA has none */
+    duel_numbers_install(); /* an infinite ATK shows as "\u221e"; before the UI probe, which watches the Flash calls through it */
     ui_probe_install(); /* debugging aid, off unless YO3_UI_PROBE is set; never a reason to refuse the game */
     mod_ready = 1;
     return mod_ready;
