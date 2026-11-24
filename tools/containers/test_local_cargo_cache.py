@@ -66,6 +66,19 @@ class LocalCargoCache(unittest.TestCase):
             self.assertEqual((self.saved / '.yo3-cache-owner').read_text(), cache.OWNER)
             self.assertEqual((self.repo / 'target').resolve(), self.saved)
 
+    def test_earlier_builds_of_the_repositorys_own_crates_are_pruned_and_dependencies_kept(self):
+        (self.repo / 'crates/yo3-thing').mkdir(parents=True)
+        (self.repo / 'crates/yo3-thing/Cargo.toml').write_text('[package]\nname = "yo3-thing"\nversion = "0.0.0"\n')
+        cache.prepare(self.repo, self.home)
+        for folder in ['debug/build/yo3-thing/0123', 'release/build/yo3-thing/4567', 'x86_64-pc-windows-gnu/release/build/yo3-thing/89ab',
+                       'debug/build/serde/cdef', 'debug/deps']:
+            (self.saved / folder).mkdir(parents=True)
+            (self.saved / folder / 'artifact').write_text('x' * 4096)
+        self.assertIn('reused', cache.prepare(self.repo, self.home))
+        self.assertFalse(any((self.saved / p).exists() for p in ['debug/build/yo3-thing', 'release/build/yo3-thing', 'x86_64-pc-windows-gnu/release/build/yo3-thing']))
+        self.assertTrue((self.saved / 'debug/build/serde/cdef/artifact').exists(), 'a dependency stays')
+        self.assertTrue((self.saved / 'debug/deps/artifact').exists())
+
     def test_low_space_after_eviction_fails_before_a_build(self):
         cache.prepare(self.repo, self.home)
         low = shutil.disk_usage(self.saved)._replace(free=0)

@@ -151,7 +151,10 @@ browser without `--with-deps` and have no sudo grant. Actions set up pinned Node
 targets and nextest as needed. The packaged-updater gate starts the previous published Desktop binary: its glibc
 requirement also applies to the runner. Desktop v0.1.0 requires glibc 2.43, so Ubuntu 24.04 cannot run that gate.
 The VM has 6 vCPUs, 12 GiB RAM and a 150 GiB virtual disk; leave room for cross-platform bundles as well as Docker
-build cache. The disk is thin-provisioned, so also watch free space on the host's `/data` filesystem.
+build cache. The release job keeps its Cargo output in `~yo3-runner/.cache/yo3-revival/cargo-target`
+(`.github/scripts/local_cargo_cache.py`): before each run it removes the earlier builds of this repository's own crates
+(a new commit rebuilds them; kept, they filled the disk mid-run on 2026-11-24 at 69 GB) and keeps the third-party ones,
+and it resets the cache when it is over 40 GiB or under 45 GiB is free (a cold run builds about 40 GiB). The disk is thin-provisioned, so also watch free space on the host's `/data` filesystem.
 
 To recreate the registration, use **Settings → Actions → Runners → New self-hosted runner**, verify the official
 archive checksum, configure it for this repository with label `home` under its dedicated account, and install/start
