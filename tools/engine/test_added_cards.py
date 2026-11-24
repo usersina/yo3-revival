@@ -3,7 +3,9 @@
 and the table's rules hold. Needs engine/fetch.sh's data and the game (skipped without them)."""
 import importlib.util
 import os
+import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 SPEC = importlib.util.spec_from_file_location('added', Path(__file__).with_name('added-cards.py'))
@@ -40,11 +42,54 @@ class AddedCards(unittest.TestCase):
         found = {name: (line, why) for name, line, why in added.find(
             ['black rose moonlight dragon', 'Number 39: Utopia', 'Stardust Dragon', 'Shooting Quasar Dragon', 'Nope Nope'])}
         line, why = found['Black Rose Moonlight Dragon']
-        self.assertEqual((line.split('\t')[:3], why), (['4835', '11123', 'Black Rose Moonlight Dragon'], []), 'the next row, its Konami id')
-        self.assertIn("can't be shown", found['Number 39: Utopia'][1][0])
+        self.assertEqual((line.split('\t')[:4], why), (['4835', '11123', '', 'Black Rose Moonlight Dragon'], []), 'the next row, its Konami id')
+        self.assertIn("can't show it", found['Number 39: Utopia'][1][0])
         self.assertEqual(found['Stardust Dragon'][1], ['the game already has it'])
         self.assertEqual(found['Shooting Quasar Dragon'][1], ['engine/added/cards.tsv already has it'])
         self.assertIn('check the spelling', found['Nope Nope'][1][0])
+
+    def test_spells_and_traps_are_the_games_kinds(self):
+        ctx = added.load()
+        st = ctx['learned']['spell_trap']
+        # (kind, attribute, race, subtype): 13 Spell / 14 Trap with attribute 8/9 and race 23/24, as every game card has.
+        self.assertEqual(st[0x2], (13, 8, 23, 0))
+        self.assertEqual(st[0x80002], (13, 8, 23, 2), 'Field')
+        self.assertEqual(st[0x10002], (13, 8, 23, 5), 'Quick-Play')
+        self.assertEqual(st[0x100004], (14, 9, 24, 1), 'Counter Trap')
+        advanced_dark = ctx['data'][12644061]
+        a, b, why = added.encode(advanced_dark, 10214, ctx['learned'])
+        f = added.fields(b)
+        self.assertEqual((why, a, f['kind'], f['attribute'], f['race'], f['subtype'], f['level']), ([], 10214, 13, 8, 23, 2, 0))
+
+    def test_a_newer_card_gets_a_stand_in_id_the_client_can_hold(self):
+        ctx = added.load()
+        (name, line, why), = added.find(['18847598'], ctx)  # Advanced Crystal Beast Amber Mammoth, Konami id 17632
+        self.assertEqual((name, why), ('Advanced Crystal Beast Amber Mammoth', []))
+        _, cid, sid, _, _ = line.split('\t')
+        sid = int(sid)
+        self.assertEqual(cid, '17632')
+        self.assertTrue(ctx['base'] <= sid <= 0x3FFF and sid not in ctx['in_game'] and sid not in ctx['konami'])
+        self.assertEqual(added.find(['cid:17632'], ctx)[0][0], name, 'by Konami id too')
+        self.assertEqual(added.find(['Advanced Crystal Beast Amber Mammoth', 'Advanced Crystal Beast Amethyst Cat'], ctx)[1][1].split('\t')[2],
+                         str(added.next_stand_in(ctx, {sid})), 'each card of a batch its own stand-in')
+        # The table takes it: the client's id is the stand-in, the real one is kept.
+        with tempfile.TemporaryDirectory() as tmp:
+            table = os.path.join(tmp, 'cards.tsv')
+            with open(added.TABLE) as f:
+                text = f.read()
+            with open(table, 'w') as f:
+                f.write(text + line + 'test\n')
+            with mock.patch.object(added, 'TABLE', table):
+                card = added.build()['cards'][-1]
+            self.assertEqual((card['cid'], card['konami_id'], card['a'] & 0x3FFF, card['passcode']), (sid, 17632, sid, 18847598))
+            for wrong, says in ((line.replace(f'\t{sid}\t', '\t\t'), 'give it a stand-in'),
+                                (line.replace(f'\t{sid}\t', '\t3900\t'), 'is a card of the game'),
+                                (line.replace(f'\t{sid}\t', '\t9709\t'), "already a card's Konami id")):
+                with open(table, 'w') as f:
+                    f.write(text + wrong + 'test\n')
+                with mock.patch.object(added, 'TABLE', table), self.assertRaises(SystemExit) as e:
+                    added.build()
+                self.assertIn(says, str(e.exception))
 
 
 class Pure(unittest.TestCase):

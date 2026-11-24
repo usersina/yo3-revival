@@ -3,19 +3,28 @@
 
     tools/engine/added-cards.py            write engine/added-cards.json
     tools/engine/added-cards.py --check    compare the committed file with a fresh build (exit 1 when it differs)
-    tools/engine/added-cards.py --find NAME [NAME...]
-                                           whether each card (its English name, any case) can be added, and the line
-                                           for engine/added/cards.tsv when it can (rows continue after the table's)
+    tools/engine/added-cards.py --find CARD [CARD...]
+                                           whether each card can be added, and the line for engine/added/cards.tsv
+                                           when it can (rows continue after the table's). CARD is its English name
+                                           (any case), its passcode, or `cid:N` (its Konami id)
+    tools/engine/added-cards.py --find-file FILE   the same for a file of cards, one per line (`#` comments)
 
 Input (committed): engine/added/cards.tsv, one line per added card: its permanent `row` (4834 on, after the game's last;
-never reused or reordered: decks and saves store rows), its Konami id, its name (for reading the table) and a note.
+never reused or reordered: decks and saves store rows), its Konami id, its `stand_in` id (below), its name (for reading
+the table) and a note.
+
+The client keeps a card's Konami id in 14 bits (16383 at most) and looks cards up from its lowest id (3900). A newer card
+whose Konami id is beyond that gets a permanent stand-in: the lowest id from 3900 that no card has (not the game's, no
+Konami card's in the pinned ids, no other added card's). The client, the server and the rules engine know the card by
+that id (the JSON's `cid`; `konami_id` keeps the real one); --find picks it. Like a row, it is never changed.
 
 Each card's data comes from the pinned EDOPro database through the pinned Konami ids (engine/card-ids.json), never typed
 by hand. The client's encoding of a row (`CARD_Prop`: word `a` = Konami id, ATK/10, DEF/10; word `b` = kind, attribute,
 level, race, artwork; docs/client-internals.md, Card data) is learned from the game's own cards: every game card the
-database also has gives its type, attribute and race next to the client's kind, attribute and race, and an added card
-may only use values the game itself shows. So no Xyz, Link or Pendulum card can be added (the client has no such kind),
-and a stat beyond the nine bits (5110) is refused. `CARD_Genre` (Edit Deck's genre search) is 0 for now: its bits are
+database also has gives its type, attribute and race next to the client's kind, attribute and race (and, for a Spell or
+Trap, its subtype: Field, Equip, Quick-Play...), and an added card may only use values the game itself shows. So no Xyz,
+Link or Pendulum card can be added (the client has no such kind), a stat beyond the nine bits (5110) is refused, and so
+is a Konami id beyond the row's 14 bits (16383). `CARD_Genre` (Edit Deck's genre search) is 0 for now: its bits are
 the client's own categories, not EDOPro's.
 
 Needs the pinned data (engine/fetch.sh) and the game (YO3_GAME_DIR, else the default Wine path).
@@ -92,9 +101,9 @@ def fields(b):
 
 def learn(rows, data, passcode):
     """What the client calls each database value, from the game cards both have: {type: kind}, {attribute: attribute},
-    {race: race} (monsters only), and the artwork number of a card's first print."""
-    seen = {'kind': collections.defaultdict(collections.Counter), 'attribute': collections.defaultdict(collections.Counter),
-            'race': collections.defaultdict(collections.Counter)}
+    {race: race} (monsters), {type: (kind, attribute, race, subtype)} (Spells and Traps), and the artwork number of a
+    card's first print."""
+    seen = {k: collections.defaultdict(collections.Counter) for k in ('kind', 'attribute', 'race', 'spell_trap')}
     arts = collections.Counter()
     for a, b in rows:
         cid = a & 0x3FFF
@@ -102,15 +111,54 @@ def learn(rows, data, passcode):
         if not cid or code not in data:
             continue
         f, d = fields(b), data[code]
+        arts[f['art']] += 1
         if not d['type'] & 1:
-            continue  # Spells and Traps: not needed by a monster, and their attribute and race carry the card's family
+            # A Spell or Trap: its whole type (Spell, Quick-Play Spell, Counter Trap...) decides the client's kind,
+            # attribute, race and subtype together (13 Spell with 8 and 23, 14 Trap with 9 and 24).
+            seen['spell_trap'][d['type']][(f['kind'], f['attribute'], f['race'], f['subtype'])] += 1
+            continue
         seen['kind'][d['type']][f['kind']] += 1
         seen['attribute'][d['attribute']][f['attribute']] += 1
         seen['race'][d['race']][f['race']] += 1
-        arts[f['art']] += 1
     learned = {k: {v: c.most_common(1)[0][0] for v, c in table.items()} for k, table in seen.items()}
     learned['art'] = min(arts) if arts else 1  # the lowest artwork number is a card's first print
     return learned
+
+
+def encode(d, cid, learned):
+    """A database card as the client's row words, `cid` the id the client knows it by (its Konami id or stand-in): (a, b, the
+    reasons it can't be one). A Spell or Trap has no level or
+    stats; a monster's type, attribute and race each need a game card that has them."""
+    why = []
+    if not 0 < cid <= 0x3FFF:
+        why.append(f'id {cid} does not fit the client\'s 14 bits')
+    if not d['type'] & 1:
+        st = learned['spell_trap'].get(d['type'])
+        if st is None:
+            why.append(f'no game card has its type ({d["type"]:#x}), so the client can\'t show it')
+            return None, None, why
+        kind, attribute, race, subtype = st
+        return cid & 0x3FFF, kind << 3 | attribute << 8 | subtype << 16 | race << 19 | learned['art'] << 27, why
+    kind, attribute, race = (learned['kind'].get(d['type']), learned['attribute'].get(d['attribute']), learned['race'].get(d['race']))
+    for what, value, given in (('type', d['type'], kind), ('attribute', d['attribute'], attribute), ('race', d['race'], race)):
+        if given is None:
+            why.append(f'no game card has its {what} ({value:#x}), so the client can\'t show it (Xyz, Link, Pendulum and newer kinds)')
+    if not 1 <= d['level'] <= 12:
+        why.append(f'level {d["level"]}')
+    stats = []
+    for what in ('atk', 'def'):
+        v = d[what]
+        if v == -2:
+            stats.append(0x1FF)
+        elif 0 <= v <= STAT_MAX and v % 10 == 0:
+            stats.append(v // 10)
+        else:
+            why.append(f'{what.upper()} {v} is beyond what the client can show')
+            stats.append(0)
+    if None in (kind, attribute, race):
+        return None, None, why
+    return (cid & 0x3FFF | stats[0] << 14 | stats[1] << 23,
+            kind << 3 | attribute << 8 | d['level'] << 12 | race << 19 | learned['art'] << 27, why)
 
 
 def table():
@@ -126,22 +174,51 @@ def load():
             for r in db.execute('select d.id, d.type, d.atk, d.def, d.level, d.race, d.attribute, t.name, t.desc from datas d join texts t on t.id = d.id')}
     passcode = passcodes(alias)
     rows = client_rows()
+    with open(os.path.join(ENGINE, 'card-ids.json')) as f:
+        konami = {m['konami_id'] for c in json.load(f)['data'] for m in c.get('misc_info', []) if m.get('konami_id', 0) > 0}
+    in_game = {a & 0x3FFF for a, _ in rows} - {0}
     return {'data': data, 'passcode': passcode, 'rows': rows, 'learned': learn(rows, data, passcode),
-            'in_game': {a & 0x3FFF for a, _ in rows} - {0}}
+            'in_game': in_game, 'konami': konami, 'base': min(in_game)}
+
+
+def stand_in_problem(sid, ctx, taken):
+    """Why `sid` can't be a stand-in id, or None."""
+    if not ctx['base'] <= sid <= 0x3FFF:
+        return f'stand-in {sid} is outside {ctx["base"]}..16383 (the client\'s lookup starts at its lowest id)'
+    if sid in ctx['in_game']:
+        return f'stand-in {sid} is a card of the game'
+    if sid in ctx['konami'] or sid in taken:
+        return f'stand-in {sid} is already a card\'s Konami id'
+    return None
+
+
+def next_stand_in(ctx, taken):
+    return next(i for i in range(ctx['base'], 0x4000) if stand_in_problem(i, ctx, taken) is None)
 
 
 def build():
     ctx = load()
     data, passcode, rows, learned, in_game = ctx['data'], ctx['passcode'], ctx['rows'], ctx['learned'], ctx['in_game']
     out, problems = [], []
+    taken = set()
     for i, line in enumerate(table()):
         row, cid = int(line['row']), int(line['konami_id'])
+        sid = int(line['stand_in']) if (line.get('stand_in') or '').strip() else None
+        if sid is not None:
+            problem = stand_in_problem(sid, ctx, taken)
+            if problem:
+                problems.append(f'{line["name"]}: {problem}')
+            if cid <= 0x3FFF:
+                problems.append(f'{line["name"]}: a stand-in, but its Konami id {cid} fits the client')
+            taken.add(sid)
+        elif cid > 0x3FFF:
+            problems.append(f'{line["name"]}: Konami id {cid} is beyond the client\'s 14 bits: give it a stand-in (--find picks one)')
+        elif cid in taken:
+            problems.append(f'{line["name"]}: Konami id {cid} is an earlier card\'s stand-in')
         if row != len(rows) + i:
             problems.append(f'{line["name"]}: row {row}, the next is {len(rows) + i} (rows are permanent and consecutive after the game\'s)')
         if cid in in_game:
             problems.append(f'{line["name"]}: Konami id {cid} is already a card of the game')
-        if not 0 < cid <= 0x3FFF:
-            problems.append(f'{line["name"]}: Konami id {cid} does not fit the client\'s 14 bits')
         code = passcode.get(cid)
         d = data.get(code)
         if d is None:
@@ -149,31 +226,34 @@ def build():
             continue
         if d['name'] != line['name']:
             problems.append(f'{line["name"]}: the database calls {code} "{d["name"]}"')
-        kind, attribute, race = (learned['kind'].get(d['type']), learned['attribute'].get(d['attribute']), learned['race'].get(d['race']))
-        for what, value, given in (('type', d['type'], kind), ('attribute', d['attribute'], attribute), ('race', d['race'], race)):
-            if given is None:
-                problems.append(f'{line["name"]}: no game card has its {what} ({value:#x}), so the client can\'t show it')
-        if not 1 <= d['level'] <= 12:
-            problems.append(f'{line["name"]}: level {d["level"]}')
-        stats = []
-        for what in ('atk', 'def'):
-            v = d[what]
-            if v == -2:
-                stats.append(0x1FF)
-            elif 0 <= v <= STAT_MAX and v % 10 == 0:
-                stats.append(v // 10)
-            else:
-                problems.append(f'{line["name"]}: {what.upper()} {v} is beyond what the client can show')
-                stats.append(0)
-        if None in (kind, attribute, race):
+        client = sid if sid is not None else cid
+        a, b, why = encode(d, client, learned)
+        problems += [f'{line["name"]}: {w}' for w in why if sid is not None or cid <= 0x3FFF or 'bits' not in w]
+        if why:
             continue
-        a = cid | stats[0] << 14 | stats[1] << 23
-        b = kind << 3 | attribute << 8 | d['level'] << 12 | race << 19 | learned['art'] << 27
-        out.append({'row': row, 'cid': cid, 'passcode': code, 'name': d['name'], 'desc': d['desc'].replace('\r\n', '\r').replace('\n', '\r'),
-                    'a': a, 'b': b, 'genre': 0, 'note': line['note']})
+        card = {'row': row, 'cid': client, 'passcode': code, 'name': d['name'], 'desc': d['desc'].replace('\r\n', '\r').replace('\n', '\r'),
+                'a': a, 'b': b, 'genre': 0, 'note': line['note']}
+        if sid is not None:
+            card['konami_id'] = cid
+        out.append(card)
     if problems:
         raise SystemExit('engine/added/cards.tsv:\n  ' + '\n  '.join(problems))
     return {'format': FORMAT, 'version': 1, 'first_row': len(rows), 'cards': out}
+
+
+def lookup(card, data, by_name, cid_of, passcode):
+    """The passcode of `card`: an English name (any case), a passcode, or `cid:N`; only cards with a Konami id."""
+    card = card.strip()
+    if card.lower().startswith('cid:') and card[4:].strip().isdigit():
+        code = passcode.get(int(card[4:]))
+        return code if code in data else None
+    if card.isdigit():
+        code = int(card)
+        if code in data and code not in cid_of:  # an alternate artwork's passcode: the card's original one
+            code = next((c for c in cid_of if data.get(c, {}).get('name') == data[code]['name']), code)
+        return code if code in cid_of else None
+    codes = [c for c in by_name.get(card.casefold(), []) if c in cid_of]
+    return codes[0] if codes else None
 
 
 def find(names, ctx=None):
@@ -185,35 +265,31 @@ def find(names, ctx=None):
     cid_of = {}
     for cid, code in ctx['passcode'].items():
         cid_of.setdefault(code, cid)
-    listed = {int(line['konami_id']) for line in table()}
-    row = len(ctx['rows']) + len(table())
+    lines = table()
+    listed = {int(line['konami_id']) for line in lines}
+    taken = {int(line['stand_in']) for line in lines if (line.get('stand_in') or '').strip()}
+    row = len(ctx['rows']) + len(lines)
     out = []
     for name in names:
-        codes = [c for c in by_name.get(name.casefold(), []) if c in cid_of]
-        if not codes:
-            out.append((name, None, ['no card of that name with a Konami id in the pinned data (check the spelling)']))
+        code = lookup(name, ctx['data'], by_name, cid_of, ctx['passcode'])
+        if code is None:
+            out.append((name, None, ['no card of that name, passcode or Konami id in the pinned data (check the spelling)']))
             continue
-        code = codes[0]
         d, cid = ctx['data'][code], cid_of[code]
         why = []
         if cid in ctx['in_game']:
             why.append('the game already has it')
         if cid in listed:
             why.append('engine/added/cards.tsv already has it')
-        for what, value in (('kind', d['type']), ('attribute', d['attribute']), ('race', d['race'])):
-            if ctx['learned'][what].get(value) is None:
-                why.append(f'no game card has its {"type" if what == "kind" else what} ({value:#x}): Xyz, Link, Pendulum and newer kinds can\'t be shown')
-        if not 1 <= d['level'] <= 12:
-            why.append(f'level {d["level"]}')
-        for what in ('atk', 'def'):
-            v = d[what]
-            if v != -2 and not (0 <= v <= STAT_MAX and v % 10 == 0):
-                why.append(f'{what.upper()} {v} is beyond what the client can show')
+        sid = next_stand_in(ctx, taken) if cid > 0x3FFF or cid in taken else None
+        why += encode(d, sid or cid, ctx['learned'])[2]
         if why:
             out.append((d['name'], None, why))
         else:
-            out.append((d['name'], f'{row}\t{cid}\t{d["name"]}\t', []))
+            out.append((d['name'], f'{row}\t{cid}\t{sid or ""}\t{d["name"]}\t', []))
             row += 1
+            if sid:
+                taken.add(sid)
     return out
 
 
@@ -224,8 +300,12 @@ def render(doc):
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--check', action='store_true', help='compare the committed file with a fresh build')
-    p.add_argument('--find', nargs='+', metavar='NAME', help='whether these cards can be added, and their table lines')
+    p.add_argument('--find', nargs='+', metavar='CARD', help='whether these cards (names, passcodes or cid:N) can be added, and their table lines')
+    p.add_argument('--find-file', metavar='FILE', help='the same for the cards in FILE, one per line')
     args = p.parse_args(argv)
+    if args.find_file:
+        with open(args.find_file, encoding='utf-8-sig') as f:
+            args.find = (args.find or []) + [l.strip() for l in f if l.strip() and not l.lstrip().startswith('#')]
     if args.find:
         results = find(args.find)
         for name, line, why in results:
