@@ -13,6 +13,20 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- New cards the game never had: Ra's Disciple, The Seal of Orichalcos, Divine Serpent Geh, Illusion Gate and
+  Underworld Circle. A host gives them with `give-cards` for now.
+- Anime-only cards, played when the host turns on anime cards: Orichalcos Gigas, Kyutora, Dexia, Aristeros, Deuteros
+  and Tritos, and Arduous Decision. Their text starts with [Anime]. With anime cards off, a deck holding one can't
+  duel, and the chat tells you which card to take out.
+- With anime cards on, Divine Serpent Geh and Underworld Circle play their anime versions.
+- House rule: a card that Special Summons "ignoring its Summoning conditions" (Illusion Gate, Arduous Decision...)
+  ignores all of them, including "must first be properly Summoned". Illusion Gate can now take a Divine Serpent Geh
+  that was only ever sent to the Graveyard. Monster Reborn and other revival cards keep every limit.
+- Added cards are found by Edit Deck's Search Key filters (Special Summon, Destroy monster...), and their new-card reveal
+  shows their rarity's frame.
+
 ## v0.1.22 (2026-11-24)
 
 Multiplayer: update to v0.1.22 to join the hosted server after deployment.

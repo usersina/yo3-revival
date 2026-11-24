@@ -9,6 +9,7 @@ and its content belong to their owners.
 **Contents**
 
 - [Rules](#rules)
+- [House rules](#house-rules)
 - [What the server keeps](#what-the-server-keeps)
 - [Who can see what](#who-can-see-what)
 - [Deleting your account](#deleting-your-account)
@@ -26,6 +27,17 @@ and its content belong to their owners.
 Moderators can mute you (chat and D-Mail), restrict you, ban you, or sign you out everywhere. Each of these can be
 for a set time or until it is lifted. Every moderator action is written to the server's audit log with the
 moderator's name and the reason.
+
+## House rules
+
+Duels follow the official rules of the card game, with these changes for every duel on YO3 Revival servers:
+
+- **"Ignoring its Summoning conditions" means all of them.** A card that Special Summons a monster "ignoring its
+  Summoning conditions" (Illusion Gate, Arduous Decision, the anime Underworld Circle...) also ignores "must first be
+  properly Summoned": Illusion Gate can take a Divine Serpent Geh that was only ever sent to the Graveyard, or a Synchro
+  Monster that was never Synchro Summoned. The official ruling keeps that limit; the anime never showed it. Monster
+  Reborn, Call of the Haunted and every other revival that ignores nothing keep every limit, and a monster that "cannot
+  be Special Summoned by other ways" is still out of their reach (rules engine: `crates/yo3-engine/src/house_rules.lua`).
 
 ## What the server keeps
 
