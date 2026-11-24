@@ -42,7 +42,7 @@ class AddedCards(unittest.TestCase):
         found = {name: (line, why) for name, line, why in added.find(
             ['black rose moonlight dragon', 'Number 39: Utopia', 'Stardust Dragon', 'Shooting Quasar Dragon', 'Nope Nope'])}
         line, why = found['Black Rose Moonlight Dragon']
-        self.assertEqual((line.split('\t')[:5], why), (['4835', '11123', '', '', 'Black Rose Moonlight Dragon'], []), 'the next row, its Konami id')
+        self.assertEqual((line.split('\t')[:6], why), (['4836', '11123', '', '', '', 'Black Rose Moonlight Dragon'], []), 'the next row, its Konami id')
         self.assertIn("can't show it", found['Number 39: Utopia'][1][0])
         self.assertEqual(found['Stardust Dragon'][1], ['the game already has it'])
         self.assertEqual(found['Shooting Quasar Dragon'][1], ['engine/added/cards.tsv already has it'])
@@ -65,13 +65,13 @@ class AddedCards(unittest.TestCase):
         ctx = added.load()
         (name, line, why), = added.find(['18847598'], ctx)  # Advanced Crystal Beast Amber Mammoth, Konami id 17632
         self.assertEqual((name, why), ('Advanced Crystal Beast Amber Mammoth', []))
-        _, cid, sid, _, _, _ = line.split('\t')
+        _, cid, sid, _, _, _, _ = line.split('\t')
         sid = int(sid)
         self.assertEqual(cid, '17632')
         self.assertTrue(ctx['base'] <= sid <= 0x3FFF and sid not in ctx['in_game'] and sid not in ctx['konami'])
         self.assertEqual(added.find(['cid:17632'], ctx)[0][0], name, 'by Konami id too')
         self.assertEqual(added.find(['Advanced Crystal Beast Amber Mammoth', 'Advanced Crystal Beast Amethyst Cat'], ctx)[1][1].split('\t')[2],
-                         str(added.next_stand_in(ctx, {sid})), 'each card of a batch its own stand-in')
+                         str(added.next_stand_in(ctx, {sid} | {int(l['stand_in']) for l in added.table() if l['stand_in']})), 'each card of a batch its own stand-in')
         # The table takes it: the client's id is the stand-in, the real one is kept.
         with tempfile.TemporaryDirectory() as tmp:
             table = os.path.join(tmp, 'cards.tsv')
@@ -98,7 +98,7 @@ class AddedCards(unittest.TestCase):
         for (a, _), genre in zip(ctx['rows'], ctx['genres']):
             code = ctx['passcode'].get(a & 0x3FFF)
             if a & 0x3FFF and code in ctx['data']:
-                guess = added.genre_of(ctx['data'][code], ctx['genre'])
+                guess = added.genre_of(added.features(ctx['data'][code], code), ctx['genre'])
                 tp += (guess & genre).bit_count()
                 fp += (guess & ~genre).bit_count()
         self.assertGreater(tp / (tp + fp), 0.93, 'the bits an added card gets are the game\'s for such a card')
@@ -114,15 +114,43 @@ class AddedCards(unittest.TestCase):
             table = os.path.join(tmp, 'cards.tsv')
             with open(added.TABLE) as f:
                 text = f.read()
+            def with_rarity(rarity):
+                parts = line.split('\t')
+                parts[3] = rarity
+                return '\t'.join(parts)
             for rarity, bits in (('', 0), ('ultra', 2), ('Rare', 4)):
                 with open(table, 'w') as f:
-                    f.write(text + line.replace('\t\tBlack', f'\t{rarity}\tBlack') + 'test\n')
+                    f.write(text + with_rarity(rarity) + 'test\n')
                 with mock.patch.object(added, 'TABLE', table):
                     self.assertEqual(added.build()['cards'][-1]['b'] >> 24 & 7, bits, rarity)
             with open(table, 'w') as f:
-                f.write(text + line.replace('\t\tBlack', '\tshiny\tBlack') + 'test\n')
+                f.write(text + with_rarity('shiny') + 'test\n')
             with mock.patch.object(added, 'TABLE', table), self.assertRaises(SystemExit):
                 added.build()
+
+    def test_an_anime_only_card_is_marked_and_tagged(self):
+        # Orichalcos Gigas (#75's first anime-only card): no Konami id, a stand-in, the unofficial database's data, the
+        # [Anime] line first, genre bits from its script (it Special Summons itself and gains ATK).
+        gigas = next(c for c in added.build()['cards'] if c['name'] == 'Orichalcos Gigas')
+        self.assertEqual((gigas['anime_only'], gigas['passcode'], gigas['cid']), (True, 170000171, 3968))
+        self.assertTrue(gigas['desc'].startswith('[Anime]\r'))
+        self.assertEqual((gigas['a'] >> 14 & 0x1FF, gigas['a'] >> 23 & 0x1FF, added.fields(gigas['b'])['level']), (40, 150, 4))
+        self.assertTrue(gigas['genre'] >> 3 & 1 and gigas['genre'] >> 7 & 1, 'Special Summon, Increase/Decrease ATK/DEF')
+        ctx = added.load()
+        found = {n: (l, w) for n, l, w in added.find(['Orichalcos Gigas', 'anime:170000172', 'Orichalcos Shunoros (Anime)'], ctx)}
+        self.assertEqual(found['Orichalcos Gigas'][1], ['engine/added/cards.tsv already has it'])
+        line = found['Orichalcos Malevolence'][0].split('\t')
+        self.assertEqual((line[1], line[4]), ('', '170000172'), 'no Konami id, its anime passcode')
+        self.assertIn('check the spelling', found['Orichalcos Shunoros (Anime)'][1][0], 'an anime version of a printed card is no anime-only card')
+        with tempfile.TemporaryDirectory() as tmp:
+            table = os.path.join(tmp, 'cards.tsv')
+            with open(added.TABLE) as f:
+                text = f.read()
+            with open(table, 'w') as f:
+                f.write(text.replace('\t\t3968\t\t170000171', '\t4007\t3968\t\t170000171'))
+            with mock.patch.object(added, 'TABLE', table), self.assertRaises(SystemExit) as e:
+                added.build()
+            self.assertIn('has no Konami id', str(e.exception))
 
 
 class Pure(unittest.TestCase):

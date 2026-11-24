@@ -18,7 +18,9 @@ def build(data, added=()):
     lines = ['cid\tanime\tofficial']
     mapped = {c['cid'] for c in data['cards']}
     # An added card with an anime version is in the map already: its anime picture, the official one standing in.
-    cards = list(data['cards']) + [{'cid': c['cid'], 'anime': 0, 'official': c['passcode']} for c in added if c['cid'] not in mapped]
+    # An anime-only added card has only its anime picture: its passcode both ways.
+    cards = list(data['cards']) + [{'cid': c['cid'], 'anime': c['passcode'] if c.get('anime_only') else 0, 'official': c['passcode']}
+                                   for c in added if c['cid'] not in mapped]
     for card in sorted(cards, key=lambda c: c['cid']):
         anime, official = int(card.get('anime') or 0), int(card.get('official') or 0)
         if not anime and not official:

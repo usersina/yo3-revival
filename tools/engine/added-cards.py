@@ -7,11 +7,18 @@
                                            whether each card can be added, and the line for engine/added/cards.tsv
                                            when it can (rows continue after the table's). CARD is its English name
                                            (any case), its passcode, or `cid:N` (its Konami id)
+                                           `anime:N` (an anime-only card's passcode in the unofficial database)
     tools/engine/added-cards.py --find-file FILE   the same for a file of cards, one per line (`#` comments)
 
 Input (committed): engine/added/cards.tsv, one line per added card: its permanent `row` (4834 on, after the game's last;
 never reused or reordered: decks and saves store rows), its Konami id, its `stand_in` id (below), its `rarity` (below,
-empty for Common), its name (for reading the table) and a note.
+empty for Common), `anime` (an anime-only card's passcode, below), its name (for reading the table) and a note.
+
+An **anime-only** card (one never printed: Orichalcos Gigas) has no Konami id: its `anime` column names its passcode in
+the pinned unofficial database (marked Anime there, `ot` 4), it always has a stand-in, and it needs a working script in
+`unofficial/` (one that registers effects, not a placeholder). Its text starts with the `[Anime]` line. The list marks it
+`anime_only`: the server refuses every duel with it while the `anime-cards` setting is off, whatever the banlist, and the
+engine plays it only with the setting on.
 
 The client keeps a card's Konami id in 14 bits (16383 at most) and looks cards up from its lowest id (3900). A newer card
 whose Konami id is beyond that gets a permanent stand-in: the lowest id from 3900 that no card has (not the game's, no
@@ -25,8 +32,10 @@ database also has gives its type, attribute and race next to the client's kind, 
 Trap, its subtype: Field, Equip, Quick-Play...), and an added card may only use values the game itself shows. So no Xyz,
 Link or Pendulum card can be added (the client has no such kind), a stat beyond the nine bits (5110) is refused, and so
 is a Konami id beyond the row's 14 bits (16383). `CARD_Genre` (Edit Deck's search by effect: Special Summon, Destroy monster, Pierce, Flip Effect...) is learned the
-same way: for each of its bits, the EDOPro categories (`datas.category`, the official database's effect categories) and
-type flags that mark it on the game's cards with at least 85% precision (`learn_genre`). Bits no such rule predicts
+same way: for each of its bits, the features that mark it on the game's cards with at least 85% precision
+(`learn_genre`): type flags, the effect words of the card's script (CATEGORY_SPECIAL_SUMMON, EFFECT_PIERCE...) and the
+official database's effect categories (`datas.category`; an anime-only card is judged without them, as the unofficial
+database numbers them its own way). Bits no such rule predicts
 (Recover cards from Graveyard, Hand destruction...) stay unset: an added card is not found under them.
 
 Rarity (word b bits 24-26: 0 Common, 4 Rare, 3 Super Rare, 2 Ultra Rare, as the game's pack files place the cards in
@@ -42,6 +51,7 @@ import csv
 import importlib.util
 import json
 import os
+import re
 import sqlite3
 import struct
 import sys
@@ -136,22 +146,50 @@ GENRE_PRECISION = 0.85
 RARITY = {'': 0, 'common': 0, 'rare': 4, 'super': 3, 'ultra': 2}
 
 
-def learn_genre(rows, genres, data, passcode):
-    """{genre bit: [('category' | 'type', bit), ...]}: a card gets the genre bit when it has any of the listed bits.
-    Learned from the game's cards: features chosen greedily, each marking the genre bit with at least
-    GENRE_PRECISION on the cards it marks and adding at least 2% (and 3 cards) of the genre bit's cards."""
+EFFECT_WORD = re.compile(r'\b(?:CATEGORY|EFFECT)_[A-Z_]+')
+SCRIPT_FOLDERS = ['official', 'pre-errata', 'pre-release', 'unofficial']
+
+
+def script_words(code):
+    """The effect words (CATEGORY_..., EFFECT_...) of the script the engine plays for `code`: our override, else
+    ProjectIgnis' (crates/yo3-engine cards.rs' order)."""
+    for path in [os.path.join(ENGINE, 'overrides', f'c{code}.lua')] + [
+            os.path.join(ENGINE, 'vendor', 'CardScripts', folder, f'c{code}.lua') for folder in SCRIPT_FOLDERS]:
+        if os.path.exists(path):
+            with open(path, encoding='utf-8', errors='replace') as f:
+                return set(EFFECT_WORD.findall(f.read()))
+    return set()
+
+
+def features(d, code, category=True):
+    """What a genre rule may test: the card's type flags, its script's effect words and (`category`) the official
+    database's effect categories. The unofficial database numbers its categories its own way, so an anime-only card is
+    judged without them."""
+    out = {('type', bit) for bit in range(32) if d['type'] >> bit & 1} | script_words(code)
+    if category:
+        out |= {('category', bit) for bit in range(64) if d['category'] >> bit & 1}
+    return out
+
+
+def game_cards(rows, genres, data, passcode, category=True):
+    """(the game's genre word, the features) for each game card the database has."""
     cards = []
     for (a, _), genre in zip(rows, genres):
         code = passcode.get(a & 0x3FFF)
         if a & 0x3FFF and code in data:
-            cards.append((genre, data[code]['category'], data[code]['type']))
-    def mask(test):
-        return sum(1 << i for i, c in enumerate(cards) if test(c))
-    features = [('category', bit) for bit in range(64)] + [('type', bit) for bit in range(32)]
-    marks = {f: mask(lambda c, f=f: (c[1] if f[0] == 'category' else c[2]) >> f[1] & 1) for f in features}
+            cards.append((genre, features(data[code], code, category)))
+    return cards
+
+
+def learn_genre(cards):
+    """{genre bit: [feature, ...]}: a card gets the genre bit when it has any of the listed features. Learned from
+    `cards` (genre word, features): features chosen greedily, each marking the genre bit with at least GENRE_PRECISION
+    on the cards it marks and adding at least 2% (and 3 cards) of the genre bit's cards."""
+    every = sorted(set().union(*(f for _, f in cards)), key=str) if cards else []
+    marks = {f: sum(1 << i for i, (_, fs) in enumerate(cards) if f in fs) for f in every}
     rules = {}
     for g in range(64):
-        has = mask(lambda c: c[0] >> g & 1)
+        has = sum(1 << i for i, (genre, _) in enumerate(cards) if genre >> g & 1)
         if has.bit_count() < 5:
             continue
         chosen, covered = [], 0
@@ -172,9 +210,9 @@ def learn_genre(rows, genres, data, passcode):
     return rules
 
 
-def genre_of(d, rules):
-    """An added card's CARD_Genre word, by the learned rules."""
-    return sum(1 << g for g, fs in rules.items() if any((d['category'] if k == 'category' else d['type']) >> bit & 1 for k, bit in fs))
+def genre_of(feats, rules):
+    """An added card's CARD_Genre word from its features, by the learned rules."""
+    return sum(1 << g for g, fs in rules.items() if any(f in feats for f in fs))
 
 
 def encode(d, cid, learned):
@@ -230,11 +268,34 @@ def load():
     with open(os.path.join(ENGINE, 'card-ids.json')) as f:
         konami = {m['konami_id'] for c in json.load(f)['data'] for m in c.get('misc_info', []) if m.get('konami_id', 0) > 0}
     in_game = {a & 0x3FFF for a, _ in rows} - {0}
+    unofficial = sqlite3.connect(os.path.join(ENGINE, 'vendor', 'BabelCDB', 'cards-unofficial.cdb'))
+    anime = {r[0]: {'type': r[1], 'atk': r[2], 'def': r[3], 'level': r[4] & 0xFF, 'race': r[5], 'attribute': r[6], 'name': r[7], 'desc': r[8],
+                    'category': r[9], 'alias': r[10]}
+             for r in unofficial.execute('select d.id, d.type, d.atk, d.def, d.level, d.race, d.attribute, t.name, t.desc, d.category, d.alias '
+                                         'from datas d join texts t on t.id = d.id where d.ot & 4')}
     genre = ypk_file('data/bin#/CARD_Genre.bin')
     genres = [struct.unpack_from('<Q', genre, i * 8)[0] for i in range(len(genre) // 8)]
     return {'data': data, 'passcode': passcode, 'rows': rows, 'learned': learn(rows, data, passcode),
-            'genre': learn_genre(rows, genres, data, passcode), 'genres': genres,
-            'in_game': in_game, 'konami': konami, 'base': min(in_game)}
+            'genre': learn_genre(game_cards(rows, genres, data, passcode)), 'genres': genres,
+            'anime_genre': learn_genre(game_cards(rows, genres, data, passcode, category=False)),
+            'in_game': in_game, 'konami': konami, 'base': min(in_game), 'anime': anime}
+
+
+ANIME_TAG = '[Anime]'  # crates/yo3-server/src/profile.rs ANIME_TAG: an anime card's text starts with it
+
+
+def anime_problem(code, d):
+    """Why an anime-only card's script can't be played, or None: it must exist in unofficial/ and register effects unless
+    the card is a Normal Monster."""
+    path = os.path.join(ENGINE, 'vendor', 'CardScripts', 'unofficial', f'c{code}.lua')
+    if not os.path.exists(path):
+        return f'no script unofficial/c{code}.lua'
+    normal = d['type'] & 0x11 == 0x11 and not d['type'] & 0x20
+    with open(path, encoding='utf-8', errors='replace') as f:
+        text = f.read()
+    if not normal and not any(w in text for w in ('RegisterEffect', 'aux.Add', 'Procedure', '.Add')):
+        return f'unofficial/c{code}.lua registers no effect (a placeholder)'
+    return None
 
 
 def stand_in_problem(sid, ctx, taken):
@@ -258,13 +319,20 @@ def build():
     out, problems = [], []
     taken = set()
     for i, line in enumerate(table()):
-        row, cid = int(line['row']), int(line['konami_id'])
+        row = int(line['row'])
+        anime_code = int(line['anime']) if (line.get('anime') or '').strip() else None
+        cid = int(line['konami_id']) if (line.get('konami_id') or '').strip() else 0
         sid = int(line['stand_in']) if (line.get('stand_in') or '').strip() else None
+        if anime_code is not None:
+            if cid:
+                problems.append(f'{line["name"]}: an anime-only card has no Konami id (konami_id stays empty)')
+            if sid is None:
+                problems.append(f'{line["name"]}: an anime-only card needs a stand-in (--find picks one)')
         if sid is not None:
             problem = stand_in_problem(sid, ctx, taken)
             if problem:
                 problems.append(f'{line["name"]}: {problem}')
-            if cid <= 0x3FFF:
+            if anime_code is None and cid <= 0x3FFF:
                 problems.append(f'{line["name"]}: a stand-in, but its Konami id {cid} fits the client')
             taken.add(sid)
         elif cid > 0x3FFF:
@@ -275,11 +343,20 @@ def build():
             problems.append(f'{line["name"]}: row {row}, the next is {len(rows) + i} (rows are permanent and consecutive after the game\'s)')
         if cid in in_game:
             problems.append(f'{line["name"]}: Konami id {cid} is already a card of the game')
-        code = passcode.get(cid)
-        d = data.get(code)
-        if d is None:
-            problems.append(f'{line["name"]}: Konami id {cid} has no card in the pinned database')
-            continue
+        if anime_code is not None:
+            code, d = anime_code, ctx['anime'].get(anime_code)
+            if d is None or d['alias']:
+                problems.append(f'{line["name"]}: {anime_code} is no anime card (ot 4, no alias) in the pinned unofficial database')
+                continue
+            problem = anime_problem(code, d)
+            if problem:
+                problems.append(f'{line["name"]}: {problem}')
+        else:
+            code = passcode.get(cid)
+            d = data.get(code)
+            if d is None:
+                problems.append(f'{line["name"]}: Konami id {cid} has no card in the pinned database')
+                continue
         if d['name'] != line['name']:
             problems.append(f'{line["name"]}: the database calls {code} "{d["name"]}"')
         rarity = (line.get('rarity') or '').strip().lower()
@@ -290,9 +367,15 @@ def build():
         problems += [f'{line["name"]}: {w}' for w in why if sid is not None or cid <= 0x3FFF or 'bits' not in w]
         if why:
             continue
-        card = {'row': row, 'cid': client, 'passcode': code, 'name': d['name'], 'desc': d['desc'].replace('\r\n', '\r').replace('\n', '\r'),
-                'a': a, 'b': b | RARITY.get(rarity, 0) << 24, 'genre': genre_of(d, ctx['genre']), 'note': line['note']}
-        if sid is not None:
+        desc = d['desc'].replace('\r\n', '\r').replace('\n', '\r')
+        if anime_code is not None:
+            desc = f'{ANIME_TAG}\r{desc}'
+        card = {'row': row, 'cid': client, 'passcode': code, 'name': d['name'], 'desc': desc,
+                'a': a, 'b': b | RARITY.get(rarity, 0) << 24, 'genre': genre_of(features(d, code, anime_code is None), ctx['anime_genre' if anime_code is not None else 'genre']),
+                'note': line['note']}
+        if anime_code is not None:
+            card['anime_only'] = True
+        elif sid is not None:
             card['konami_id'] = cid
         out.append(card)
     if problems:
@@ -325,12 +408,38 @@ def find(names, ctx=None):
     for cid, code in ctx['passcode'].items():
         cid_of.setdefault(code, cid)
     lines = table()
-    listed = {int(line['konami_id']) for line in lines}
+    listed = {int(line['konami_id']) for line in lines if (line.get('konami_id') or '').strip()}
+    listed_anime = {int(line['anime']) for line in lines if (line.get('anime') or '').strip()}
+    anime_by_name = {}
+    for code, d in ctx['anime'].items():
+        if not d['alias']:  # an anime version of a printed card is no anime-only card
+            anime_by_name.setdefault(d['name'].casefold(), code)
     taken = {int(line['stand_in']) for line in lines if (line.get('stand_in') or '').strip()}
     row = len(ctx['rows']) + len(lines)
     out = []
     for name in names:
         code = lookup(name, ctx['data'], by_name, cid_of, ctx['passcode'])
+        anime_code = None
+        if code is None:
+            text = name.strip()
+            anime_code = int(text[6:]) if text.lower().startswith('anime:') and text[6:].strip().isdigit() else anime_by_name.get(text.casefold())
+            if anime_code not in ctx['anime'] or ctx['anime'][anime_code]['alias']:
+                anime_code = None
+        if anime_code is not None:
+            d = ctx['anime'][anime_code]
+            why = ['engine/added/cards.tsv already has it'] if anime_code in listed_anime else []
+            problem = anime_problem(anime_code, d)
+            if problem:
+                why.append(problem)
+            sid = next_stand_in(ctx, taken)
+            why += encode(d, sid, ctx['learned'])[2]
+            if why:
+                out.append((d['name'], None, why))
+            else:
+                out.append((d['name'], f'{row}\t\t{sid}\t\t{anime_code}\t{d["name"]}\t', []))
+                row += 1
+                taken.add(sid)
+            continue
         if code is None:
             out.append((name, None, ['no card of that name, passcode or Konami id in the pinned data (check the spelling)']))
             continue
@@ -345,7 +454,7 @@ def find(names, ctx=None):
         if why:
             out.append((d['name'], None, why))
         else:
-            out.append((d['name'], f'{row}\t{cid}\t{sid or ""}\t\t{d["name"]}\t', []))
+            out.append((d['name'], f'{row}\t{cid}\t{sid or ""}\t\t\t{d["name"]}\t', []))
             row += 1
             if sid:
                 taken.add(sid)
@@ -368,7 +477,8 @@ def main(argv=None):
     if args.find:
         results = find(args.find)
         for name, line, why in results:
-            print(f'{name}: ' + ('ok' if line else 'cannot be added: ' + '; '.join(why)))
+            anime_only = line and line.split('\t')[4]
+            print(f'{name}: ' + (('ok (anime-only: played with anime cards on)' if anime_only else 'ok') if line else 'cannot be added: ' + '; '.join(why)))
         lines = [line for _, line, _ in results if line]
         if lines:
             print('\nLines for engine/added/cards.tsv (add a note after the last tab):')

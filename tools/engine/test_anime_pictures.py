@@ -26,6 +26,8 @@ class AnimePictures(unittest.TestCase):
         for card in ADDED:
             if card['cid'] in mapped:  # it has an anime version: that picture first, its official one standing in
                 self.assertEqual(rows[card['cid']][2], str(card['passcode']))
+            elif card.get('anime_only'):  # an anime-only card has its anime picture alone
+                self.assertEqual(rows[card['cid']][1:], [str(card['passcode'])] * 2)
             else:
                 self.assertEqual(rows[card['cid']][1:], ['0', str(card['passcode'])])
 
