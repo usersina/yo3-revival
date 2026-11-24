@@ -555,6 +555,32 @@ fn damage_and_lp_changes_reach_the_lp_display() {
 }
 
 #[test]
+fn an_lp_change_beyond_99999_reaches_the_client_as_99999() {
+    // The client counts its LP display through every change it is shown (DuelCockpit 0x502EB0), about 7,500 LP a
+    // second, and the duel waits for it: Mystik Wok on an infinite ATK (+9,999,999) froze a live duel for about 20
+    // minutes, Soul Energy Max at 8000 LP (-800,000) for nearly 2. Its LP stays within 0..99999 anyway, so a change is
+    // sent as at most 99,999 either way; the LP itself follows as an LPUPDATE (capped at 99,999 too).
+    let (mut t, _) = translator();
+    let out: Vec<_> = t.events(&[
+        json!({ "type": 92, "player": 0, "amount": 9_999_999 }),
+        json!({ "type": 91, "player": 1, "amount": 800_000 }),
+        json!({ "type": 94, "player": 0, "lp": 10_007_999 }),
+    ]).iter().map(cmd).collect();
+    assert_eq!(
+        out,
+        [
+            (0x10, [0, 99_999, 4 << 8 | 1, 0]),
+            (0x4D, [0, 99_999, 4, 0]),
+            (0x10, [0, 99_999, 4 << 8, 0]),
+            (0x10, [1, (-99_999i32) as u32, 1, 0]),
+            (0x4D, [1, (-99_999i32) as u32, 0, 0]),
+            (0x10, [1, (-99_999i32) as u32, 0, 0]),
+            (0xF, [0, 99_999, 0, 0])
+        ]
+    );
+}
+
+#[test]
 fn the_cpu_summons_then_attacks_with_everything_then_ends_its_turn() {
     // A placeholder AI: Normal Summon (or Set) the first monster it may, go to battle, attack with each attacker,
     // end the turn.

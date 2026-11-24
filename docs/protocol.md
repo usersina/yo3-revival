@@ -1943,7 +1943,10 @@ a gain. Before the logs we sent the second only, so changes applied silently. `0
 client keeps no more LP than that (its changes are clamped there). Past 99999 (Mystik Wok on an infinite ATK) a change
 alone would leave the client counting from 99999, so the engine program adds the core's LP as an LPUPDATE after a step's
 last change whenever a player's LP was or is above 99999 (`session.rs` `add_lp_beyond_the_client`; `tests/manga_gods.rs`
-`mystik_wok_on_geh`): the client shows 99999 for any LP above it, and the right LP again once it comes back under. Live: a direct attack took the CPU from 8000 to 5700 LP. Attack animations use
+`mystik_wok_on_geh`): the client shows 99999 for any LP above it, and the right LP again once it comes back under. A change itself is sent as
+at most ±99999: the client counts its display through the whole change, about 7,500 LP a second, and the duel waits for
+it (live, 2026-11-24: Mystik Wok's +9,999,999 froze an NPC duel for over three minutes, the count would have taken about
+20; `translate_contract.rs` `an_lp_change_beyond_99999_reaches_the_client_as_99999`). Live: a direct attack took the CPU from 8000 to 5700 LP. Attack animations use
 DuelBattle commands `0xA`–`0xE`, mapped in the battle-command table above.
 
 **Surrender** (#57). The client's card menu has the entry (bit 10, text "Surrender") and the dialog texts exist in the duel

@@ -210,6 +210,10 @@ impl Translator {
                         self.lp_change += change as i64;
                         self.stats.lowest_change = self.stats.lowest_change.min(self.lp_change);
                     }
+                    // The client counts its LP display through the whole change (about 7,500 LP a second) and the duel
+                    // waits for it, while its LP stays within 0..99999: a change beyond 99,999 is sent as 99,999 (an
+                    // infinite ATK's +9,999,999 froze a duel for minutes). The LP itself follows as an LPUPDATE.
+                    let change = change.clamp(-99_999, 99_999);
                     out.push(command(cmd::CHANGE_LP, [p, change as u32, damage << 8 | 1, 0]));
                     out.push(command(cmd::SPEAK_DAMAGE, [p, change as u32, damage, 0]));
                     out.push(command(cmd::CHANGE_LP, [p, change as u32, damage << 8, 0]));
