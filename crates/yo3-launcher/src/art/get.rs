@@ -232,8 +232,8 @@ mod tests {
         // The 418 anime cards and the cards the game never had (#75: Quasar, which has an anime version, and Orichalcos
         // Gigas), each fetched by its official passcode, an anime-only card by its anime one.
         let all = list();
-        assert_eq!(all.len(), 420);
-        assert_eq!(all.iter().map(|e| e.cid).collect::<BTreeSet<_>>().len(), 420);
+        assert!(all.len() >= 420, "the 418 anime cards and the added cards");
+        assert_eq!(all.iter().map(|e| e.cid).collect::<BTreeSet<_>>().len(), all.len(), "each card once");
         assert_eq!(all.iter().find(|e| e.cid == 3968), Some(&Entry { cid: 3968, anime: 170000171, official: 170000171 }), "Orichalcos Gigas, anime-only");
         assert_eq!(all.iter().find(|e| e.cid == 9709), Some(&Entry { cid: 9709, anime: 513000031, official: 35952884 }), "Shooting Quasar Dragon, an added card with an anime version");
         assert!(all.iter().all(|e| e.official != 0));

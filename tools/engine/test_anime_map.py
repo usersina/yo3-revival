@@ -39,7 +39,7 @@ class AnimeMap(unittest.TestCase):
         self.assertEqual(len(TABLE), len(CARDS), 'a Konami id twice')
         counts = {s: sum(1 for c in CARDS.values() if c['status'] == s) for s in ('mapped', 'default', 'held')}
         self.assertEqual(counts, MAP['counts'])
-        self.assertEqual(sum(counts.values()), 419, '415 candidates, the 3 cards that needed custom work and anime Shooting Quasar Dragon (an added card, #75)')
+        self.assertEqual(sum(counts.values()), 421, '415 candidates, the 3 cards that needed custom work and the added cards with anime versions (#75: Shooting Quasar Dragon, Divine Serpent Geh, Underworld Circle)')
         for c in CARDS.values():
             self.assertEqual(bool(c.get('holds')), c['status'] == 'held', c['name'])
 
@@ -76,14 +76,15 @@ class AnimeMap(unittest.TestCase):
         # Dark Strike Fighter and Fortune Lady Fire: ProjectIgnis has only a placeholder, so the anime data record
         # (engine/anime/records.json) and the script (engine/overrides/) are ours; the game's cid and the official card stay.
         recs = {r['cid']: r for r in MAP['records']}
-        self.assertEqual(sorted(recs), [8035, 8302, 8538, 9093])
-        upstream = {8538: 513000096, 9093: 511002602}
+        # Clear Vice Dragon, Blackwing - Aurora and anime Divine Serpent Geh (an added card, #75) keep the game's "?" ATK.
+        self.assertEqual(sorted(recs), [8035, 8302, 8538, 9093, 12671])
+        upstream = {8538: 513000096, 9093: 511002602, 12671: 170000170}
         for cid, code in upstream.items():
             c, r = CARDS[cid], recs[cid]
             self.assertEqual((c['status'], c['script'], c.get('upstream_record')), ('mapped', 'unofficial/c%d.lua' % code, True))
             self.assertEqual((r['atk'], r['alias']), (-2, r['official']), 'the game\'s ? kept, the official card as alias')
             self.assertFalse(r['reconstruction'])
-            self.assertNotIn('differs', c)
+            self.assertEqual(c.get('differs'), ['level'] if cid == 12671 else None, 'only anime Geh differs: Level 10, not 12')
         recs = {k: v for k, v in recs.items() if k not in upstream}
         for cid, (code, stats) in {8035: (513000079, (2600, 1800, 7)), 8302: (511247002, (-2, -2, 2))}.items():
             c, r = CARDS[cid], recs[cid]

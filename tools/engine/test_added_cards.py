@@ -42,7 +42,8 @@ class AddedCards(unittest.TestCase):
         found = {name: (line, why) for name, line, why in added.find(
             ['black rose moonlight dragon', 'Number 39: Utopia', 'Stardust Dragon', 'Shooting Quasar Dragon', 'Nope Nope'])}
         line, why = found['Black Rose Moonlight Dragon']
-        self.assertEqual((line.split('\t')[:6], why), (['4836', '11123', '', '', '', 'Black Rose Moonlight Dragon'], []), 'the next row, its Konami id')
+        nxt = str(added.FIRST_ROW + len(added.table()))
+        self.assertEqual((line.split('\t')[:6], why), ([nxt, '11123', '', '', '', 'Black Rose Moonlight Dragon'], []), 'the next row, its Konami id')
         self.assertIn("can't show it", found['Number 39: Utopia'][1][0])
         self.assertEqual(found['Stardust Dragon'][1], ['the game already has it'])
         self.assertEqual(found['Shooting Quasar Dragon'][1], ['engine/added/cards.tsv already has it'])

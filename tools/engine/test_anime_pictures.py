@@ -34,7 +34,7 @@ class AnimePictures(unittest.TestCase):
     def test_every_card_of_the_map_has_one_row_with_a_passcode_to_fetch(self):
         rows = [line.split('\t') for line in pictures.build(MAP).splitlines()[1:]]
         self.assertEqual([int(r[0]) for r in rows], sorted(c['cid'] for c in MAP['cards']))
-        self.assertEqual(len(rows), 419)
+        self.assertGreaterEqual(len(rows), 418, 'the 418 researched anime cards, and the added cards with anime versions')
         for cid, anime, official in rows:
             self.assertTrue(int(official) > 0, cid)
             self.assertTrue(anime.isdigit(), cid)

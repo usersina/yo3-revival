@@ -80,7 +80,9 @@ fn map(dir: &std::path::Path) -> Vec<serde_json::Value> {
 /// list: the differences the released categories cover), and each of those has a row that differs from the client's.
 #[test]
 fn a_card_the_anime_version_does_not_change_keeps_its_words() {
-    let (Some(data), Some(dir)) = (game(), engine_dir()) else { return };
+    let (Some(mut data), Some(dir)) = (game(), engine_dir()) else { return };
+    // The server's table: the added cards (#75) after the game's rows, as anime Divine Serpent Geh changes its Level.
+    data.cards.add(&yo3_data::added::Added::load(&dir).unwrap()).unwrap();
     let profile = anime_profile(&data, &dir);
     assert!(profile.targets.len() > 300, "{} rows", profile.targets.len());
     let changed: std::collections::BTreeSet<u16> = profile.targets.values().filter(|t| t.words != t.original).map(|t| t.cid).collect();
