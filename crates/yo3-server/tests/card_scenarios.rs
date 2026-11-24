@@ -573,3 +573,22 @@ fn doppelwarrior_as_synchro_material_brings_two_doppel_tokens() {
     let monsters = s.state()[0]["mzone"].as_array().map_or(0, |m| m.iter().filter(|c| !c.is_null()).count());
     assert_eq!(monsters, 4, "Junk Warrior, Glow-Up Bulb and two Doppel Tokens: {:#?}", s.state()[0]["mzone"]);
 }
+
+// Black Brutdrago (#87): "1 Tuner + 1 or more non-Tuner Gemini monsters". A player's game closed when they Synchro
+// Summoned it. Materials in the client: Blackwing - Gale the Whirlwind (a Level 3 Tuner) and King Pyron (a Level 5
+// Gemini): 3 + 5 = 8.
+const BLACK_BRUTDRAGO: u16 = 8478;
+const GALE: u16 = 8011;
+const KING_PYRON: u16 = 7203;
+
+#[test]
+fn black_brutdrago_is_synchro_summoned_from_a_tuner_and_a_gemini_issue_87() {
+    use yo3_server::engine::{Spawn, SpawnPlace::*};
+    let Some(dir) = engine_dir() else { return };
+    let field = [Spawn { team: 0, place: Monster, cid: GALE }, Spawn { team: 0, place: Monster, cid: KING_PYRON }];
+    let mut s = Scenario::start_field(&dir, 7, 8000, [(&[WARWOLF; 40], &[BLACK_BRUTDRAGO]), (&[WARWOLF; 40], &[])], &field).unwrap();
+    assert!(s.problems.is_empty(), "{:#?}", s.problems);
+    s.run(&[SpSummon(BLACK_BRUTDRAGO)]).unwrap();
+    assert!(s.problems.is_empty(), "{:#?}", s.problems);
+    assert_eq!(s.attack_of(0, BLACK_BRUTDRAGO), Some(3000), "Black Brutdrago is on the field");
+}
