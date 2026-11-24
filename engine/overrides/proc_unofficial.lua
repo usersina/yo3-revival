@@ -1,5 +1,6 @@
 --yo3-revival override of ProjectIgnis' unofficial/proc_unofficial.lua (the anime and manga cards' shared procedures),
---unchanged but for UnofficialProc.divineHierarchy's battle check (tglimit): see engine/overrides/README.md.
+--unchanged but for UnofficialProc.divineHierarchy's battle check (tglimit) and its End Phase return, which a God Special
+--Summoned by Sphere Mode skips (spsop): see engine/overrides/README.md.
 --Constants
 SET_NUMBER_S	= 0x2048
 SET_SUPREME_KING	= 0xf8
@@ -1005,6 +1006,9 @@ function UnofficialProc.divineHierarchy()
 		return c:HasFlagEffect(FLAG_DIVINE_HIERARCHY) and c:IsFaceup() and c:IsControler(1-tp)
 	end
 	local function spsop(e,tp,eg,ep,ev,re,r,rp)
+		--yo3-revival house rule: a God that The Winged Dragon of Ra - Sphere Mode (10000080) Special Summons is Ra itself out
+		--of its sphere form, not a God borrowed or revived, so it stays on the field (docs/anime-cards.md).
+		if re and re:GetHandler():GetOriginalCode()==10000080 then return end
 		eg:Filter(function(c) return c:GetFlagEffectLabel(FLAG_DIVINE_HIERARCHY) end,nil):ForEach(function(c)
 			local prevCtrl=c:GetPreviousControler()
 			aux.DelayedOperation(c,PHASE_END,FLAG_DIVINE_HIERARCHY+c:GetOriginalCode(),e,tp,function()

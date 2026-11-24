@@ -380,17 +380,13 @@ fn sphere_mode_summons_the_official_ra_with_4000() {
 }
 
 /// The manga Ra (anime cards on) answers Sphere Mode's "The Winged Dragon of Ra" by its alias, the official passcode: it
-/// comes with 4000 ATK and DEF and attacks, then its own text applies ("During the End Phase, if this card was Special
-/// Summoned, return it to where it was Special Summoned from"): back to the hand or the Deck.
+/// comes with 4000 ATK and DEF and attacks. Its text sends a Special Summoned God back where it came from in the End Phase,
+/// but our house rule keeps a Ra that Sphere Mode summons: it is Ra out of its sphere form (`proc_unofficial.lua`).
 #[test]
-fn sphere_mode_summons_the_manga_ra_for_its_turn() {
-    let Some((mut s, from)) = sphere_to_ra(true) else { return };
-    s.run_both([&[EndTurn], &[]]).unwrap();
-    assert!(s.monster(0, RA).is_none(), "{}", s.context());
-    for place in ["hand", "grave", "removed"] {
-        let back = usize::from(place == from);
-        assert_eq!(s.count(0, place, RA), back, "Ra went back to the {from}: {}", s.context());
-    }
+fn sphere_mode_summons_the_manga_ra_and_it_stays() {
+    let Some((mut s, _)) = sphere_to_ra(true) else { return };
+    s.run_both([&[EndTurn], &[EndTurn]]).unwrap();
+    assert!(s.monster(0, RA).is_some(), "Ra stays: {}", s.context());
     clean(&s);
 }
 
@@ -412,8 +408,7 @@ fn sphere_mode_on_the_opponents_field_comes_back() {
     }
 }
 
-/// Sphere Mode takes Ra from the Deck too (the duel's first turn, before Ra is drawn): the official Ra stays, the manga Ra
-/// goes back to the Deck in the End Phase.
+/// Sphere Mode takes Ra from the Deck too (the duel's first turn, before Ra is drawn), and either Ra stays.
 #[test]
 fn sphere_mode_takes_either_ra_from_the_deck() {
     for anime in [false, true] {
@@ -430,10 +425,7 @@ fn sphere_mode_takes_either_ra_from_the_deck() {
         s.run(&[Summon(SPHERE), Activate(SPHERE)]).unwrap();
         assert_eq!(s.attack_of(0, RA), Some(4000), "anime {anime}: {}", s.context());
         s.run_both([&[EndTurn], &[]]).unwrap();
-        assert_eq!(s.monster(0, RA).is_some(), !anime, "anime {anime}: {}", s.context());
-        if anime {
-            assert_eq!(s.count(0, "hand", RA) + s.count(0, "grave", RA) + s.count(0, "removed", RA), 0, "back to the Deck: {}", s.context());
-        }
+        assert!(s.monster(0, RA).is_some(), "Ra stays, anime {anime}: {}", s.context());
         clean(&s);
     }
 }
