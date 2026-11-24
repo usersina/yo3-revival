@@ -16,6 +16,10 @@ const RA: u16 = 5000;
 const DREADROOT: u16 = 6405;
 const AVATAR: u16 = 7091;
 const ERASER: u16 = 7092;
+const GEH: u16 = 12671; // Divine Serpent Geh: an added card, its anime version (infinite ATK, the engine's 9,999,999) with anime cards on
+const RING: u16 = 5005; // Ring of Destruction, by the game's text (engine/overrides/c83555666.lua)
+const WOK: u16 = 5978; // Mystik Wok: Tribute a monster, gain LP equal to its ATK or DEF
+const INFINITE: i64 = 9_999_999;
 
 /// The God in the hand, three Warwolves to Tribute, the opponent's `theirs` and `extra` in place.
 fn duel(god: u16, theirs: &[u16], extra: &[Spawn]) -> Option<Scenario> {
@@ -137,5 +141,197 @@ fn obelisks_soul_energy_max_wins_the_duel() {
     }
     assert_eq!(s.lp(1), 0, "{}", s.context());
     assert_eq!(s.count(0, "grave", WARWOLF), 2, "the two Tributes: {}", s.context());
+    clean(&s);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// The infinite ATK monsters and the Gods together: Obelisk's Soul Energy Max, the anime Divine Serpent Geh, Avatar.
+
+fn mine(cid: u16) -> Spawn { Spawn { team: 0, place: Monster, cid } }
+fn theirs(cid: u16) -> Spawn { Spawn { team: 1, place: Monster, cid } }
+
+fn field(anime: bool, lp: u32, spawns: &[Spawn]) -> Option<Scenario> {
+    let dir = engine_dir()?;
+    let decks = [(&[KURIBOH; 40][..], &[][..]), (&[KURIBOH; 40][..], &[][..])];
+    Some(if anime { Scenario::start_anime_field(&dir, 7, lp, decks, spawns) } else { Scenario::start_field(&dir, 7, lp, decks, spawns) }.expect("the duel starts"))
+}
+
+/// On the duel's third turn (the first own one with a Battle Phase): Soul Energy Max, then the duel plays on with the
+/// default answers to the end of that Battle Phase (or of the duel).
+fn soul_energy_max(s: &mut Scenario) {
+    use serde_json::json;
+    use yo3_server::ocg::{battle, idle, msg};
+    s.run_both([&[EndTurn], &[EndTurn]]).unwrap();
+    s.respond(json!({"type": 1, "action": idle::TO_BP, "index": null})).unwrap();
+    let wanted = (513000135u64 << 20) | 1; // the script's aux.Stringid(id, 1)
+    for _ in 0..20 {
+        let p = s.prompt().clone();
+        if p["type"] == msg::SELECT_BATTLECMD && p["player"] == 0 {
+            let i = p["chains"].as_array().and_then(|c| c.iter().position(|e| e["description"].as_u64() == Some(wanted)))
+                .unwrap_or_else(|| panic!("Soul Energy Max is offered: {p}"));
+            s.respond(json!({"type": 1, "action": battle::CHAIN, "index": i})).unwrap();
+            break;
+        }
+        s.pass().unwrap();
+    }
+    for _ in 0..60 {
+        if let Err(e) = s.pass() {
+            assert!(e.contains("the duel is over"), "{e}\n{}", s.context());
+            return;
+        }
+        if s.prompt()["type"] == msg::SELECT_IDLECMD { return }
+    }
+}
+
+/// Avatar is 1 more than the strongest other monster, but against infinity it is infinite too: a tie, no endless climb.
+/// Avatar's Divine Hierarchy (2) is above Obelisk's (1): Obelisk is destroyed, Avatar is not, and no one takes damage.
+#[test]
+fn soul_energy_max_into_avatar_is_a_tie_avatar_wins() {
+    let Some(mut s) = field(true, 8000, &[mine(OBELISK), mine(WARWOLF), mine(WARWOLF), theirs(AVATAR)]) else { return };
+    s.prefer(&[(0, WARWOLF), (1, AVATAR)]);
+    soul_energy_max(&mut s);
+    assert!(s.monster(0, OBELISK).is_none() && s.monster(1, AVATAR).is_some(), "{}", s.context());
+    assert_eq!((s.lp(0), s.lp(1)), (8000, 8000), "{}", s.context());
+    clean(&s);
+}
+
+/// Ra (Hierarchy 2) can't be destroyed by Obelisk, and its controller takes no damage from that battle.
+#[test]
+fn soul_energy_max_cannot_harm_ra() {
+    let Some(mut s) = field(true, 8000, &[mine(OBELISK), mine(WARWOLF), mine(WARWOLF), theirs(RA)]) else { return };
+    s.prefer(&[(0, WARWOLF), (1, RA)]);
+    soul_energy_max(&mut s);
+    assert!(s.monster(0, OBELISK).is_some() && s.monster(1, RA).is_some(), "{}", s.context());
+    assert_eq!(s.lp(1), 8000, "{}", s.context());
+    clean(&s);
+}
+
+/// Avatar rises to infinity beside the attack, but Soul Energy Max into another monster still wins the duel.
+#[test]
+fn soul_energy_max_past_avatar_wins() {
+    let Some(mut s) = field(true, 8000, &[mine(OBELISK), mine(WARWOLF), mine(WARWOLF), theirs(AVATAR), theirs(BLUE_EYES)]) else { return };
+    s.prefer(&[(0, WARWOLF), (1, BLUE_EYES)]);
+    soul_energy_max(&mut s);
+    assert_eq!(s.lp(1), 0, "{}", s.context());
+    clean(&s);
+}
+
+/// The anime Geh is infinite too, without a Hierarchy: the tie destroys Geh, Obelisk stays, no damage.
+#[test]
+fn soul_energy_max_into_anime_geh_destroys_it() {
+    let Some(mut s) = field(true, 8000, &[mine(OBELISK), mine(WARWOLF), mine(WARWOLF), theirs(GEH)]) else { return };
+    assert_eq!(s.attack_of(1, GEH), Some(INFINITE), "{}", s.context());
+    s.prefer(&[(0, WARWOLF), (1, GEH)]);
+    soul_energy_max(&mut s);
+    assert!(s.monster(0, OBELISK).is_some() && s.monster(1, GEH).is_none(), "{}", s.context());
+    assert_eq!((s.lp(0), s.lp(1)), (8000, 8000), "{}", s.context());
+    clean(&s);
+}
+
+/// The anime Geh attacking Obelisk: Obelisk's Hierarchy keeps it on the field and its controller takes no damage.
+#[test]
+fn anime_geh_cannot_harm_obelisk() {
+    let Some(mut s) = field(true, 8000, &[theirs(GEH), mine(OBELISK)]) else { return };
+    s.prefer(&[(0, OBELISK)]);
+    s.run_both([&[EndTurn], &[Attack(GEH)]]).unwrap();
+    assert!(s.monster(0, OBELISK).is_some() && s.monster(1, GEH).is_some(), "{}", s.context());
+    assert_eq!(s.lp(0), 8000, "{}", s.context());
+    clean(&s);
+}
+
+/// Two Avatars ignore each other: each is 1 above Dreadroot, which halves only the other monsters (not Divine-Beasts).
+#[test]
+fn two_avatars_and_dreadroot_settle() {
+    let Some(s) = field(true, 8000, &[mine(AVATAR), mine(DREADROOT), theirs(AVATAR), theirs(BLUE_EYES)]) else { return };
+    assert_eq!(s.attack_of(0, AVATAR), Some(4001), "{}", s.context());
+    assert_eq!(s.attack_of(1, AVATAR), Some(4001), "{}", s.context());
+    assert_eq!(s.attack_of(1, BLUE_EYES), Some(1500), "{}", s.context());
+    clean(&s);
+}
+
+/// Eraser sent to the Graveyard takes every monster with it but those of a higher Hierarchy: Avatar destroys Eraser, and
+/// the wipe takes Obelisk (the same Hierarchy, 1) and Blue-Eyes, not Avatar.
+#[test]
+fn erasers_wipe_spares_a_higher_hierarchy() {
+    let Some(mut s) = field(true, 8000, &[theirs(ERASER), theirs(OBELISK), theirs(BLUE_EYES), mine(AVATAR)]) else { return };
+    s.prefer(&[(1, ERASER)]);
+    s.run_both([&[EndTurn, Attack(AVATAR)], &[EndTurn]]).unwrap();
+    assert!(s.monster(0, AVATAR).is_some(), "{}", s.context());
+    assert_eq!(s.count(1, "grave", ERASER) + s.count(1, "grave", OBELISK) + s.count(1, "grave", BLUE_EYES), 3, "{}", s.context());
+    clean(&s);
+}
+
+/// Slifer's -2000 on a monster the opponent summons is a monster effect of Hierarchy 1: it doesn't touch Avatar (2).
+#[test]
+fn slifers_effect_does_not_touch_avatar() {
+    let Some(mut s) = field(true, 8000, &[mine(SLIFER), Spawn { team: 1, place: Hand, cid: AVATAR }, theirs(WARWOLF), theirs(WARWOLF), theirs(WARWOLF)]) else { return };
+    s.prefer(&[(1, WARWOLF)]);
+    s.run_both([&[EndTurn], &[Summon(AVATAR)]]).unwrap();
+    assert_eq!(s.attack_of(1, AVATAR), s.attack_of(0, SLIFER).map(|a| a + 1), "{}", s.context());
+    clean(&s);
+}
+
+/// Ring of Destruction can't destroy a God ("unaffected by Spell/Trap effects that would make this card leave the
+/// field"), so no one takes damage: Obelisk, and Avatar risen to infinity by the anime Geh.
+#[test]
+fn ring_of_destruction_cannot_destroy_a_god() {
+    for (god, extra) in [(OBELISK, None), (AVATAR, Some(mine(GEH)))] {
+        let mut spawns = vec![Spawn { team: 0, place: SpellSet, cid: RING }, theirs(god)];
+        spawns.extend(extra);
+        let Some(mut s) = field(true, 8000, &spawns) else { return };
+        s.prefer(&[(1, god)]);
+        s.run_both([&[EndTurn, Activate(RING)], &[EndTurn]]).unwrap();
+        assert_eq!(s.count(0, "grave", RING), 1, "Ring of Destruction resolved: {}", s.context());
+        assert!(s.monster(1, god).is_some(), "{god}: {}", s.context());
+        assert_eq!((s.lp(0), s.lp(1)), (8000, 8000), "{god}: {}", s.context());
+        clean(&s);
+    }
+}
+
+/// Ring of Destruction on Divine Serpent Geh: the printed card "cannot be targeted by card effects"; the anime one is
+/// destroyed and both players take its infinite ATK at once: a draw (its "you cannot lose" ends with it).
+#[test]
+fn ring_of_destruction_on_geh() {
+    let Some(mut s) = field(false, 8000, &[Spawn { team: 0, place: SpellSet, cid: RING }, theirs(GEH)]) else { return };
+    s.prefer(&[(1, GEH)]);
+    let printed = s.run_both([&[EndTurn, Activate(RING)], &[EndTurn]]);
+    assert!(printed.is_err_and(|e| e.contains("never became possible")), "printed Geh can't be targeted");
+    let Some(mut s) = field(true, 8000, &[Spawn { team: 0, place: SpellSet, cid: RING }, theirs(GEH)]) else { return };
+    s.prefer(&[(1, GEH)]);
+    let anime = s.run_both([&[EndTurn, Activate(RING)], &[EndTurn]]);
+    assert!(anime.is_err_and(|e| e.contains("the duel is over")), "{}", s.context());
+    assert_eq!((s.lp(0), s.lp(1)), (0, 0), "a draw: {}", s.context());
+    clean(&s);
+}
+
+/// Mystik Wok on Divine Serpent Geh: the printed card's ATK and DEF are 0, so Wok can't use it; the anime one gives its
+/// infinite ATK as LP. Past 99,999 the client shows 99,999 (it keeps no more) and stays there after a Warwolf's 2000: the
+/// engine gives the LP after each change above 99,999, where the client alone would count down from 99,999 to 97,999.
+#[test]
+fn mystik_wok_on_geh() {
+    let Some(mut s) = field(false, 8000, &[Spawn { team: 0, place: Hand, cid: WOK }, mine(GEH)]) else { return };
+    s.prefer(&[(0, GEH)]);
+    assert!(s.run(&[Activate(WOK)]).is_err_and(|e| e.contains("never became possible")), "printed Geh has no ATK to give");
+    let Some(mut s) = field(true, 8000, &[Spawn { team: 0, place: Hand, cid: WOK }, mine(GEH), theirs(WARWOLF)]) else { return };
+    s.prefer(&[(0, GEH)]);
+    s.run(&[Activate(WOK)]).unwrap();
+    assert_eq!(s.lp(0), 8000 + INFINITE, "{}", s.context());
+    s.run_both([&[EndTurn], &[Attack(WARWOLF)]]).unwrap();
+    assert_eq!(s.lp(0), 8000 + INFINITE - 2000, "a direct attack: {}", s.context());
+    clean(&s);
+}
+
+/// Three Mystik Woks on three anime Gehs: 30,007,997 LP. The opponent's anime Geh then attacks directly for "a hundred
+/// times your LP", past the core's 32 bits: it used to wrap into a gain of a billion LP. Now it takes all of it.
+#[test]
+fn infinite_damage_past_32_bits_still_wins() {
+    let Some(mut s) = field(true, 8000, &[Spawn { team: 0, place: Hand, cid: WOK }, Spawn { team: 0, place: Hand, cid: WOK },
+        Spawn { team: 0, place: Hand, cid: WOK }, mine(GEH), mine(GEH), mine(GEH), theirs(GEH)]) else { return };
+    s.prefer(&[(0, GEH)]);
+    s.run(&[Activate(WOK), Activate(WOK), Activate(WOK)]).unwrap();
+    assert!(s.lp(0) > 30_000_000, "{}", s.context());
+    let r = s.run_both([&[EndTurn], &[Attack(GEH)]]);
+    assert!(r.is_err_and(|e| e.contains("the duel is over")), "{}", s.context());
+    assert_eq!(s.lp(0), 0, "{}", s.context());
     clean(&s);
 }

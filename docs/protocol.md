@@ -1939,7 +1939,11 @@ signed change, kind << 8 | shown}` (DuelCockpit `0x502EB0`) for ocgcore's DAMAGE
 twice as Konami's server sent it: with `shown` 1 it shows the change's number and plays the kind's sound (4 a gain:
 recover sound, 2 a cost: payment sound, else damage), with 0 it applies the change (clamped to 0–99999); the damage
 line `0x4D` goes between. Kinds from the original logs: 0 effect damage, 1 battle damage (after BattleRun), 2 a cost, 4
-a gain. Before the logs we sent the second only, so changes applied silently. `0xF` for LPUPDATE. Live: a direct attack took the CPU from 8000 to 5700 LP. Attack animations use
+a gain. Before the logs we sent the second only, so changes applied silently. `0xF` for LPUPDATE, capped at 99999: the
+client keeps no more LP than that (its changes are clamped there). Past 99999 (Mystik Wok on an infinite ATK) a change
+alone would leave the client counting from 99999, so the engine program adds the core's LP as an LPUPDATE after a step's
+last change whenever a player's LP was or is above 99999 (`session.rs` `add_lp_beyond_the_client`; `tests/manga_gods.rs`
+`mystik_wok_on_geh`): the client shows 99999 for any LP above it, and the right LP again once it comes back under. Live: a direct attack took the CPU from 8000 to 5700 LP. Attack animations use
 DuelBattle commands `0xA`–`0xE`, mapped in the battle-command table above.
 
 **Surrender** (#57). The client's card menu has the entry (bit 10, text "Surrender") and the dialog texts exist in the duel

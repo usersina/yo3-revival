@@ -235,6 +235,14 @@ Ra's the Tributes' total; Dreadroot halves every other monster's ATK and DEF but
 other monster; Eraser is 1000 per card the opponent controls and takes every monster with it when it goes. The Wicked Gods' rows keep the
 game's Type and Attribute; the profile shows them as the manga cards' (DIVINE, Divine-Beast).
 
+Infinite ATK (Obelisk's Soul Energy Max, the anime Geh) is 9,999,999 to the engine, and the Hierarchy settles every meeting
+(`tests/manga_gods.rs`): Avatar matches infinity rather than going 1 above it, a tie that Avatar survives and Obelisk
+does not; Ra can't be destroyed by Soul Energy Max, nor Obelisk by Geh, and their controllers take no damage from it; Geh,
+with no Hierarchy, is destroyed in a tie with Obelisk. Ring of Destruction can't destroy a God, so it deals no damage;
+the anime Geh it destroys deals its infinite ATK to both players at once, a draw. Mystik Wok gives Geh's infinite ATK as
+9,999,999 LP, shown as 99,999 (the most the game shows). Damage of "100 times the LP" always takes all of it, even past
+21,474,836 LP, where the core's 32 bits once wrapped it into a gain (`crates/yo3-engine/src/guards.lua`).
+
 One fix to the shared procedure (`engine/overrides/proc_unofficial.lua`): the upstream Hierarchy check compared a God with a monster
 without a Hierarchy as if that monster outranked it, so a stronger ordinary monster destroyed a God by battle. A monster without one is
 now Hierarchy 0. Infinite ATK shows on the field as 99999, the most the game draws.
