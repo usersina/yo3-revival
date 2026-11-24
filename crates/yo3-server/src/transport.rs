@@ -68,7 +68,7 @@ fn problem_report(gate: &Gate, session: &yo3_tunnel::Token, body: &[u8]) -> Resu
     };
     let now = crate::logins::now();
     let report = gate.problems.accept(user_id, &account, &request, crate::problems::server_lines(user_id, &names, now), now)?;
-    tracing::info!("[report] user {user_id} ({account}) sent problem report {report}: {}", request["kind"].as_str().unwrap_or_default());
+    tracing::info!(user = user_id, report = %report, kind = request["kind"].as_str().unwrap_or_default(), "[report] {account} sent a problem report");
     Ok(report)
 }
 
@@ -153,8 +153,8 @@ async fn handshake(mut tls: TlsStream<TcpStream>, gate: &Gate, info: &(dyn Fn(bo
                 let mut body = vec![0; length]; tls.read_exact(&mut body).await?;
                 let answer = problem_report(gate, &session, &body);
                 match &answer {
-                    Ok(id) => tracing::info!("[report] {peer} problem report {id}"),
-                    Err(refused) => tracing::info!("[report] {peer} problem report refused: {refused}"),
+                    Ok(id) => tracing::info!(peer = %peer, report = %id, "[report] problem report kept"),
+                    Err(refused) => tracing::info!(peer = %peer, error = %refused, "[report] problem report refused"),
                 }
                 match answer {
                     Ok(id) => { tls.write_u8(0).await?; tls.write_u8(id.len() as u8).await?; tls.write_all(id.as_bytes()).await?; }
@@ -212,15 +212,15 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
         // A connected client may stay silent for good (`net::IDLE_TIMEOUT`), so a machine that went away without
         // closing (asleep, its network gone) is found by keepalive, as the launcher finds a host that is gone: the
         // connection drops within about a minute and a half, and a duel it was in ends (`Table::leave`).
-        if let Err(e) = yo3_tunnel::keep_alive(&tcp) { tracing::debug!("[tls] {peer} keepalive: {e}"); }
+        if let Err(e) = yo3_tunnel::keep_alive(&tcp) { tracing::debug!(peer = %peer, error = %e, "[tls] keepalive not set"); }
         let settings = gate.settings.now();
         if open.load(std::sync::atomic::Ordering::Relaxed) >= settings.max_connections {
-            tracing::warn!("[tls] {peer} refused: {} connections open (max-connections)", settings.max_connections);
+            tracing::warn!(peer = %peer, "[tls] refused: {} connections open (max-connections)", settings.max_connections);
             continue;
         }
         // This PC's connections (a launcher's own, the host's tools) aren't counted: a game makes many.
         if !peer.ip().is_loopback() && !handshake_allowed(&mut buckets, peer.ip(), Instant::now(), settings.handshake_burst, settings.handshakes_per_second) {
-            tracing::warn!("[tls] {peer} refused: too many connections from this address (handshake-burst)");
+            tracing::warn!(peer = %peer, "[tls] refused: too many connections from this address (handshake-burst)");
             continue;
         }
         let permit = Slot::take(&open);
@@ -243,11 +243,11 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
             let (mut tls, identity, expires, role, port)=match hello {
                 Ok(Ok(Some(connection)))=>connection,
                 Ok(Ok(None))=>return,
-                Ok(Err(error))=>{tracing::warn!("[tls] {peer} handshake failed: {error:#}");return},
-                Err(_)=>{tracing::warn!("[tls] {peer} handshake timed out during {stage}");return},
+                Ok(Err(error))=>{tracing::warn!(peer = %peer, error = format!("{error:#}"), "[tls] handshake failed");return},
+                Err(_)=>{tracing::warn!(peer = %peer, "[tls] handshake timed out during {stage}");return},
             };
             let Some(mut lease) = gate.sessions.locked().lease(identity) else { return };
-            tracing::info!("[tls] {peer} user {} launcher {} {role:?}", identity.user_id, identity.session_id);
+            tracing::info!(peer = %peer, user = identity.user_id, conn = %format!("{role:?}").to_ascii_lowercase(), "[tls] launcher {} connected", identity.session_id);
             let pace = gate.settings.now().pace;
             let trail = Arc::new(net::Trail::default());
             let carried = trail.clone();
@@ -260,7 +260,7 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
                         accounts.locked().note_seen(identity.user_id, None, Some(peer.ip()), crate::logins::now());
                         let cap = gate.settings.now().games_per_device as usize;
                         if !gate.sessions.locked().set_playing(identity, true, cap) {
-                            tracing::warn!("[tls] {peer} user {}: more than {cap} game(s) on one device; closed", identity.user_id);
+                            tracing::warn!(peer = %peer, user = identity.user_id, "[tls] more than {cap} game(s) on one device; closed");
                             return Ok(());
                         }
                         let _closed = GameClosed { sessions: gate.sessions.clone(), identity };
@@ -296,7 +296,7 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
                             let loaded = crate::profile::Profile::identify(&body).unwrap_or_default();
                             // The launcher asks too, to place the local decks (`?for=decks`): that proves nothing about the game.
                             let for_decks = launcher_read(path);
-                            tracing::info!("[tls] {peer} user {} {} the card profile {} {}", identity.user_id, if for_decks { "(launcher) read" } else { "fetched" }, loaded.0, loaded.1);
+                            tracing::info!(peer = %peer, user = identity.user_id, "[tls] {} the card profile {} {}", if for_decks { "(launcher) read" } else { "fetched" }, loaded.0, loaded.1);
                             if !for_decks { world.profiles.note_launch(identity, loaded); }
                             let head = format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
                             tls.write_all(head.as_bytes()).await?;
@@ -306,7 +306,7 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
                         // The added cards (#75): the launcher extends the game's card files with them before releasing the game.
                         if path.split('?').next() == Some(ADDED_CARDS_PATH) {
                             let body = world.added.render();
-                            tracing::info!("[tls] {peer} user {} read the added cards ({})", identity.user_id, world.added.cards.len());
+                            tracing::info!(peer = %peer, user = identity.user_id, "[tls] read the added cards ({})", world.added.cards.len());
                             let head = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
                             tls.write_all(head.as_bytes()).await?;
                             tls.write_all(body.as_bytes()).await?;
@@ -324,12 +324,12 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
             let user = identity.user_id;
             let carried = |role: Role| if role == Role::Http { String::new() } else { format!("; {}", carried.summary()) };
             tokio::select! {
-                _ = lease.changed() => tracing::info!("[tls] {peer} user {user} {role:?} closed by the server: the session ended (signed out, or the account signed in again: the newest sign-in wins){}", carried(role)),
+                _ = lease.changed() => tracing::info!(peer = %peer, user = user, conn = %format!("{role:?}").to_ascii_lowercase(), "[tls] closed by the server: the session ended (signed out, or the account signed in again: the newest sign-in wins){}", carried(role)),
                 result = tokio::time::timeout(expires.saturating_duration_since(Instant::now()), work) => match result {
-                    Err(_) => tracing::info!("[tls] {peer} user {user} {role:?} closed by the server: the session's 12 hours are over"),
-                    Ok(Err(e)) => tracing::info!("[tls] {peer} user {user} {role:?} ended with an error: {e}{}", carried(role)),
-                    Ok(Ok(())) if role == Role::Http => tracing::debug!("[tls] {peer} user {user} {role:?} ended"),
-                    Ok(Ok(())) => tracing::info!("[tls] {peer} user {user} {role:?} ended by the game or its helper{}", carried(role)),
+                    Err(_) => tracing::info!(peer = %peer, user = user, conn = %format!("{role:?}").to_ascii_lowercase(), "[tls] closed by the server: the session's 12 hours are over"),
+                    Ok(Err(e)) => tracing::info!(peer = %peer, user = user, conn = %format!("{role:?}").to_ascii_lowercase(), error = %e, "[tls] ended with an error{}", carried(role)),
+                    Ok(Ok(())) if role == Role::Http => tracing::debug!(peer = %peer, user = user, conn = %format!("{role:?}").to_ascii_lowercase(), "[tls] ended"),
+                    Ok(Ok(())) => tracing::info!(peer = %peer, user = user, conn = %format!("{role:?}").to_ascii_lowercase(), "[tls] ended by the game or its helper{}", carried(role)),
                 },
             };
         });

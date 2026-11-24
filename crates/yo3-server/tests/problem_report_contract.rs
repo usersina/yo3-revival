@@ -44,11 +44,16 @@ async fn a_launchers_report_is_kept_under_its_account_with_the_servers_lines() {
     let id = endpoint.problem_report(&session, &json!({ "kind": "report" })).await.unwrap();
     let report = Problems::new(Some(&data)).get(&id).unwrap();
     assert!(report.server_log.iter().any(|l| l.contains("Front ended: closed by the game")), "{:?}", report.server_log);
+    // The account as a structured field, as yo3-log's console writes it, is found too.
+    yo3_server::recent::push(&format!("INFO [tls] ended by the game or its helper peer=127.0.0.1:7 user={} conn=front", report.user_id));
+    let id = endpoint.problem_report(&session, &json!({ "kind": "report" })).await.unwrap();
+    let report = Problems::new(Some(&data)).get(&id).unwrap();
+    assert!(report.server_log.iter().any(|l| l.contains("ended by the game or its helper")), "{:?}", report.server_log);
     assert!(!report.server_log.iter().any(|l| l.contains("someone else")), "only this account's");
     // The host reads them by account and by the ID a player quotes (`problem-reports`, `problem-report ID`).
     let admin = |op: Op| { let live = admin::running(&data).unwrap(); tokio::task::spawn_blocking(move || api::call(&live, &op)) };
     let listed = admin(Op::ProblemReports { who: Some("yugi".into()), limit: None }).await.unwrap().unwrap();
-    assert_eq!(listed["reports"].as_array().unwrap().len(), 2, "{listed}");
+    assert_eq!(listed["reports"].as_array().unwrap().len(), 3, "{listed}");
     assert!(listed["message"].as_str().unwrap().contains(&id));
     let one = admin(Op::ProblemReport { id: id.to_lowercase() }).await.unwrap().unwrap();
     assert!(one["message"].as_str().unwrap().contains("== The launcher's log =="));

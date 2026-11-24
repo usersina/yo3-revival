@@ -297,7 +297,7 @@ impl FrontSession {
         let added = self.hub().reports.add((me.player_id, &me.name), (target_id, &target), &reason, settings.report_limit);
         match added {
             Ok(id) => {
-                tracing::info!("[report] #{id} {} -> {target}", me.name);
+                tracing::info!(player = me.player_id, report = id, "[report] {} -> {target}", me.name);
                 vec![format!("Thank you: your report about {target} was sent to the staff (#{id}).")]
             }
             Err(e) if e == "too many reports" => vec![format!("You have sent {} reports in the last hour: please wait before sending another.", settings.report_limit)],
@@ -325,7 +325,7 @@ impl FrontSession {
             Some((recordings, duel)) => match recordings.pin(&duel.id) {
                 Ok(path) => { file = Some(path); ((duel.opponent.player_id.unwrap_or(0), duel.opponent.name.clone()), Some(duel.id.as_str())) }
                 Err(e) => {
-                    tracing::warn!("[bug] recording {} not pinned: {e}", duel.id);
+                    tracing::warn!(duel = %duel.id, error = %e, "[bug] recording not pinned");
                     ((duel.opponent.player_id.unwrap_or(0), duel.opponent.name.clone()), None)
                 }
             },
@@ -333,7 +333,7 @@ impl FrontSession {
         };
         match self.hub().reports.add_duel_problem((me.player_id, &me.name), (opponent.0, &opponent.1), note, recording, settings.report_limit) {
             Ok(id) => {
-                tracing::info!("[bug] #{id} from {} (recording {})", me.name, recording.unwrap_or("none"));
+                tracing::info!(player = me.player_id, report = id, duel = recording.unwrap_or("none"), "[bug] from {}", me.name);
                 let mut lines = match recording {
                     Some(_) => vec![format!("Thank you: your duel against {} was sent to the staff with your note (#{id}).", opponent.1)],
                     None => vec![format!("Thank you: your note was sent to the staff (#{id}). No recent duel of yours was recorded, so say which duel and card it was.")],

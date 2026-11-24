@@ -160,10 +160,12 @@ pub fn inflate(body: &[u8]) -> Result<Json, ReportRefused> {
 
 /// The server's newest lines about `user_id` (its `user N` lines, and those naming one of `names`), oldest first.
 pub fn server_lines(user_id: u32, names: &[String], now: i64) -> Vec<String> {
-    let tag = format!("user {user_id} ");
+    // The account as a field (`user=1001`, yo3-log's console form) or in a message's words (`user 1001 `).
+    let (tag, field) = (format!("user {user_id} "), format!("user={user_id}"));
     let mut lines: Vec<String> = crate::recent::lines(crate::recent::KEEP, false).into_iter()
         .take_while(|l| now - l.at <= SERVER_WINDOW)
-        .filter(|l| l.text.contains(&tag) || names.iter().any(|n| !n.is_empty() && l.text.contains(n.as_str())))
+        .filter(|l| l.text.contains(&tag) || l.text.split_whitespace().any(|w| w == field)
+            || names.iter().any(|n| !n.is_empty() && l.text.contains(n.as_str())))
         .take(SERVER_LINES).map(|l| l.text).collect();
     lines.reverse();
     lines
