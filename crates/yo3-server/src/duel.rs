@@ -569,8 +569,18 @@ impl DuelSession {
     /// The opening with the rules engine: setup, both decks in the card table, start and LP, then whatever the
     /// engine does up to the client's first choice (its draws, turns and phases). None if the engine won't start.
     fn engine_opening(&mut self, first: u32, dir: &std::path::Path) -> Option<Vec<Message>> {
-        let entry = self.entry.clone()?;
-        let npc = entry.npc_id.and_then(|id| self.world.npc_decks.get(&id)).map(|d| self.world.place_deck(d))?;
+        let mut entry = self.entry.clone()?;
+        let mut npc = entry.npc_id.and_then(|id| self.world.npc_decks.get(&id)).map(|d| self.world.place_deck(d))?;
+        // A testing aid (--duel-field), as in duels between players: team 0 is the player, team 1 the computer. Each card
+        // joins its side's deck (so the game's card table has it) and the engine moves it to its place as the duel starts.
+        let player_team = if first == CLIENT { 0 } else { 1 };
+        let mut spawns = self.world.test_field.clone().unwrap_or_default();
+        for s in &mut spawns {
+            let Some(row) = self.world.row_of(s.cid) else { tracing::warn!("--duel-field: no card {}", s.cid); continue };
+            let deck = if s.team == 0 { &mut entry.deck } else { &mut npc };
+            if self.world.extra_deck_rows.contains(&row) { deck.extra.push(row) } else { deck.main.insert(0, row) }
+            s.team = if s.team == 0 { player_team } else { 1 - player_team };
+        }
         let decks = [&entry.deck, &npc];
         let cids = |rows: &[u16]| rows.iter().filter_map(|r| self.world.cards.get(r).map(|c| c.cid)).collect::<Vec<u16>>();
         // Engine team 0 goes first.
@@ -583,6 +593,7 @@ impl DuelSession {
         let (anime, revival) = { let now = self.world.settings.now(); (now.anime_cards, now.revival_rule) };
         let mut engine = Engine::start_rules(dir, anime, revival).map_err(|e| tracing::warn!("rules engine not started: {e}")).ok()?;
         if self.world.duel_check { engine.record(); }
+        if !spawns.is_empty() { engine.spawn_at_start(spawns); }
         let player = self.player_id.map(|id| self.hub.locked().recording_seat(id))
             .unwrap_or(crate::recordings::Seat { player_id: None, name: String::new() });
         let npc_name = entry.npc_id.and_then(|id| self.world.npc_names.get(&id)).cloned().unwrap_or_else(|| "the computer".into());
