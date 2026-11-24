@@ -13,6 +13,21 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## v0.1.22 (2026-11-24)
+
+Multiplayer: update to v0.1.22 to join the hosted server after deployment.
+
+- Updates no longer download by themselves. "Update X is available" in the footer (or **See the update** in Settings,
+  About) opens the update's window with what's new and a **Download** button; it then installs when you restart. Turn
+  on **Download updates automatically** in Settings, About if you prefer the old way.
+- **Restart to install** hides this window right away, so the new version's window no longer opens beside it.
+- **Report a problem** now saves one file in your Downloads folder with what you wrote, an optional way to reach you,
+  your recent logs (personal details removed), this PC's details and, in Singleplayer, the duels you marked with `bug`.
+  Nothing is sent anywhere: send that file to the developer on Discord, privately, or on a GitHub issue.
+- In Singleplayer, the `bug` chat command also tells you where the duel's recording was saved on your PC. On someone
+  else's server it says the host keeps it.
+- Logs are now in one readable format with exact times, so problems are easier to track down.
+
 ## v0.1.21 (2026-11-23)
 
 Multiplayer: update to v0.1.21 to join the hosted server after deployment.

@@ -335,7 +335,7 @@ folders written as names such as `<game>` or `<app data>`, and **Copy** puts it 
 **Report a problem** (in **Help** at the bottom right, in the guide, or on a problem's toast):
 
 1. Say what you were doing and what went wrong, and, if you'd like an answer, how to reach you (optional).
-2. Click **Save report**. **Since Unreleased:** it is saved as one file on your PC, in your **Downloads** folder: what
+2. Click **Save report**. **Since v0.1.22 (2026-11-24):** it is saved as one file on your PC, in your **Downloads** folder: what
    you wrote, your recent logs (this session's and the latest game's) with personal details removed, this PC's details
    (system, processor, memory, graphics card) and, in Singleplayer, the duels you marked with `bug`
    ([what's inside](report-format.md)). Nothing is sent anywhere by itself.
@@ -374,7 +374,7 @@ updates** asks at once). When one is out:
 - **"Update X is available"** beside the version in the footer (with a dot). Clicking it opens the **Update to X**
   window: that version's section of the [changelog](https://github.com/usersina/yo3-revival/blob/main/CHANGELOG.md),
   where it is, a **Download** button and a link to the release page. Settings → About's **Check for updates** opens the
-  same window (**See the update**). **Since Unreleased:** nothing downloads until you press **Download**, unless you turn
+  same window (**See the update**). **Since v0.1.22 (2026-11-24):** nothing downloads until you press **Download**, unless you turn
   on **Download updates automatically** in Settings → About (off by default; before, every new version downloaded by
   itself). While it downloads the footer says "Downloading update X…", then "Update X is ready: restart to install".
 - **It downloads in the background, only if the project signed it.** Each release carries `SHA256SUMS` and the
