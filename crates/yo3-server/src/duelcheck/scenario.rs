@@ -142,9 +142,9 @@ impl Scenario {
         // The spawned cards are deck cards first: `extra` lists the Extra Deck's, the engine knows which is which.
         let mut owned: [(Vec<u16>, Vec<u16>); 2] = [(decks[0].0.to_vec(), decks[0].1.to_vec()), (decks[1].0.to_vec(), decks[1].1.to_vec())];
         if !field.is_empty() {
-            let extra_of = |cid: u16| -> bool {
-                engine_type(&mut Engine::start(dir).ok(), cid).is_some_and(|t| t & (0x40 | 0x2000 | 0x80_0000) != 0)
-            };
+            // By the versions this duel plays: the anime Five-Headed Dragon is a Ritual Monster, in the Main Deck.
+            let mut types = Engine::start_rules(dir, anime, revival).ok();
+            let mut extra_of = |cid: u16| -> bool { engine_type(&mut types, cid).is_some_and(|t| t & (0x40 | 0x2000 | 0x80_0000) != 0) };
             for s in &field {
                 let deck = &mut owned[s.team as usize & 1];
                 if extra_of(s.cid) { deck.1.push(s.cid) } else { deck.0.insert(0, s.cid) }
