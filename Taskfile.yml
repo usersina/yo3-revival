@@ -52,7 +52,8 @@ tasks:
 
   check:shipped:
     desc: "The server's and engine's tests against a built bundle's pruned engine (-- dist/.editions/linux-x86_64/desktop/yo3-revival-desktop --release)"
-    cmds: [tools/engine/test-shipped.sh {{.CLI_ARGS}}]
+    cmds:
+      - tools/engine/test-shipped.sh {{.CLI_ARGS}}
 
   check:decks:
     desc: "The preset decks' cards (starter, structure and NPC decks) self-played, then their effect cards no duel exercised (tools/engine/coverage.py --decks)"
