@@ -68,8 +68,12 @@ table's optional `rarity` column: empty for Common, or `rare`, `super`, `ultra`.
    ```
 
    It says `ok` with the line for `engine/added/cards.tsv` (the next row, the Konami id, the stand-in id when it needs
-   one, an empty rarity, the name), or why the card can't be added.
-2. **Add the line** to `engine/added/cards.tsv` with a short note after the last tab (who asked, the issue number).
+   one, an empty rarity, the name), or why the card can't be added. For a printed card it also gives the line for
+   `engine/anime/cards.tsv` (every card a player can hold has one there; it names the anime version when the pinned
+   data has one) and what `tools/engine/anime-map.py` will make of it: mapped, or held and why, with the fix when there is
+   a usual one (a "?" ATK the anime database spells 0 needs a corrected record in `engine/anime/records.json`).
+2. **Add the lines**: the first to `engine/added/cards.tsv` with a short note after the last tab (who asked, the issue
+   number), the second (a printed card) to `engine/anime/cards.tsv`, then run `tools/engine/anime-map.py`.
 3. **Build the list:** `tools/engine/added-cards.py`. It writes `engine/added-cards.json`, the file the server and the
    launcher read, and refuses anything wrong with the table: a row out of order, a card the game has, a kind the client
    can't show, a Konami id beyond 16383 without a stand-in, a stand-in some card already has. `--check` compares the committed file with a fresh build (the tests run it).
@@ -111,10 +115,16 @@ scenarios and the live check, not by them.
 **Live**, on the headless client ([which tool sees what](development.md#which-tool-sees-what)), never the player's own
 setup: a scratch server (`task dev:server`), then either
 
-- `yo3-server give-cards --data-dir DIR TestPlayer1 "Card Name"` and Edit Deck (the new-card reveal, the card panel,
-  the trunk's row and its search), or
-- the server's `--duel-field 0:mzone:ID,1:hand:ID` testing aid (`task dev:server -- -- --duel-field ...`): every duel
-  between two players starts with those cards in place, with `--duel-check` on to catch any difference.
+- `tools/dev/scratch-server.py admin give-cards TestPlayer1 "Card Name"` and Edit Deck (the new-card reveal, the card
+  panel, the trunk's row and its search), or
+- the server's `--duel-field 0:hand:ID,1:mzone:ID` testing aid (`task dev:server -- -- --duel-field ... --duel-check`):
+  every duel starts with those cards in place. Against the computer (an NPC duel, one client) team 0 is you, so the card
+  is in your hand from the first turn, whatever the shuffle; between two players team 0 goes first. `--duel-check`
+  catches any difference between the game and the engine.
+
+Every added card shows the same "Artwork not found" picture until its own arrives, so which card is which in a hand isn't
+visible: `tools/client/vclient.sh duel` lists each side's hand, field and Graveyard by name (from the scratch server's
+log, with `--duel-check` on).
 
 Look at: its name, type line, Level, attribute, race, ATK/DEF and text in the card panel; it sits in the Extra Deck
 when it should; its summon animation; each effect's dialogs on both clients; no `ERROR duel check` in the server log.
@@ -176,10 +186,11 @@ The data side doesn't grow with the batch: one table, one command.
    stand-in. Choose the order before adding: rows and stand-ins are permanent ([below](#rules-that-never-bend)).
 2. Read each script for mechanics the game never had (Xyz Materials, Link, Pendulum, the Extra Monster Zone) and drop
    those cards.
-3. Paste the lines, build, update the picture list (`added-cards.py`, `anime-pictures.py`), and run the tests.
+3. Paste the lines (both tables), build, update the anime map and the picture list (`added-cards.py`,
+   `anime-map.py`, `anime-pictures.py`), and run the tests.
 4. Write the scenarios. They are independent of each other, so they can be written in parallel, one card each.
 5. One live session for the whole batch: `give-cards` each card, then Edit Deck and a duel or two with
-   `--duel-field` placing several of them at once.
+   `--duel-field` placing several of them at once (an NPC duel needs one client), `vclient.sh duel` naming them.
 
 A batch of about twenty cards of one era, mostly Synchro monsters, is about half a day to a day, almost all of it
 scenarios. Simple cards (no effect, or one effect of a kind the game already has) are minutes each.

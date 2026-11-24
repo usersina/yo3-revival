@@ -161,9 +161,9 @@ ss -ltnp | rg ':7443 '                          # the server's pid, to stop it
 #   Goyo Guardian 3437 works too, by its 2010 text: engine/overrides/ lets it take any Tuner, as Krebons is DARK),
 #   --duel-regulation 4 (check every duel's deck against that banlist, whatever the duel names: the starter deck breaks 4),
 #   --duel-time 0,0 (the turn and total clocks of duels between players off: live checks are slower than 180 s a turn),
-#   --duel-field 0:mzone:9709,1:hand:4342 (every duel between players starts with these cards in place: TEAM 0 goes first,
-#   PLACE hand|mzone|mzone-def|mzone-set|szone|szone-set|grave|banished, Konami ids; a card's effects without summoning it
-#   first; scenario tests: `Scenario::start_field`),
+#   --duel-field 0:mzone:9709,1:hand:4342 (every duel starts with these cards in place: between players TEAM 0 goes first,
+#   against the computer TEAM 0 is the player; PLACE hand|mzone|mzone-def|mzone-set|szone|szone-set|grave|banished, Konami
+#   ids; a card's effects without summoning or drawing it first; scenario tests: `Scenario::start_field`),
 #   --duel-check (compare model/engine state; the required DLL also logs native checkpoints; ERROR duel check on drift)
 #   Detailed diagnostics also records exact engine inputs/answers and dependency fingerprints for replay.
 #   state: server.db (SQLite, WAL, schema 6: one row per account, record, mail…) in data/ (ignored; --data-dir), backed up
@@ -173,6 +173,8 @@ ss -ltnp | rg ':7443 '                          # the server's pid, to stop it
 task dev:server                                   # or: -- --accounts 3 --port 17443 --http 18080 [-- --duel-lp 1000]
 task dev:server -- --from-db copy/server.db --profile-for SomePlayer   # another server's accounts, a key profile each
 eval "$(python3 tools/dev/scratch-server.py env --account 2)"   # in the client terminal; `task dev:server:stop` after
+python3 tools/dev/scratch-server.py admin set anime-cards on     # an admin command on the scratch server's data (never a hand-made --data-dir)
+python3 tools/dev/scratch-server.py dir                          # its folder alone, for scripts: "$(... dir)"/server.log
 # Do not edit yo3.ini: the connection DLL supplies the local endpoints.
 
 # admin subcommands (each takes --data-dir): each is one admin API operation (api.rs, POST /api/admin/v1/<op>, the
@@ -211,6 +213,7 @@ tools/client/vclient.sh start && tools/client/vclient.sh login 0   # cold start,
 tools/client/vclient.sh start-stock               # after a GUI Play set up direct start; same private game/display/prefix
 tools/client/vclient.sh check
 tools/client/vclient.sh ui                         # open screens/dialogs, recent UI texts and Flash calls, duel field (--raw: JSON)
+tools/client/vclient.sh duel                       # the duel by card name (hands, field, Graveyard), from the scratch server's log (--duel-check)
 tools/client/vclient.sh shot NAME                  # logs/b/shots/NAME.png, then view it
 tools/client/vclient.sh click X Y                  # also: key KEY, type TEXT, pixel X Y
 tools/client/vclient.sh stop                       # only your own instance; also clears its crashed client
