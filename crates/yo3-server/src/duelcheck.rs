@@ -1031,6 +1031,40 @@ pub mod selfplay {
         Ok(pool)
     }
 
+    /// The cards the game never had (`engine/added-cards.json`, #75) by what a deck keeps them in, as the engine gives each
+    /// (with the anime versions on when `anime`, which is when the anime-only ones play and are included), each class
+    /// topped up with the ordinary pool's cards to `at_least` so a deck can be made: duels full of added cards.
+    pub fn added_pool(dir: &Path, anime: bool, at_least: usize) -> Result<AnimePool, String> {
+        let added = yo3_data::added::Added::load(dir)?;
+        let cids: Vec<(u16, &str)> = added.cards.iter().filter(|c| anime || !c.anime_only).map(|c| (c.cid, "")).collect();
+        let mut engine = Engine::start_with(dir, anime).map_err(|e| format!("engine: {e}"))?;
+        let mut pool = AnimePool::default();
+        for chunk in cids.chunks(100) {
+            for a in engine.cards(chunk).map_err(|e| format!("engine: {e}"))? {
+                let (cid, kind) = (a["cid"].as_u64().unwrap_or(0) as u16, a["data"]["type"].as_u64().unwrap_or(0));
+                match kind {
+                    k if k & 0x4000 != 0 => {}
+                    k if k & 0x2040 != 0 => pool.extra.push(cid),
+                    k if k & 1 != 0 => pool.monsters.push(cid),
+                    k if k & 2 != 0 => pool.spells.push(cid),
+                    k if k & 4 != 0 => pool.traps.push(cid),
+                    _ => {}
+                }
+            }
+        }
+        for (mine, base) in [(&mut pool.monsters, &MONSTERS[..]), (&mut pool.spells, &SPELLS[..]), (&mut pool.traps, &TRAPS[..]), (&mut pool.extra, &EXTRA[..])] {
+            for card in base {
+                if mine.len() >= at_least {
+                    break;
+                }
+                if !mine.contains(card) {
+                    mine.push(*card);
+                }
+            }
+        }
+        Ok(pool)
+    }
+
     /// [`anime_pool`] of the mapped cards whose map entry `keep` accepts.
     fn anime_pool_where(dir: &Path, keep: impl Fn(&Json) -> bool) -> Result<AnimePool, String> {
         let text = std::fs::read(dir.join("anime-cards.json")).map_err(|e| format!("anime-cards.json: {e}"))?;

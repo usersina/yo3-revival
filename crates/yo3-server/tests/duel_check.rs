@@ -153,6 +153,40 @@ fn the_seeds_reach_the_cases_that_drifted() {
 /// The same self-play with the anime card versions on (#60, the `anime-cards` setting): decks of the cards the reviewed
 /// map approves, so that their anime scripts run through every kind of prompt and the client's view must still follow the
 /// engine. `YO3_CHECK_DUELS=n` plays n duels instead of 30; `YO3_CHECK_ANIME_SEED=s` replays seed s alone.
+/// Self-play with decks full of the cards the game never had (#75, `engine/added-cards.json`): every added card the
+/// engine plays, topped up with the ordinary pool's, so random duels exercise their effects with the client's view checked
+/// after every step. The anime versions off (the printed added cards), then on (every added card, the anime-only ones
+/// too). `YO3_CHECK_DUELS=n` plays n duels each instead of 20.
+#[test]
+fn duels_with_the_added_cards() {
+    let Some(dir) = engine_dir() else { return };
+    let per: u64 = std::env::var("YO3_CHECK_DUELS").ok().and_then(|n| n.parse().ok()).unwrap_or(20);
+    let mut failures = vec![];
+    let added: std::collections::BTreeSet<u16> = yo3_data::added::Added::load(&dir).unwrap().cards.iter().map(|c| c.cid).collect();
+    let mut activated: BTreeMap<u16, u32> = BTreeMap::new();
+    for anime in [false, true] {
+        if anime && yo3_server::engine::anime_problem(&dir).is_some() {
+            continue;
+        }
+        let pool = selfplay::added_pool(&dir, anime, 8).expect("the added cards");
+        for seed in 900..900 + per {
+            let (a, b) = (selfplay::anime_deck(&pool, seed * 2), selfplay::anime_deck(&pool, seed * 2 + 1));
+            let decks = [(&a.0[..], &a.1[..]), (&b.0[..], &b.1[..])];
+            let played = if anime { selfplay::play_anime(&dir, seed, decks, (seed % 2) as usize, seed.is_multiple_of(3)) }
+                else { selfplay::play(&dir, seed, decks, (seed % 2) as usize, seed.is_multiple_of(3)) };
+            match played {
+                Ok(p) => for (cid, n) in p.activated.iter().chain(&p.summoned) {
+                    if added.contains(cid) { *activated.entry(*cid).or_default() += n }
+                },
+                Err(e) => failures.push(format!("anime {anime}: {e}")),
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{} duel(s) failed:\n{}", failures.len(), failures.join("\n\n"));
+    eprintln!("added cards activated or summoned: {activated:?}");
+    assert!(activated.len() >= 3, "the added cards were played: {activated:?}");
+}
+
 /// The self-play under the broadest `revival-rule` house rule, `graveyard-is-graveyard` (Monster Reborn and every revival
 /// reach monsters never properly Summoned): the client's view must follow the engine through those revivals too.
 /// `YO3_CHECK_DUELS=n` plays n duels instead of 30.
