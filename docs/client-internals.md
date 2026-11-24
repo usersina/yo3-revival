@@ -773,6 +773,30 @@ resolution … not used: …`, on a console only) says why. Later the DLL loads,
 doesn't pass it) and leaves the hooks the loader installed. The size is the last Play's, not Settings' now: changing it
 needs a Play before opening `yo3.exe` alone.
 
+### Numbers in the duel: LP and ATK (investigated 2026-11-24)
+
+How the duel shows LP and ATK, for showing more than 99999 (the engine's infinite ATK is 9,999,999). Nothing is built on
+this yet. All of it is drawn by Flash movies (Scaleform GFx), which the game feeds numbers through its one invoke
+(`0x5CB1B0`, see "The UI probe"):
+
+- **LP**: DuelCockpit `0x502EB0` handles the LP commands. `0xF` stores the LP as sent and calls `0x5035A0`, which
+  invokes `setLp` (with `setLpColor` and `setLpGauge`) in `data/gfx/duel_cockpit.swf`. `0x10` adds a change and clamps
+  the result to 0..99999 (the only 99999 in the binary), then `0x5041D0` starts the counter's animation (frames =
+  |change| / 20 + 1, at most 240, so the counter alone can't take minutes) and `0x503980` invokes `setLpAnim`. The shown
+  change goes to `0x503AD0` and the movie's `showDamage`. In the movie, `setLp` sets `lpCounter.number`, a `NumberSprite`
+  (ActionScript class): it clamps to its `maxNumber` and draws each digit as a clip jumping to a frame `num0`..`num9`
+  or `minus` of a bitmap font sprite (`duel_font_b_00`, `duel_font_e_anim_00`...). There is no frame for "∞" or "+".
+- **ATK and DEF under a field card**: `0x50C190` invokes `setProp(prop, value...)` in `data/gfx/duel_fieldinfo.swf`
+  (callers such as `0x4FBAA0` send the card's ATK, card + `0xBC`, as prop 6 and DEF, + `0xC0`, as 7, orgAtk/orgDef as 4
+  and 5, unclamped). The movie sets the card info's `atk`, and `txAtk` is a text field bound to that variable (right
+  aligned, fixed width, no maximum length: 9,999,999 shows as its last five digits, 99999), coloured white, blue or red
+  against `orgAtk`. Its font is `$DefaultFontBold`, which `0x4068D0` maps (`0x5C7850`) to a system font by language;
+  `$DefaultFont` comes from `data/gfx/gfxfontlib.swf`, an embedded Arial of 7,648 glyphs, "∞" among them.
+
+So a text field can show "∞" given a string instead of a number (the invoke takes `char *` and `wchar_t *` values, as
+the connection DLL's Rental Card List Return button already passes), while the LP counter and the damage numbers would
+need a picture the game doesn't have.
+
 ## Data formats
 
 - **`.ypk`**: ZIP local headers with a `YO\x03\x04` signature and no central directory; method 0 (stored) or 8 (raw
