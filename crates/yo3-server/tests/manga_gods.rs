@@ -444,3 +444,28 @@ fn sphere_mode_cannot_tribute_the_opponents_god() {
     assert_eq!(s.count(1, "grave", WARWOLF), 3, "{}", s.context());
     clean(&s);
 }
+
+/// Half of infinity is still infinite: Dreadroot halves every other monster but leaves the anime Geh's infinite ATK as it
+/// is (`engine/overrides/c513000137.lua`), and Avatar beside them ties it at infinity instead of beating a halved Geh by 1.
+#[test]
+fn dreadroot_leaves_infinity_alone() {
+    let Some(s) = field(true, 8000, &[mine(GEH), theirs(DREADROOT), theirs(WARWOLF)]) else { return };
+    assert_eq!(s.attack_of(0, GEH), Some(INFINITE), "{}", s.context());
+    assert_eq!(s.attack_of(1, WARWOLF), Some(1000), "the others are halved: {}", s.context());
+    clean(&s);
+    let Some(s) = field(true, 8000, &[mine(GEH), theirs(DREADROOT), theirs(AVATAR)]) else { return };
+    assert_eq!((s.attack_of(0, GEH), s.attack_of(1, AVATAR)), (Some(INFINITE), Some(INFINITE)), "{}", s.context());
+    clean(&s);
+}
+
+/// So under Dreadroot the anime Geh keeps its infinite damage ("100 times your LP", which needs an infinite ATK): it takes
+/// every LP of a player who gained 9,999,999 from Mystik Wok.
+#[test]
+fn geh_under_dreadroot_keeps_its_infinite_damage() {
+    let Some(mut s) = field(true, 8000, &[mine(GEH), mine(DREADROOT), Spawn { team: 1, place: Hand, cid: WOK }, theirs(GEH)]) else { return };
+    s.prefer(&[(1, GEH)]);
+    let r = s.run_both([&[EndTurn, Attack(GEH)], &[Activate(WOK), EndTurn]]);
+    assert!(r.is_err_and(|e| e.contains("the duel is over")), "{}", s.context());
+    assert_eq!(s.lp(1), 0, "{}", s.context());
+    clean(&s);
+}

@@ -605,7 +605,9 @@ the anime Geh it destroys deals its infinite ATK to both players at once, a draw
 9,999,999 LP, shown as 99,999 (the most the game shows). Infinite damage is infinite (`crates/yo3-engine/src/guards.lua`,
 a rule of ours): the scripts' own "100 times the LP" (Soul Energy Max, Geh's attack), effect damage of 9,999,999 or more
 (Ring of Destruction on Geh) and battle damage from a monster with infinite ATK (Avatar risen to infinity) all take every
-LP a player has, however much Mystik Wok gave them; the core's 32 bits once wrapped the largest into a gain.
+LP a player has, however much Mystik Wok gave them; the core's 32 bits once wrapped the largest into a gain. Half of
+infinity is still infinite: Dreadroot halves every other monster but an infinite ATK or DEF (`engine/overrides/c513000137.lua`),
+so Geh under it keeps its infinite damage and Avatar ties it at infinity.
 A God's control can't switch (Change of Heart and Creature Swap find no target), the opponent can't Tribute it (Sphere
 Mode takes other monsters) and Shrink halves it for the turn. Book of Moon turns it face-down, as the manga text only keeps
 a God from Spell/Trap effects that would make it leave the field; but face-down it is still a God (its Hierarchy is the
