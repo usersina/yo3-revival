@@ -213,7 +213,9 @@ tools/client/vclient.sh start && tools/client/vclient.sh login 0   # cold start,
 tools/client/vclient.sh start-stock               # after a GUI Play set up direct start; same private game/display/prefix
 tools/client/vclient.sh check
 tools/client/vclient.sh ui                         # open screens/dialogs, recent UI texts and Flash calls, duel field (--raw: JSON)
-tools/client/vclient.sh duel                       # the duel by card name (hands, field, Graveyard), from the scratch server's log (--duel-check)
+tools/client/vclient.sh npc [--second]             # from the map into a duel against Kaiba Corporation's NPC (talk, deck, janken, first/second)
+tools/client/vclient.sh duel                       # the duel by card name (hands, field, Graveyard) and the question asked now with each
+                                                   # choice by name, from the scratch server's log (--duel-check)
 tools/client/vclient.sh shot NAME                  # logs/b/shots/NAME.png, then view it
 tools/client/vclient.sh click X Y                  # also: key KEY, type TEXT, pixel X Y
 tools/client/vclient.sh stop                       # only your own instance; also clears its crashed client

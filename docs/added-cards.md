@@ -85,6 +85,12 @@ The data steps take minutes. Most of the work is step 5: each effect needs a tes
 
 ## Test it
 
+**Without writing anything**, every added card is already covered by two tests: `added_cards_smoke.rs` puts each one on
+the field (and a copy in hand) and plays two turns each way through the real core, so a script that errors or a card the
+client's view can't follow fails at once; and the duel check's `duels_with_the_added_cards` self-plays duels full of
+added cards (anime versions off, then on with the anime-only ones). Run them after adding a batch:
+`cargo nextest run --release -p yo3-server --test added_cards_smoke --test duel_check`.
+
 **A scenario test for each effect** in `crates/yo3-server/tests/added_cards.rs`. A scenario plays a duel through the
 real rules engine and checks both players' views of the board after every step, the same check every duel gets with
 `--duel-check`. Two ways to start:
@@ -122,9 +128,11 @@ setup: a scratch server (`task dev:server`), then either
   is in your hand from the first turn, whatever the shuffle; between two players team 0 goes first. `--duel-check`
   catches any difference between the game and the engine.
 
-Every added card shows the same "Artwork not found" picture until its own arrives, so which card is which in a hand isn't
-visible: `tools/client/vclient.sh duel` lists each side's hand, field and Graveyard by name (from the scratch server's
-log, with `--duel-check` on).
+`tools/client/vclient.sh npc` takes the client from the map into a duel against the computer (the talk, the deck, the
+janken, going first; `--second`). Every added card shows the same "Artwork not found" picture until its own arrives, so
+which card is which isn't visible: `tools/client/vclient.sh duel` lists each side's hand, field and Graveyard by name,
+and the question the duel asks now with each choice by name, in the dialog's order (from the scratch server's log, with
+`--duel-check` on).
 
 Look at: its name, type line, Level, attribute, race, ATK/DEF and text in the card panel; it sits in the Extra Deck
 when it should; its summon animation; each effect's dialogs on both clients; no `ERROR duel check` in the server log.
