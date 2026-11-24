@@ -77,7 +77,8 @@ def checks(log, nonce):
         'login': '"summary":"<- 0x1f4c {player_id=' in log and '"summary":"0x2266 {}"' in log,
         'auto-join': '"summary":"<- 0x2136 {room_id=1}"' in log and '"summary":"0x245a {room_id=1}"' in log,
         'chat': f'smoke {nonce}' in log and '"summary":"0x2456 {}"' in log,
-        'command': re.search(r'\[bug\] #\d+ from ', log) is not None,
+        # `[bug] from NAME ... report=N` since the server's lines carry fields (docs/logs.md); `[bug] #N from NAME` before.
+        'command': re.search(r'\[bug\] (#\d+ )?from \S+', log) is not None,
     }
 
 

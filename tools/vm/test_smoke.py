@@ -40,6 +40,8 @@ class Checks(unittest.TestCase):
                          '"summary":"0x245a {room_id=1}"', '"chat_str":"\\"vm smoke 42\\""', '"summary":"0x2456 {}"',
                          'INFO [bug] #1 from TestPlayer1 (recording none)'])
         self.assertEqual(smoke.checks(log, 42), {'login': True, 'auto-join': True, 'chat': True, 'command': True})
+        fields = log.replace('INFO [bug] #1 from TestPlayer1 (recording none)', 'INFO [bug] from TestPlayer1 player=1001 report=1 duel="none"')
+        self.assertTrue(smoke.checks(fields, 42)['command'], "the server's line with fields (yo3-log)")
         missed = smoke.checks(log.replace('0x2136', '0x2137'), 7)
         self.assertEqual((missed['auto-join'], missed['chat']), (False, False))
 
