@@ -21,9 +21,10 @@ Older entries describe their release at the time. For current setup, use the [RE
   and Tritos, and Arduous Decision. Their text starts with [Anime]. With anime cards off, a deck holding one can't
   duel, and the chat tells you which card to take out.
 - With anime cards on, Divine Serpent Geh and Underworld Circle play their anime versions.
-- House rule: a card that Special Summons "ignoring its Summoning conditions" (Illusion Gate, Arduous Decision...)
-  ignores all of them, including "must first be properly Summoned". Illusion Gate can now take a Divine Serpent Geh
-  that was only ever sent to the Graveyard. Monster Reborn and other revival cards keep every limit.
+- Hosts can choose a house rule on reviving monsters that "must first be properly Summoned" (Fusion, Synchro, Ritual
+  monsters...), the `revival-rule` setting: the official ruling (the default), cards that say "ignoring its Summoning
+  conditions" ignore that too (Illusion Gate takes a Divine Serpent Geh that was only ever sent to the Graveyard), or
+  every revival from the Graveyard does, as in the anime (Monster Reborn revives a discarded Ritual monster).
 - Added cards are found by Edit Deck's Search Key filters (Special Summon, Destroy monster...), and their new-card reveal
   shows their rarity's frame.
 

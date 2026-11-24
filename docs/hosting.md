@@ -303,6 +303,10 @@ time to be running at the start (a Championship the server missed by more than a
   duel) lets each player, in NPC duels only (not duels between players, events or the Ultimate Match's computer match),
   use Destiny Draw once per duel: at the start of their Draw Phase with 1000 LP or less they are asked, and a yes lets them pick
   any card left in their Deck as the card they draw. [Playing](playing.md#destiny-draw).
+- **Revival rule.** `yo3 set revival-rule ignoring-means-all` (a [live setting](guide.md#live-settings), `official` by
+  default, at the next duel) chooses how far revival reaches past "must first be properly Summoned": the official
+  ruling, cards that say "ignoring its Summoning conditions" too, or every revival from the Graveyard
+  (`graveyard-is-graveyard`). [House rules](rules-privacy.md#house-rules).
 - **Prices.** `pack-cost`, `deck-cost`, `trade-cards` and the Rental's `rental-cards`, `rental-bp` and `rental-days`
   are [live settings](guide.md#live-settings), like `yo3 set pack-cost 150`.
 
