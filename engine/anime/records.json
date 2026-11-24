@@ -79,6 +79,25 @@
    "basis": "The upstream row and script are used as they are; only the ATK is corrected: the pinned database spells the card's \"?\" as 0 where the game shows \"?\" (-2, as the official card), so the card keeps the game's \"?\" and the anime script plays. The core plays a \"?\" base ATK as 0 on the field, as the 0 would.",
    "text": "Cannot be Normal Summoned/Set. Must be Special Summoned by banishing 2 monsters you control (1 \"Blackwing\" Tuner and 1 non-Tuner), and cannot be Special Summoned by other ways. This card's Level becomes the combined Levels of the monsters banished for its Special Summon. Once per turn: you can banish 1 \"Blackwing\" Synchro Monster from your Extra Deck whose Level is equal to this card's Level. Then, until your next Standby Phase, this card's ATK and effects become the same as that monster's.",
    "strings": []
+  },
+  {
+   "cid": 12671,
+   "code": 170000170,
+   "official": 82103466,
+   "alias": 82103466,
+   "setcode": 0,
+   "type": 33554465,
+   "level": 10,
+   "atk": -2,
+   "def": 0,
+   "race": 524288,
+   "attribute": 32,
+   "name": "Divine Serpent Geh (Anime)",
+   "reconstruction": false,
+   "upstream_script": true,
+   "basis": "The upstream row and script are used as they are; only the ATK is corrected: the pinned database spells the card's \"?\" as 0 where the game shows \"?\" (-2, as the official card), so the card keeps the game's \"?\" and the anime script plays (its \"gains infinite ATK\"). The core plays a \"?\" base ATK as 0 on the field, as the 0 would.",
+   "text": "Cannot be Normal Summoned/Set. Must be Special Summoned with \"Orichalcos Shunoros\", and cannot be Special Summoned by other ways. If this card is Summoned: Send your entire hand to the Graveyard, also you lose all your LP. This card gains ∞ ATK. Cannot declare an attack unless you send the top 10 cards of your Deck to the Graveyard. You cannot lose the Duel.",
+   "strings": []
   }
  ]
 }

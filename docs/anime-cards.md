@@ -2,7 +2,7 @@
 
 <!-- Made by tools/engine/anime-map.py from engine/anime/cards.tsv: do not edit by hand. -->
 
-With the `anime-cards` setting on (a host sets it; a single player turns on **Anime cards** in Desktop's Settings → Singleplayer: [playing](playing.md#anime-card-versions)), the 416 cards below play by their anime effects, ProjectIgnis' unofficial scripts (CardScripts `915c6ff`), in NPC and player duels, and the game shows them as their anime versions: the **card profile**. The other cards, and the 3 retained or held back below, play and show as they always did. The reviewed table is the issue [#60](https://github.com/usersina/yo3-revival/issues/60); an unofficial script loading without an error is not proof of anime accuracy, only that it plays.
+With the `anime-cards` setting on (a host sets it; a single player turns on **Anime cards** in Desktop's Settings → Singleplayer: [playing](playing.md#anime-card-versions)), the 418 cards below play by their anime effects, ProjectIgnis' unofficial scripts (CardScripts `915c6ff`), in NPC and player duels, and the game shows them as their anime versions: the **card profile**. The other cards, and the 3 retained or held back below, play and show as they always did. The reviewed table is the issue [#60](https://github.com/usersina/yo3-revival/issues/60); an unofficial script loading without an error is not proof of anime accuracy, only that it plays.
 
 ## The card profile
 
@@ -77,6 +77,7 @@ These cards differ from the game's in what the client draws; the profile covers 
 | Dark-Eyes Illusionist | flags: -Flip<br>def: 1400 -> 0 |
 | Des Feral Imp | type: +Normal, -Effect<br>flags: -Flip<br>race: 524288 -> 8 |
 | Different Dimension Dragon | atk: 1200 -> 1400 |
+| Divine Serpent Geh | level: 12 -> 10 |
 | Doomcaliber Knight | type: +Normal, -Effect<br>race: 8 -> 16 |
 | Dragon Capture Jar | kind: the game's card is a Trap, the anime one a Monster |
 | Dragon Master Knight | def: 5000 -> 4000 |
@@ -165,7 +166,7 @@ A card is released only when the client side of each difference is proven: the c
 | subtype | a Spell or Trap's own kind (Continuous, Quick-Play, Equip, Field, Counter) | 16 | Fiend's Sanctuary: a Quick-Play Spell, activated on the opponent's turn |
 | type | Normal, Effect, Tuner, Ritual and the other kinds of monster | 24 | Boost Warrior: a Tuner, so it Synchro Summons |
 | deck | Main or Extra Deck: a Fusion Monster is an Extra Deck card, a Normal one a Main Deck card | 10 | Perfect Machine King: a Fusion Monster, Fusion Summoned from the Extra Deck |
-| level | Level | 9 | Rapid Warrior: Level 3, so it makes the Level 6 Synchro Monster |
+| level | Level | 10 | Rapid Warrior: Level 3, so it makes the Level 6 Synchro Monster |
 | attribute | attribute | 13 | Granadora: DARK, so Umiiruka does not raise it |
 | race | type of monster (Warrior, Beast...) | 11 | Chiron the Mage: a Beast, so Sogen does not raise it |
 | atk | ATK, also a number that is not a multiple of ten, and `?` | 11 | Pumpking the King of Ghosts: 1500 ATK, the damage it takes |
@@ -223,6 +224,7 @@ Clear Vice Dragon and Blackwing - Aurora the Northern Lights play by ProjectIgni
 | --- | --- | --- |
 | Clear Vice Dragon | 513000096 | ATK ? (-2), DEF 0, Level 8 |
 | Blackwing - Aurora the Northern Lights | 511002602 | ATK ? (-2), DEF 0, Level 10 |
+| Divine Serpent Geh | 170000170 | ATK ? (-2), DEF 0, Level 10 |
 
 Temple of the Kings (5231) keeps the game's version: its anime rules would need a reconstruction of Duel Monsters episodes 87 and 89 (which cards the sealed-card effect may seal, the set restrictions, how far the protection reaches, the release costs and when the card is lost). The upstream script mixes the original, later and printed rules, so it is never enabled; nothing is implemented.
 
@@ -347,6 +349,7 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Dimension Explosion | 511002824 |  |
 | Discord | 511001212 |  |
 | Divine Relic Mjollnir | 511002988 |  |
+| Divine Serpent Geh | 170000170 |  |
 | Doomcaliber Knight | 511002514 |  |
 | Doppelwarrior | 511600433 | makes Doppel Token |
 | Double Spell | 513000055 |  |
@@ -624,6 +627,7 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Tyr of the Nordic Champions | 511002985 |  |
 | Ultimate Ancient Gear Golem | 511027033 |  |
 | Underground Arachnid | 511600137 |  |
+| Underworld Circle | 513000118 |  |
 | Uria, Lord of Searing Flames | 511000234 |  |
 | Valkyrie of the Nordic Ascendant | 511000251 | makes Einherjar Token |
 | Variety Comes Out | 511010537 |  |
@@ -687,8 +691,11 @@ Extra Deck), or when the research or the script is not settled. Each reason is k
 | Wolf | upstream 511003065: the anime Normal Monster is equivalent |
 | Zera the Mant | upstream 511002610 is a different card or a prize card |
 
-Every other card of the game (4,338 of 4,772 in `engine/anime/cards.tsv`) has no anime_id: no anime version, or none we use, and keeps its current behaviour.
+Every other card of the game (4,341 of 4,777 in `engine/anime/cards.tsv`) has no anime_id: no anime version, or none we use, and keeps its current behaviour.
 
 | Card | Note |
 | --- | --- |
 | Deck Devastation Virus | Its anime appearance (ZEXAL) has the game's text. ProjectIgnis' Deck Destruction Virus (511001119) is another card, from the Pyramid of Light film. |
+| Illusion Gate | added card (#75, stand-in): upstream has a video game version only |
+| Ra's Disciple | added card (#75) |
+| The Seal of Orichalcos | added card (#75): no anime version upstream |

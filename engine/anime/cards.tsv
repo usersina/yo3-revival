@@ -74,6 +74,8 @@ cid	name	edopro_id	anime_id	status	note
 3973	Nordic Beast Token				
 3974	Einherjar Token				
 3975	Malus Token				
+3976	Illusion Gate	33017964			added card (#75, stand-in): upstream has a video game version only
+3978	Underworld Circle	73443672	513000118	Anime	added card (#75, stand-in)
 4007	Blue-Eyes White Dragon	89631139			
 4008	Mystical Elf	15025844	511009014	Anime	
 4009	Hitotsu-Me Giant	76184692			
@@ -4771,3 +4773,6 @@ cid	name	edopro_id	anime_id	status	note
 9447	Z-ONE	62499965	511000279	Anime	
 9448	Blue Rose Dragon	98884569			
 9709	Shooting Quasar Dragon	35952884	513000031	Anime	added card (#75)
+10327	The Seal of Orichalcos	48179391			added card (#75): no anime version upstream
+11169	Ra's Disciple	74875003			added card (#75)
+12671	Divine Serpent Geh	82103466	170000170	Anime	added card (#75): Dartz's, summoned by Shunoros

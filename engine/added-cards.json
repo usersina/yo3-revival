@@ -25,6 +25,135 @@
    "genre": 136,
    "note": "first anime-only card: played with anime cards on",
    "anime_only": true
+  },
+  {
+   "row": 4836,
+   "cid": 11169,
+   "passcode": 74875003,
+   "name": "Ra's Disciple",
+   "desc": "When this card is Summoned: You can Special Summon up to 2 \"Ra's Disciple\" from your hand and/or Deck. Cannot be Tributed, except for the Tribute Summon of \"Slifer the Sky Dragon\", \"Obelisk the Tormentor\", or \"The Winged Dragon of Ra\". You cannot Special Summon monsters, except by the effect of \"Ra's Disciple\".",
+   "a": 505129889,
+   "b": 143147272,
+   "genre": 8,
+   "note": "Ra deck test batch (Yugi vs Marik)"
+  },
+  {
+   "row": 4837,
+   "cid": 10327,
+   "passcode": 48179391,
+   "name": "The Seal of Orichalcos",
+   "desc": "All monsters you control gain 500 ATK. Once per turn, this card cannot be destroyed by card effects. While you control 2 or more face-up Attack Position monsters, your opponent cannot target your monster(s) with the lowest ATK for an attack. If this card is activated: Destroy all Special Summoned monsters you control (if any). You cannot Special Summon monsters from the Extra Deck. You can only activate \"The Seal of Orichalcos\" once per Duel.\r\r* The above text is unofficial and describes the card's functionality in the OCG.",
+   "a": 10327,
+   "b": 146409576,
+   "genre": 1574016,
+   "note": "Orichalcos batch: the Seal"
+  },
+  {
+   "row": 4838,
+   "cid": 12671,
+   "passcode": 82103466,
+   "name": "Divine Serpent Geh",
+   "desc": "Cannot be Normal Summoned/Set. Must be Special Summoned by its own effect. If a monster(s) you control is destroyed by an opponent's attack or card effect: You can pay half your LP; Special Summon this card from your hand. Cannot be targeted by card effects. If this card attacks an opponent's monster, during the Damage Step only, negate the effects of that monster while it is face-up on the field (but its effects can still be activated), also its ATK becomes half its original ATK. Once per battle, if this card battles, during damage calculation (Quick Effect): You can make this card's ATK become equal to the highest original ATK on the field (your choice, if tied).",
+   "a": 8384895,
+   "b": 144753160,
+   "genre": 2097304,
+   "note": "Orichalcos batch: anime version with anime cards on"
+  },
+  {
+   "row": 4839,
+   "cid": 3976,
+   "passcode": 33017964,
+   "name": "Illusion Gate",
+   "desc": "Pay half your LP; destroy as many monsters your opponent controls as possible, then you can Special Summon 1 monster from your opponent's GY to your field, ignoring its Summoning conditions. You can only apply this effect of \"Illusion Gate\" once per Duel.",
+   "a": 3976,
+   "b": 146278504,
+   "genre": 0,
+   "note": "Orichalcos batch: takes Geh from the opponent's GY",
+   "konami_id": 21754
+  },
+  {
+   "row": 4840,
+   "cid": 3978,
+   "passcode": 73443672,
+   "name": "Underworld Circle",
+   "desc": "Activate this card if both players have 5 or more monsters in their GYs; destroy as many monsters on the field as possible, then each player banishes (face-down) all monsters from their Deck, then you can Special Summon 1 Normal Monster from your GY. Once per turn, during the Standby Phase: Activate this effect; each player can Special Summon 1 monster from their GY, ignoring its Summoning conditions, but banish it when it leaves the field. You can only activate 1 \"Underworld Circle\" per Duel.",
+   "a": 3978,
+   "b": 146540648,
+   "genre": 0,
+   "note": "Orichalcos batch",
+   "konami_id": 22708
+  },
+  {
+   "row": 4841,
+   "cid": 3980,
+   "passcode": 511000182,
+   "name": "Arduous Decision",
+   "desc": "[Anime]\rDraw 2 cards from the top of your Deck, then have your opponent select one of those cards. If the selected card is a monster, Special Summon it, ignoring its Summoning conditions, and send the other card to the Graveyard. Otherwise, send both cards to the Graveyard.",
+   "a": 3980,
+   "b": 146278504,
+   "genre": 12,
+   "note": "anime-only: Yugi's draw gamble",
+   "anime_only": true
+  },
+  {
+   "row": 4842,
+   "cid": 3981,
+   "passcode": 110000100,
+   "name": "Orichalcos Deuteros",
+   "desc": "[Anime]\rActivate only if \"The Seal of Orichalcos\" is in your Field Zone. This card gains the effects of \"The Seal of Orichalcos\". Once per turn: You can gain 500 LP for each monster you control. When an opponent's monster declares a direct attack: You can Tribute 1 monster; destroy the attacking monster.",
+   "a": 3981,
+   "b": 146409576,
+   "genre": 1,
+   "note": "anime-only: the Seal's second level",
+   "anime_only": true
+  },
+  {
+   "row": 4843,
+   "cid": 3982,
+   "passcode": 110000101,
+   "name": "Orichalcos Tritos",
+   "desc": "[Anime]\rActivate only if \"Orichalcos Deuteros\" is in your Field Zone. This card gains the effects of \"Orichalcos Deuteros\". When your opponent activates a Spell/Trap Card or effect that targets a monster you control (Quick Effect): You can negate the activation.",
+   "a": 3982,
+   "b": 146409576,
+   "genre": 16,
+   "note": "anime-only: the Seal's third level (anime text partly unknown; the script's reading)",
+   "anime_only": true
+  },
+  {
+   "row": 4844,
+   "cid": 3984,
+   "passcode": 170000166,
+   "name": "Orichalcos Kyutora",
+   "desc": "[Anime]\rCannot be Normal Summoned/Set. Must first be Special Summoned (from your hand) by paying 500 LP. While this card is face-up on the field, all battle damage you would take from battles involving monsters you control becomes 0. When this card is destroyed: You can Special Summon 1 \"Orichalcos Shunoros\" from your hand or Deck.",
+   "a": 420253584,
+   "b": 137376008,
+   "genre": 2097288,
+   "note": "anime-only: summons Shunoros when destroyed",
+   "anime_only": true
+  },
+  {
+   "row": 4845,
+   "cid": 3985,
+   "passcode": 170000168,
+   "name": "Orichalcos Dexia",
+   "desc": "[Anime]\rCannot be Normal Summoned/Set. Must be Special Summoned with \"Orichalcos Shunoros\", and cannot be Special Summoned by other ways. Cannot be destroyed while you control a \"Orichalcos Shunoros\". If this card battles with your opponent's monster: This card's ATK becomes equal to either that Attack Position monster's ATK or that Defense Position monster's DEF, + 300 until the end of the Damage Step. After damage calculation, 1 \"Orichalcos Shunoros\" you control loses ATK equal to the ATK this card had during the Damage Step. If \"Orichalcos Shunoros\" leaves the field: Destroy this card.",
+   "a": 4294954897,
+   "b": 137904648,
+   "genre": 2113664,
+   "note": "anime-only: Shunoros' right arm",
+   "anime_only": true
+  },
+  {
+   "row": 4846,
+   "cid": 3986,
+   "passcode": 170000169,
+   "name": "Orichalcos Aristeros",
+   "desc": "[Anime]\rCannot be Normal Summoned/Set. Must be Special Summoned with \"Orichalcos Shunoros\", and cannot be Special Summoned by other ways. Cannot be destroyed while you control a \"Orichalcos Shunoros\". If an opponent's monster declares an attack: Change the attack target to this card and the DEF of this card becomes equal to the ATK of the attacking monster + 300 during the Damage Step only. After damage calculation, 1 \"Orichalcos Shunoros\" you control loses ATK equal to the DEF this card had during the Damage Step. If \"Orichalcos Shunoros\" leaves the field: Destroy this card.",
+   "a": 4294954898,
+   "b": 137904648,
+   "genre": 2113664,
+   "note": "anime-only: Shunoros' left arm",
+   "anime_only": true
   }
  ]
 }
