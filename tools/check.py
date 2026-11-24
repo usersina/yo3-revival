@@ -25,6 +25,7 @@ PY = [
     'tools/mod/test_fixture_layout.py',
     'tools/mod/test_winmm_exports.py',
     'tools/client/test_vclient.py',
+    'tools/client/test_duel_state.py',
     'tools/client/test_ui_scenario.py',
     'tools/monkey/test_duel_report.py',
     'tools/monkey/test_duel_replay.py',
