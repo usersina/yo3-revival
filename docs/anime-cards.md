@@ -229,7 +229,7 @@ an effect of the card, so Skill Drain does not take it: Ra and Avatar are 2, the
 that would make it leave the field and by other monsters' effects, except a monster with the same or a higher Hierarchy; it is not destroyed
 by battle with a monster of a lower Hierarchy (an ordinary monster is 0), and its controller takes no damage from that battle; Special
 Summoned, it goes back where it came from at the End Phase, except a Ra that The Winged Dragon of Ra - Sphere Mode summons (a house rule:
-it is Ra out of its sphere form, `proc_unofficial.lua`). Their own effects: Obelisk's Soul Energy Max (in the Battle Phase, Tribute
+it is Ra out of its sphere form, `proc_unofficial.lua`), which also keeps Sphere Mode's 4000 ATK/DEF past the 1-turn limit on other cards' effects. Their own effects: Obelisk's Soul Energy Max (in the Battle Phase, Tribute
 two monsters: it attacks with infinite ATK, damage of a hundred times the opponent's LP); Slifer's ATK of 1000 per card in the hand;
 Ra's the Tributes' total; Dreadroot halves every other monster's ATK and DEF but a Divine-Beast's; Avatar is 1 stronger than the strongest
 other monster; Eraser is 1000 per card the opponent controls and takes every monster with it when it goes. The Wicked Gods' rows keep the

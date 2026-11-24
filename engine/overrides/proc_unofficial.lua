@@ -1,6 +1,7 @@
 --yo3-revival override of ProjectIgnis' unofficial/proc_unofficial.lua (the anime and manga cards' shared procedures),
---unchanged but for UnofficialProc.divineHierarchy's battle check (tglimit) and its End Phase return, which a God Special
---Summoned by Sphere Mode skips (spsop): see engine/overrides/README.md.
+--unchanged but for UnofficialProc.divineHierarchy's battle check (tglimit), and for a God Special Summoned by Sphere Mode,
+--which skips the End Phase return (spsop) and keeps its 4000 ATK/DEF past the 1-turn limit (sphere_stats):
+--see engine/overrides/README.md.
 --Constants
 SET_NUMBER_S	= 0x2048
 SET_SUPREME_KING	= 0xf8
@@ -1043,12 +1044,17 @@ function UnofficialProc.divineHierarchy()
 		--returned false (no protection) whenever the other monster had no Hierarchy at all.
 		return c and e:GetHandler():GetFlagEffectLabel(FLAG_DIVINE_HIERARCHY)>(c:GetFlagEffectLabel(FLAG_DIVINE_HIERARCHY) or 0) or false
 	end
+	--yo3-revival house rule: the ATK/DEF of 4000 that The Winged Dragon of Ra - Sphere Mode (10000080) gives the Ra it
+	--Special Summons is Ra's own out of its sphere form, not another card's effect lasting 1 turn: it is never reset.
+	local function sphere_stats(eff)
+		return eff:GetOwner():GetOriginalCode()==10000080 and (eff:GetCode()==EFFECT_SET_ATTACK or eff:GetCode()==EFFECT_SET_DEFENSE)
+	end
 	local function stgcon(e,tp,eg,ep,ev,re,r,rp)
 		local c=e:GetHandler()
 		if not c:HasFlagEffect(FLAG_DIVINE_HIERARCHY) then return false end
 		local effs={c:GetCardEffect()}
 		for _,eff in ipairs(effs) do
-			if (eff:GetOwner()~=c and not eff:GetOwner():IsCode(0)
+			if (eff:GetOwner()~=c and not eff:GetOwner():IsCode(0) and not sphere_stats(eff)
 				and not eff:IsHasProperty(EFFECT_FLAG_IGNORE_IMMUNE) and eff:GetCode()~=EFFECT_SPSUMMON_PROC
 				and (eff:GetTarget()==aux.PersistentTargetFilter or not eff:IsHasType(EFFECT_TYPE_GRANT+EFFECT_TYPE_FIELD))) then
 				return true
@@ -1060,7 +1066,7 @@ function UnofficialProc.divineHierarchy()
 		local c=e:GetHandler()
 		local effs={c:GetCardEffect()}
 		for _,eff in ipairs(effs) do
-			if eff:GetOwner()~=c and not eff:GetOwner():IsCode(0)
+			if eff:GetOwner()~=c and not eff:GetOwner():IsCode(0) and not sphere_stats(eff)
 				and not eff:IsHasProperty(EFFECT_FLAG_IGNORE_IMMUNE) and eff:GetCode()~=EFFECT_SPSUMMON_PROC
 				and (eff:GetTarget()==aux.PersistentTargetFilter or not eff:IsHasType(EFFECT_TYPE_GRANT+EFFECT_TYPE_FIELD)) then
 				eff:Reset()

@@ -387,6 +387,11 @@ fn sphere_mode_summons_the_manga_ra_and_it_stays() {
     let Some((mut s, _)) = sphere_to_ra(true) else { return };
     s.run_both([&[EndTurn], &[EndTurn]]).unwrap();
     assert!(s.monster(0, RA).is_some(), "Ra stays: {}", s.context());
+    // Sphere Mode's 4000 is Ra's own (a house rule): kept past the manga Gods' "1 turn" for other cards' effects.
+    assert_eq!(s.attack_of(0, RA), Some(4000), "{}", s.context());
+    assert_eq!(s.state()[0]["mzone"].as_array().unwrap().iter().find(|c| c["cid"] == RA).unwrap()["defense"], 4000);
+    s.run_both([&[EndTurn], &[EndTurn]]).unwrap();
+    assert_eq!(s.attack_of(0, RA), Some(4000), "and the turn after: {}", s.context());
     clean(&s);
 }
 
