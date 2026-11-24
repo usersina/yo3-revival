@@ -334,16 +334,17 @@ folders written as names such as `<game>` or `<app data>`, and **Copy** puts it 
 
 **Report a problem** (in **Help** at the bottom right, in the guide, or on a problem's toast):
 
-1. Say what you were doing and what went wrong.
-2. Click **Continue on GitHub**. Signed in to a server on Multiplayer, YO3 Revival sends your recent logs (this
-   session's and the latest game's) to that server's host and gets back a **report ID** such as `R-7K3Q-M2PA`. It
-   opens the project's report form in your browser, filled in with your words, the version, the error and the report
-   ID, plus the IDs of reports sent after recent games that broke.
-3. Submit the form. There is nothing to attach.
+1. Say what you were doing and what went wrong, and, if you'd like an answer, how to reach you (optional).
+2. Click **Send report**. **Since Unreleased:** it goes straight to the YO3 Revival project's own server with your
+   recent logs (this session's and the latest game's), personal details removed, whatever server you play on, and you
+   get a **report ID** such as `R-7K3Q-M2PA` to mention if you talk to us. Signed in to another server on Multiplayer,
+   that server's host gets it too. There is nothing to attach and no form to fill in; **Also talk about it on GitHub**
+   opens the public report form with the ID, if you want to.
 
-Without a server to send to (Singleplayer, or with problem reports off), YO3 Revival saves the logs in a ZIP instead,
-with personal details removed, and opens its folder: drag the ZIP into the form. Reports on GitHub are public, and such
-a ZIP can still hold player names, chat and decks, so look through it if that matters to you.
+Before, it opened a GitHub form, and in Singleplayer it saved a ZIP to attach there, which most reports lacked. That is
+still what happens if the project's server can't be reached: the form opens with the host's report ID, or with the ZIP
+to drag in. Reports on GitHub are public, and such a ZIP can still hold player names, chat and decks, so look through
+it if that matters to you.
 
 ### Problem reports
 

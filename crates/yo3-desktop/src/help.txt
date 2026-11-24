@@ -100,7 +100,7 @@ If the game doesn't start, try Verify and repair, then Report a problem.
 - This server's identity changed: don't sign in. Ask the host whether they moved the server.
 
 # report | Reporting a problem
-Report a problem sends your recent logs to the server you're signed in to on Multiplayer and opens the project's report form in your browser, with the report ID filled in. Describe what happened and submit it: there is nothing to attach.
+Report a problem sends what you write and your recent logs, personal details removed, straight to the YO3 Revival project (and to the server's host when you're signed in on Multiplayer). You get a report ID: mention it if you talk to us. Add how to reach you if you'd like an answer. There is nothing to attach, and GitHub is optional.
 Without a server to send to (Singleplayer, or with sending logs turned off), it saves the logs in a file instead: drag it into the form.
 When a game's connection breaks or it closes with an error, its logs go to the server you played on by themselves, so the host can see what went wrong. Passwords and keys are never in them. Settings, Advanced, Send logs when something breaks turns this off.
 
