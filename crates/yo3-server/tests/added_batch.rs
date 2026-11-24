@@ -4,7 +4,7 @@
 use yo3_server::duelcheck::scenario::{Action::*, Scenario, engine_dir};
 use yo3_server::engine::{Revival, Spawn, SpawnPlace::*};
 
-// Added cards (rows 4836-4846; ids from engine/added-cards.json, a stand-in where the Konami id is too large or none).
+// Added cards (rows 4836-4847; ids from engine/added-cards.json, a stand-in where the Konami id is too large or none).
 const RAS_DISCIPLE: u16 = 11169;
 const SEAL: u16 = 10327; // The Seal of Orichalcos
 const GEH: u16 = 12671; // Divine Serpent Geh
@@ -16,12 +16,14 @@ const TRITOS: u16 = 3982;
 const KYUTORA: u16 = 3984;
 const DEXIA: u16 = 3985;
 const ARISTEROS: u16 = 3986;
+const SPHERE: u16 = 11927; // The Winged Dragon of Ra - Sphere Mode (row 4847)
 // The game's own.
 const SHUNOROS: u16 = 8535;
 const FOOLISH_BURIAL: u16 = 5236;
 const BLAST: u16 = 5365; // Blast Held by a Tribute
 const NULL_AND_VOID: u16 = 5362; // Muko
 const OBELISK: u16 = 4998;
+const RA: u16 = 5000; // The Winged Dragon of Ra: the official card, or the manga one with anime cards on
 const BLUE_EYES: u16 = 4007;
 const WARWOLF: u16 = 6960; // Gene-Warped Warwolf: Level 4, 2000 ATK, no effect
 const KURIBOH: u16 = 4064;
@@ -344,5 +346,94 @@ fn each_revival_rule_reaches_as_far_as_it_says() {
             let Some(got) = case(*level) else { return };
             assert_eq!(got, want, "{what}, under {}", level.name());
         }
+    }
+}
+
+/// Sphere Mode with three Tributes of your own, then Tributed for Ra from the Deck ("ignoring its Summoning conditions, and
+/// if you do, its ATK/DEF become 4000"), anime cards `anime` or not: Sphere Mode summoned on the duel's first turn, Tributed on
+/// the second own turn, so Ra can attack.
+fn sphere_to_ra(anime: bool) -> Option<(Scenario, &'static str)> {
+    let deck: Vec<u16> = [KURIBOH; 39].into_iter().chain([RA]).collect();
+    let spawns = [Spawn { team: 0, place: Hand, cid: SPHERE }, Spawn { team: 0, place: Monster, cid: WARWOLF },
+        Spawn { team: 0, place: Monster, cid: WARWOLF }, Spawn { team: 0, place: Monster, cid: WARWOLF }];
+    let mut s = field(anime, 8000, [(&deck, &[]), (&[KURIBOH; 40], &[])], &spawns)?;
+    s.run(&[Summon(SPHERE)]).unwrap();
+    assert_eq!((s.count(0, "mzone", SPHERE), s.count(0, "grave", WARWOLF)), (1, 3), "Sphere Mode, three Tributes: {}", s.context());
+    s.run_both([&[EndTurn], &[EndTurn]]).unwrap(); // the duel's first turn has no Battle Phase
+    let from = if s.count(0, "hand", RA) == 1 { "hand" } else { "deck" }; // where Sphere Mode takes Ra from
+    s.run(&[Activate(SPHERE)]).unwrap();
+    assert_eq!(s.count(0, "grave", SPHERE), 1, "Sphere Mode Tributed itself: {}", s.context());
+    assert_eq!(s.attack_of(0, RA), Some(4000), "{}", s.context());
+    assert_eq!(s.state()[0]["mzone"].as_array().unwrap().iter().find(|c| c["cid"] == RA).unwrap()["defense"], 4000);
+    s.run(&[Attack(RA)]).unwrap();
+    assert_eq!(s.lp(1), 4000, "Ra attacked directly: {}", s.context());
+    Some((s, from))
+}
+
+/// The official Ra, Special Summoned by Sphere Mode with 4000 ATK and DEF, stays on the field.
+#[test]
+fn sphere_mode_summons_the_official_ra_with_4000() {
+    let Some((mut s, _)) = sphere_to_ra(false) else { return };
+    s.run_both([&[EndTurn], &[EndTurn]]).unwrap();
+    assert_eq!(s.attack_of(0, RA), Some(4000), "still there the next turn: {}", s.context());
+    clean(&s);
+}
+
+/// The manga Ra (anime cards on) answers Sphere Mode's "The Winged Dragon of Ra" by its alias, the official passcode: it
+/// comes with 4000 ATK and DEF and attacks, then its own text applies ("During the End Phase, if this card was Special
+/// Summoned, return it to where it was Special Summoned from"): back to the hand or the Deck.
+#[test]
+fn sphere_mode_summons_the_manga_ra_for_its_turn() {
+    let Some((mut s, from)) = sphere_to_ra(true) else { return };
+    s.run_both([&[EndTurn], &[]]).unwrap();
+    assert!(s.monster(0, RA).is_none(), "{}", s.context());
+    for place in ["hand", "grave", "removed"] {
+        let back = usize::from(place == from);
+        assert_eq!(s.count(0, place, RA), back, "Ra went back to the {from}: {}", s.context());
+    }
+    clean(&s);
+}
+
+/// Sphere Mode with the opponent's three monsters as Tributes goes to their field, can't attack there, and comes back to its
+/// owner in the End Phase of the next turn (the opponent's), with either Ra's rules.
+#[test]
+fn sphere_mode_on_the_opponents_field_comes_back() {
+    for anime in [false, true] {
+        let spawns = [Spawn { team: 0, place: Hand, cid: SPHERE }, Spawn { team: 1, place: Monster, cid: WARWOLF },
+            Spawn { team: 1, place: Monster, cid: WARWOLF }, Spawn { team: 1, place: Monster, cid: WARWOLF }];
+        let Some(mut s) = field(anime, 8000, [(&[KURIBOH; 40], &[]), (&[KURIBOH; 40], &[])], &spawns) else { return };
+        s.run(&[Summon(SPHERE)]).unwrap();
+        assert_eq!((s.count(1, "mzone", SPHERE), s.count(1, "grave", WARWOLF)), (1, 3), "on the opponent's field: {}", s.context());
+        s.run_both([&[EndTurn], &[]]).unwrap();
+        assert_eq!(s.count(1, "mzone", SPHERE), 1, "still theirs during their turn: {}", s.context());
+        s.run_both([&[], &[EndTurn]]).unwrap();
+        assert_eq!(s.count(0, "mzone", SPHERE), 1, "back to its owner after the End Phase of the next turn: {}", s.context());
+        clean(&s);
+    }
+}
+
+/// Sphere Mode takes Ra from the Deck too (the duel's first turn, before Ra is drawn): the official Ra stays, the manga Ra
+/// goes back to the Deck in the End Phase.
+#[test]
+fn sphere_mode_takes_either_ra_from_the_deck() {
+    for anime in [false, true] {
+        let deck: Vec<u16> = [KURIBOH; 39].into_iter().chain([RA]).collect();
+        let spawns = [Spawn { team: 0, place: Hand, cid: SPHERE }, Spawn { team: 0, place: Monster, cid: WARWOLF },
+            Spawn { team: 0, place: Monster, cid: WARWOLF }, Spawn { team: 0, place: Monster, cid: WARWOLF }];
+        let Some(dir) = engine_dir() else { return };
+        // The first shuffle that leaves Ra in the Deck.
+        let mut s = (1..40)
+            .map(|seed| if anime { Scenario::start_anime_field(&dir, seed, 8000, [(&deck, &[]), (&[KURIBOH; 40], &[])], &spawns) }
+                else { Scenario::start_field(&dir, seed, 8000, [(&deck, &[]), (&[KURIBOH; 40], &[])], &spawns) }.unwrap())
+            .find(|s| s.count(0, "hand", RA) == 0)
+            .expect("a shuffle with Ra in the Deck");
+        s.run(&[Summon(SPHERE), Activate(SPHERE)]).unwrap();
+        assert_eq!(s.attack_of(0, RA), Some(4000), "anime {anime}: {}", s.context());
+        s.run_both([&[EndTurn], &[]]).unwrap();
+        assert_eq!(s.monster(0, RA).is_some(), !anime, "anime {anime}: {}", s.context());
+        if anime {
+            assert_eq!(s.count(0, "hand", RA) + s.count(0, "grave", RA) + s.count(0, "removed", RA), 0, "back to the Deck: {}", s.context());
+        }
+        clean(&s);
     }
 }

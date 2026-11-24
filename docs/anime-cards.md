@@ -714,7 +714,7 @@ Extra Deck), or when the research or the script is not settled. Each reason is k
 | Wolf | upstream 511003065: the anime Normal Monster is equivalent |
 | Zera the Mant | upstream 511002610 is a different card or a prize card |
 
-Every other card of the game (4,338 of 4,777 in `engine/anime/cards.tsv`) has no anime_id: no anime version, or none we use, and keeps its current behaviour.
+Every other card of the game (4,339 of 4,778 in `engine/anime/cards.tsv`) has no anime_id: no anime version, or none we use, and keeps its current behaviour.
 
 | Card | Note |
 | --- | --- |
@@ -722,3 +722,4 @@ Every other card of the game (4,338 of 4,777 in `engine/anime/cards.tsv`) has no
 | Illusion Gate | added card (#75, stand-in): upstream has a video game version only |
 | Ra's Disciple | added card (#75) |
 | The Seal of Orichalcos | added card (#75): no anime version upstream |
+| The Winged Dragon of Ra - Sphere Mode | added card (#75) |

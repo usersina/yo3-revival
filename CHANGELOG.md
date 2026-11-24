@@ -26,6 +26,8 @@ Older entries describe their release at the time. For current setup, use the [RE
   conditions" ignore that too (Illusion Gate takes a Divine Serpent Geh that was only ever sent to the Graveyard), or
   every revival from the Graveyard does, as in the anime (Monster Reborn revives a discarded Ritual monster). Playing alone, pick it in
   Settings, Singleplayer, **Revival**.
+- New card: The Winged Dragon of Ra - Sphere Mode. Tribute it for The Winged Dragon of Ra from your hand or Deck with
+  4000 ATK and DEF. With anime cards on, that is the manga Ra, which goes back where it came from at the End Phase.
 - With anime cards on, Obelisk, Slifer and Ra, and the Wicked Gods Dreadroot, Avatar and Eraser, play their manga
   versions, marked [Manga]: each with its Divine Hierarchy, so a God is no longer destroyed in battle by a stronger
   ordinary monster, and Obelisk's Soul Energy Max (Tribute two in the Battle Phase) wins the duel. Skill Drain negates

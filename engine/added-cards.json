@@ -42,7 +42,7 @@
    "cid": 10327,
    "passcode": 48179391,
    "name": "The Seal of Orichalcos",
-   "desc": "All monsters you control gain 500 ATK. Once per turn, this card cannot be destroyed by card effects. While you control 2 or more face-up Attack Position monsters, your opponent cannot target your monster(s) with the lowest ATK for an attack. If this card is activated: Destroy all Special Summoned monsters you control (if any). You cannot Special Summon monsters from the Extra Deck. You can only activate \"The Seal of Orichalcos\" once per Duel.\r\r* The above text is unofficial and describes the card's functionality in the OCG.",
+   "desc": "All monsters you control gain 500 ATK. Once per turn, this card cannot be destroyed by card effects. While you control 2 or more face-up Attack Position monsters, your opponent cannot target your monster(s) with the lowest ATK for an attack. If this card is activated: Destroy all Special Summoned monsters you control (if any). You cannot Special Summon monsters from the Extra Deck. You can only activate \"The Seal of Orichalcos\" once per Duel.",
    "a": 10327,
    "b": 146409576,
    "genre": 1574016,
@@ -154,6 +154,17 @@
    "genre": 2113664,
    "note": "anime-only: Shunoros' left arm",
    "anime_only": true
+  },
+  {
+   "row": 4847,
+   "cid": 11927,
+   "passcode": 10000080,
+   "name": "The Winged Dragon of Ra - Sphere Mode",
+   "desc": "Cannot be Special Summoned. Requires 3 Tributes from either side of the field to Normal Summon to that side of the field (cannot be Normal Set), then shift control to this card's owner during the End Phase of the next turn. Cannot attack. Your opponent cannot target this card with card effects, also monsters your opponent controls cannot target this card for attacks. You can Tribute this card; Special Summon 1 \"The Winged Dragon of Ra\" from your hand or Deck, ignoring its Summoning conditions, and if you do, its ATK/DEF become 4000.",
+   "a": 4294962839,
+   "b": 145794824,
+   "genre": 1049224,
+   "note": "Ra batch: summons either Ra (the official one, and the manga one with anime cards on)"
   }
  ]
 }
