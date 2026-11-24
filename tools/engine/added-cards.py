@@ -47,8 +47,10 @@ Needs the pinned data (engine/fetch.sh) and the game (YO3_GAME_DIR, else the def
 """
 import argparse
 import collections
+import contextlib
 import csv
 import importlib.util
+import io
 import json
 import os
 import re
@@ -461,6 +463,60 @@ def find(names, ctx=None):
     return out
 
 
+def anime_rows(results, ctx):
+    """engine/anime/cards.tsv's line for each printed card `find` approved (every card a player can hold has one): its
+    id, name, passcode and, when the pinned unofficial database has one (an anime card aliasing it), its anime version."""
+    rows = []
+    for name, line, _ in results:
+        if not line:
+            continue
+        parts = line.split('\t')
+        if parts[4]:
+            continue  # anime-only: it is its own anime version, no row
+        konami, stand_in = int(parts[1]), parts[2]
+        code = ctx['passcode'].get(konami)
+        candidates = sorted((c for c, d in ctx['anime'].items() if d['alias'] == code), key=lambda c: not ctx['anime'][c]['name'].endswith('(Anime)'))
+        anime = candidates[0] if candidates else None
+        rows.append({'cid': int(stand_in or konami), 'name': name, 'official': code, 'anime': anime,
+                     'line': f"{stand_in or konami}\t{name}\t{code}\t{anime or ''}\t{'Anime' if anime else ''}\tadded card (#75)"})
+    return rows
+
+
+def anime_outcomes(rows):
+    """What tools/engine/anime-map.py would make of `rows` once added: {cid: (status, reasons)}, by its own rules (a
+    temporary table with the rows, the cards' passcodes known as if added)."""
+    import tempfile
+    from unittest import mock
+    spec = importlib.util.spec_from_file_location('anime_map', os.path.join(HERE, 'anime-map.py'))
+    amap = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(amap)
+    with open(amap.TABLE, encoding='utf-8') as f:
+        head, *lines = f.read().rstrip('\n').split('\n')
+    taken = {int(r['cid']) for r in rows}
+    lines = [l for l in lines if int(l.split('\t')[0]) not in taken] + [r['line'] for r in rows]
+    lines.sort(key=lambda l: int(l.split('\t')[0]))
+    original = amap.official_passcodes
+    def passcodes(alias):
+        out = original(alias)
+        out.update({r['cid']: r['official'] for r in rows})
+        return out
+    with tempfile.NamedTemporaryFile('w', suffix='.tsv', delete=False, encoding='utf-8') as f:
+        f.write(head + '\n' + '\n'.join(lines) + '\n')
+    try:
+        with mock.patch.object(amap, 'TABLE', f.name), mock.patch.object(amap, 'official_passcodes', passcodes), \
+                contextlib.redirect_stdout(io.StringIO()):
+            entries = {e['cid']: e for e in amap.build()['cards'] if e['cid'] in taken}
+    finally:
+        os.unlink(f.name)
+    return {cid: (e['status'], e.get('holds') or e.get('profile') or []) for cid, e in entries.items()}
+
+
+HELD_FIXES = {
+    'placeholder': 'the game shows "?" and the anime database 0: a corrected record in engine/anime/records.json keeps the "?" '
+                   '(as Clear Vice Dragon and Divine Serpent Geh, docs/added-cards.md#its-anime-version)',
+}
+
+
 def render(doc):
     return json.dumps(doc, indent=1, ensure_ascii=False) + '\n'
 
@@ -483,6 +539,24 @@ def main(argv=None):
         if lines:
             print('\nLines for engine/added/cards.tsv (add a note after the last tab):')
             print('\n'.join(lines))
+        rows = anime_rows(results, load()) if lines else []
+        if rows:
+            outcomes = anime_outcomes(rows)
+            print('\nLines for engine/anime/cards.tsv (every printed card needs one; it keeps the table sorted by id), then run '
+                  'tools/engine/anime-map.py:')
+            print('\n'.join(r['line'] for r in rows))
+            for r in rows:
+                status, reasons = outcomes.get(r['cid'], ('?', []))
+                if not r['anime']:
+                    print(f"  {r['name']}: no anime version upstream; it plays its printed effect either way")
+                elif status == 'held':
+                    print(f"  {r['name']}: its anime version {r['anime']} would be HELD: " + '; '.join(reasons))
+                    for key, fix in HELD_FIXES.items():
+                        if any(x.startswith(key) for x in reasons):
+                            print(f'    fix: {fix}')
+                else:
+                    shown = f" (the profile shows: {'; '.join(reasons)})" if reasons else ''
+                    print(f"  {r['name']}: its anime version {r['anime']} would be {status}{shown}")
         return 0 if all(line for _, line, _ in results) else 1
     text = render(build())
     if args.check:

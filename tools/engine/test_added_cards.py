@@ -153,6 +153,15 @@ class AddedCards(unittest.TestCase):
                 added.build()
             self.assertIn('has no Konami id', str(e.exception))
 
+    def test_find_gives_the_anime_table_line_and_what_the_anime_map_would_make_of_it(self):
+        # A printed card needs a line in engine/anime/cards.tsv too: --find writes it and runs the anime map's own rules
+        # on it. Black Rose Moonlight Dragon's anime version is mapped; an anime-only card gets no line.
+        ctx = added.load()
+        results = added.find(['Black Rose Moonlight Dragon', 'anime:170000172'], ctx)
+        rows = added.anime_rows(results, ctx)
+        self.assertEqual([r['line'] for r in rows], ['11123\tBlack Rose Moonlight Dragon\t33698022\t511002831\tAnime\tadded card (#75)'])
+        self.assertEqual(added.anime_outcomes(rows)[11123][0], 'mapped')
+
 
 class Pure(unittest.TestCase):
     def test_fields_read_the_rows_second_word(self):
