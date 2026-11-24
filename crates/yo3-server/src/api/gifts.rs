@@ -80,8 +80,12 @@ impl Api {
         let message = match (&result.gift, op) {
             (GiftOutcome::Cards { row, added, total }, Op::GiveCards { player, .. }) => {
                 value["row"] = json!(row); value["count"] = json!(total);
+                // An anime-only card (#75) while anime cards are off: given, but no duel takes a deck with it until they're on.
+                let anime_off = self.world.as_ref().is_some_and(|w| !w.settings.now().anime_cards
+                    && w.added.cards.iter().any(|c| c.row == *row && c.anime_only));
+                let warning = if anime_off { ". It is an anime card: anime cards are off, so no duel takes a deck with it until a host turns them on" } else { "" };
                 self.gifts().ok().and_then(|g| g.cards.iter().find(|c| c.row == *row).map(|c|
-                    format!("gave {added} × {} (artwork {}, Konami id {}) to {player}: {total} beyond their starting cards now (shown at the next map visit)", c.name, c.art, c.cid)))
+                    format!("gave {added} × {} (artwork {}, Konami id {}) to {player}: {total} beyond their starting cards now (shown at the next map visit){warning}", c.name, c.art, c.cid)))
             }
             (GiftOutcome::Recipe { deck_id, include_cards }, Op::GiveRecipe { player, .. }) => self.gifts().ok().and_then(|g| g.recipes.iter().find(|r| r.id == *deck_id).map(|r| {
                 let with = if *include_cards { format!(" and its {} cards",r.cards.len()) } else { String::new() };

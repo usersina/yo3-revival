@@ -12,6 +12,18 @@ pub enum Refusal {
     Sizes,
     NotOwned,
     Regulation,
+    /// An anime-only added card (its CARD_Prop row) while the `anime-cards` setting is off: refused whatever the banlist.
+    AnimeOnly(u16),
+}
+
+/// The first anime-only added card (#75) in `deck`, when the anime card versions are off: such a card has no version
+/// the engine plays then, so every duel with it is refused, whatever the banlist (docs/added-cards.md).
+pub fn anime_only_card(world: &World, deck: &Deck) -> Option<u16> {
+    if world.settings.now().anime_cards {
+        return None;
+    }
+    let anime_only = |row: &u16| world.added.cards.iter().any(|c| c.anime_only && c.row == *row);
+    deck.cards().find(|row| anime_only(row))
 }
 
 /// The main deck holds 40 to 60 cards, the extra and side decks under 16 (`0x51AC50`).
@@ -48,6 +60,9 @@ fn owns(world: &World, owned: &BTreeMap<u16, u32>, deck: &Deck) -> bool {
 /// with `owned` the player's collection (CARD_Prop row -> copies, borrowed cards included). Without the game's data
 /// (no regulations) every deck passes.
 pub fn check(world: &World, regulation: u32, owned: &BTreeMap<u16, u32>, deck: &Deck) -> Result<(), Refusal> {
+    if let Some(row) = anime_only_card(world, deck) {
+        return Err(Refusal::AnimeOnly(row));
+    }
     let Some(rules) = pick(world, regulation) else { return Ok(()) };
     if !sizes_fit(deck) || !in_their_decks(world, deck) {
         return Err(Refusal::Sizes);

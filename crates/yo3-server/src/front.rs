@@ -689,6 +689,10 @@ pub const LINKED_DUEL: &str = "This duel doesn't count: your accounts play from 
 /// What a linked pair is told when one asks the other to trade or rent (#64).
 pub const LINKED_TRADE: &str = "You can't trade or rent with an account that plays from the same PC or network.";
 
+/// What a player is told when their deck holds an anime-only card (#75) while the server's anime cards are off (after
+/// the card's name).
+pub const ANIME_ONLY_OFF: &str = "is an anime card: this server has anime cards off, so a deck with it can't duel. Take it out, or ask the host to turn anime cards on.";
+
 pub fn chat_note(from: &str, text: &str) -> Message {
     let line = Message::record().with("from_id", Value::U32(0)).with("pname", Value::text(from))
         .with("chat_type", Value::U32(crate::banter::NPC_CHAT)).with("chat_str", Value::text(text));
@@ -3752,6 +3756,10 @@ impl FrontSession {
                     && let Err(why) = self.check_deck(duel_id, &self.world.place_deck(&Deck::from_record(item)))
                 {
                     tracing::info!("player {player_id}'s deck refused for duel {duel_id:?}: {why:?}");
+                    if let crate::deckcheck::Refusal::AnimeOnly(row) = why {
+                        let name = self.world.added.cards.iter().find(|c| c.row == row).map_or_else(|| format!("card {row}"), |c| c.name.clone());
+                        let _ = self.outbox.send(chat_note("Server", &format!("{name} {ANIME_ONLY_OFF}")));
+                    }
                     if let Some(id) = duel_id {
                         self.hub().refuse_deck(id, player_id);
                     }

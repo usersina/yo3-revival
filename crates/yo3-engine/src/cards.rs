@@ -35,10 +35,10 @@ pub fn anime_map_file(vendor: &Path) -> PathBuf {
     vendor.parent().unwrap_or(vendor).join("anime-cards.json")
 }
 
-/// The cards the game never had (`engine/added-cards.json`, #75): (the id the client knows the card by, its passcode).
-/// That id is the card's Konami id, or a stand-in for a newer card whose Konami id is beyond the client's 14 bits
-/// (docs/added-cards.md). None when the file isn't there.
-pub fn read_added(file: &Path) -> Result<Vec<(u32, u32)>, String> {
+/// The cards the game never had (`engine/added-cards.json`, #75): (the id the client knows the card by, its passcode,
+/// whether it is anime-only). That id is the card's Konami id, or a stand-in for a newer card whose Konami id is beyond
+/// the client's 14 bits or an anime-only card's (docs/added-cards.md). None when the file isn't there.
+pub fn read_added(file: &Path) -> Result<Vec<(u32, u32, bool)>, String> {
     let text = match std::fs::read(file) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
@@ -50,7 +50,7 @@ pub fn read_added(file: &Path) -> Result<Vec<(u32, u32)>, String> {
         .into_iter()
         .flatten()
         .map(|c| match (c["cid"].as_u64(), c["passcode"].as_u64()) {
-            (Some(cid), Some(code)) if cid > 0 && code > 0 => Ok((cid as u32, code as u32)),
+            (Some(cid), Some(code)) if cid > 0 && code > 0 => Ok((cid as u32, code as u32, c["anime_only"].as_bool().unwrap_or(false))),
             _ => Err(format!("{}: a card without its cid and passcode", file.display())),
         })
         .collect()
@@ -311,7 +311,12 @@ impl Cards {
         // An added card plays its passcode under the id the client knows it by: a stand-in id replaces its Konami id both
         // ways, so the engine's messages name the card as the client's rows do.
         let added = vendor.parent().unwrap_or(vendor).join("added-cards.json");
-        for (cid, code) in read_added(&added)? {
+        // An anime-only card (its data and script from the unofficial database) plays only with the anime versions on;
+        // the server refuses every duel with it otherwise.
+        for (cid, code, anime_only) in read_added(&added)? {
+            if anime_only && !anime {
+                continue;
+            }
             if !rows.contains_key(&code) {
                 return Err(format!("{}: card {cid} plays {code}, which the card data lacks", added.display()));
             }
@@ -528,7 +533,9 @@ mod tests {
         // Shooting Quasar Dragon (#75) by its own Konami id; a stand-in id is read the same way.
         let file = std::env::temp_dir().join(format!("yo3-added-{}.json", std::process::id()));
         std::fs::write(&file, r#"{"format":"yo3-added-cards","version":1,"first_row":4834,"cards":[{"cid":9709,"passcode":35952884},{"cid":3901,"passcode":18847598}]}"#).unwrap();
-        assert_eq!(read_added(&file).unwrap(), vec![(9709, 35952884), (3901, 18847598)]);
+        assert_eq!(read_added(&file).unwrap(), vec![(9709, 35952884, false), (3901, 18847598, false)]);
+        std::fs::write(&file, r#"{"cards":[{"cid":3968,"passcode":170000171,"anime_only":true}]}"#).unwrap();
+        assert_eq!(read_added(&file).unwrap(), vec![(3968, 170000171, true)], "an anime-only card");
         std::fs::write(&file, r#"{"cards":[{"name":"no ids"}]}"#).unwrap();
         assert!(read_added(&file).is_err());
         std::fs::remove_file(&file).unwrap();

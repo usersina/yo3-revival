@@ -546,3 +546,32 @@ fn an_older_database_gets_the_recording_column() {
     reports.add_duel_problem((1, "Yugi"), (0, "Pegasus"), "it froze", Some("20261122-120000-001"), 5).unwrap();
     assert_eq!(reports.list(None, 1).unwrap()[0].recording.as_deref(), Some("20261122-120000-001"));
 }
+
+/// An anime-only added card (#75: Orichalcos Gigas) while the server's anime cards are off: Select Deck refuses the deck
+/// whatever the banlist (here Unlimited), and the chat says which card and why. With anime cards on the anime check
+/// passes (this test player doesn't own the card, so the deck still fails the ownership check, without that line).
+#[test]
+fn a_deck_with_an_anime_only_card_is_refused_while_anime_cards_are_off() {
+    use yo3_data::added::{Added, AddedCard};
+    let gigas = AddedCard { row: 21, cid: 1021, passcode: 170000171, name: "Orichalcos Gigas".into(), desc: "[Anime]\rtext".into(),
+        a: 1021, b: 1 << 3, genre: 0, anime_only: true };
+    let s = Server::with_world(World { added: Arc::new(Added { first_row: 21, cards: vec![gigas] }), ..world() });
+    s.world.settings.set("login-regulation", "Unlimited").unwrap();
+    let deck: Vec<u16> = (1..=20).chain(1..=19).chain([21]).collect();
+    let d = directory();
+    let mut c = s.join_from(&d, addr(1));
+    let id = npc_duel(&mut c);
+    c.pushed();
+    assert_eq!(pick(&mut c, id, "Orichalcos", &deck), 0x22CB, "refused");
+    let said = |c: &mut Client| c.pushed().iter().flat_map(|m| m.items.iter()).filter_map(|i| i.get("chat_str").and_then(|v| v.as_str())).collect::<Vec<_>>().join("\n");
+    let line = said(&mut c);
+    assert!(line.contains("Orichalcos Gigas is an anime card") && line.contains("anime cards off"), "{line}");
+    let starter: Vec<u16> = (1..=20).chain(1..=20).collect();
+    assert_eq!(pick(&mut c, id, "Starter", &starter), 0x22CA, "a deck without it is fine");
+    s.world.settings.set("anime-cards", "on").unwrap();
+    let mut c = s.join_from(&d, addr(1));
+    let id = npc_duel(&mut c);
+    c.pushed();
+    pick(&mut c, id, "Orichalcos", &deck);
+    assert!(!said(&mut c).contains("anime card"), "with anime cards on, the anime check passes");
+}

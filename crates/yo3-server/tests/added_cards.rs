@@ -182,3 +182,45 @@ fn a_spell_and_a_stand_in_card_play_by_the_ids_the_client_knows() {
     assert_eq!(s.count(0, "szone", ADVANCED_DARK), 1, "Advanced Dark is face-up in the Field Zone: {}", s.state());
     assert_eq!(s.attack_of(0, AMBER_MAMMOTH), Some(1700), "Amber Mammoth is on the field under its stand-in id: {}", s.state());
 }
+
+/// Orichalcos Gigas (stand-in 3968), the first anime-only card (never printed: its data and script are ProjectIgnis'
+/// anime ones, played only with the anime card versions on): "When this card is destroyed, you can Special Summon it,
+/// but it cannot attack this turn. This card gains 500 ATK x the number of times it was Special Summoned by its own
+/// effect during this Duel." Two Dark Holes: it comes back at 900, then at 1400.
+const GIGAS: u16 = 3968;
+
+#[test]
+fn orichalcos_gigas_comes_back_500_stronger_each_time_it_is_destroyed() {
+    use yo3_server::engine::{Spawn, SpawnPlace::*};
+    let Some(dir) = engine_dir() else { return };
+    let field = [Spawn { team: 0, place: Monster, cid: GIGAS }, Spawn { team: 1, place: Hand, cid: DARK_HOLE },
+        Spawn { team: 1, place: Hand, cid: DARK_HOLE }];
+    let mut s = Scenario::start_anime_field(&dir, 5, 8000, [(&[KURIBOH; 40], &[]), (&[KURIBOH; 40], &[])], &field).unwrap();
+    assert_eq!(s.attack_of(0, GIGAS), Some(400), "Level 4, 400 ATK: {}", s.state());
+    // Its coming back is a trigger the planned side takes when asked (the harness answers yes).
+    s.run_both([&[EndTurn], &[Activate(DARK_HOLE)]]).unwrap();
+    assert!(s.problems.is_empty(), "{:#?}", s.problems);
+    assert_eq!(s.attack_of(0, GIGAS), Some(900), "destroyed by Dark Hole, it came back with 500 more: {}", s.state());
+    s.run_both([&[], &[Activate(DARK_HOLE)]]).unwrap();
+    assert!(s.problems.is_empty(), "{:#?}", s.problems);
+    assert_eq!(s.attack_of(0, GIGAS), Some(1400), "and again: {}", s.state());
+}
+
+/// "While this card is face-up on the field, you cannot draw a card(s)": with it on the field from the start, its
+/// controller draws neither in the first turn nor in the second (five cards, Kuriboh summoned: four); without it, each
+/// turn's draw comes (six, a draw and a summon: six).
+#[test]
+fn while_orichalcos_gigas_is_face_up_its_controller_draws_nothing() {
+    use yo3_server::engine::{Spawn, SpawnPlace::*};
+    let Some(dir) = engine_dir() else { return };
+    let hands = |field: &[Spawn]| {
+        let mut s = Scenario::start_anime_field(&dir, 5, 8000, [(&[KURIBOH; 40], &[]), (&[KURIBOH; 40], &[])], field).unwrap();
+        let hand = |s: &Scenario| s.state()[0]["hand"].as_array().map_or(0, Vec::len);
+        let first = hand(&s);
+        s.run(&[EndTurn, Summon(KURIBOH)]).unwrap();
+        assert!(s.problems.is_empty(), "{:#?}", s.problems);
+        (first, hand(&s))
+    };
+    assert_eq!(hands(&[Spawn { team: 0, place: Monster, cid: GIGAS }]), (5, 4), "no draw in either turn");
+    assert_eq!(hands(&[]), (6, 6), "without it, both draws");
+}

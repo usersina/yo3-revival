@@ -44,7 +44,7 @@ fn the_added_cards_extend_the_games_files_and_leave_its_cards_alone() {
     // Every language's index, names and texts; the readings' index and names.
     for lang in ["E", "F", "G", "I", "J", "K", "S", "R"] {
         let index = file(&format!("CARD_Indx_{lang}"));
-        assert_eq!(index.len(), (4835 + 1) * 8, "CARD_Indx_{lang}");
+        assert_eq!(index.len(), (4834 + added.cards.len() + 1) * 8, "CARD_Indx_{lang}");
         let lang_db = CardDb::parse(&file("CARD_Prop"), &index, &file(&format!("CARD_Name_{lang}")),
             &if lang == "R" { vec![] } else { file(&format!("CARD_Desc_{lang}")) });
         assert_eq!(lang_db.by_row(4834).map(|c| c.name.as_str()), Some("Shooting Quasar Dragon"), "{lang}");

@@ -41,6 +41,9 @@ pub struct AddedCard {
     pub b: u32,
     #[serde(default)]
     pub genre: u64,
+    /// A card never printed (#75): played only with the anime card versions on; every duel with it is refused otherwise.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub anime_only: bool,
 }
 
 impl AddedCard {
@@ -279,7 +282,7 @@ mod tests {
 
     fn quasar(row: u16) -> AddedCard {
         AddedCard { row, cid: 30, passcode: 35952884, name: "Bravo".into(), desc: "Text\rmore".into(),
-            a: 30 | 400 << 14 | 400 << 23, b: 18 << 3 | 1 << 8 | 12 << 12 | 1 << 19 | 1 << 27, genre: 5 }
+            a: 30 | 400 << 14 | 400 << 23, b: 18 << 3 | 1 << 8 | 12 << 12 | 1 << 19 | 1 << 27, genre: 5, anime_only: false }
     }
 
     /// A game of three rows (0 empty, "Alpha" id 10, "Charlie" id 12) in English and the readings.
