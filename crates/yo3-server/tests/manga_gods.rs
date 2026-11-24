@@ -23,6 +23,7 @@ const BOOK_OF_MOON: u16 = 5432;
 const SHRINK: u16 = 5355; // its anime version with anime cards on: halves a monster's original ATK for the turn
 const CHANGE_OF_HEART: u16 = 4860;
 const CREATURE_SWAP: u16 = 5162;
+const RAIGEKI_BREAK: u16 = 5544; // discard 1 card: destroy 1 card on the field
 const SPHERE: u16 = 11927; // The Winged Dragon of Ra - Sphere Mode
 const INFINITE: i64 = 9_999_999;
 
@@ -357,42 +358,50 @@ fn soul_energy_max_takes_even_lp_from_mystik_wok() {
     clean(&s);
 }
 
-/// Damage that is the infinite ATK itself, 9,999,999, is survived with more LP: Avatar risen to infinity beside the
-/// anime Geh attacks a player with 10,007,999 LP directly, who keeps 8000.
+/// Damage that is an infinite ATK is infinite (`crates/yo3-engine/src/guards.lua`): Avatar risen to infinity beside the
+/// anime Geh attacks a player directly, and the 10,007,999 LP Mystik Wok gave them are all gone.
 #[test]
-fn avatar_at_infinity_leaves_lp_above_infinity() {
+fn avatar_at_infinity_takes_all_lp() {
     let Some(mut s) = field(true, 8000, &[Spawn { team: 0, place: Hand, cid: WOK }, mine(GEH), theirs(AVATAR), theirs(GEH)]) else { return };
     s.prefer(&[(0, GEH)]);
     s.run(&[Activate(WOK)]).unwrap();
-    s.run_both([&[EndTurn], &[Attack(AVATAR)]]).unwrap();
-    assert_eq!(s.lp(0), 8000, "{}", s.context());
+    assert_eq!(s.lp(0), 8000 + INFINITE, "{}", s.context());
+    let r = s.run_both([&[EndTurn], &[Attack(AVATAR)]]);
+    assert!(r.is_err_and(|e| e.contains("the duel is over")), "{}", s.context());
+    assert_eq!(s.lp(0), 0, "{}", s.context());
     clean(&s);
 }
 
-/// Ring of Destruction on the opponent's anime Geh, with 10,007,999 LP from Mystik Wok: both take 9,999,999, the
-/// opponent loses and its player keeps 8000.
+/// Ring of Destruction on the anime Geh deals its infinite ATK to both players: both lose, a draw, even with the
+/// 10,007,999 LP Mystik Wok gave one of them.
 #[test]
-fn ring_of_destruction_on_geh_with_lp_above_infinity_wins() {
+fn ring_of_destruction_on_geh_is_a_draw_whatever_the_lp() {
     let Some(mut s) = field(true, 8000, &[Spawn { team: 0, place: Hand, cid: WOK }, mine(GEH), Spawn { team: 0, place: SpellSet, cid: RING }, theirs(GEH)]) else { return };
     s.prefer(&[(0, GEH), (1, GEH)]);
     s.run(&[Activate(WOK)]).unwrap();
     let r = s.run_both([&[EndTurn, Activate(RING)], &[EndTurn]]);
     assert!(r.is_err_and(|e| e.contains("the duel is over")), "{}", s.context());
-    assert_eq!((s.lp(0), s.lp(1)), (8000, 0), "{}", s.context());
+    assert_eq!((s.lp(0), s.lp(1)), (0, 0), "{}", s.context());
     clean(&s);
 }
 
-/// Book of Moon turns a God face-down, and it stays face-down: the manga text only keeps a God from Spell/Trap effects
-/// that would make it leave the field, and a change of position isn't an effect that lasts.
+/// Book of Moon turns a God face-down, but face-down it is still a God (the Hierarchy is the card's, as against Skill
+/// Drain): Raigeki Break, a Spell/Trap effect that would make it leave the field, doesn't destroy it. And "other cards'
+/// effects only apply to this card for 1 turn": it is face-up in Attack Position again from the end of that turn.
 #[test]
-fn book_of_moon_turns_a_god_face_down() {
-    let Some(mut s) = field(true, 8000, &[Spawn { team: 0, place: Hand, cid: BOOK_OF_MOON }, theirs(OBELISK)]) else { return };
+fn book_of_moon_turns_a_god_face_down_for_the_turn() {
+    use yo3_server::ocg::pos;
+    let Some(mut s) = field(true, 8000, &[Spawn { team: 0, place: Hand, cid: BOOK_OF_MOON }, Spawn { team: 0, place: SpellSet, cid: RAIGEKI_BREAK },
+        theirs(OBELISK)]) else { return };
     s.prefer(&[(1, OBELISK)]);
     s.run(&[Activate(BOOK_OF_MOON)]).unwrap();
     let position = |s: &Scenario| s.monster(1, OBELISK).map(|c| c["position"].as_u64().unwrap_or(0));
-    assert_eq!(position(&s), Some(yo3_server::ocg::pos::FACEDOWN_DEFENSE), "{}", s.context());
-    s.run_both([&[EndTurn], &[EndTurn]]).unwrap();
-    assert_eq!(position(&s), Some(yo3_server::ocg::pos::FACEDOWN_DEFENSE), "still face-down: {}", s.context());
+    assert_eq!(position(&s), Some(pos::FACEDOWN_DEFENSE), "{}", s.context());
+    s.run(&[Activate(RAIGEKI_BREAK)]).unwrap();
+    assert_eq!(s.count(0, "grave", RAIGEKI_BREAK), 1, "Raigeki Break resolved: {}", s.context());
+    assert_eq!(position(&s), Some(pos::FACEDOWN_DEFENSE), "face-down, still not destroyed: {}", s.context());
+    s.run_both([&[EndTurn], &[]]).unwrap();
+    assert_eq!(position(&s), Some(pos::FACEUP_ATTACK), "face-up again from the end of that turn: {}", s.context());
     clean(&s);
 }
 

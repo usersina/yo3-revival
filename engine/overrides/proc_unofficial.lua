@@ -1,5 +1,6 @@
 --yo3-revival override of ProjectIgnis' unofficial/proc_unofficial.lua (the anime and manga cards' shared procedures),
---unchanged but for UnofficialProc.divineHierarchy's battle check (tglimit), and for a God Special Summoned by Sphere Mode,
+--unchanged but for UnofficialProc.divineHierarchy's battle check (tglimit), its protection kept face-down (a God another
+--card turns face-down turns face-up again at the end of that turn), and for a God Special Summoned by Sphere Mode,
 --which skips the End Phase return (spsop) and keeps its 4000 ATK/DEF past the 1-turn limit (sphere_stats):
 --see engine/overrides/README.md.
 --Constants
@@ -1004,7 +1005,8 @@ function UnofficialProc.divineHierarchy()
 			or leaveChk(c,CATEGORY_TODECK) or leaveChk(c,CATEGORY_RELEASE) or leaveChk(c,CATEGORY_TOGRAVE))))
 	end
 	local function rellimit(e,c,tp,sumtp)
-		return c:HasFlagEffect(FLAG_DIVINE_HIERARCHY) and c:IsFaceup() and c:IsControler(1-tp)
+		--yo3-revival: face-down too (the Hierarchy is the card's, not an effect it loses face-down).
+		return c:HasFlagEffect(FLAG_DIVINE_HIERARCHY) and c:IsControler(1-tp)
 	end
 	local function spsop(e,tp,eg,ep,ev,re,r,rp)
 		--yo3-revival house rule: a God that The Winged Dragon of Ra - Sphere Mode (10000080) Special Summons is Ra itself out
@@ -1029,7 +1031,7 @@ function UnofficialProc.divineHierarchy()
 	end
 	local function sumlimit(e,c)
 		if not c then return false end
-		return e:GetHandler():HasFlagEffect(FLAG_DIVINE_HIERARCHY) and e:GetHandler():IsFaceup() and not c:IsControler(e:GetHandlerPlayer())
+		return e:GetHandler():HasFlagEffect(FLAG_DIVINE_HIERARCHY) and not c:IsControler(e:GetHandlerPlayer())
 	end
 	local function reptg(e,tp,eg,ep,ev,re,r,rp,chk)
 		local c=e:GetHandler()
@@ -1074,6 +1076,32 @@ function UnofficialProc.divineHierarchy()
 		end
 	end
 
+	--yo3-revival: "Other cards' effects only apply to this card for 1 turn" for its position too. A God another card's
+	--effect turns face-down (Book of Moon) is turned face-up in Attack Position again at the end of that turn.
+	local FLAG_TURNED_DOWN=830000001 --yo3-revival's own flag number: no script uses it
+	local down=Effect.GlobalEffect()
+	down:SetType(EFFECT_TYPE_FIELD+EFFECT_TYPE_CONTINUOUS)
+	down:SetCode(EVENT_CHANGE_POS)
+	down:SetOperation(function(e,tp,eg,ep,ev,re,r,rp)
+		for c in eg:Iter() do
+			if c:HasFlagEffect(FLAG_DIVINE_HIERARCHY) and c:IsFacedown() and re and re:GetHandler()~=c then
+				c:RegisterFlagEffect(FLAG_TURNED_DOWN,RESET_EVENT|RESETS_STANDARD&~RESET_TURN_SET,0,1)
+			end
+		end
+	end)
+	Duel.RegisterEffect(down,0)
+	local up=Effect.GlobalEffect()
+	up:SetType(EFFECT_TYPE_FIELD+EFFECT_TYPE_CONTINUOUS)
+	up:SetCode(EVENT_PHASE+PHASE_END)
+	up:SetCountLimit(1)
+	up:SetCondition(function() return Duel.IsExistingMatchingCard(Card.HasFlagEffect,0,LOCATION_MZONE,LOCATION_MZONE,1,nil,FLAG_TURNED_DOWN) end)
+	up:SetOperation(function()
+		local g=Duel.GetMatchingGroup(Card.HasFlagEffect,0,LOCATION_MZONE,LOCATION_MZONE,nil,FLAG_TURNED_DOWN)
+		for c in g:Iter() do c:ResetFlagEffect(FLAG_TURNED_DOWN) end
+		Duel.ChangePosition(g:Filter(Card.IsFacedown,nil),POS_FACEUP_ATTACK)
+	end)
+	Duel.RegisterEffect(up,0)
+
 	--rank
 	local rank=Effect.GlobalEffect()
 	rank:SetType(EFFECT_TYPE_FIELD+EFFECT_TYPE_CONTINUOUS)
@@ -1085,9 +1113,9 @@ function UnofficialProc.divineHierarchy()
 	local control=Effect.GlobalEffect()
 	control:SetType(EFFECT_TYPE_FIELD)
 	control:SetCode(EFFECT_CANNOT_CHANGE_CONTROL)
-	control:SetProperty(EFFECT_FLAG_IGNORE_IMMUNE)
+	control:SetProperty(EFFECT_FLAG_IGNORE_IMMUNE+EFFECT_FLAG_SET_AVAILABLE) --yo3-revival: SET_AVAILABLE, face-down too
 	control:SetTargetRange(LOCATION_MZONE,LOCATION_MZONE)
-	control:SetTarget(aux.TargetBoolFunction(aux.FaceupFilter(Card.HasFlagEffect,FLAG_DIVINE_HIERARCHY)))
+	control:SetTarget(aux.TargetBoolFunction(Card.HasFlagEffect,FLAG_DIVINE_HIERARCHY)) --yo3-revival: face-down too
 	Duel.RegisterEffect(control,0)
 	local immunity=control:Clone()
 	immunity:SetCode(EFFECT_IMMUNE_EFFECT)
@@ -1118,7 +1146,7 @@ function UnofficialProc.divineHierarchy()
 	local r1=Effect.GlobalEffect()
 	r1:SetType(EFFECT_TYPE_SINGLE)
 	r1:SetCode(EFFECT_UNRELEASABLE_SUM)
-	r1:SetProperty(EFFECT_FLAG_SINGLE_RANGE+EFFECT_FLAG_CANNOT_DISABLE+EFFECT_FLAG_UNCOPYABLE)
+	r1:SetProperty(EFFECT_FLAG_SINGLE_RANGE+EFFECT_FLAG_CANNOT_DISABLE+EFFECT_FLAG_UNCOPYABLE+EFFECT_FLAG_SET_AVAILABLE)
 	r1:SetRange(LOCATION_MZONE)
 	r1:SetValue(sumlimit)
 	--battle
@@ -1131,15 +1159,15 @@ function UnofficialProc.divineHierarchy()
 	local im=Effect.GlobalEffect()
 	im:SetCode(EFFECT_SEND_REPLACE)
 	im:SetType(EFFECT_TYPE_SINGLE+EFFECT_TYPE_CONTINUOUS)
-	im:SetProperty(EFFECT_FLAG_SINGLE_RANGE+EFFECT_FLAG_CANNOT_DISABLE+EFFECT_FLAG_UNCOPYABLE)
+	im:SetProperty(EFFECT_FLAG_SINGLE_RANGE+EFFECT_FLAG_CANNOT_DISABLE+EFFECT_FLAG_UNCOPYABLE+EFFECT_FLAG_SET_AVAILABLE)
 	im:SetRange(LOCATION_MZONE)
 	im:SetTarget(reptg)
 	im:SetValue(function(e,c) return false end)
 	local ge1=Effect.GlobalEffect()
 	ge1:SetType(EFFECT_TYPE_FIELD+EFFECT_TYPE_GRANT)
 	ge1:SetTargetRange(LOCATION_MZONE,LOCATION_MZONE)
-	ge1:SetProperty(EFFECT_FLAG_IGNORE_IMMUNE)
-	ge1:SetTarget(aux.TargetBoolFunction(aux.FaceupFilter(Card.HasFlagEffect,FLAG_DIVINE_HIERARCHY)))
+	ge1:SetProperty(EFFECT_FLAG_IGNORE_IMMUNE+EFFECT_FLAG_SET_AVAILABLE)
+	ge1:SetTarget(aux.TargetBoolFunction(Card.HasFlagEffect,FLAG_DIVINE_HIERARCHY)) --yo3-revival: face-down too
 	ge1:SetLabelObject(ep)
 	Duel.RegisterEffect(ge1,0)
 	local ge2=ge1:Clone()

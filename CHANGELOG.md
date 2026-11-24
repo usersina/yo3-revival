@@ -29,6 +29,10 @@ Older entries describe their release at the time. For current setup, use the [RE
 - Obelisk's Soul Energy Max and the anime Divine Serpent Geh always win the duel, even against a player with tens of
   millions of LP (it used to turn into a huge gain). LP above 99,999 shows as 99,999 and stays right as it changes, and a huge LP change no longer freezes the duel while the
   counter rolls.
+- Infinite damage is infinite: Ring of Destruction on the anime Divine Serpent Geh, or Avatar risen to infinity attacking
+  directly, takes every LP a player has, however much Mystik Wok gave them.
+- A God turned face-down by Book of Moon is still a God (it can't be destroyed by Spell or Trap cards) and turns face-up
+  again at the end of that turn.
 - Smaller downloads: each edition carries only the card scripts the game can use (about 5,700 files instead of
   19,300), and the developer documents stay on GitHub. Desktop 0.0.9 or older can't update to this version by itself:
   download it again.
