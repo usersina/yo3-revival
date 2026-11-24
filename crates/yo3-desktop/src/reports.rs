@@ -148,7 +148,7 @@ fn sanitize(text: &str, home: Option<&str>, remove_personal: bool) -> String {
             for (key, value) in event.iter_mut() {
                 if let serde_json::Value::String(text) = value && !["ts", "level", "src", "session"].contains(&key.as_str()) { *text = clean(text, home, remove_personal) }
             }
-            if let Ok(json) = serde_json::to_string(&serde_json::Value::Object(event)) { out.push_str(&json); out.push('\n'); }
+            out.push_str(&logs::log_line(&event)); out.push('\n');
         }
         else if !remove_personal || !personal_line(line) { out.push_str(&clean(line, home, remove_personal)); out.push('\n'); }
     }
@@ -377,6 +377,7 @@ mod report_problem_tests {
         let names: Vec<String> = (0..archive.len()).map(|i| archive.by_index(i).unwrap().name().unwrap().to_string()).collect();
         for name in ["report.json", "README.txt", "bug-report.md", "recordings/R-7K3Q-M2PA.jsonl.gz"] { assert!(names.iter().any(|n| n == name), "{name} in {names:?}") }
         assert!(names.iter().any(|n| n.starts_with("sessions/")), "the logs: {names:?}");
+        let log = names.iter().find(|n| n.ends_with(".log")).unwrap().clone();
         let mut read = |name: &str| { let mut text = String::new(); std::io::Read::read_to_string(&mut archive.by_name(name).unwrap(), &mut text).unwrap(); text };
         let report: serde_json::Value = serde_json::from_str(&read("report.json")).unwrap();
         assert_eq!((report["format"].as_str(), report["version"].as_u64()), (Some(super::REPORT_FORMAT), Some(super::REPORT_VERSION as u64)));
@@ -386,6 +387,7 @@ mod report_problem_tests {
         assert_eq!(report["report"]["recordings"][0], "recordings/R-7K3Q-M2PA.jsonl.gz");
         assert!(report["system"]["threads"].as_u64().is_some_and(|t| t > 0), "the PC: {}", report["system"]);
         assert!(report["release"].is_string() && report["commit"].is_string());
+        assert!(read(&log).lines().all(|l| l.starts_with(r#"{"ts":"#)), "yo3-log lines keep ts, level, src first");
         let readme = read("README.txt");
         assert!(readme.contains("Send this whole ZIP file to the developer") && readme.contains("Nothing in this file was sent anywhere") && readme.contains("by itself after recent games that broke: R-AAAA-BBBB"), "{readme}");
         assert!(readme.contains("sign-in secrets are never in it") && !readme.contains("omitted"), "the README's own lines survive the filter: {readme}");
