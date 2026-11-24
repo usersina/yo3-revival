@@ -49,12 +49,15 @@ checks and releases). Keep the root README short; link to those guides for detai
    are green and the live check passes, fast-forward `main` and delete the branch (the user's standing preference).
    Ask before pushing anywhere.
 6. **Code only in git.** Never commit game files, Konami data, decompiled code or packet logs. `re/`, `logs/` and
-   `target/` are ignored. Docs may cite addresses and field names, but not paste decompiled code. The one exception
+   `target/` are ignored. Docs may cite addresses and field names, but not paste decompiled code. One exception
    is the root `screenshots/` folder: it shows our launcher and the game running, not game data. Keep game
    screenshots to 1024x768 client frames, optimised PNGs under about 600 KB, with test player names and no host paths. The picture guide in
    `screenshots/` (shipped in the release bundles) may also contain guide crops of such frames and browser pages with red
    boxes drawn on them, about 800 px wide and under about 300 KB each. A drawn game-folder listing must be labelled
    as an illustration. Launcher screenshots show the real current UI with test accounts and no private credentials.
+   The second exception is `crates/yo3-launcher/assets/pics/`: card pictures the project's owner drew, shipped in the
+   launcher, as 200x290 faces only (`tools/engine/shipped-pictures.py` makes them; the originals stay with the owner).
+   Add a picture there only when the owner gives it.
 7. **Don't disturb a live setup.** The user may have a server on the default ports (7443, 8080; older setups may use
    5730/1213/1214) and a client queued on display `:77`. Never stop, restart or touch them, or their `data/`. For your own checks run a
    dev server on other ports and scratch dirs (see Commands) and the second client (`YO3_INSTANCE=b`, display `:78`).

@@ -184,6 +184,18 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
     // The anime artwork folder (#60): created, its thumbnails made, and told to the DLL. A folder that can't be made leaves the
     // game with its own artwork.
     if let Some(dir) = &args.anime_art {
+        // Pictures by passcode (the player's `pics` folders, then the shipped ones) become faces first.
+        let pics = yo3_launcher::art::pics::folders(dir, args.game_dir.as_deref());
+        let folders: Vec<&std::path::Path> = pics.iter().map(PathBuf::as_path).collect();
+        match yo3_launcher::art::pics::apply(dir, &folders, &yo3_launcher::art::get::list()) {
+            Ok(done) => {
+                if !done.made.is_empty() || !done.removed.is_empty() {
+                    log.line(&format!("Card pictures: {} face(s) made from pictures, {} removed", done.made.len(), done.removed.len()));
+                }
+                for (file, why) in &done.refused { log.line(&format!("Card picture refused: {} ({why})", file.display())); }
+            }
+            Err(e) => log.warn(&format!("Card pictures could not be made: {e}")),
+        }
         match yo3_launcher::art::prepare(dir) {
             Ok(done) => {
                 log.line(&format!("Anime artwork: {} card face(s) in {}, {} thumbnail(s) made", done.faces.len(), dir.display(), done.made.len()));

@@ -223,6 +223,11 @@ Quasar Dragon): about 10 MB from ProjectIgnis' picture server. The game's own ca
   download goes on while you use the rest of the launcher: the footer then shows **Card pictures · N of M**, which opens
   this group, and it ends in a toast.
 - **Add from a file…** adds a zip of pictures and **Save to a file…** makes one.
+- **Your own pictures, as in EDOPro:** put a card's picture in the `pics` folder beside `anime-art` in the launcher's
+  data folder (`%LOCALAPPDATA%\YO3 Revival\pics` on Windows, `~/.local/share/yo3-revival/pics` on Linux), named by
+  its passcode (`513000137.png`, `82103466.jpg`), any size. It shows from the next PLAY on that card, whether it is an
+  anime or manga version or a card the game never had, and wins over every other picture. You can copy EDOPro's
+  `pics` folder in as it is. The manga Gods and the anime Divine Serpent Geh come with pictures of their own.
 - Pictures show from the next PLAY, and your own pictures are never replaced. Until its picture arrives, a card the game
   never had shows a stand-in picture that ships with YO3 Revival.
 

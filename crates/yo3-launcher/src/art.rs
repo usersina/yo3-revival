@@ -7,11 +7,13 @@
 //! anime-art/mini/<Konami id>.png   the thumbnail, 50x72 (the game's data/mini/): optional, made from the face when missing
 //! ```
 //!
-//! Where the pictures come from: Desktop fetches them from ProjectIgnis' picture server when the player clicks (`get`), or
+//! Where the pictures come from: the player's `pics` folder by passcode, as EDOPro has it, and the pictures the project
+//! ships (`pics`); Desktop fetches them from ProjectIgnis' picture server when the player clicks (`get`), or
 //! takes a zip of this folder's own layout (`pack`). A card without a file keeps its own artwork. A thumbnail the launcher made is listed in `mini/.derived` and made
 //! again when its face changes; one the player provided is never touched.
 pub mod get;
 pub mod pack;
+pub mod pics;
 
 use std::collections::BTreeSet;
 use std::io;

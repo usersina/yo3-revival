@@ -26,6 +26,10 @@ Older entries describe their release at the time. For current setup, use the [RE
   conditions" ignore that too (Illusion Gate takes a Divine Serpent Geh that was only ever sent to the Graveyard), or
   every revival from the Graveyard does, as in the anime (Monster Reborn revives a discarded Ritual monster). Playing alone, pick it in
   Settings, Singleplayer, **Revival**.
+- New card pictures for the manga Gods (Obelisk, Slifer, Ra, Dreadroot, Avatar, Eraser) and the anime Divine Serpent
+  Geh, drawn for YO3 Revival.
+- Your own card pictures, as in EDOPro: put `<passcode>.jpg` or `.png` in the `pics` folder beside `anime-art` and it
+  becomes that card's picture from the next PLAY, for anime and manga versions and the cards the game never had.
 - New card: The Winged Dragon of Ra - Sphere Mode. Tribute it for The Winged Dragon of Ra from your hand or Deck with
   4000 ATK and DEF. With anime cards on, that is the manga Ra, and it stays on the field: it is Ra out of its sphere
   form, so it doesn't go back at the End Phase as other Special Summoned Gods do.
