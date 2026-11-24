@@ -27,6 +27,8 @@ const WARWOLF: u16 = 6960; // Gene-Warped Warwolf: Level 4, 2000 ATK, no effect
 const KURIBOH: u16 = 4064;
 const DARK_HOLE: u16 = 4342;
 const POT_OF_GREED: u16 = 4844;
+const MONSTER_REBORN: u16 = 4842;
+const STARDUST: u16 = 7734; // Stardust Dragon, a Synchro Monster
 
 fn clean(s: &Scenario) {
     assert!(s.problems.is_empty(), "the client's view left the engine's: {:#?}", s.problems);
@@ -114,12 +116,13 @@ fn illusion_gate_destroys_and_takes_a_monster_from_the_opponents_graveyard() {
     assert_eq!(s.attack_of(0, BLUE_EYES), Some(3000), "Blue-Eyes came from their Graveyard: {}", s.state());
 }
 
-/// The anime Foolish Burial ("Send 1 card from your Deck to your opponent's Graveyard") puts Divine Serpent Geh in the
-/// opponent's Graveyard, but Illusion Gate's "ignoring its Summoning conditions" doesn't lift "must first be properly
-/// Summoned" (Geh, printed and anime, is never revived by it unless it was Summoned first: the official ruling, and
-/// ProjectIgnis' script), so it takes the monster it just destroyed instead.
+/// The anime combo, by the server's house rule (crates/yo3-engine/src/house_rules.lua): the anime Foolish Burial ("Send
+/// 1 card from your Deck to your opponent's Graveyard") puts Divine Serpent Geh in the opponent's Graveyard, and Illusion
+/// Gate takes it from there "ignoring its Summoning conditions", which here also means "must first be properly Summoned"
+/// (the official ruling keeps that limit). Summoned, anime Geh sends its controller's hand to the Graveyard and takes all
+/// their LP, and they "cannot lose the Duel".
 #[test]
-fn illusion_gate_cannot_revive_a_geh_that_was_never_summoned() {
+fn foolish_burial_and_illusion_gate_summon_geh_from_the_opponents_graveyard() {
     let deck: Vec<u16> = [KURIBOH; 39].into_iter().chain([GEH]).collect();
     let spawns = [Spawn { team: 0, place: Hand, cid: FOOLISH_BURIAL }, Spawn { team: 0, place: Hand, cid: ILLUSION_GATE },
         Spawn { team: 1, place: Monster, cid: WARWOLF }];
@@ -130,7 +133,29 @@ fn illusion_gate_cannot_revive_a_geh_that_was_never_summoned() {
     assert_eq!(s.count(1, "grave", GEH), 1, "Geh is in the opponent's Graveyard: {}", s.state());
     s.run(&[Activate(ILLUSION_GATE)]).unwrap();
     clean(&s);
-    assert_eq!((s.count(1, "grave", GEH), s.monster(0, GEH).is_none()), (1, true), "Geh stays there: {}", s.state());
+    assert!(s.monster(0, GEH).is_some(), "Geh is ours: {}", s.state());
+    assert_eq!((s.lp(0), hand(&s, 0)), (0, 0), "its summon took the hand and every LP: {}", s.state());
+    s.run_both([&[EndTurn], &[EndTurn]]).unwrap();
+    clean(&s);
+    assert!(s.monster(0, GEH).is_some(), "at 0 LP the duel goes on: {}", s.state());
+}
+
+/// The house rule's boundary: Illusion Gate ("ignoring its Summoning conditions") takes a Stardust Dragon the opponent
+/// never Synchro Summoned; Monster Reborn, which ignores nothing, still can't revive one that never was.
+#[test]
+fn ignoring_summoning_conditions_lifts_proper_summoning_and_monster_reborn_does_not() {
+    let spawns = [Spawn { team: 0, place: Hand, cid: ILLUSION_GATE }, Spawn { team: 1, place: Monster, cid: WARWOLF },
+        Spawn { team: 1, place: Grave, cid: STARDUST }];
+    let Some(mut s) = field(false, 8000, [(&[KURIBOH; 40], &[]), (&[KURIBOH; 40], &[STARDUST])], &spawns) else { return };
+    s.prefer(&[(1, STARDUST)]);
+    s.run(&[Activate(ILLUSION_GATE)]).unwrap();
+    clean(&s);
+    assert_eq!(s.attack_of(0, STARDUST), Some(2500), "Illusion Gate took the never-Summoned Stardust Dragon: {}", s.state());
+
+    let spawns = [Spawn { team: 0, place: Hand, cid: MONSTER_REBORN }, Spawn { team: 0, place: Grave, cid: STARDUST }];
+    let Some(mut s) = field(false, 8000, [(&[KURIBOH; 40], &[STARDUST]), (&[KURIBOH; 40], &[])], &spawns) else { return };
+    assert!(s.run(&[Activate(MONSTER_REBORN)]).is_err(), "Monster Reborn has no target: {}", s.state());
+    assert_eq!(s.count(0, "grave", STARDUST), 1);
 }
 
 /// Arduous Decision (anime) Special Summons the card the opponent picks "ignoring its Summoning conditions", from the hand
@@ -149,9 +174,8 @@ fn arduous_decision_summons_geh_ignoring_its_conditions() {
 }
 
 /// Anime Underworld Circle: "Each player can activate this effect (Quick Effect): the player who activated this effect
-/// Special Summons 1 monster from their Graveyard ..." After clearing the field, it brings back Gene-Warped Warwolf. (It
-/// doesn't revive a monster that "must first be properly Summoned" and never was, such as Divine Serpent Geh: the core
-/// keeps that limit whatever the script lifts.)
+/// Special Summons 1 monster from their Graveyard ... Monsters can be Summoned ignoring the Summoning conditions." After
+/// clearing the field, it brings back Gene-Warped Warwolf, and, by the house rule, a Divine Serpent Geh never Summoned.
 #[test]
 fn underworld_circle_brings_a_monster_back_from_the_graveyard() {
     let spawns = [Spawn { team: 0, place: Hand, cid: UNDERWORLD_CIRCLE }, Spawn { team: 0, place: Grave, cid: WARWOLF },
@@ -162,6 +186,17 @@ fn underworld_circle_brings_a_monster_back_from_the_graveyard() {
     s.run(&[SetSpell(UNDERWORLD_CIRCLE), EndTurn, Activate(UNDERWORLD_CIRCLE), Activate(UNDERWORLD_CIRCLE)]).unwrap();
     clean(&s);
     assert_eq!(s.attack_of(0, WARWOLF), Some(2000), "Warwolf came back: {}", s.state());
+}
+
+#[test]
+fn underworld_circle_brings_back_a_geh_never_summoned() {
+    let spawns = [Spawn { team: 0, place: Hand, cid: UNDERWORLD_CIRCLE }, Spawn { team: 0, place: Grave, cid: GEH },
+        Spawn { team: 1, place: Monster, cid: BLUE_EYES }];
+    let Some(mut s) = field(true, 8000, [(&[DARK_HOLE; 40], &[]), (&[POT_OF_GREED; 40], &[])], &spawns) else { return };
+    s.prefer(&[(0, GEH)]);
+    s.run(&[SetSpell(UNDERWORLD_CIRCLE), EndTurn, Activate(UNDERWORLD_CIRCLE), Activate(UNDERWORLD_CIRCLE)]).unwrap();
+    clean(&s);
+    assert!(s.monster(0, GEH).is_some(), "Geh came back: {}", s.state());
 }
 
 /// Orichalcos Kyutora (anime-only): "Must first be Special Summoned (from your hand) by paying 500 LP. ... all battle

@@ -161,6 +161,10 @@ pub struct Setup {
 /// The skills' Lua (`YO3Skill`), loaded into a duel that has any.
 pub const SKILLS: &str = include_str!("../skills.lua");
 
+/// The house rules every duel plays by (`house_rules.lua`: "ignoring its Summoning conditions" also lifts "must first be
+/// properly Summoned"), loaded right after utility.lua into the real duel and every look-ahead copy alike.
+pub const HOUSE_RULES: &str = include_str!("../house_rules.lua");
+
 /// The Lua call that gives `team` the skill named `name` (as the server names it), or None for a skill this engine
 /// doesn't know.
 pub fn skill_call(name: &str, team: u8) -> Option<String> {
@@ -273,6 +277,7 @@ pub(crate) fn build(library: &Arc<Library>, setup: &Setup, history: &[Vec<u8>]) 
         let text = library.script(name).unwrap_or_default();
         duel.load_script(name, &text);
     }
+    duel.load_script("yo3_house_rules.lua", HOUSE_RULES.as_bytes());
     for &(team, location, code) in &setup.cards {
         duel.new_card(team, 0, code, team, location, 0, POSITION_FACEDOWN_DEFENSE);
     }
