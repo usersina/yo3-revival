@@ -423,7 +423,10 @@ impl App {
                 self.quitting = true;
                 self.dialog = None;
                 let (settings, root) = (self.ctx.settings.clone(), self.ctx.root.clone());
-                return job(move || {
+                // This window hides at once, so the new version's doesn't open beside it; it shows again only if the
+                // new version doesn't come up (this one then stays, as before).
+                let hide = window::latest().and_then(|id| window::set_mode(id, window::Mode::Hidden));
+                return Task::batch([hide, job(move || {
                     anyhow::ensure!(!backend.game_running() && !backend.game_open_elsewhere(&settings), "{GAME_OPEN}");
                     let _ = backend.stop_hosting();
                     backend.stop_server_if_running(&settings)?;
@@ -432,11 +435,12 @@ impl App {
                         Ok(_ready) => { let _ = updates::install::clear_pending(&root, None); Ok(()) }
                         Err(error) => { let _ = updates::install::clear_pending(&root, Some(&installed.tag)); Err(error) }
                     }
-                }, Message::Restarted);
+                }, Message::Restarted)]);
             }
             Message::Restarted(Ok(())) => return iced::exit(),
             Message::Restarted(Err(error)) => {
                 self.quitting = false;
+                let show = window::latest().and_then(|id| Task::batch([window::set_mode(id, window::Mode::Windowed), window::gain_focus(id)]));
                 let tag = self.updater.ready().map(|i| i.tag.clone()).unwrap_or_default();
                 let stopped = self.host.hosted.is_some();
                 if error == GAME_OPEN {
@@ -447,7 +451,8 @@ impl App {
                     self.home.update_ready = None;
                     self.home.update_notice(&self.ctx, updates::activation::failed_summary(&tag, yo3_tunnel::BUILD_VERSION), error);
                 }
-                if stopped { return self.host.update(host::Message::Stopped(Ok(())), &mut self.ctx).map(Message::Host) }
+                if stopped { return Task::batch([show, self.host.update(host::Message::Stopped(Ok(())), &mut self.ctx).map(Message::Host)]) }
+                return show;
             }
             Message::OpenLink(url) => return job(move || external::open(&url), Message::LinkOpened),
             Message::LinkOpened(result) => if let Err(error) = result { self.home.fail(&self.ctx, error) },

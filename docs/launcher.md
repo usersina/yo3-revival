@@ -386,7 +386,7 @@ updates** asks at once). When one is out:
   version is unpacked beside this one: your settings, accounts, decks and server data stay where they are, and game
   files are never part of an update.
 - **A ribbon above PLAY: "Update X is ready · Restart to install".** **Restart to install** (or the same button in the
-  Update window) opens the new version and closes this one once the new window is up. If you are hosting for friends it asks
+  Update window) hides this window at once, opens the new version and closes this one once the new window is up (if the new version doesn't start, this window comes back). If you are hosting for friends it asks
   first, because restarting stops your server.
 - **Never while the game runs.** While you play, the ribbon says the update installs after you close the game. Closing
   YO3 Revival is enough too: the next time you open it, it installs the update before its window opens (and waits again
