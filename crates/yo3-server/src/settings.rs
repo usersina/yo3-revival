@@ -91,6 +91,11 @@ pub const REGISTRY: &[Setting] = &[
         the client could not show right keep theirs: docs/playing.md). A game that started before a change cannot duel \
         until it is restarted (Play again)", kind: Kind::Choice(&["off", "on"]), applies: Applies::NextDuel,
         default: || json!("off") },
+    Setting { name: "revival-rule", help: "How far revival reaches past \"must first be properly Summoned\" (Fusion, Synchro, Ritual \
+        monsters...): official (the official ruling); ignoring-means-all (a card that Special Summons \"ignoring its Summoning \
+        conditions\", such as Illusion Gate, ignores that too); graveyard-is-graveyard (any revival from the Graveyard or \
+        banishment, such as Monster Reborn, does; a card's own written conditions still apply)",
+        kind: Kind::Choice(&crate::engine::Revival::NAMES), applies: Applies::NextDuel, default: || json!("official") },
     Setting { name: "destiny-draw", help: "Casual duels against the computer (NPC duels): once per duel, at the start of your Draw Phase with \
         1000 LP or less, you may pick any card left in your Deck as the card you draw (off: no)",
         kind: Kind::Choice(&["off", "on"]), applies: Applies::NextDuel, default: || json!("off") },
@@ -194,6 +199,8 @@ pub struct Settings {
     pub anime_cards: bool,
     /// Destiny Draw in NPC duels (issue #71).
     pub destiny_draw: bool,
+    /// The house rule on reviving monsters that must first be properly Summoned.
+    pub revival_rule: crate::engine::Revival,
     pub turn_seconds: u32,
     pub total_seconds: u32,
     pub news: Vec<(String, String)>,
@@ -254,6 +261,7 @@ impl Settings {
             start_lp: number("start-lp"),
             anime_cards: text("anime-cards") == "on",
             destiny_draw: text("destiny-draw") == "on",
+            revival_rule: crate::engine::Revival::parse(&text("revival-rule")).unwrap_or_default(),
             turn_seconds: number("turn-seconds"),
             total_seconds: number("total-seconds"),
             news,
@@ -479,6 +487,7 @@ mod tests {
         assert_eq!((now.turn_seconds, now.total_seconds), (crate::clock::DEFAULT_TURN, crate::clock::DEFAULT_TOTAL));
         assert_eq!(now.limits, Limits::default());
         assert!(!now.anime_cards, "the anime card versions are off until a host turns them on");
+        assert_eq!(now.revival_rule, crate::engine::Revival::Official, "revival follows the official ruling until a host changes it");
         for s in REGISTRY {
             let input = match (s.default)() { Json::String(v) => v, other => other.to_string() };
             parse(s, &input, &banlists()).unwrap_or_else(|e| panic!("{}: {e}", s.name));
@@ -498,6 +507,11 @@ mod tests {
         assert!(live.set("news", "[]").is_err(), "the game's list needs an entry");
         assert!(live.set("nothing", "1").unwrap_err().contains("no setting"));
         assert!(live.set("anime-cards", "sometimes").unwrap_err().contains("off, on"));
+        assert!(live.set("revival-rule", "anime").unwrap_err().contains("official, ignoring-means-all, graveyard-is-graveyard"));
+        live.set("revival-rule", "graveyard-is-graveyard").unwrap();
+        assert_eq!(live.now().revival_rule, crate::engine::Revival::GraveyardIsGraveyard);
+        live.reset("revival-rule").unwrap();
+        assert_eq!(live.now().revival_rule, crate::engine::Revival::Official);
         assert_eq!(live.set("anime-cards", "ON").unwrap(), "anime-cards is now on (applies at the next duel)");
         assert!(live.now().anime_cards);
         live.reset("anime-cards").unwrap();

@@ -196,7 +196,8 @@ impl Table {
         let (mut m0, e0, mut m1, e1) = (cids(&lead.main), cids(&lead.extra), cids(&other.main), cids(&other.extra));
         shuffle(&mut self.rng, &mut m0);
         shuffle(&mut self.rng, &mut m1);
-        let mut engine = match Engine::start_with(&dir, self.world.settings.now().anime_cards) {
+        let (anime, revival) = { let now = self.world.settings.now(); (now.anime_cards, now.revival_rule) };
+        let mut engine = match Engine::start_rules(&dir, anime, revival) {
             Ok(engine) => engine,
             Err(e) => {
                 tracing::warn!("duel {}: rules engine not started: {e}", self.duel_id);

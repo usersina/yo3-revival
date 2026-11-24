@@ -339,6 +339,20 @@ fn the_anime_versions_are_on_only_when_asked_for_and_the_bundle_has_them() {
     assert_eq!((state[0]["hand"][0]["cid"].as_u64(), state[0]["hand"][0]["code"].as_u64()), (Some(5479), Some(511001126)));
 }
 
+/// The `revival-rule` house rule reaches the engine program, which names it in its dependency identity (a recording replays
+/// only under the same rule); `official` unless asked for.
+#[test]
+fn the_revival_rule_reaches_the_engine_and_its_identity() {
+    use yo3_server::engine::Revival;
+    let Some(_) = engine() else { return };
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../engine");
+    for revival in [Revival::Official, Revival::IgnoringMeansAll, Revival::GraveyardIsGraveyard] {
+        let identity = Engine::start_rules(&dir, false, revival).unwrap().identity().unwrap();
+        assert_eq!(identity["revival_rule"], revival.name());
+    }
+    assert_eq!(Engine::start(&dir).unwrap().identity().unwrap()["revival_rule"], "official");
+}
+
 #[test]
 fn a_bundle_without_the_anime_files_plays_the_games_cards() {
     // The engine directory without the map: asking for the anime versions changes nothing (a warning, not a failure).

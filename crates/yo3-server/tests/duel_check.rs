@@ -153,6 +153,25 @@ fn the_seeds_reach_the_cases_that_drifted() {
 /// The same self-play with the anime card versions on (#60, the `anime-cards` setting): decks of the cards the reviewed
 /// map approves, so that their anime scripts run through every kind of prompt and the client's view must still follow the
 /// engine. `YO3_CHECK_DUELS=n` plays n duels instead of 30; `YO3_CHECK_ANIME_SEED=s` replays seed s alone.
+/// The self-play under the broadest `revival-rule` house rule, `graveyard-is-graveyard` (Monster Reborn and every revival
+/// reach monsters never properly Summoned): the client's view must follow the engine through those revivals too.
+/// `YO3_CHECK_DUELS=n` plays n duels instead of 30.
+#[test]
+fn duels_with_graveyard_is_graveyard() {
+    let Some(dir) = engine_dir() else { return };
+    let per: u64 = std::env::var("YO3_CHECK_DUELS").ok().and_then(|n| n.parse().ok()).unwrap_or(30);
+    let mut failures = vec![];
+    for seed in 700..700 + per {
+        let (a, b) = (selfplay::deck(seed * 2), selfplay::deck(seed * 2 + 1));
+        let decks = [(&a.0[..], &a.1[..]), (&b.0[..], &b.1[..])];
+        if let Err(e) = selfplay::play_revival(&dir, seed, decks, (seed % 2) as usize, seed.is_multiple_of(3),
+            yo3_server::engine::Revival::GraveyardIsGraveyard) {
+            failures.push(e);
+        }
+    }
+    assert!(failures.is_empty(), "{} of {per} duel(s) failed:\n{}", failures.len(), failures.join("\n\n"));
+}
+
 #[test]
 fn duels_with_the_anime_versions_on() {
     let Some(dir) = engine_dir() else { return };

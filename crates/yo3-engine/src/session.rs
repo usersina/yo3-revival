@@ -104,7 +104,7 @@ impl Session {
             let text = self.cards.borrow().script(name).unwrap_or_default();
             duel.load_script(name, &text);
         }
-        duel.load_script("yo3_house_rules.lua", crate::bot::HOUSE_RULES.as_bytes());
+        crate::bot::load_house_rules(&mut duel);
         Ok(duel)
     }
 

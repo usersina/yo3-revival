@@ -97,6 +97,8 @@ pub fn identity(vendor: &Path) -> serde_json::Value {
         "anime": anime,
         "anime_map": if anime { file_sha256(&cards::anime_map_file(vendor)) } else { String::new() },
         "database_unofficial": if anime { file_sha256(&vendor.join("BabelCDB/cards-unofficial.cdb")) } else { String::new() },
+        // The `revival-rule` house rule it plays by (house_rules.lua, built into this program).
+        "revival_rule": bot::revival_rule(),
     })
 }
 

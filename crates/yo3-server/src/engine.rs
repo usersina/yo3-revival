@@ -166,11 +166,41 @@ pub struct Engine {
     field: Vec<Spawn>,
     /// Started with the anime card versions (and they were available).
     anime: bool,
+    /// The house rule on revival it plays by.
+    revival: Revival,
 }
 static RECORDING_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// How far revival reaches past "must first be properly Summoned" (the `revival-rule` setting, docs/rules-privacy.md
+/// "House rules"; the engine's `house_rules.lua`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Revival {
+    /// The official ruling: a monster that must first be properly Summoned (Fusion, Synchro, Ritual, "must first be
+    /// Special Summoned by...") comes back from the Graveyard only if it was.
+    #[default]
+    Official,
+    /// "Ignoring its Summoning conditions" also lifts "must first be properly Summoned" (Illusion Gate takes a Geh only
+    /// ever sent to the Graveyard); every other revival keeps the limit.
+    IgnoringMeansAll,
+    /// The anime's habit: any revival from the Graveyard or banishment lifts it (Monster Reborn revives a discarded Ritual
+    /// monster); a card's own written conditions still apply, and the hand and the Deck keep the limit.
+    GraveyardIsGraveyard,
+}
+
+impl Revival {
+    pub const NAMES: [&'static str; 3] = ["official", "ignoring-means-all", "graveyard-is-graveyard"];
+
+    pub fn name(self) -> &'static str {
+        Self::NAMES[self as usize]
+    }
+
+    pub fn parse(text: &str) -> Option<Revival> {
+        [Revival::Official, Revival::IgnoringMeansAll, Revival::GraveyardIsGraveyard].into_iter().find(|r| r.name() == text)
+    }
+}
 /// Each engine's dependency identity, by (directory, program, anime): hashing thousands of files takes a moment, and
 /// they don't change while the server runs, so a duel's recording asks once.
-type IdentityKey = (PathBuf, PathBuf, bool);
+type IdentityKey = (PathBuf, PathBuf, bool, Revival);
 static IDENTITIES: std::sync::Mutex<Vec<(IdentityKey, Json)>> = std::sync::Mutex::new(Vec::new());
 
 impl Engine {
@@ -189,6 +219,11 @@ impl Engine {
     /// `anime-cards` setting), the others as they are. A bundle without the map or the anime data plays as the game
     /// does, with a warning: a host's setting never stops duels.
     pub fn start_with(dir: &Path, anime: bool) -> io::Result<Engine> {
+        Engine::start_rules(dir, anime, Revival::Official)
+    }
+
+    /// `start_with`, playing by the `revival-rule` house rule `revival`.
+    pub fn start_rules(dir: &Path, anime: bool, revival: Revival) -> io::Result<Engine> {
         if RUNNING.load(std::sync::atomic::Ordering::Relaxed) >= HARD_CAP { return Err(io::Error::other("too many rules engines running")) }
         let anime = anime && match anime_problem(dir) {
             None => true,
@@ -199,11 +234,13 @@ impl Engine {
         command.arg(dir);
         // Always set: a variable of the server's own environment must not turn the versions on by itself.
         if anime { command.env("YO3_ANIME", "1"); } else { command.env_remove("YO3_ANIME"); }
+        command.env("YO3_REVIVAL", revival.name());
         #[cfg(windows)] {use std::os::windows::process::CommandExt;command.creation_flags(0x08000000);}
         let mut engine = Engine::spawn(command, CALL_TIMEOUT)?;
         engine.identity_timeout = IDENTITY_TIMEOUT;
         engine.counted = true;
         engine.anime = anime;
+        engine.revival = revival;
         engine.started = Some((dir.to_path_buf(), program));
         RUNNING.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Ok(engine)
@@ -228,7 +265,7 @@ impl Engine {
                 }
             }
         });
-        Ok(Engine { child, stdin, lines, timeout, identity_timeout: timeout, recording: None, recorder: None, started: None, counted: false, field: vec![], anime: false })
+        Ok(Engine { child, stdin, lines, timeout, identity_timeout: timeout, recording: None, recorder: None, started: None, counted: false, field: vec![], anime: false, revival: Revival::Official })
     }
 
     pub fn identity(&mut self) -> io::Result<Json> {
@@ -250,7 +287,7 @@ impl Engine {
     /// This engine's dependency identity, asked once per engine directory, program and anime setting (`IDENTITIES`).
     /// None for a test's stand-in or an engine that can't tell.
     pub fn cached_identity(&mut self) -> Option<Json> {
-        let key = self.started.clone().map(|(dir, program)| (dir, program, self.anime))?;
+        let key = self.started.clone().map(|(dir, program)| (dir, program, self.anime, self.revival))?;
         if let Some((_, known)) = IDENTITIES.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|(k, _)| *k == key) { return Some(known.clone()) }
         let identity = self.identity().map_err(|e| tracing::warn!("duel recording: no engine identity: {e}")).ok()?;
         IDENTITIES.lock().unwrap_or_else(|e| e.into_inner()).push((key, identity.clone()));

@@ -19,7 +19,7 @@ use serde_json::{Value as Json, json};
 
 use super::ClientModel;
 use crate::duel::{command, piles, setup};
-use crate::engine::{Answer, Engine};
+use crate::engine::{Answer, Engine, Revival};
 use crate::front::Deck;
 use crate::ocg::{Response, battle, idle, msg};
 use crate::translate::{CardStats, Translator, bot_answer};
@@ -105,33 +105,40 @@ const MAX_WAIT_TURNS: u32 = 8;
 impl Scenario {
     /// Starts the duel: `decks` by engine team, (main deck, extra deck) in Konami ids, team 0 planned.
     pub fn start(dir: &Path, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2]) -> Result<Scenario, String> {
-        Scenario::start_with(dir, false, seed, lp, decks, &[], vec![])
+        Scenario::start_with(dir, Revival::Official, false, seed, lp, decks, &[], vec![])
     }
 
     /// `start` from a board: each of `field`'s cards (in its team's deck or Extra Deck, which this adds it to) moved to
     /// its place as the duel starts (`Engine::spawn_at_start`), and both seats' client models told as for any move.
     pub fn start_field(dir: &Path, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2], field: &[crate::engine::Spawn]) -> Result<Scenario, String> {
-        Scenario::start_with(dir, false, seed, lp, decks, &[], field.to_vec())
+        Scenario::start_with(dir, Revival::Official, false, seed, lp, decks, &[], field.to_vec())
     }
 
     /// `start` with hidden skills given to a team (the engine's `skills`: (team, name), as an NPC's or Destiny Draw, #71).
     pub fn start_skills(dir: &Path, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2], skills: &[(u32, String)]) -> Result<Scenario, String> {
-        Scenario::start_with(dir, false, seed, lp, decks, skills, vec![])
+        Scenario::start_with(dir, Revival::Official, false, seed, lp, decks, skills, vec![])
     }
 
     /// `start_field` with the anime card versions on.
     pub fn start_anime_field(dir: &Path, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2], field: &[crate::engine::Spawn]) -> Result<Scenario, String> {
-        Scenario::start_with(dir, true, seed, lp, decks, &[], field.to_vec())
+        Scenario::start_with(dir, Revival::Official, true, seed, lp, decks, &[], field.to_vec())
     }
 
     /// `start` with the anime card versions on (the `anime-cards` setting): the reviewed cards play by their anime effects.
     pub fn start_anime(dir: &Path, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2]) -> Result<Scenario, String> {
-        Scenario::start_with(dir, true, seed, lp, decks, &[], vec![])
+        Scenario::start_with(dir, Revival::Official, true, seed, lp, decks, &[], vec![])
     }
 
-    fn start_with(dir: &Path, anime: bool, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2], skills: &[(u32, String)],
+    /// `start_field` (`start_anime_field` with `anime`) playing by the `revival-rule` house rule `revival`.
+    pub fn start_rule(dir: &Path, revival: Revival, anime: bool, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2],
+        field: &[crate::engine::Spawn]) -> Result<Scenario, String> {
+        Scenario::start_with(dir, revival, anime, seed, lp, decks, &[], field.to_vec())
+    }
+
+    #[allow(clippy::too_many_arguments, reason = "The private constructor behind the public start_* ones.")]
+    fn start_with(dir: &Path, revival: Revival, anime: bool, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2], skills: &[(u32, String)],
         field: Vec<crate::engine::Spawn>) -> Result<Scenario, String> {
-        let mut engine = Engine::start_with(dir, anime).map_err(|e| format!("engine: {e}"))?;
+        let mut engine = Engine::start_rules(dir, anime, revival).map_err(|e| format!("engine: {e}"))?;
         // The spawned cards are deck cards first: `extra` lists the Extra Deck's, the engine knows which is which.
         let mut owned: [(Vec<u16>, Vec<u16>); 2] = [(decks[0].0.to_vec(), decks[0].1.to_vec()), (decks[1].0.to_vec(), decks[1].1.to_vec())];
         if !field.is_empty() {

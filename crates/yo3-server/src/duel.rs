@@ -580,8 +580,8 @@ impl DuelSession {
         // with the same hand), so the decks are shuffled here.
         self.shuffle(&mut m0);
         self.shuffle(&mut m1);
-        let anime = self.world.settings.now().anime_cards;
-        let mut engine = Engine::start_with(dir, anime).map_err(|e| tracing::warn!("rules engine not started: {e}")).ok()?;
+        let (anime, revival) = { let now = self.world.settings.now(); (now.anime_cards, now.revival_rule) };
+        let mut engine = Engine::start_rules(dir, anime, revival).map_err(|e| tracing::warn!("rules engine not started: {e}")).ok()?;
         if self.world.duel_check { engine.record(); }
         let player = self.player_id.map(|id| self.hub.locked().recording_seat(id))
             .unwrap_or(crate::recordings::Seat { player_id: None, name: String::new() });

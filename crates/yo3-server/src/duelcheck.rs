@@ -989,6 +989,8 @@ pub mod selfplay {
         pub tuners: std::collections::HashSet<u16>,
         /// The engine plays the anime card versions (the `anime-cards` setting, #60).
         pub anime: bool,
+        /// The `revival-rule` house rule the engine plays by.
+        pub revival: crate::engine::Revival,
         /// What the card profile says of its cards, by row (the duel check judges the engine's cards against it).
         pub expect: HashMap<u16, crate::profile::Expect>,
     }
@@ -1086,6 +1088,22 @@ pub mod selfplay {
             names: HashMap::new(),
             tuners: tuners(dir, &decks, false)?,
             anime: false,
+            revival: crate::engine::Revival::Official,
+            expect: HashMap::new(),
+        };
+        play_with(dir, seed, decks, &data, [&[], &[]], client_team, hidden)
+    }
+
+    /// [`play`] with the engine playing by the `revival-rule` house rule `revival`.
+    pub fn play_revival(dir: &Path, seed: u64, decks: [(&[u16], &[u16]); 2], client_team: usize, hidden: bool,
+        revival: crate::engine::Revival) -> Result<Played, String> {
+        let data = CardData {
+            cards: card_data(&decks),
+            tokens: token_rows(),
+            names: HashMap::new(),
+            tuners: tuners(dir, &decks, false)?,
+            anime: false,
+            revival,
             expect: HashMap::new(),
         };
         play_with(dir, seed, decks, &data, [&[], &[]], client_team, hidden)
@@ -1132,6 +1150,7 @@ pub mod selfplay {
             names: HashMap::new(),
             tuners: tuners(dir, &decks, true)?,
             anime: true,
+            revival: crate::engine::Revival::Official,
             expect: {
                 let mut expect = anime_expectations(dir, &decks)?;
                 anime_card_problems(dir, &decks, &expect)?;
@@ -1247,7 +1266,7 @@ pub mod selfplay {
         opening.extend(piles());
         model.apply_all(&opening);
 
-        let mut engine = Engine::start_with(dir, data.anime).map_err(|e| format!("engine: {e}"))?;
+        let mut engine = Engine::start_rules(dir, data.anime, data.revival).map_err(|e| format!("engine: {e}"))?;
         let mut shuffled = [decks[0].0.to_vec(), decks[1].0.to_vec()];
         for (d, top) in shuffled.iter_mut().zip(top) {
             shuffle(&mut rng, d);

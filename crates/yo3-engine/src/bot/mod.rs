@@ -161,9 +161,25 @@ pub struct Setup {
 /// The skills' Lua (`YO3Skill`), loaded into a duel that has any.
 pub const SKILLS: &str = include_str!("../skills.lua");
 
-/// The house rules every duel plays by (`house_rules.lua`: "ignoring its Summoning conditions" also lifts "must first be
-/// properly Summoned"), loaded right after utility.lua into the real duel and every look-ahead copy alike.
+/// The house rules every duel plays by (`house_rules.lua`: the `revival-rule` setting), loaded right after utility.lua
+/// into the real duel and every look-ahead copy alike.
 pub const HOUSE_RULES: &str = include_str!("../house_rules.lua");
+
+/// The `revival-rule` this engine plays by (`YO3_REVIVAL`, set by the server for each duel): one of `official`,
+/// `ignoring-means-all`, `graveyard-is-graveyard`; anything else is `official`.
+pub fn revival_rule() -> &'static str {
+    match std::env::var("YO3_REVIVAL").as_deref() {
+        Ok("ignoring-means-all") => "ignoring-means-all",
+        Ok("graveyard-is-graveyard") => "graveyard-is-graveyard",
+        _ => "official",
+    }
+}
+
+/// Loads the house rules into `duel`, after utility.lua.
+pub fn load_house_rules(duel: &mut Duel) {
+    duel.load_script("yo3_revival_rule.lua", format!("YO3_REVIVAL_RULE = \"{}\"", revival_rule()).as_bytes());
+    duel.load_script("yo3_house_rules.lua", HOUSE_RULES.as_bytes());
+}
 
 /// The Lua call that gives `team` the skill named `name` (as the server names it), or None for a skill this engine
 /// doesn't know.
@@ -277,7 +293,7 @@ pub(crate) fn build(library: &Arc<Library>, setup: &Setup, history: &[Vec<u8>]) 
         let text = library.script(name).unwrap_or_default();
         duel.load_script(name, &text);
     }
-    duel.load_script("yo3_house_rules.lua", HOUSE_RULES.as_bytes());
+    load_house_rules(&mut duel);
     for &(team, location, code) in &setup.cards {
         duel.new_card(team, 0, code, team, location, 0, POSITION_FACEDOWN_DEFENSE);
     }

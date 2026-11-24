@@ -2,7 +2,7 @@
 //! core with both seats' client models checked after every step (`duelcheck::scenario`). Card texts: the official
 //! database for the printed cards, ProjectIgnis' anime database for the anime ones (`[Anime]` in the game).
 use yo3_server::duelcheck::scenario::{Action::*, Scenario, engine_dir};
-use yo3_server::engine::{Spawn, SpawnPlace::*};
+use yo3_server::engine::{Revival, Spawn, SpawnPlace::*};
 
 // Added cards (rows 4836-4846; ids from engine/added-cards.json, a stand-in where the Konami id is too large or none).
 const RAS_DISCIPLE: u16 = 11169;
@@ -117,48 +117,6 @@ fn illusion_gate_destroys_and_takes_a_monster_from_the_opponents_graveyard() {
     assert_eq!(s.attack_of(0, BLUE_EYES), Some(3000), "Blue-Eyes came from their Graveyard: {}", s.state());
 }
 
-/// The anime combo, by the server's house rule (crates/yo3-engine/src/house_rules.lua): the anime Foolish Burial ("Send
-/// 1 card from your Deck to your opponent's Graveyard") puts Divine Serpent Geh in the opponent's Graveyard, and Illusion
-/// Gate takes it from there "ignoring its Summoning conditions", which here also means "must first be properly Summoned"
-/// (the official ruling keeps that limit). Summoned, anime Geh sends its controller's hand to the Graveyard and takes all
-/// their LP, and they "cannot lose the Duel".
-#[test]
-fn foolish_burial_and_illusion_gate_summon_geh_from_the_opponents_graveyard() {
-    let deck: Vec<u16> = [KURIBOH; 39].into_iter().chain([GEH]).collect();
-    let spawns = [Spawn { team: 0, place: Hand, cid: FOOLISH_BURIAL }, Spawn { team: 0, place: Hand, cid: ILLUSION_GATE },
-        Spawn { team: 1, place: Monster, cid: WARWOLF }];
-    let Some(mut s) = field(true, 8000, [(&deck, &[]), (&[KURIBOH; 40], &[])], &spawns) else { return };
-    s.prefer(&[(0, GEH), (1, GEH)]);
-    s.run(&[Activate(FOOLISH_BURIAL)]).unwrap();
-    clean(&s);
-    assert_eq!(s.count(1, "grave", GEH), 1, "Geh is in the opponent's Graveyard: {}", s.state());
-    s.run(&[Activate(ILLUSION_GATE)]).unwrap();
-    clean(&s);
-    assert!(s.monster(0, GEH).is_some(), "Geh is ours: {}", s.state());
-    assert_eq!((s.lp(0), hand(&s, 0)), (0, 0), "its summon took the hand and every LP: {}", s.state());
-    s.run_both([&[EndTurn], &[EndTurn]]).unwrap();
-    clean(&s);
-    assert!(s.monster(0, GEH).is_some(), "at 0 LP the duel goes on: {}", s.state());
-}
-
-/// The house rule's boundary: Illusion Gate ("ignoring its Summoning conditions") takes a Stardust Dragon the opponent
-/// never Synchro Summoned; Monster Reborn, which ignores nothing, still can't revive one that never was.
-#[test]
-fn ignoring_summoning_conditions_lifts_proper_summoning_and_monster_reborn_does_not() {
-    let spawns = [Spawn { team: 0, place: Hand, cid: ILLUSION_GATE }, Spawn { team: 1, place: Monster, cid: WARWOLF },
-        Spawn { team: 1, place: Grave, cid: STARDUST }];
-    let Some(mut s) = field(false, 8000, [(&[KURIBOH; 40], &[]), (&[KURIBOH; 40], &[STARDUST])], &spawns) else { return };
-    s.prefer(&[(1, STARDUST)]);
-    s.run(&[Activate(ILLUSION_GATE)]).unwrap();
-    clean(&s);
-    assert_eq!(s.attack_of(0, STARDUST), Some(2500), "Illusion Gate took the never-Summoned Stardust Dragon: {}", s.state());
-
-    let spawns = [Spawn { team: 0, place: Hand, cid: MONSTER_REBORN }, Spawn { team: 0, place: Grave, cid: STARDUST }];
-    let Some(mut s) = field(false, 8000, [(&[KURIBOH; 40], &[STARDUST]), (&[KURIBOH; 40], &[])], &spawns) else { return };
-    assert!(s.run(&[Activate(MONSTER_REBORN)]).is_err(), "Monster Reborn has no target: {}", s.state());
-    assert_eq!(s.count(0, "grave", STARDUST), 1);
-}
-
 /// "Cannot be Special Summoned" is a Summoning condition too: Illusion Gate, ignoring them, takes Yamata Dragon (a Spirit
 /// Monster: "This card cannot be Special Summoned") from the opponent's Graveyard; Monster Reborn, ignoring nothing,
 /// can't revive it.
@@ -205,17 +163,6 @@ fn underworld_circle_brings_a_monster_back_from_the_graveyard() {
     s.run(&[SetSpell(UNDERWORLD_CIRCLE), EndTurn, Activate(UNDERWORLD_CIRCLE), Activate(UNDERWORLD_CIRCLE)]).unwrap();
     clean(&s);
     assert_eq!(s.attack_of(0, WARWOLF), Some(2000), "Warwolf came back: {}", s.state());
-}
-
-#[test]
-fn underworld_circle_brings_back_a_geh_never_summoned() {
-    let spawns = [Spawn { team: 0, place: Hand, cid: UNDERWORLD_CIRCLE }, Spawn { team: 0, place: Grave, cid: GEH },
-        Spawn { team: 1, place: Monster, cid: BLUE_EYES }];
-    let Some(mut s) = field(true, 8000, [(&[DARK_HOLE; 40], &[]), (&[POT_OF_GREED; 40], &[])], &spawns) else { return };
-    s.prefer(&[(0, GEH)]);
-    s.run(&[SetSpell(UNDERWORLD_CIRCLE), EndTurn, Activate(UNDERWORLD_CIRCLE), Activate(UNDERWORLD_CIRCLE)]).unwrap();
-    clean(&s);
-    assert!(s.monster(0, GEH).is_some(), "Geh came back: {}", s.state());
 }
 
 /// Orichalcos Kyutora (anime-only): "Must first be Special Summoned (from your hand) by paying 500 LP. ... all battle
@@ -302,4 +249,100 @@ fn null_and_void_sends_the_opponents_draw_to_the_graveyard() {
     clean(&s);
     assert_eq!(s.count(1, "grave", POT_OF_GREED), 1, "their draw went to the Graveyard: {}", s.state());
     assert_eq!(hand(&s, 1), before, "their hand didn't grow");
+}
+
+// The `revival-rule` house rule (docs/rules-privacy.md, "House rules"; crates/yo3-engine/src/house_rules.lua): each
+// situation below under each of its three levels, `official` being the default every other test plays by.
+
+fn ruled(revival: Revival, anime: bool, decks: [(&[u16], &[u16]); 2], spawns: &[Spawn]) -> Option<Scenario> {
+    let dir = engine_dir()?;
+    Some(Scenario::start_rule(&dir, revival, anime, 7, 8000, decks, spawns).unwrap())
+}
+
+/// The anime Foolish Burial ("Send 1 card from your Deck to your opponent's Graveyard") buries Divine Serpent Geh in the
+/// opponent's Graveyard; Illusion Gate ("ignoring its Summoning conditions") then takes it, or the monster it destroyed.
+/// Summoned, anime Geh takes its controller's hand and every LP, and they "cannot lose the Duel".
+fn illusion_gate_takes_a_buried_geh(revival: Revival) -> Option<bool> {
+    let deck: Vec<u16> = [KURIBOH; 39].into_iter().chain([GEH]).collect();
+    let spawns = [Spawn { team: 0, place: Hand, cid: FOOLISH_BURIAL }, Spawn { team: 0, place: Hand, cid: ILLUSION_GATE },
+        Spawn { team: 1, place: Monster, cid: WARWOLF }];
+    let mut s = ruled(revival, true, [(&deck, &[]), (&[KURIBOH; 40], &[])], &spawns)?;
+    s.prefer(&[(0, GEH), (1, GEH)]);
+    s.run(&[Activate(FOOLISH_BURIAL)]).unwrap();
+    assert_eq!(s.count(1, "grave", GEH), 1, "Geh is in the opponent's Graveyard: {}", s.state());
+    s.run(&[Activate(ILLUSION_GATE)]).unwrap();
+    clean(&s);
+    let took = s.monster(0, GEH).is_some();
+    if took {
+        assert_eq!((s.lp(0), hand(&s, 0)), (0, 0), "its summon took the hand and every LP: {}", s.state());
+        s.run_both([&[EndTurn], &[EndTurn]]).unwrap();
+        clean(&s);
+        assert!(s.monster(0, GEH).is_some(), "at 0 LP the duel goes on: {}", s.state());
+    }
+    Some(took)
+}
+
+/// Illusion Gate takes a Stardust Dragon the opponent never Synchro Summoned.
+fn illusion_gate_takes_a_never_summoned_synchro(revival: Revival) -> Option<bool> {
+    let spawns = [Spawn { team: 0, place: Hand, cid: ILLUSION_GATE }, Spawn { team: 1, place: Monster, cid: WARWOLF },
+        Spawn { team: 1, place: Grave, cid: STARDUST }];
+    let mut s = ruled(revival, false, [(&[KURIBOH; 40], &[]), (&[KURIBOH; 40], &[STARDUST])], &spawns)?;
+    s.prefer(&[(1, STARDUST)]);
+    s.run(&[Activate(ILLUSION_GATE)]).unwrap();
+    clean(&s);
+    Some(s.attack_of(0, STARDUST) == Some(2500))
+}
+
+/// Monster Reborn (which ignores nothing) revives `cid`, put in the Graveyard without ever being Summoned.
+fn monster_reborn_revives(revival: Revival, cid: u16, extra: &[u16]) -> Option<bool> {
+    let spawns = [Spawn { team: 0, place: Hand, cid: MONSTER_REBORN }, Spawn { team: 0, place: Grave, cid }];
+    let mut s = ruled(revival, false, [(&[KURIBOH; 40], extra), (&[KURIBOH; 40], &[])], &spawns)?;
+    s.prefer(&[(0, cid)]);
+    if s.run(&[Activate(MONSTER_REBORN)]).is_err() {
+        return Some(false); // no target: it never became possible
+    }
+    clean(&s);
+    Some(s.monster(0, cid).is_some())
+}
+
+/// The anime Underworld Circle ("Monsters can be Summoned ignoring the Summoning conditions") brings back a Divine Serpent
+/// Geh that was never Summoned.
+fn underworld_circle_revives_a_never_summoned_geh(revival: Revival) -> Option<bool> {
+    let spawns = [Spawn { team: 0, place: Hand, cid: UNDERWORLD_CIRCLE }, Spawn { team: 0, place: Grave, cid: GEH },
+        Spawn { team: 1, place: Monster, cid: BLUE_EYES }];
+    // Spell decks: the Circle banishes every monster in both Decks, and a Deck of monsters would leave no draw.
+    let mut s = ruled(revival, true, [(&[DARK_HOLE; 40], &[]), (&[POT_OF_GREED; 40], &[])], &spawns)?;
+    s.prefer(&[(0, GEH)]);
+    let ran = s.run(&[SetSpell(UNDERWORLD_CIRCLE), EndTurn, Activate(UNDERWORLD_CIRCLE), Activate(UNDERWORLD_CIRCLE)]);
+    if ran.is_err() {
+        return Some(false);
+    }
+    clean(&s);
+    Some(s.monster(0, GEH).is_some())
+}
+
+/// A situation, the function that plays it under a level (whether it happened; None without the engine), and what
+/// each level gives, in `official`, `ignoring-means-all`, `graveyard-is-graveyard` order.
+type Case = (&'static str, fn(Revival) -> Option<bool>, [bool; 3]);
+
+#[test]
+fn each_revival_rule_reaches_as_far_as_it_says() {
+    use Revival::*;
+    let levels = [Official, IgnoringMeansAll, GraveyardIsGraveyard];
+    let cases: [Case; 6] = [
+        ("Foolish Burial then Illusion Gate takes Geh", illusion_gate_takes_a_buried_geh, [false, true, true]),
+        ("Illusion Gate takes a never-Summoned Synchro", illusion_gate_takes_a_never_summoned_synchro, [false, true, true]),
+        ("anime Underworld Circle revives a never-Summoned Geh", underworld_circle_revives_a_never_summoned_geh, [false, true, true]),
+        ("Monster Reborn revives a never-Summoned Synchro", |r| monster_reborn_revives(r, STARDUST, &[STARDUST]), [false, false, true]),
+        // Geh's own text ("Must be Special Summoned by its own effect") stops Monster Reborn at every level.
+        ("Monster Reborn revives Geh", |r| monster_reborn_revives(r, GEH, &[]), [false, false, false]),
+        // So does a Spirit's "This card cannot be Special Summoned" (Illusion Gate gets past it: its own test above).
+        ("Monster Reborn revives Yamata Dragon", |r| monster_reborn_revives(r, YAMATA_DRAGON, &[]), [false, false, false]),
+    ];
+    for (what, case, expected) in cases {
+        for (level, want) in levels.iter().zip(expected) {
+            let Some(got) = case(*level) else { return };
+            assert_eq!(got, want, "{what}, under {}", level.name());
+        }
+    }
 }
