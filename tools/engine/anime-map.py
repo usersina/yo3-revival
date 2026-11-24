@@ -201,7 +201,8 @@ def candidates():
 
 
 def official_passcodes(alias):
-    """Konami id -> the database's original passcode, as crates/yo3-engine's Cards::open picks it."""
+    """Konami id (or an added card's stand-in id) -> the database's original passcode, as crates/yo3-engine's Cards::open
+    picks it."""
     out = {}
     for card in json.loads(read(os.path.join(ENGINE, "card-ids.json")))["data"]:
         ids = list(dict.fromkeys([card["id"]] + [i["id"] for i in card.get("card_images", [])]))
@@ -213,6 +214,10 @@ def official_passcodes(alias):
             cid = misc.get("konami_id", 0)
             if cid and cid not in out:
                 out[cid] = original
+    # The cards the game never had, by the id the client knows them by: a newer card's stand-in (docs/added-cards.md).
+    added = os.path.join(ENGINE, "added-cards.json")
+    if os.path.exists(added):
+        out.update({c["cid"]: c["passcode"] for c in json.loads(read(added))["cards"]})
     return out
 
 

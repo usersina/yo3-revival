@@ -156,3 +156,29 @@ fn anime_quasar_is_synchro_summoned_and_attacks_once_per_synchro_material() {
     assert!(s.problems.is_empty(), "{:#?}", s.problems);
     assert_eq!(s.lp(1), 0);
 }
+
+/// The kinds the added-cards tool learned to write (tools/engine/added-cards.py): a Spell (Advanced Dark, a Field Spell
+/// the game never had, by its own Konami id 10214) and a newer card whose Konami id (17632, Advanced Crystal Beast Amber
+/// Mammoth) is beyond the client's 14 bits, known by a stand-in id. The engine folder is a copy of the repository's with
+/// its own added-cards.json, so the committed list, whose rows are permanent, is left alone.
+#[test]
+fn a_spell_and_a_stand_in_card_play_by_the_ids_the_client_knows() {
+    const ADVANCED_DARK: u16 = 10214;
+    const AMBER_MAMMOTH: u16 = 3968; // a stand-in: no card's Konami id
+    let Some(repo) = engine_dir() else { return };
+    let dir = std::env::temp_dir().join(format!("yo3-added-engine-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    for entry in std::fs::read_dir(&repo).unwrap().flatten().filter(|e| e.file_name() != "added-cards.json") {
+        let _ = std::fs::remove_file(dir.join(entry.file_name()));
+        std::os::unix::fs::symlink(std::fs::canonicalize(entry.path()).unwrap(), dir.join(entry.file_name())).unwrap();
+    }
+    std::fs::write(dir.join("added-cards.json"), format!(
+        r#"{{"format":"yo3-added-cards","version":1,"first_row":4834,"cards":[{{"cid":{ADVANCED_DARK},"passcode":12644061}},{{"cid":{AMBER_MAMMOTH},"passcode":18847598,"konami_id":17632}}]}}"#)).unwrap();
+    let deck: Vec<u16> = [ADVANCED_DARK, AMBER_MAMMOTH].iter().copied().cycle().take(40).collect();
+    let mut s = Scenario::start(&dir, 3, 8000, [(&deck[..], &[][..]), (&[KURIBOH; 40][..], &[][..])]).unwrap();
+    s.run(&[Activate(ADVANCED_DARK), Summon(AMBER_MAMMOTH)]).unwrap();
+    std::fs::remove_dir_all(&dir).unwrap();
+    assert!(s.problems.is_empty(), "the client's view left the engine's: {:#?}", s.problems);
+    assert_eq!(s.count(0, "szone", ADVANCED_DARK), 1, "Advanced Dark is face-up in the Field Zone: {}", s.state());
+    assert_eq!(s.attack_of(0, AMBER_MAMMOTH), Some(1700), "Amber Mammoth is on the field under its stand-in id: {}", s.state());
+}

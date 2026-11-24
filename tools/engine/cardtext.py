@@ -28,6 +28,9 @@ def main(argv):
         for misc in card.get('misc_info', []):
             if 'konami_id' in misc:
                 passcodes.setdefault(misc['konami_id'], card['id'])
+    added = ROOT / 'engine' / 'added-cards.json'  # the cards the game never had, by the id the client knows (a stand-in's too)
+    if added.is_file():
+        passcodes.update({c['cid']: c['passcode'] for c in json.loads(added.read_text())['cards']})
     dbs = [sqlite3.connect(f'file:{p}?mode=ro', uri=True) for p in sorted(glob.glob(str(ROOT / 'engine/vendor/BabelCDB/*.cdb')))]
     for arg in argv:
         cid = int(arg)

@@ -90,6 +90,9 @@ def card_info(engine):
         for misc in card.get('misc_info', []):
             if 'konami_id' in misc:
                 passcodes.setdefault(misc['konami_id'], card['id'])
+    added = engine / 'added-cards.json'  # the cards the game never had, by the id the client knows (a stand-in's too)
+    if added.is_file():
+        passcodes.update({c['cid']: c['passcode'] for c in json.loads(added.read_text())['cards']})
     data = {}
     for cdb in sorted(glob.glob(str(engine / 'vendor/BabelCDB/*.cdb')), key=lambda p: not p.endswith('/cards.cdb')):
         with sqlite3.connect(f'file:{cdb}?mode=ro', uri=True) as db:

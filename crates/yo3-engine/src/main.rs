@@ -91,6 +91,8 @@ pub fn identity(vendor: &Path) -> serde_json::Value {
         "scripts": scripts,
         "database": file_sha256(&vendor.join("BabelCDB/cards.cdb")),
         "card_ids": file_sha256(&vendor.join("cardinfo.json")),
+        // The cards the game never had, and the ids the client knows them by (#75); empty without the file.
+        "added_cards": file_sha256(&vendor.parent().unwrap_or(vendor).join("added-cards.json")),
         // The anime versions: whether they are on, and the map and database they read.
         "anime": anime,
         "anime_map": if anime { file_sha256(&cards::anime_map_file(vendor)) } else { String::new() },

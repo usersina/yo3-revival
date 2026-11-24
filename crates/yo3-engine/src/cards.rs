@@ -35,6 +35,27 @@ pub fn anime_map_file(vendor: &Path) -> PathBuf {
     vendor.parent().unwrap_or(vendor).join("anime-cards.json")
 }
 
+/// The cards the game never had (`engine/added-cards.json`, #75): (the id the client knows the card by, its passcode).
+/// That id is the card's Konami id, or a stand-in for a newer card whose Konami id is beyond the client's 14 bits
+/// (docs/added-cards.md). None when the file isn't there.
+pub fn read_added(file: &Path) -> Result<Vec<(u32, u32)>, String> {
+    let text = match std::fs::read(file) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+        Err(e) => return Err(format!("open '{}': {e}", file.display())),
+    };
+    let json: Json = serde_json::from_slice(&text).map_err(|e| format!("{}: {e}", file.display()))?;
+    json["cards"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|c| match (c["cid"].as_u64(), c["passcode"].as_u64()) {
+            (Some(cid), Some(code)) if cid > 0 && code > 0 => Ok((cid as u32, code as u32)),
+            _ => Err(format!("{}: a card without its cid and passcode", file.display())),
+        })
+        .collect()
+}
+
 /// A corrected anime card record (`"records"` of `engine/anime-cards.json`, from `engine/anime/records.json`): the data row, the
 /// name and the strings of an anime card whose upstream entry is a placeholder, replacing the unofficial database's row of the
 /// same passcode. Its script is ours (`engine/overrides/c<code>.lua`).
@@ -287,6 +308,18 @@ impl Cards {
                 }
             }
         }
+        // An added card plays its passcode under the id the client knows it by: a stand-in id replaces its Konami id both
+        // ways, so the engine's messages name the card as the client's rows do.
+        let added = vendor.parent().unwrap_or(vendor).join("added-cards.json");
+        for (cid, code) in read_added(&added)? {
+            if !rows.contains_key(&code) {
+                return Err(format!("{}: card {cid} plays {code}, which the card data lacks", added.display()));
+            }
+            passcode_of.insert(cid, code);
+            for id in rows.keys().copied().filter(|id| *id == code || alias.get(id) == Some(&code)).collect::<Vec<_>>() {
+                cid_of.insert(id, cid);
+            }
+        }
         let official_of = passcode_of.clone();
         let mut anime_cards = HashMap::new();
         let mut records = HashMap::new();
@@ -488,5 +521,17 @@ mod tests {
         assert_eq!(cards.string(87257460, 0).as_deref(), Some("Equip 1 opponent's Level 3 or lower monster to this card"));
         assert_eq!(cards.string(87257460, 1).as_deref(), Some("Special Summon 1 \"Allure Queen LV5\""));
         assert_eq!(cards.string(87257460, 16), None);
+    }
+
+    #[test]
+    fn an_added_card_is_known_by_the_id_the_client_has() {
+        // Shooting Quasar Dragon (#75) by its own Konami id; a stand-in id is read the same way.
+        let file = std::env::temp_dir().join(format!("yo3-added-{}.json", std::process::id()));
+        std::fs::write(&file, r#"{"format":"yo3-added-cards","version":1,"first_row":4834,"cards":[{"cid":9709,"passcode":35952884},{"cid":3901,"passcode":18847598}]}"#).unwrap();
+        assert_eq!(read_added(&file).unwrap(), vec![(9709, 35952884), (3901, 18847598)]);
+        std::fs::write(&file, r#"{"cards":[{"name":"no ids"}]}"#).unwrap();
+        assert!(read_added(&file).is_err());
+        std::fs::remove_file(&file).unwrap();
+        assert_eq!(read_added(&file).unwrap(), vec![], "no file: no added cards");
     }
 }

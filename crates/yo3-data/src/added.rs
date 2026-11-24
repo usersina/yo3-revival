@@ -350,5 +350,14 @@ mod tests {
         let mut fresh = CardDb::parse(&files["data/bin#/CARD_Prop.bin"], &files["data/bin#/CARD_Indx_E.bin"], &files["data/bin#/CARD_Name_E.bin"], &files["data/bin#/CARD_Desc_E.bin"]);
         assert!(fresh.add(&wrong).is_err(), "rows must start right after the game's");
         assert!(db.add(&added).is_err(), "a Konami id the table has already");
+        // The tool's file: a stand-in card keeps its real Konami id beside the id the client knows (`cid`), and every card
+        // a note; the server reads only what it needs, and an added Spell is a main-deck card.
+        let file = r#"{"format":"yo3-added-cards","version":1,"first_row":3,"cards":[{"row":3,"cid":11,"passcode":12644061,"name":"Spell",
+            "desc":"","a":11,"b":133224,"genre":0,"note":"","konami_id":17632}]}"#;
+        let spell = Added::parse(file).unwrap();
+        assert_eq!((spell.cards[0].cid, spell.cards[0].card().kind), (11, 13));
+        let mut db = CardDb::parse(&files["data/bin#/CARD_Prop.bin"], &files["data/bin#/CARD_Indx_E.bin"], &files["data/bin#/CARD_Name_E.bin"], &files["data/bin#/CARD_Desc_E.bin"]);
+        db.add(&spell).unwrap();
+        assert_eq!(db.by_row(3).map(|c| (c.cid, c.extra_deck())), Some((11, false)));
     }
 }
