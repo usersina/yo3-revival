@@ -29,6 +29,7 @@ const DARK_HOLE: u16 = 4342;
 const POT_OF_GREED: u16 = 4844;
 const MONSTER_REBORN: u16 = 4842;
 const STARDUST: u16 = 7734; // Stardust Dragon, a Synchro Monster
+const YAMATA_DRAGON: u16 = 5377; // a Spirit Monster: "This card cannot be Special Summoned"
 
 fn clean(s: &Scenario) {
     assert!(s.problems.is_empty(), "the client's view left the engine's: {:#?}", s.problems);
@@ -156,6 +157,24 @@ fn ignoring_summoning_conditions_lifts_proper_summoning_and_monster_reborn_does_
     let Some(mut s) = field(false, 8000, [(&[KURIBOH; 40], &[STARDUST]), (&[KURIBOH; 40], &[])], &spawns) else { return };
     assert!(s.run(&[Activate(MONSTER_REBORN)]).is_err(), "Monster Reborn has no target: {}", s.state());
     assert_eq!(s.count(0, "grave", STARDUST), 1);
+}
+
+/// "Cannot be Special Summoned" is a Summoning condition too: Illusion Gate, ignoring them, takes Yamata Dragon (a Spirit
+/// Monster: "This card cannot be Special Summoned") from the opponent's Graveyard; Monster Reborn, ignoring nothing,
+/// can't revive it.
+#[test]
+fn ignoring_summoning_conditions_lifts_cannot_be_special_summoned() {
+    let spawns = [Spawn { team: 0, place: Hand, cid: ILLUSION_GATE }, Spawn { team: 1, place: Monster, cid: WARWOLF },
+        Spawn { team: 1, place: Grave, cid: YAMATA_DRAGON }];
+    let Some(mut s) = field(false, 8000, [(&[KURIBOH; 40], &[]), (&[KURIBOH; 40], &[])], &spawns) else { return };
+    s.prefer(&[(1, YAMATA_DRAGON)]);
+    s.run(&[Activate(ILLUSION_GATE)]).unwrap();
+    clean(&s);
+    assert_eq!(s.attack_of(0, YAMATA_DRAGON), Some(2600), "Illusion Gate summoned the Spirit: {}", s.state());
+
+    let spawns = [Spawn { team: 0, place: Hand, cid: MONSTER_REBORN }, Spawn { team: 0, place: Grave, cid: YAMATA_DRAGON }];
+    let Some(mut s) = field(false, 8000, [(&[KURIBOH; 40], &[]), (&[KURIBOH; 40], &[])], &spawns) else { return };
+    assert!(s.run(&[Activate(MONSTER_REBORN)]).is_err(), "Monster Reborn has no target: {}", s.state());
 }
 
 /// Arduous Decision (anime) Special Summons the card the opponent picks "ignoring its Summoning conditions", from the hand
