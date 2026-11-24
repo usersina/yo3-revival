@@ -11,6 +11,7 @@ The first is **Shooting Quasar Dragon** (#75). This guide is for whoever adds th
 - [Test it](#test-it)
 - [Its picture](#its-picture)
 - [Its anime version](#its-anime-version)
+- [Anime-only cards](#anime-only-cards)
 - [Give it to players](#give-it-to-players)
 - [Add a batch](#add-a-batch)
 - [How it reaches the game](#how-it-reaches-the-game)
@@ -142,6 +143,25 @@ to `engine/anime/cards.tsv` (Konami id or stand-in id, name, passcode, anime pas
 its official one standing in). Test it with `Scenario::start_anime` or `start_anime_field`, and live with
 `yo3-server set anime-cards on`. The [anime cards page](anime-cards.md) has the rules for anime versions.
 
+## Anime-only cards
+
+A card never printed, one the anime showed (**Orichalcos Gigas**, the first, row 4835), can be added too. It has no
+Konami id and no official data: its data and script are ProjectIgnis' anime ones (the pinned unofficial database and
+`unofficial/`), and it plays only with the `anime-cards` setting on.
+
+- **Find it** by name or `anime:PASSCODE`: `tools/engine/added-cards.py --find "Orichalcos Gigas"`. It must be marked
+  Anime in the unofficial database (not a video game or manga version, not an anime version of a printed card: those are
+  [anime versions](#its-anime-version)) and have a script that registers effects, not a placeholder. The line has an
+  empty Konami id, a stand-in id and the passcode in the `anime` column.
+- **Its text** starts with the `[Anime]` line, like every anime card. Its genre bits come from its script's effects and
+  its type (the unofficial database numbers its categories its own way).
+- **With anime cards off** it stays in trunks and decks, and every duel with a deck holding it is refused at Select Deck
+  (Auto Duel, NPC duels, hosted duels, events), whatever the banlist, with a chat line: "Orichalcos Gigas is an anime
+  card: this server has anime cards off, so a deck with it can't duel." `give-cards` gives it, and says so. The rules
+  engine loads it only with the setting on.
+- **Review it like an anime version**: its script is the community's reconstruction of what the anime showed; a card
+  whose anime text is unknown waits. Test it with `Scenario::start_anime` or `start_anime_field`.
+
 ## Give it to players
 
 No pack holds an added card yet. A host gives it: `yo3-server give-cards PLAYER "Card Name" [--count N]` (or the admin
@@ -202,6 +222,8 @@ comes with the next Desktop release; until then it shows the stand-in.
 | `no card of that name, passcode or Konami id in the pinned data` | The spelling differs from the database's (`--find` ignores case only: try the passcode), or the card is newer than the pins: `engine/fetch.sh --update` |
 | `Konami id N is beyond the client's 14 bits` | A newer card's line without its stand-in: take the line `--find` prints |
 | `stand-in N is a card of the game` / `already a card's Konami id` | A stand-in must be an id no card has: take the one `--find` prints |
+| `N is no anime card (ot 4, no alias)` / `registers no effect (a placeholder)` | An anime-only card must be the unofficial database's anime card itself, with a working script |
+| A deck is refused with "… is an anime card: this server has anime cards off" | It holds an anime-only card: take it out, or turn `anime-cards` on |
 | The card is missing from one of Edit Deck's Search Key filters | Its genre bits are learned from the EDOPro categories (below, [what a card needs](#what-a-card-needs)): about half of the game's marks have such a rule, the others (Recover cards from Graveyard, Hand destruction...) are never set for an added card |
 | `row N, the next is M` | Rows must follow the game's last row without a gap: use the row `--find` prints |
 | `ATK … is beyond what the client can show` | Above 5100 or not in tens: it can't be added |
