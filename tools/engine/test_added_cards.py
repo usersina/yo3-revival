@@ -164,6 +164,11 @@ class AddedCards(unittest.TestCase):
 
 
 class Pure(unittest.TestCase):
+    def test_the_databases_unofficial_text_note_is_left_out(self):
+        desc = 'Cannot attack.\r\n\r\n* The above text is unofficial and describes the card\'s functionality in the OCG.'
+        self.assertEqual(added.card_text(desc), 'Cannot attack.')
+        self.assertEqual(added.card_text('Line one.\nLine two.'), 'Line one.\rLine two.')
+
     def test_fields_read_the_rows_second_word(self):
         f = added.fields(18 << 3 | 1 << 8 | 12 << 12 | 1 << 19 | 1 << 27)
         self.assertEqual((f['kind'], f['attribute'], f['level'], f['race'], f['art']), (18, 1, 12, 1, 1))

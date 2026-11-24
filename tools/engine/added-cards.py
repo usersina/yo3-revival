@@ -217,6 +217,14 @@ def genre_of(feats, rules):
     return sum(1 << g for g, fs in rules.items() if any(f in feats for f in fs))
 
 
+def card_text(desc):
+    """The card's text as the game shows it: CR line breaks, without the database's note that EDOPro's text is unofficial
+    ("* The above text is unofficial and describes the card's functionality in the OCG."): no card of the game says so."""
+    text = desc.replace('\r\n', '\r').replace('\n', '\r')
+    lines = [l for l in text.split('\r') if not l.lstrip().startswith('* The above text is unofficial')]
+    return '\r'.join(lines).rstrip('\r ')
+
+
 def encode(d, cid, learned):
     """A database card as the client's row words, `cid` the id the client knows it by (its Konami id or stand-in): (a, b, the
     reasons it can't be one). A Spell or Trap has no level or
@@ -369,7 +377,7 @@ def build():
         problems += [f'{line["name"]}: {w}' for w in why if sid is not None or cid <= 0x3FFF or 'bits' not in w]
         if why:
             continue
-        desc = d['desc'].replace('\r\n', '\r').replace('\n', '\r')
+        desc = card_text(d['desc'])
         if anime_code is not None:
             desc = f'{ANIME_TAG}\r{desc}'
         card = {'row': row, 'cid': client, 'passcode': code, 'name': d['name'], 'desc': desc,
