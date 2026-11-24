@@ -138,6 +138,18 @@ fn sanitize(text: &str, home: Option<&str>, remove_personal: bool) -> String {
         if line.contains("-----BEGIN") && line.contains("PRIVATE KEY-----") { private_key = true; }
         if private_key { if line.contains("-----END") && line.contains("PRIVATE KEY-----") { private_key = false; } out.push_str("[private key omitted]\n"); }
         else if line.len() > 16384 { out.push_str("[overlong diagnostic line omitted]\n"); }
+        // A yo3-log/1 line: each of its texts filtered as a line would be (a JSON-escaped path wouldn't match as text),
+        // the line left out when its message or a field names a person.
+        else if line.starts_with('{') && let Ok(serde_json::Value::Object(mut event)) = serde_json::from_str::<serde_json::Value>(line) {
+            let msg = event.get("msg").and_then(|m| m.as_str()).unwrap_or_default().to_owned();
+            let personal = remove_personal && (personal_line(&msg) || event.keys().any(|k| ["user", "player", "peer"].contains(&k.as_str()))
+                || event.get("topic").and_then(|t| t.as_str()) == Some("tls") || logs::is_trace(line));
+            if personal { continue }
+            for (key, value) in event.iter_mut() {
+                if let serde_json::Value::String(text) = value && !["ts", "level", "src", "session"].contains(&key.as_str()) { *text = clean(text, home, remove_personal) }
+            }
+            if let Ok(json) = serde_json::to_string(&serde_json::Value::Object(event)) { out.push_str(&json); out.push('\n'); }
+        }
         else if !remove_personal || !personal_line(line) { out.push_str(&clean(line, home, remove_personal)); out.push('\n'); }
     }
     out

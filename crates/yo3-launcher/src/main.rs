@@ -94,7 +94,7 @@ async fn main() -> anyhow::Result<()> {
     let log = yo3_tunnel::diagnostics::Session::start(&directory, if args.attach_game.is_some() { "direct" } else { "game" }, args.diagnostic_parent.clone())?;
     yo3_tunnel::diagnostics::set_current(log.clone());
     let result = run(args, log.clone()).await;
-    if let Err(error) = &result { log.line(&format!("Startup/connection failed: {error:#}")); }
+    if let Err(error) = &result { log.error(&format!("Startup/connection failed: {error:#}")); }
     else { log.line("Game/helper session ended"); }
     if let (Some(report), Err(error)) = (report, &result) { yo3_launcher::attach::report_error(&report, &format!("{error:#}")); }
     result
@@ -190,7 +190,7 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
                 for (file, why) in &done.skipped { log.line(&format!("Anime artwork skipped: {} ({why})", file.display())); }
                 cmd.env(yo3_launcher::art::ENV, dir);
             }
-            Err(e) => log.line(&format!("Anime artwork folder {} is not usable: {e}", dir.display())),
+            Err(e) => log.warn(&format!("Anime artwork folder {} is not usable: {e}", dir.display())),
         }
     }
     // What else runs inside the game (#68): the DLL writes its report here before the game is released.
@@ -274,7 +274,7 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
             match initializing!(async { Ok::<_, anyhow::Error>(yo3_launcher::direct::sign_in(&endpoint, &key, &read).await) })? {
                 Ok(session) => Some(session),
                 Err(failure) => {
-                    log.line(&format!("Sign-in refused ({:?}): {}", failure.refusal, failure.reason));
+                    log.warn(&format!("Sign-in refused ({:?}): {}", failure.refusal, failure.reason));
                     eprintln!("{}", match failure.refusal {
                         yo3_launcher::direct::Refusal::SignedOut => "No saved sign-in for this server: sign in with the game's own login form.".to_string(),
                         _ => format!("The saved sign-in was refused: {}", failure.reason),
@@ -301,7 +301,7 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
                     args.anime_art.as_deref().or(args.game_dir.as_deref().map(|g| g.join(yo3_launcher::art::FOLDER)).as_deref())));
                 let folder = match prepared {
                     Ok(done) => done.folder.inspect(|f| log.line(&format!("Added cards: {} card(s), files {} ({} written now)", added.cards.len(), f.display(), done.written))),
-                    Err(error) => None.inspect(|_: &PathBuf| log.line(&format!("Added cards: the game's card files could not be extended: {error:#}"))),
+                    Err(error) => None.inspect(|_: &PathBuf| log.error(&format!("Added cards: the game's card files could not be extended: {error:#}"))),
                 };
                 let named: anyhow::Result<Option<String>> = match folder.as_deref() {
                     None => Ok(None),
@@ -337,10 +337,10 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
                 match yo3_launcher::decks::adapt(&folder, &wanted) {
                     Ok(done) if done.adapted > 0 || !done.skipped.is_empty() => log.line(&format!("Local decks and the card profile {}: {} deck(s) changed, {} card(s) moved, {} file(s) left alone", wanted.hash, done.adapted, done.moved, done.skipped.len())),
                     Ok(_) => {}
-                    Err(error) => log.line(&format!("Local decks were not adapted to the card profile: {error}")),
+                    Err(error) => log.warn(&format!("Local decks were not adapted to the card profile: {error}")),
                 }
             }
-            Err(error) => log.line(&format!("Local decks were not adapted: the card profile could not be fetched: {error:#}")),
+            Err(error) => log.warn(&format!("Local decks were not adapted: the card profile could not be fetched: {error:#}")),
         }
     }
     let game_log = log.clone();
@@ -357,7 +357,7 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
             match yo3_launcher::direct::sign_out(&endpoint, vault.as_deref(), &yo3_launcher::vault::SystemVault).await {
                 Ok(true) => log.line("Delete Login Data: this device's saved sign-in is forgotten"),
                 Ok(false) => {}
-                Err(error) => log.line(&format!("Delete Login Data failed: {error:#}")),
+                Err(error) => log.error(&format!("Delete Login Data failed: {error:#}")),
             }
         };
         let mut typed = proxy.typed_logins().context("the login form's channel is gone")?;
@@ -381,7 +381,7 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
                     // The game's own login form (#34): its next login waits for this.
                     match yo3_launcher::direct::form_sign_in(&endpoint, &proxy, &login, vault.as_deref(), &yo3_launcher::vault::SystemVault, &mut session, key.owns_session()).await {
                         Ok(()) => log.line(&format!("Signed in from the game's login form{}", if login.stay { "; this device stays signed in" } else { "" })),
-                        Err(failure) => log.line(&format!("The game's login form: refused ({:?}): {}", failure.refusal, failure.reason)),
+                        Err(failure) => log.warn(&format!("The game's login form: refused ({:?}): {}", failure.refusal, failure.reason)),
                     }
                 }
                 stop = &mut desktop_stop, if !launcher_gone => match stop {
@@ -512,7 +512,7 @@ async fn capture(mut source: impl tokio::io::AsyncRead + Unpin, log: yo3_tunnel:
     use tokio::io::AsyncReadExt;
     let mut buffer = [0; 4096]; let mut writer = if client_trace { log.client_writer() } else { log.writer() }; let mut tail = Vec::new(); let mut truncated = false;
     loop {
-        let n=match source.read(&mut buffer).await {Ok(n)=>n,Err(error)=>{log.line(&format!("Could not read game output: {error}"));break}};
+        let n=match source.read(&mut buffer).await {Ok(n)=>n,Err(error)=>{log.error(&format!("Could not read game output: {error}"));break}};
         if n == 0 { break }
         let _ = std::io::Write::write_all(&mut writer, &buffer[..n]);
         tail.extend_from_slice(&buffer[..n]);

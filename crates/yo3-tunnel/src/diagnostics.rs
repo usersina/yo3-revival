@@ -1,4 +1,8 @@
 //! Bounded session logs: credentials scrubbed at capture, optional personal-data filtering at export.
+//!
+//! Every line is one JSON object in the yo3-log/1 schema (docs/logs.md): `ts` (UTC, milliseconds), `level`, `src`,
+//! `session`, `msg`, then the event's own fields. Captured output (a game's, Wine's, the DLL's, a server's text) is
+//! classified into `src` and `level` as it is written.
 use std::path::{Path, PathBuf};
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
@@ -12,6 +16,47 @@ static CURRENT: std::sync::OnceLock<Session> = std::sync::OnceLock::new();
 pub fn set_current(session: Session) { let _ = CURRENT.set(session); }
 pub fn event(message: &str) { if let Some(session) = CURRENT.get() { session.line(message); } }
 pub fn now() -> u64 { SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() }
+/// The log schema every session log line follows (docs/logs.md).
+pub const LOG_FORMAT: &str = "yo3-log/1";
+/// `t` as yo3-log/1's `ts`: UTC, RFC 3339 with milliseconds (`2026-11-24T08:12:37.123Z`).
+pub fn timestamp(t: SystemTime) -> String {
+    let d = t.duration_since(UNIX_EPOCH).unwrap_or_default();
+    let (secs, ms) = (d.as_secs() as i64, d.subsec_millis());
+    let (days, rem) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
+    // Howard Hinnant's civil-from-days.
+    let z = days + 719_468; let era = z.div_euclid(146_097); let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365; let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153; let day = doy - (153 * mp + 2) / 5 + 1; let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}.{ms:03}Z", rem / 3600, rem % 3600 / 60, rem % 60)
+}
+/// The `src` of a session's own lines: the Desktop window, the helper that runs a game, or the server.
+fn own_src(kind: &str) -> &'static str { match kind { "app" => "app", "server" => "server", _ => "helper" } }
+/// A captured line's `src`, `level`, own time (a server's text carries one) and message, from its markers: the
+/// connection DLL's `[YO3 MOD]`, the game's `[YO3 CLIENT]` trace, `[YO3 PACKET]`/`[YO3 ENGINE]`, Wine's
+/// `0123:fixme:...`, a server's `<ISO time>  LEVEL message`; else `default` and the level word in it.
+pub fn classify(text: &str, default: &str) -> (String, &'static str, Option<String>, String) {
+    let word = |l: Option<Level>| match l { Some(Level::Error) => "error", Some(Level::Warn) => "warn", Some(Level::Debug) => "debug", _ => "info" };
+    for (marker, src) in [("[YO3 MOD] ", "dll"), ("[YO3 CLIENT] ", "client"), ("[YO3 PACKET] ", "packet"), ("[YO3 ENGINE] ", "engine")] {
+        if let Some(rest) = text.strip_prefix(marker) { return (src.into(), if src == "dll" { word(level(rest)) } else { "debug" }, None, rest.into()) }
+    }
+    let b = text.as_bytes();
+    if b.len() > 6 && b[..4].iter().all(u8::is_ascii_hexdigit) && b[4] == b':' {
+        let rest = &text[5..];
+        let level = if rest.starts_with("err:") { "error" } else if rest.starts_with("warn:") { "warn" } else { "debug" };
+        return ("wine".into(), level, None, text.into());
+    }
+    // A server's text line: `2026-11-21T20:17:12.967137Z  INFO message`.
+    if b.len() > 28 && b[4] == b'-' && b[10] == b'T' && let Some(z) = text[..32.min(text.len())].find('Z') {
+        let mut words = text[z + 1..].trim_start().splitn(2, ' ');
+        let lvl = match words.next() { Some("ERROR") => Some("error"), Some("WARN") => Some("warn"), Some("INFO") => Some("info"), Some("DEBUG") => Some("debug"), Some("TRACE") => Some("trace"), _ => None };
+        if let Some(lvl) = lvl {
+            let ts = format!("{}Z", &text[..23.min(z)]);
+            return ("server".into(), lvl, Some(ts), words.next().unwrap_or_default().trim_start().into());
+        }
+    }
+    (default.into(), word(level(text)), None, text.into())
+}
 pub fn valid_id(id: &str) -> bool { !id.is_empty() && id.len() < 100 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Metadata { pub id: String, pub kind: String, pub pid: u32, pub parent: Option<String>, pub started: u64,
@@ -73,10 +118,43 @@ impl Session {
     pub fn writer(&self) -> LineWriter { self.prefixed_writer("") }
     pub fn client_writer(&self) -> LineWriter { self.prefixed_writer("[YO3 CLIENT] ") }
     fn prefixed_writer(&self, prefix: &'static str) -> LineWriter { LineWriter { session: self.clone(), line: Vec::new(), dropped: false, private_key: false, prefix } }
+    /// A line of this session: its own (an information line), or captured output, classified ([`classify`]).
     pub fn line(&self, line: &str) {
+        if line.starts_with('{') && let Ok(serde_json::Value::Object(event)) = serde_json::from_str(line) { return self.event(event) }
+        let default = own_src(&self.0.lock().unwrap().meta.kind);
+        let (src, level, ts, msg) = classify(line, default);
+        self.write(level, &src, ts, &msg, serde_json::Map::new());
+    }
+    /// A warning of this session's own.
+    pub fn warn(&self, line: &str) { let src = own_src(&self.0.lock().unwrap().meta.kind); self.write("warn", src, None, line, serde_json::Map::new()) }
+    /// An error of this session's own.
+    pub fn error(&self, line: &str) { let src = own_src(&self.0.lock().unwrap().meta.kind); self.write("error", src, None, line, serde_json::Map::new()) }
+    /// A structured event (a server's, from its log layer): `ts`, `level`, `src` and `msg` from it when present, its
+    /// other keys as fields.
+    pub fn event(&self, mut event: serde_json::Map<String, serde_json::Value>) {
+        let take = |e: &mut serde_json::Map<String, serde_json::Value>, k: &str| e.remove(k).and_then(|v| v.as_str().map(str::to_owned));
+        let level = match take(&mut event, "level").as_deref().map(str::to_ascii_lowercase).as_deref() {
+            Some("error") => "error", Some("warn") => "warn", Some("debug") => "debug", Some("trace") => "trace", _ => "info" };
+        let src = take(&mut event, "src").unwrap_or_else(|| own_src(&self.0.lock().unwrap().meta.kind).into());
+        let (ts, msg) = (take(&mut event, "ts"), take(&mut event, "msg").unwrap_or_default());
+        event.remove("session");
+        self.write(level, &src, ts, &msg, event);
+    }
+    fn write(&self, level: &str, src: &str, ts: Option<String>, msg: &str, mut fields: serde_json::Map<String, serde_json::Value>) {
         let mut inner = self.0.lock().unwrap();
-        let clean = redact_secrets(line, &inner.secrets);
-        let text = format!("{} {}\n", now(), if clean.len() > LINE_BYTES - 32 { "[overlong diagnostic line omitted]" } else { &clean });
+        let clean = redact_secrets(msg, &inner.secrets);
+        let msg = if clean.len() > LINE_BYTES - 512 { "[overlong diagnostic line omitted]".to_owned() } else { clean };
+        for value in fields.values_mut() { if let serde_json::Value::String(text) = value { *text = redact_secrets(text, &inner.secrets) } }
+        // ts, level, src, session and msg first, in that order, for a person reading the file; then the fields.
+        let quote = |v: &str| serde_json::to_string(v).unwrap_or_else(|_| "\"\"".into());
+        let mut json = format!("{{\"ts\":{},\"level\":{},\"src\":{},\"session\":{},\"msg\":{}",
+            quote(&ts.unwrap_or_else(|| timestamp(SystemTime::now()))), quote(level), quote(src), quote(&inner.meta.id), quote(&msg));
+        for (key, value) in fields {
+            if ["ts", "level", "src", "session", "msg"].contains(&key.as_str()) { continue }
+            if let Ok(value) = serde_json::to_string(&value) { json.push_str(&format!(",{}:{value}", quote(&key))); }
+        }
+        json.push('}');
+        let text = format!("{json}\n");
         if inner.bytes + text.len() as u64 > PART_BYTES {
             inner.part += 1;
             if let Ok(file) = private_create(&inner.root.join(format!("{}.{:04}.log", inner.meta.id, inner.part))) {
@@ -180,7 +258,21 @@ pub fn redact(text: &str, secrets: &[String], home: Option<&str>) -> String {
     out
 }
 /// Verbose payloads stay on disk, while the ordinary activity view remains readable.
-pub fn is_trace(line: &str) -> bool { ["[YO3 CLIENT]", "[YO3 PACKET]", "[YO3 ENGINE]"].iter().any(|marker| line.contains(marker)) }
+pub fn is_trace(line: &str) -> bool {
+    ["[YO3 CLIENT]", "[YO3 PACKET]", "[YO3 ENGINE]", r#""src":"client""#, r#""src":"packet""#, r#""src":"engine""#].iter().any(|marker| line.contains(marker))
+}
+
+/// A yo3-log/1 line as a person reads it: `08:12:37.123 INFO  server  message  key=value...`; any other line as it is.
+pub fn human(line: &str) -> String {
+    let Ok(serde_json::Value::Object(mut e)) = serde_json::from_str::<serde_json::Value>(line) else { return line.to_owned() };
+    let mut take = |k: &str| e.remove(k).map(|v| v.as_str().map_or_else(|| v.to_string(), str::to_owned)).unwrap_or_default();
+    let (ts, level, src, msg) = (take("ts"), take("level"), take("src"), take("msg"));
+    e.remove("session");
+    let time = ts.get(11..23).unwrap_or(&ts).to_owned();
+    let mut out = format!("{time} {:<5} {src:<6} {msg}", level.to_ascii_uppercase());
+    for (k, v) in e { out.push_str(&format!("  {k}={}", v.as_str().map_or_else(|| v.to_string(), str::to_owned))); }
+    out
+}
 #[derive(Clone, Serialize)]
 pub struct Record { pub name: String, pub id: String, pub bytes: u64, pub modified: u64 }
 /// Only our flat, bounded file names. No recursive traversal and no symbolic links, profiles, keys or databases.
@@ -232,14 +324,52 @@ pub fn prune(root: &Path, time: u64, max_bytes: u64, max_age: u64) -> io::Result
 #[cfg(test)]
 mod tests {
     #[test]
+    fn every_line_is_one_yo3_log_object_with_its_source_and_level() {
+        // docs/logs.md: ts (UTC, ms), level, src, session, msg, then fields; captured lines classified by their markers.
+        assert_eq!(timestamp(UNIX_EPOCH + std::time::Duration::from_millis(1_795_504_357_123)), "2026-11-24T07:12:37.123Z");
+        assert_eq!(timestamp(UNIX_EPOCH), "1970-01-01T00:00:00.000Z");
+        assert_eq!(classify("[YO3 MOD] Game network: EasyMultiPlay recv failed", "helper").0, "dll");
+        assert_eq!(classify("[YO3 CLIENT] recv 0x2398", "helper").0, "client");
+        let wine = classify("02b8:err:module:import_dll Library X not found", "helper");
+        assert_eq!((wine.0.as_str(), wine.1), ("wine", "error"));
+        let server = classify("2026-11-21T20:17:12.967137Z  WARN [tls] 127.0.0.1:5 handshake failed", "app");
+        assert_eq!((server.0.as_str(), server.1, server.2.as_deref(), server.3.as_str()), ("server", "warn", Some("2026-11-21T20:17:12.967Z"), "[tls] 127.0.0.1:5 handshake failed"));
+        assert_eq!(classify("Starting the game", "helper"), ("helper".into(), "info", None, "Starting the game".into()));
+        let root = std::env::temp_dir().join(format!("yo3-log1-{}-{}", std::process::id(), now()));
+        let session = Session::start(&root, "game", None).unwrap();
+        session.line("[YO3 MOD] v0.1.22 interface ready");
+        session.warn("The relay lost the front connection");
+        let mut fields = serde_json::Map::new();
+        fields.insert("user".into(), 1001.into());
+        fields.insert("level".into(), "WARN".into());
+        fields.insert("msg".into(), "a seat left".into());
+        fields.insert("src".into(), "server".into());
+        session.event(fields);
+        session.line("password=hunter2 should never be kept");
+        let lines: Vec<serde_json::Value> = session.tail(1 << 20).lines().map(|l| serde_json::from_str(l).expect("JSON")).collect();
+        let id = session.id();
+        assert!(lines.iter().all(|l| l["session"] == id.as_str() && l["ts"].as_str().is_some_and(|t| t.ends_with('Z') && t.len() == 24)), "{lines:?}");
+        assert_eq!((lines[0]["src"].as_str(), lines[0]["msg"].as_str()), (Some("helper"), Some("Session started")));
+        assert_eq!((lines[1]["src"].as_str(), lines[1]["msg"].as_str()), (Some("dll"), Some("v0.1.22 interface ready")));
+        assert_eq!(lines[2]["level"], "warn");
+        assert_eq!((lines[3]["src"].as_str(), lines[3]["level"].as_str(), lines[3]["user"].as_u64()), (Some("server"), Some("warn"), Some(1001)));
+        assert_eq!(lines[4]["msg"], "[sensitive diagnostic line omitted]");
+        assert!(human(&serde_json::to_string(&lines[3]).unwrap()).ends_with("WARN  server a seat left  user=1001"), "{}", human(&serde_json::to_string(&lines[3]).unwrap()));
+        assert_eq!(human("1795292305 an old line"), "1795292305 an old line");
+        drop(session);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn a_sessions_tail_is_its_newest_lines_across_parts() {
         let p = std::env::temp_dir().join(format!("yo3-tail-{}", std::process::id())); let _ = std::fs::remove_dir_all(&p);
         let s = Session::start(&p, "game", None).unwrap();
         for i in 0..40_000 { s.line(&format!("line {i:05} {}", "x-".repeat(30))); }
         let tail = s.tail(100_000);
         assert!(tail.len() <= 100_000 && tail.len() > 90_000, "{}", tail.len());
-        assert!(tail.trim_end().ends_with(&format!("line 39999 {}", "x-".repeat(30))));
-        assert!(tail.lines().next().unwrap().split(' ').nth(1) == Some("line"), "it starts at a line's start");
+        let msg = |line: &str| serde_json::from_str::<serde_json::Value>(line).expect("a whole yo3-log line")["msg"].as_str().unwrap().to_owned();
+        assert_eq!(msg(tail.lines().last().unwrap()), format!("line 39999 {}", "x-".repeat(30)));
+        assert!(msg(tail.lines().next().unwrap()).starts_with("line "), "it starts at a line's start");
         assert!(s.tail(10_000_000).contains("Session started"), "all of it when it fits, the first part too");
         let _ = std::fs::remove_dir_all(p);
     }

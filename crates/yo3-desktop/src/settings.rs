@@ -284,7 +284,7 @@ impl State {
 
     /// An error as one sentence, the technical text (paths masked) behind Details.
     pub fn fail(&mut self, ctx: &Ctx, error: &str) {
-        if let Some(backend) = &ctx.backend { backend.diagnostics.line(error) }
+        if let Some(backend) = &ctx.backend { backend.diagnostics.error(error) }
         let shown = error_presentation::present(error, error_presentation::Hint::General, &crate::app::masks(ctx));
         self.note = Some(Note { good: false, sentence: shown.summary, details: Some(shown.diagnosis.unwrap_or_default()).filter(|d| !d.is_empty()), open: false });
     }

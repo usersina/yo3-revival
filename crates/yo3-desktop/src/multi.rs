@@ -353,7 +353,7 @@ impl State {
                 self.found = match result {
                     Ok(server) => Found::Server(Box::new(server)),
                     Err(error) => {
-                        if let Some(backend) = &ctx.backend { backend.diagnostics.line(&format!("No server at {}: {error}", self.address.trim())) }
+                        if let Some(backend) = &ctx.backend { backend.diagnostics.warn(&format!("No server at {}: {error}", self.address.trim())) }
                         Found::No("No YO3 Revival server answers there.".into())
                     }
                 };
@@ -381,7 +381,7 @@ impl State {
                 Ok(Some(name)) => self.code_note = Some(format!("Saved as {name}.")),
                 Ok(None) => {}
                 Err(error) => {
-                    if let Some(backend) = &ctx.backend { backend.diagnostics.line(&format!("Saving the recovery code failed: {error}")) }
+                    if let Some(backend) = &ctx.backend { backend.diagnostics.error(&format!("Saving the recovery code failed: {error}")) }
                     self.code_note = Some("That file couldn't be saved. Copy the code instead.".into());
                 }
             },
@@ -528,7 +528,7 @@ impl State {
                 return Task::batch([next, Task::perform(async move { store.run(move |db| db.delete_remote_server(&key)).await.map_err(|e| format!("{e:#}")) }, Message::Saved)]);
             }
             Message::Saved(result) => if let Err(error) = result {
-                if let Some(backend) = &ctx.backend { backend.diagnostics.line(&format!("Saving a server failed: {error}")) }
+                if let Some(backend) = &ctx.backend { backend.diagnostics.error(&format!("Saving a server failed: {error}")) }
                 self.note = Some("YO3 Revival couldn't save this server's details on this PC.".into());
             },
             Message::Retry => {

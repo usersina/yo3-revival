@@ -51,7 +51,7 @@ mod events;
 pub mod championship;
 pub mod official;
 pub mod clock;
-mod log;
+pub mod log;
 mod net;
 pub mod web;
 pub mod ranking;

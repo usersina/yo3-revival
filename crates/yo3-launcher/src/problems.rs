@@ -41,7 +41,7 @@ pub async fn send_if_broken(endpoint: &Endpoint, session: &Token, log: &yo3_tunn
     if let Some(failure) = failure { text.push_str(&format!("\n(the helper's error) {failure}")); }
     match tokio::time::timeout(SEND_WAIT, endpoint.problem_report(session, &report(kind, &summary, &text))).await {
         Ok(Ok(id)) => log.line(&format!("Problem report {id} sent to the server ({kind}): quote it when you report this problem")),
-        Ok(Err(error)) => log.line(&format!("Problem report not sent: {error:#}")),
+        Ok(Err(error)) => log.warn(&format!("Problem report not sent: {error:#}")),
         Err(_) => log.line("Problem report not sent: the server didn't answer in time"),
     }
 }

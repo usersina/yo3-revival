@@ -387,7 +387,7 @@ impl State {
                             let needs_permission = settings.direct_start && match backend.auto_direct(&settings) {
                                 yo3_desktop::direct::AutoDirect::Ready => false,
                                 yo3_desktop::direct::AutoDirect::NeedsPermission => true,
-                                yo3_desktop::direct::AutoDirect::Skipped(why) => { backend.diagnostics.line(&format!("Direct start not set up: {why}")); false }
+                                yo3_desktop::direct::AutoDirect::Skipped(why) => { backend.diagnostics.warn(&format!("Direct start not set up: {why}")); false }
                             };
                             backend.play(&settings, &settings.local_account)?;
                             Ok(needs_permission)
@@ -626,7 +626,7 @@ impl State {
 
     /// Shows one plain sentence for `error`, with the technical text (paths masked) behind Details.
     pub fn fail(&mut self, ctx: &Ctx, error: String) {
-        if let Some(backend) = &ctx.backend { backend.diagnostics.line(&error) }
+        if let Some(backend) = &ctx.backend { backend.diagnostics.error(&error) }
         let hint = match &self.game.readiness {
             Some(Readiness::ComponentProblem(_)) => Hint::Component,
             Some(Readiness::GameProblem(_)) => Hint::GameFolder,

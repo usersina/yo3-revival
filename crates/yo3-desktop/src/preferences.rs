@@ -32,7 +32,7 @@ impl crate::Backend {
                     {
                         ensure!(!self.root.join("profiles/loader.ini").exists() && !old_loader.exists(),
                             "Could not take direct start out of the old game folder ({error:#}). Use Remove from game folder, then change it.");
-                        self.diagnostics.line(&format!("Direct start removed; its registry entry stays: {error:#}"));
+                        self.diagnostics.warn(&format!("Direct start removed; its registry entry stays: {error:#}"));
                     }
                 }
                 crate::validate_game(std::path::Path::new(&next.game_dir))?;
@@ -49,7 +49,7 @@ impl crate::Backend {
             }
         }
         db.save_settings(&next)?;
-        if let Err(error) = self.sync_direct(&next) { self.diagnostics.line(&format!("Direct-launch profile needs refresh: {error:#}")); }
+        if let Err(error) = self.sync_direct(&next) { self.diagnostics.warn(&format!("Direct-launch profile needs refresh: {error:#}")); }
         Ok(next)
     }
 }

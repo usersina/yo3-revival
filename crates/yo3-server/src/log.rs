@@ -187,6 +187,48 @@ fn message_json(m: &Message) -> Json {
     })
 }
 
+/// The server's session log in yo3-log/1 (docs/logs.md): each `tracing` event as one structured line, its fields as
+/// keys (`user`, `peer`, `duel`, `report`...) and a leading `[topic] ` of its message as `topic`. The console keeps the
+/// readable text; this is the file.
+pub struct SessionLayer(pub yo3_tunnel::diagnostics::Session);
+
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for SessionLayer {
+    fn on_event(&self, event: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
+        let mut fields = Fields(serde_json::Map::new());
+        event.record(&mut fields);
+        let mut line = fields.0;
+        let mut msg = line.remove("message").and_then(|m| m.as_str().map(str::to_owned)).unwrap_or_default();
+        let level = *event.metadata().level();
+        line.insert("level".into(), level.as_str().to_ascii_lowercase().into());
+        // `[YO3 PACKET] ...` and `[YO3 ENGINE] ...` are traces of their own; `[tls] ...` a topic.
+        let mut src = "server";
+        for (marker, s) in [("[YO3 PACKET] ", "packet"), ("[YO3 ENGINE] ", "engine")] {
+            if let Some(rest) = msg.strip_prefix(marker) { src = s; msg = rest.to_owned(); }
+        }
+        if src == "server" && msg.starts_with('[') && let Some(end) = msg.find("] ").filter(|&e| e > 1 && e < 24)
+            && msg[1..end].bytes().all(|b| b.is_ascii_lowercase() || b == b'-' || b == b'_') && !line.contains_key("topic")
+        {
+            line.insert("topic".into(), msg[1..end].into());
+            msg = msg[end + 2..].to_owned();
+        }
+        line.insert("src".into(), src.into());
+        line.insert("msg".into(), msg.into());
+        self.0.event(line);
+    }
+}
+
+/// A `tracing` event's fields as JSON values: numbers and booleans as such, the rest as text.
+struct Fields(serde_json::Map<String, Json>);
+impl tracing::field::Visit for Fields {
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) { self.0.insert(field.name().into(), value.into()); }
+    fn record_u64(&mut self, field: &tracing::field::Field, value: u64) { self.0.insert(field.name().into(), value.into()); }
+    fn record_i64(&mut self, field: &tracing::field::Field, value: i64) { self.0.insert(field.name().into(), value.into()); }
+    fn record_bool(&mut self, field: &tracing::field::Field, value: bool) { self.0.insert(field.name().into(), value.into()); }
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        self.0.insert(field.name().into(), format!("{value:?}").into());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

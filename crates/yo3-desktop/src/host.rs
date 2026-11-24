@@ -72,7 +72,7 @@ impl State {
     }
 
     fn fail(&mut self, ctx: &Ctx, error: &str) {
-        if let Some(backend) = &ctx.backend { backend.diagnostics.line(error) }
+        if let Some(backend) = &ctx.backend { backend.diagnostics.error(error) }
         let shown = error_presentation::present(error, error_presentation::Hint::General, &crate::app::masks(ctx));
         let port = shown.summary.contains("port");
         self.note = Some(Note { good: false, sentence: shown.summary, details: shown.diagnosis, open: false, port });

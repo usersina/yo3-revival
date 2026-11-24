@@ -322,7 +322,7 @@ impl App {
             }
             Message::Report(ReportMessage::Sent(result)) => {
                 self.report.busy = false;
-                if let Err(error) = &result && let Some(backend) = &self.ctx.backend { backend.diagnostics.line(error) }
+                if let Err(error) = &result && let Some(backend) = &self.ctx.backend { backend.diagnostics.error(error) }
                 self.report.result = Some(result);
             }
             Message::Copy(text) => return iced::clipboard::write(text),
@@ -413,7 +413,7 @@ impl App {
             }
             Message::UpdatePrepared(tag, result) => {
                 // Refused (a checksum or signature that doesn't match) is reported, and never installed.
-                if let Err(error) = &result && let Some(backend) = &self.ctx.backend { backend.diagnostics.line(&format!("Update {tag} not installed: {error}")) }
+                if let Err(error) = &result && let Some(backend) = &self.ctx.backend { backend.diagnostics.error(&format!("Update {tag} not installed: {error}")) }
                 self.updater.prepared(&tag, result);
                 self.home.update_ready = self.updater.ready().map(|i| i.tag.trim_start_matches('v').to_owned());
             }
@@ -495,7 +495,7 @@ impl App {
             }
             ForeignMessage::Moved(Err(error)) => {
                 foreign.busy = false;
-                if let Some(backend) = &self.ctx.backend { backend.diagnostics.line(&error) }
+                if let Some(backend) = &self.ctx.backend { backend.diagnostics.error(&error) }
                 // A declined permission question says what is still true and what to do; any other failure is one plain
                 // sentence, its technical text behind Details with the rest.
                 foreign.problem = Some(if error.contains("declined") { yo3_desktop::foreign::DECLINED.to_string() } else {

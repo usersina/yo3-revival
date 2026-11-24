@@ -65,7 +65,7 @@ fn shown(source: &str, line: usize, text: &str) -> bool {
     let code = source.lines().nth(line - 1).unwrap_or_default();
     let words = text.split_whitespace().count();
     // `→ Details` marks an error text handed to a notice, whose sentence the next test checks.
-    !(code.contains("diagnostics.line(") || code.contains("→ Details") || code.contains("include_bytes!") || text.starts_with('<') && text.ends_with('>') || text.starts_with("https://") || text.starts_with("http://")
+    !(code.contains("diagnostics.line(") || code.contains("diagnostics.warn(") || code.contains("diagnostics.error(") || code.contains("→ Details") || code.contains("include_bytes!") || text.starts_with('<') && text.ends_with('>') || text.starts_with("https://") || text.starts_with("http://")
         || text.contains("{e:#}") && words <= 1 || text.contains("{error:#}") && words <= 1 || words == 0)
 }
 

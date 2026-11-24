@@ -328,12 +328,18 @@ async fn run(mut a: Args) -> anyhow::Result<()> {
     let log = if a.admin.is_none() { Some(yo3_tunnel::diagnostics::Session::start(&a.diagnostics_dir.clone().unwrap_or_else(|| a.log_dir.join("sessions")), "server", a.diagnostic_parent.clone())?) } else { None };
     let writer = log.clone();
     let color = yo3_tunnel::diagnostics::console_color();
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
-        .with_target(false)
-        .with_ansi(false)
-        .with_writer(move || yo3_server::recent::Tee::new(yo3_tunnel::diagnostics::ConsoleWriter::new(writer.clone()).colored(color)))
-        .init();
+    // The console (and the dashboard's recent lines) in readable text; the session log in yo3-log/1 (docs/logs.md).
+    {
+        use tracing_subscriber::layer::SubscriberExt;
+        use tracing_subscriber::util::SubscriberInitExt;
+        let console = tracing_subscriber::fmt::layer().with_target(false).with_ansi(false)
+            .with_writer(move || yo3_server::recent::Tee::new(yo3_tunnel::diagnostics::ConsoleWriter::new(None).colored(color)));
+        tracing_subscriber::registry()
+            .with(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+            .with(console)
+            .with(writer.map(yo3_server::log::SessionLayer))
+            .init();
+    }
     if let Some(command) = a.admin.take() {
         let game_dir = a.game_dir.clone().unwrap_or_else(yo3_data::default_game_dir);
         if let Admin::BootstrapAdmin { user } = command {

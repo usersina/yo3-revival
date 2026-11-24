@@ -138,7 +138,7 @@ impl State {
                 match result {
                     Ok(()) => { self.direct = on; self.direct_note = None }
                     Err(error) => {
-                        if let Some(backend) = &ctx.backend { backend.diagnostics.line(&format!("Direct start in setup: {error}")) }
+                        if let Some(backend) = &ctx.backend { backend.diagnostics.warn(&format!("Direct start in setup: {error}")) }
                         self.direct_note = Some(if direct::was_refused(&error) { "Windows' permission wasn't given, so it stays off. You can turn it on later in Settings → Game.".into() }
                             else { format!("It couldn't be set up, so it stays off: {}", crate::error_presentation::plain(error.lines().next().unwrap_or_default())) });
                     }
@@ -150,7 +150,7 @@ impl State {
             Message::Done => return self.finish(ctx),
             Message::Saved(Err(error)) => {
                 self.saving = false;
-                if let Some(backend) = &ctx.backend { backend.diagnostics.line(&error) }
+                if let Some(backend) = &ctx.backend { backend.diagnostics.error(&error) }
                 let shown = crate::error_presentation::present(&error, crate::error_presentation::Hint::General, &crate::app::masks(ctx));
                 self.error = Some(shown.summary);
                 self.error_details = shown.diagnosis;

@@ -268,7 +268,7 @@ impl Backend {
         use multiplayer::Vault;
         let account = multiplayer::vault_account(server);
         let token = multiplayer::SystemVault.get(&account).ok().flatten();
-        if let Err(error) = self.mirror_entry(settings, &account, token.as_deref()) { self.diagnostics.line(&format!("Direct start could not keep the saved sign-in: {error:#}")); }
+        if let Err(error) = self.mirror_entry(settings, &account, token.as_deref()) { self.diagnostics.warn(&format!("Direct start could not keep the saved sign-in: {error:#}")); }
     }
     /// Copies a credential store entry (`None`: its removal) into the store direct start's helper reads: on Windows the
     /// same one (nothing to do), under Wine the prefix's own, through the Windows helper's `--vault-set`.
@@ -353,7 +353,7 @@ impl Backend {
                 let mut fields = self.key_fields(&identity, &server.key);
                 if let Some(entry) = fields["key_vault"].as_str().map(str::to_owned)
                     && let Err(error) = self.mirror_entry(settings, &entry, Some(&server.key)) {
-                    self.diagnostics.line(&format!("Direct start keeps the account key in its owner-only file: {error:#}"));
+                    self.diagnostics.warn(&format!("Direct start keeps the account key in its owner-only file: {error:#}"));
                     fields = serde_json::json!({ "key": server.key });
                 }
                 if let (Some(body), serde_json::Value::Object(fields)) = (body.as_object_mut(), fields) { body.extend(fields) }

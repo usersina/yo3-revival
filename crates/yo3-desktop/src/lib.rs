@@ -329,7 +329,7 @@ impl Backend {
             let fields = self.key_fields(&identity, &key);
             let Some(entry) = fields["key_vault"].as_str() else { return };
             if direct && let Err(error) = mirror(entry, &key) {
-                self.diagnostics.line(&format!("Direct start's copy of the account key stays in its file: {error:#}"));
+                self.diagnostics.warn(&format!("Direct start's copy of the account key stays in its file: {error:#}"));
                 continue
             }
             profile.as_object_mut().map(|o| { o.remove("key"); o.insert("key_vault".into(), entry.into()) });
@@ -338,7 +338,7 @@ impl Backend {
             let _ = std::fs::remove_file(&next);
             match private_write(&next, profile.to_string().as_bytes(), false).and_then(|()| Ok(std::fs::rename(&next, &file)?)) {
                 Ok(()) => self.diagnostics.line(&format!("Moved Singleplayer's account key from {name} into the credential store")),
-                Err(error) => self.diagnostics.line(&format!("Could not rewrite {name} without its key: {error:#}")),
+                Err(error) => self.diagnostics.warn(&format!("Could not rewrite {name} without its key: {error:#}")),
             }
         }
     }
@@ -530,7 +530,7 @@ impl Backend {
         let held = self.game_ready.lock().unwrap().as_deref().and_then(|path| foreign::Held::read(&foreign::survey_file(path)));
         *game = None; self.clear_game_ready();
         if let Some(held) = held {
-            self.diagnostics.line(&format!("The game was not started: {} finding(s) inside the game{}", held.findings.len(), if held.blocked { " (blocked)" } else { "" }));
+            self.diagnostics.warn(&format!("The game was not started: {} finding(s) inside the game{}", held.findings.len(), if held.blocked { " (blocked)" } else { "" }));
             let _ = self.game_errors.lock().unwrap().take().map(|e| e.finish());
             *self.held.lock().unwrap() = Some(held);
             return None
@@ -701,7 +701,7 @@ impl Backend {
             match self.auto_direct_target(settings, direct::Target::SignedIn(server.clone())) {
                 direct::AutoDirect::Ready => self.mirror_sign_in(settings, server),
                 direct::AutoDirect::NeedsPermission => needs_permission = true,
-                direct::AutoDirect::Skipped(why) => self.diagnostics.line(&format!("Direct start not set up: {why}")),
+                direct::AutoDirect::Skipped(why) => self.diagnostics.warn(&format!("Direct start not set up: {why}")),
             }
         }
         yo3_launcher::Profile::load(&file)?;
@@ -730,7 +730,7 @@ impl Backend {
     pub(crate) fn add_client_data(&self, cmd: &mut Command, settings: &Settings) {
         match std::thread::scope(|scope| scope.spawn(|| game_data_platform::data_directory(self, settings)).join()) {
             Ok(Ok(folder)) => { cmd.arg("--client-data").arg(folder); }
-            Ok(Err(error)) => self.diagnostics.line(&format!("Local decks are not adapted to the card profile: {error}")),
+            Ok(Err(error)) => self.diagnostics.warn(&format!("Local decks are not adapted to the card profile: {error}")),
             Err(_) => {}
         }
     }
@@ -740,7 +740,7 @@ impl Backend {
         let off = self.root.join("profiles").join(yo3_launcher::problems::OFF_FILE);
         let result = if settings.problem_reports { std::fs::remove_file(&off).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(e) }) }
             else { std::fs::create_dir_all(self.root.join("profiles")).and_then(|()| std::fs::write(&off, b"Problem reports are off (Settings, Advanced).\n")) };
-        if let Err(error) = result { self.diagnostics.line(&format!("Problem reports' switch could not be saved: {error}")) }
+        if let Err(error) = result { self.diagnostics.error(&format!("Problem reports' switch could not be saved: {error}")) }
     }
     /// The helper's command for a Play: the settings it reads (screen size, Wine) are taken at each Play.
     pub fn launch_command(&self, settings: &Settings, profile: &Path, ready: &Path) -> anyhow::Result<Command> {

@@ -115,7 +115,7 @@ impl Backend {
                 self.extra_failures.lock().unwrap().push(format!("The game as {} didn't start: another program's files or software are inside the game. \
                     Press PLAY on the main screen to see what it is.", extra.info.user));
             } else if status.is_some_and(|s| !s.success()) {
-                self.diagnostics.line(&format!("The game as {} stopped with an error: {}", extra.info.user, detail.trim()));
+                self.diagnostics.error(&format!("The game as {} stopped with an error: {}", extra.info.user, detail.trim()));
                 self.extra_failures.lock().unwrap().push(format!("The game as {} stopped unexpectedly. Try Play as again; if it repeats, export logs for help.", extra.info.user));
             }
             for file in [&extra.ready, &foreign_survey(&extra.ready), &extra.profile] { let _ = std::fs::remove_file(file); }
