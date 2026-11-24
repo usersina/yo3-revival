@@ -16,6 +16,8 @@
 #   tools/client/vclient.sh pixel X Y       print the window's colour at X Y as "R G B"
 #   tools/client/vclient.sh ui [--raw]      what the client shows, from the connection DLL's UI probe: open components,
 #                                           recent UI texts and, in a duel, each field slot (face up / defense)
+#   tools/client/vclient.sh npc [--second]  from the map into a duel against Kaiba Corporation's NPC (talk, deck, janken,
+#                                           first or second): tools/client/npc-duel.py
 #   tools/client/vclient.sh duel [ARGS]     the duel as the rules engine holds it, by card name (hands, field, Graveyard),
 #                                           from $YO3_SCRATCH's server log with --duel-check (tools/client/duel-state.py)
 #   tools/client/vclient.sh check           process state, client trace, crash, last packets
@@ -180,6 +182,8 @@ case "${1:-}" in
     pixel "$2" "$3" ;;
   duel)
     shift; exec python3 "$ROOT/tools/client/duel-state.py" "$@" ;;
+  npc)
+    shift; exec python3 "$ROOT/tools/client/npc-duel.py" "$@" ;;
   ui)
     # Ask the probe (a request file it polls every 200 ms) and print its answer.
     need_win >/dev/null

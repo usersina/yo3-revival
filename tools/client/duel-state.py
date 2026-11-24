@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""A duel as the rules engine holds it, by card name: each side's LP, hand, field and Graveyard, from a server's log.
+"""A duel as the rules engine holds it, by card name: each side's LP, hand, field and Graveyard, and the question it is
+asking now with each choice by name (a dialog of identical "Artwork not found" cards), from a server's log.
 
 The connection DLL's probe (`vclient.sh ui`) sees the game's field slots but not which card is which, and every added
 card shows the same "Artwork not found" picture until its own arrives; the server, with the duel check on (`--duel-check`,
@@ -38,6 +39,64 @@ def records(lines):
             except ValueError:
                 continue
     return out
+
+
+def answers(chunks, duel):
+    """Every complete answer of `duel`, newest first."""
+    groups = {}
+    for c in chunks:
+        if c.get("duel") == duel and c.get("direction") == "answer" and c.get("encoding") == "hex":
+            groups.setdefault(c["call"], {})[c["part"]] = c
+    for call in sorted(groups, reverse=True):
+        parts = groups[call]
+        count = next(iter(parts.values()))["parts"]
+        if set(parts) != set(range(count)):
+            continue
+        try:
+            yield json.loads(bytes.fromhex("".join("".join(parts[p]["data"]) for p in range(count))))
+        except ValueError:
+            continue
+
+
+PROMPTS = {10: "battle phase commands", 11: "main phase commands", 12: "use an effect?", 13: "yes or no", 14: "an option",
+           15: "select cards", 16: "chain an effect?", 18: "select a zone", 19: "select a position", 20: "select tributes",
+           22: "remove counters", 23: "select cards for a sum", 24: "select a zone to disable", 25: "order cards",
+           26: "select or unselect cards", 130: "toss a coin", 131: "roll a die", 132: "rock, paper or scissors",
+           140: "declare a Type", 141: "declare an Attribute", 142: "declare a card", 143: "declare a number"}
+PLACES = {1: "Deck", 2: "hand", 4: "Monster Zone", 8: "Spell & Trap Zone", 16: "Graveyard", 32: "banished", 64: "Extra Deck"}
+
+
+def newest_prompt(chunks, duel):
+    """The question the engine asks now: the last message of its newest answer awaiting a reply, or None."""
+    for answer in answers(chunks, duel):
+        if isinstance(answer, dict) and answer.get("status") == "await" and answer.get("messages"):
+            return answer["messages"][-1]
+        if isinstance(answer, dict) and answer.get("status") == "end":
+            return None
+    return None
+
+
+def describe_prompt(prompt, known):
+    """The prompt for a person: whose it is, what it asks, and each card it offers by name and place."""
+    kind = PROMPTS.get(prompt.get("type"), f"message {prompt.get('type')}")
+    player = prompt.get("player")
+    lines = [f"now: team {player} is asked to {kind}" + (f" ({prompt['min']} to {prompt['max']})" if "min" in prompt else "")]
+    if prompt.get("description_text"):
+        lines.append(f"  \"{prompt['description_text']}\"")
+    if prompt.get("code"):
+        lines.append(f"  card: {known.get(prompt['code'], prompt.get('cid'))}")
+    for key, value in prompt.items():
+        if not isinstance(value, list):
+            continue
+        offered = [v for v in value if isinstance(v, dict) and v.get("code")]
+        if not offered:
+            continue
+        lines.append(f"  {key.replace('_', ' ')}:")
+        for i, v in enumerate(offered, 1):
+            side = "" if "controller" not in v else (" (yours)" if v["controller"] == player else " (the opponent's)")
+            where = PLACES.get(v.get("location"), "")
+            lines.append(f"    {i}. {known.get(v['code'], 'card ' + str(v.get('cid')))}" + (f", {where}" if where else "") + side)
+    return "\n".join(lines)
 
 
 def newest_state(chunks, duel=None):
@@ -115,8 +174,20 @@ def main(argv=None):
     if not found:
         sys.exit("duel-state.py: no engine state in the log (is the duel check on? --duel-check)")
     duel, answer = found
-    print(json.dumps(answer["teams"], indent=1) if args.json else describe(answer, duel, names()))
+    if args.json:
+        print(json.dumps(answer["teams"], indent=1))
+        return 0
+    known = names()
+    print(describe(answer, duel, known))
+    prompt = newest_prompt(records_of(args.server), duel)
+    if prompt:
+        print(describe_prompt(prompt, known))
     return 0
+
+
+def records_of(path):
+    with open(path, encoding="utf-8", errors="replace") as f:
+        return records(f)
 
 
 if __name__ == "__main__":

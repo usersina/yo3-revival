@@ -43,6 +43,21 @@ class DuelState(unittest.TestCase):
         self.assertIn("Blue-Eyes White Dragon 3000/2500 ATK (zone 1)", text)
         self.assertIn("spells and traps: Dark Hole (set)", text)
 
+    def test_the_question_asked_now_names_each_choice(self):
+        # Illusion Gate's selection: two cards of the opponent's Graveyard, one an added card shown as Artwork not found.
+        select = {"type": 15, "player": 0, "min": 1, "max": 1, "can_cancel": False, "selects": [
+            {"cid": 6960, "code": 69247929, "controller": 1, "location": 16}, {"cid": 12671, "code": 170000170, "controller": 1, "location": 16}]}
+        lines = [json.dumps({"ts": "2026-11-24T10:00:00.000Z", "level": "info", "src": "engine", "session": "s", "msg": json.dumps(c)})
+                 for c in chunks(1, 4, {"status": "await", "messages": [{"type": 2}, select]}) + chunks(1, 5, state(4000, []))]
+        prompt = duel_state.newest_prompt(duel_state.records(lines), 1)
+        text = duel_state.describe_prompt(prompt, {69247929: "Gene-Warped Warwolf", 170000170: "Divine Serpent Geh (Anime)"})
+        self.assertIn("team 0 is asked to select cards (1 to 1)", text)
+        self.assertIn("1. Gene-Warped Warwolf, Graveyard (the opponent's)", text)
+        self.assertIn("2. Divine Serpent Geh (Anime), Graveyard (the opponent's)", text)
+        ended = [json.dumps({"ts": "t", "level": "info", "src": "engine", "session": "s", "msg": json.dumps(c)})
+                 for c in chunks(1, 4, {"status": "await", "messages": [select]}) + chunks(1, 6, {"status": "end", "messages": []})]
+        self.assertIsNone(duel_state.newest_prompt(duel_state.records(ended), 1), "an ended duel asks nothing")
+
     def test_a_log_without_engine_states_says_so(self):
         with tempfile.NamedTemporaryFile("w", suffix=".log", delete=False) as f:
             f.write("2026-11-24T10:00:00Z  INFO nothing here\n")
