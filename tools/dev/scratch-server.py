@@ -6,6 +6,9 @@
     scratch-server.py status [DIR]
     scratch-server.py env [DIR] [--account N | --profile-for WHO]   the export lines for a client terminal
     scratch-server.py stop [DIR]
+    scratch-server.py dir [DIR]          the folder alone, for scripts: "$(scratch-server.py dir)"/server.log
+    scratch-server.py admin [--dir DIR] ARGS...   a yo3-server admin command on this scratch server's data:
+                                         `scratch-server.py admin set anime-cards on`, `... admin give-cards TestPlayer1 "Card"`
 
 `start` makes /tmp/yo3-dev.XXXX (printed), creates the identity and TestPlayer1..N key accounts, writes each one's
 profile (client-N.json, beside server.crt), starts the server in the background (server.log) and prints the exports
@@ -121,6 +124,23 @@ def alive(pid, directory):
     return any(a == b'--data-dir' and b == data for a, b in zip(args, args[1:]))
 
 
+def admin_command(argv):
+    """`admin [--dir DIR] ARGS...`: the server's own admin command with this scratch server's data folder, so no caller
+    puts a data path together (a running server gets it through its admin API, a stopped one's files are changed)."""
+    directory = None
+    if argv[:1] == ['--dir'] and len(argv) > 1:
+        directory, argv = argv[1], argv[2:]
+    if not argv:
+        print('scratch-server.py: admin [--dir DIR] ARGS... (a yo3-server admin command)', file=sys.stderr)
+        return 2
+    try:
+        directory, state = state_of(directory)
+    except Fail as error:
+        print(f'scratch-server.py: {error}', file=sys.stderr)
+        return 2
+    return subprocess.run([state['binary'], *argv, '--data-dir', str(directory / 'data')]).returncode
+
+
 def exports(directory, profile):
     return [f'export YO3_AUTH_PROFILE={directory / profile}', f'export YO3_SCRATCH={directory}']
 
@@ -177,6 +197,8 @@ def start(args, extra):
 
 
 def main(argv):
+    if argv[:1] == ['admin']:
+        return admin_command(argv[1:])
     extra = []
     if '--' in argv:
         split = argv.index('--')
@@ -193,7 +215,7 @@ def main(argv):
     p.add_argument('--game-dir')
     p.add_argument('--server')
     p.add_argument('--host', default='localhost', help='the name or address a client dials (a VM: 192.168.122.1); also bound by --bind')
-    for name in ('status', 'stop'):
+    for name in ('status', 'stop', 'dir'):
         sub.add_parser(name).add_argument('dir', nargs='?')
     p = sub.add_parser('env')
     p.add_argument('dir', nargs='?')
@@ -209,6 +231,9 @@ def main(argv):
             return start(args, extra)
         directory, state = state_of(args.dir)
         running = alive(state['pid'], directory)
+        if args.command == 'dir':
+            print(directory)
+            return 0
         if args.command == 'status':
             print(f'{directory}: {"running" if running else "stopped"} (pid {state["pid"]}), TLS {state["port"]}, '
                   f'HTTP {state["http"]}, profiles {", ".join(state["profiles"]) or "none"}')

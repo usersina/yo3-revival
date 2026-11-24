@@ -66,6 +66,26 @@ class Checks(unittest.TestCase):
                                        '--http', str(free_port())]), 2)
         self.assertEqual(scratch.main(['start', '--profile-for', 'Yugi']), 2)
 
+    def test_dir_prints_the_folder_and_admin_runs_the_servers_command_on_its_data(self):
+        # Scripts take the folder from `dir` (never from a listing), and `admin` adds this server's --data-dir itself.
+        import contextlib, io, json
+        with tempfile.TemporaryDirectory() as d:
+            folder = Path(d) / 'yo3-dev.test'
+            (folder / 'data').mkdir(parents=True)
+            fake = Path(d) / 'yo3-server'
+            fake.write_text(f'#!{sys.executable}\nimport sys, pathlib\npathlib.Path(sys.argv[0] + ".args").write_text("|".join(sys.argv[1:]))\n')
+            fake.chmod(0o755)
+            (folder / 'state.json').write_text(json.dumps({'pid': 0, 'binary': str(fake), 'port': 1, 'http': 2, 'profiles': []}))
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(scratch.main(['dir', str(folder)]), 0)
+            self.assertEqual(out.getvalue().strip(), str(folder))
+            self.assertEqual(scratch.main(['admin', '--dir', str(folder), 'set', 'anime-cards', 'on']), 0)
+            self.assertEqual(Path(str(fake) + '.args').read_text(), f'set|anime-cards|on|--data-dir|{folder / "data"}')
+            with contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(scratch.main(['admin', '--dir', str(folder)]), 2, 'no command')
+                self.assertEqual(scratch.main(['admin', '--dir', str(Path(d) / 'missing'), 'settings']), 2, 'no scratch server there')
+
     def test_the_profile_is_read_after_the_heading(self):
         text = 'Request ID: 1\nPrivate launcher profile (save as client.json):\n{"certificate":"server.crt","key":"k","server":"localhost:17443"}\n'
         self.assertEqual(scratch.profile_from_key_output(text)['key'], 'k')
