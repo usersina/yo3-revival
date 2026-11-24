@@ -187,6 +187,48 @@ fn duels_with_the_added_cards() {
     assert!(activated.len() >= 3, "the added cards were played: {activated:?}");
 }
 
+/// The Gods with anime cards on, among the cards that test them most: the six manga Gods, Sphere Mode, Ra's Disciple and
+/// the Orichalcos line that brings the anime Divine Serpent Geh, cheap Tributes, and removal, control and LP cards
+/// (Book of Moon, Shrink, Change of Heart, Creature Swap, Enemy Controller, Mystik Wok, Ring of Destruction, Skill
+/// Drain...). Each duel two random decks of them, the client's view checked against the engine after every step.
+/// `YO3_CHECK_DUELS=n` plays n duels instead of 20.
+#[test]
+fn duels_with_the_gods() {
+    let Some(dir) = engine_dir() else { return };
+    if yo3_server::engine::anime_problem(&dir).is_some() {
+        return;
+    }
+    let per: u64 = std::env::var("YO3_CHECK_DUELS").ok().and_then(|n| n.parse().ok()).unwrap_or(20);
+    let pool = selfplay::AnimePool {
+        // The Gods, Sphere Mode, Ra's Disciple, Orichalcos Kyutora (Shunoros, then Geh), and Tributes.
+        monsters: vec![4998, 4999, 5000, 6405, 7091, 7092, 11927, 11169, 3984, 6960, 5586, 4064, 4054, 6390, 6000, 5526],
+        // Book of Moon, Shrink, Change of Heart, Creature Swap, Enemy Controller, Monster Reborn, Dark Hole, Raigeki,
+        // Mystik Wok, Snatch Steal, Brain Control, Soul Exchange, Premature Burial, Scapegoat, Smashing Ground, Fissure,
+        // Lightning Vortex, Nobleman of Crossout, Swords of Revealing Light, The Seal of Orichalcos, Illusion Gate,
+        // Underworld Circle.
+        spells: vec![5432, 5355, 4860, 5162, 5505, 4842, 4342, 4343, 5978, 4898, 4803, 5099, 4966, 4818, 5905, 4835, 5217,
+            4963, 4354, 10327, 3976, 3978],
+        // Mirror Force, Raigeki Break, Ring of Destruction, Skill Drain, Torrential Tribute, Call of the Haunted,
+        // Bottomless Trap Hole, Compulsory Evacuation Device, Dimensional Prison, Solemn Judgment, Arduous Decision.
+        traps: vec![4887, 5544, 5005, 5740, 5114, 4989, 5400, 5914, 7400, 4861, 3980],
+        extra: vec![],
+    };
+    let mut failures = vec![];
+    let mut played: BTreeMap<u16, u32> = BTreeMap::new();
+    for seed in 1300..1300 + per {
+        let (a, b) = (selfplay::anime_deck(&pool, seed * 2), selfplay::anime_deck(&pool, seed * 2 + 1));
+        let decks = [(&a.0[..], &a.1[..]), (&b.0[..], &b.1[..])];
+        match selfplay::play_anime(&dir, seed, decks, (seed % 2) as usize, seed.is_multiple_of(3)) {
+            Ok(p) => for (cid, n) in p.activated.iter().chain(&p.summoned) { *played.entry(*cid).or_default() += n },
+            Err(e) => failures.push(format!("seed {seed}: {e}")),
+        }
+    }
+    assert!(failures.is_empty(), "{} duel(s) failed:\n{}", failures.len(), failures.join("\n\n"));
+    eprintln!("cards activated or summoned: {played:?}");
+    let gods = [4998, 4999, 5000, 6405, 7091, 7092].iter().filter(|g| played.contains_key(g)).count();
+    assert!(gods >= 2, "Gods were summoned: {played:?}");
+}
+
 /// The self-play under the broadest `revival-rule` house rule, `graveyard-is-graveyard` (Monster Reborn and every revival
 /// reach monsters never properly Summoned): the client's view must follow the engine through those revivals too.
 /// `YO3_CHECK_DUELS=n` plays n duels instead of 30.

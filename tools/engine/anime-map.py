@@ -603,7 +603,12 @@ does not; Ra can't be destroyed by Soul Energy Max, nor Obelisk by Geh, and thei
 with no Hierarchy, is destroyed in a tie with Obelisk. Ring of Destruction can't destroy a God, so it deals no damage;
 the anime Geh it destroys deals its infinite ATK to both players at once, a draw. Mystik Wok gives Geh's infinite ATK as
 9,999,999 LP, shown as 99,999 (the most the game shows). Damage of "100 times the LP" always takes all of it, even past
-21,474,836 LP, where the core's 32 bits once wrapped it into a gain (`crates/yo3-engine/src/guards.lua`).
+21,474,836 LP, where the core's 32 bits once wrapped it into a gain (`crates/yo3-engine/src/guards.lua`), while damage that
+is the infinite ATK itself (Avatar risen to infinity, Ring of Destruction on Geh) leaves a player above 9,999,999 LP the rest.
+A God's control can't switch (Change of Heart and Creature Swap find no target), the opponent can't Tribute it (Sphere
+Mode takes other monsters), Shrink halves it for the turn, and Book of Moon turns it face-down for good: the manga text
+only keeps a God from Spell/Trap effects that would make it leave the field, and face-down it has no Hierarchy to protect
+it. `tests/duel_check.rs` `duels_with_the_gods` self-plays random decks of the Gods, Geh's Orichalcos line and these cards.
 
 One fix to the shared procedure (`engine/overrides/proc_unofficial.lua`): the upstream Hierarchy check compared a God with a monster
 without a Hierarchy as if that monster outranked it, so a stronger ordinary monster destroyed a God by battle. A monster without one is

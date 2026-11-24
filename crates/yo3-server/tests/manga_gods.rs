@@ -19,6 +19,11 @@ const ERASER: u16 = 7092;
 const GEH: u16 = 12671; // Divine Serpent Geh: an added card, its anime version (infinite ATK, the engine's 9,999,999) with anime cards on
 const RING: u16 = 5005; // Ring of Destruction, by the game's text (engine/overrides/c83555666.lua)
 const WOK: u16 = 5978; // Mystik Wok: Tribute a monster, gain LP equal to its ATK or DEF
+const BOOK_OF_MOON: u16 = 5432;
+const SHRINK: u16 = 5355; // its anime version with anime cards on: halves a monster's original ATK for the turn
+const CHANGE_OF_HEART: u16 = 4860;
+const CREATURE_SWAP: u16 = 5162;
+const SPHERE: u16 = 11927; // The Winged Dragon of Ra - Sphere Mode
 const INFINITE: i64 = 9_999_999;
 
 /// The God in the hand, three Warwolves to Tribute, the opponent's `theirs` and `extra` in place.
@@ -159,9 +164,14 @@ fn field(anime: bool, lp: u32, spawns: &[Spawn]) -> Option<Scenario> {
 /// On the duel's third turn (the first own one with a Battle Phase): Soul Energy Max, then the duel plays on with the
 /// default answers to the end of that Battle Phase (or of the duel).
 fn soul_energy_max(s: &mut Scenario) {
+    soul_energy_max_after(s, &[EndTurn]);
+}
+
+/// [`soul_energy_max`] with the opponent's plan for its turn before (ending with `EndTurn`).
+fn soul_energy_max_after(s: &mut Scenario, theirs: &[yo3_server::duelcheck::scenario::Action]) {
     use serde_json::json;
     use yo3_server::ocg::{battle, idle, msg};
-    s.run_both([&[EndTurn], &[EndTurn]]).unwrap();
+    s.run_both([&[EndTurn], theirs]).unwrap();
     s.respond(json!({"type": 1, "action": idle::TO_BP, "index": null})).unwrap();
     let wanted = (513000135u64 << 20) | 1; // the script's aux.Stringid(id, 1)
     for _ in 0..20 {
@@ -333,5 +343,95 @@ fn infinite_damage_past_32_bits_still_wins() {
     let r = s.run_both([&[EndTurn], &[Attack(GEH)]]);
     assert!(r.is_err_and(|e| e.contains("the duel is over")), "{}", s.context());
     assert_eq!(s.lp(0), 0, "{}", s.context());
+    clean(&s);
+}
+
+/// Soul Energy Max deals 100 times the LP, not the infinite ATK: a player who gained 9,999,999 from Mystik Wok on the
+/// anime Geh still loses everything.
+#[test]
+fn soul_energy_max_takes_even_lp_from_mystik_wok() {
+    let Some(mut s) = field(true, 8000, &[mine(OBELISK), mine(WARWOLF), mine(WARWOLF), Spawn { team: 1, place: Hand, cid: WOK }, theirs(GEH)]) else { return };
+    s.prefer(&[(0, WARWOLF), (1, GEH)]);
+    soul_energy_max_after(&mut s, &[Activate(WOK), EndTurn]);
+    assert_eq!(s.lp(1), 0, "{}", s.context());
+    clean(&s);
+}
+
+/// Damage that is the infinite ATK itself, 9,999,999, is survived with more LP: Avatar risen to infinity beside the
+/// anime Geh attacks a player with 10,007,999 LP directly, who keeps 8000.
+#[test]
+fn avatar_at_infinity_leaves_lp_above_infinity() {
+    let Some(mut s) = field(true, 8000, &[Spawn { team: 0, place: Hand, cid: WOK }, mine(GEH), theirs(AVATAR), theirs(GEH)]) else { return };
+    s.prefer(&[(0, GEH)]);
+    s.run(&[Activate(WOK)]).unwrap();
+    s.run_both([&[EndTurn], &[Attack(AVATAR)]]).unwrap();
+    assert_eq!(s.lp(0), 8000, "{}", s.context());
+    clean(&s);
+}
+
+/// Ring of Destruction on the opponent's anime Geh, with 10,007,999 LP from Mystik Wok: both take 9,999,999, the
+/// opponent loses and its player keeps 8000.
+#[test]
+fn ring_of_destruction_on_geh_with_lp_above_infinity_wins() {
+    let Some(mut s) = field(true, 8000, &[Spawn { team: 0, place: Hand, cid: WOK }, mine(GEH), Spawn { team: 0, place: SpellSet, cid: RING }, theirs(GEH)]) else { return };
+    s.prefer(&[(0, GEH), (1, GEH)]);
+    s.run(&[Activate(WOK)]).unwrap();
+    let r = s.run_both([&[EndTurn, Activate(RING)], &[EndTurn]]);
+    assert!(r.is_err_and(|e| e.contains("the duel is over")), "{}", s.context());
+    assert_eq!((s.lp(0), s.lp(1)), (8000, 0), "{}", s.context());
+    clean(&s);
+}
+
+/// Book of Moon turns a God face-down, and it stays face-down: the manga text only keeps a God from Spell/Trap effects
+/// that would make it leave the field, and a change of position isn't an effect that lasts.
+#[test]
+fn book_of_moon_turns_a_god_face_down() {
+    let Some(mut s) = field(true, 8000, &[Spawn { team: 0, place: Hand, cid: BOOK_OF_MOON }, theirs(OBELISK)]) else { return };
+    s.prefer(&[(1, OBELISK)]);
+    s.run(&[Activate(BOOK_OF_MOON)]).unwrap();
+    let position = |s: &Scenario| s.monster(1, OBELISK).map(|c| c["position"].as_u64().unwrap_or(0));
+    assert_eq!(position(&s), Some(yo3_server::ocg::pos::FACEDOWN_DEFENSE), "{}", s.context());
+    s.run_both([&[EndTurn], &[EndTurn]]).unwrap();
+    assert_eq!(position(&s), Some(yo3_server::ocg::pos::FACEDOWN_DEFENSE), "still face-down: {}", s.context());
+    clean(&s);
+}
+
+/// Shrink halves a God's ATK for the turn it resolves (other cards' effects apply to it for 1 turn anyway).
+#[test]
+fn shrink_on_a_god_lasts_the_turn() {
+    let Some(mut s) = field(true, 8000, &[Spawn { team: 0, place: Hand, cid: SHRINK }, theirs(OBELISK)]) else { return };
+    s.prefer(&[(1, OBELISK)]);
+    s.run(&[Activate(SHRINK)]).unwrap();
+    assert_eq!(s.attack_of(1, OBELISK), Some(2000), "{}", s.context());
+    s.run_both([&[EndTurn], &[EndTurn]]).unwrap();
+    assert_eq!(s.attack_of(1, OBELISK), Some(4000), "{}", s.context());
+    clean(&s);
+}
+
+/// "Control of this card cannot switch": Change of Heart and Creature Swap can't take a God, so with a God as the
+/// opponent's only monster neither can be activated.
+#[test]
+fn a_gods_control_cannot_switch() {
+    for card in [CHANGE_OF_HEART, CREATURE_SWAP] {
+        let Some(mut s) = field(true, 8000, &[Spawn { team: 0, place: Hand, cid: card }, mine(WARWOLF), theirs(OBELISK)]) else { return };
+        s.prefer(&[(1, OBELISK), (0, WARWOLF)]);
+        let r = s.run(&[Activate(card)]);
+        assert!(r.is_err_and(|e| e.contains("never became possible")), "{card}: {}", s.context());
+        assert!(s.monster(1, OBELISK).is_some(), "{}", s.context());
+    }
+}
+
+/// "Your opponent cannot Tribute this card": Sphere Mode, Summoned with three of the opponent's monsters, can't use their
+/// Slifer; beside three Warwolves it takes those.
+#[test]
+fn sphere_mode_cannot_tribute_the_opponents_god() {
+    let Some(mut s) = field(true, 8000, &[Spawn { team: 0, place: Hand, cid: SPHERE }, theirs(SLIFER), theirs(WARWOLF), theirs(WARWOLF)]) else { return };
+    s.prefer(&[(1, SLIFER), (1, WARWOLF)]);
+    assert!(s.run(&[Summon(SPHERE)]).is_err_and(|e| e.contains("never became possible")), "{}", s.context());
+    let Some(mut s) = field(true, 8000, &[Spawn { team: 0, place: Hand, cid: SPHERE }, theirs(SLIFER), theirs(WARWOLF), theirs(WARWOLF), theirs(WARWOLF)]) else { return };
+    s.prefer(&[(1, WARWOLF)]);
+    s.run(&[Summon(SPHERE)]).unwrap();
+    assert!(s.monster(1, SPHERE).is_some() && s.monster(1, SLIFER).is_some(), "{}", s.context());
+    assert_eq!(s.count(1, "grave", WARWOLF), 3, "{}", s.context());
     clean(&s);
 }

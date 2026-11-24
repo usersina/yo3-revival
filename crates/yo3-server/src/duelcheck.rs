@@ -1108,7 +1108,8 @@ pub mod selfplay {
                 }
             }
         }
-        let extra = (0..6).map(|_| pool.extra[next(&mut rng) as usize % pool.extra.len()]).collect();
+        // A pool without Fusion or Synchro Monsters makes decks without an Extra Deck.
+        let extra = if pool.extra.is_empty() { vec![] } else { (0..6).map(|_| pool.extra[next(&mut rng) as usize % pool.extra.len()]).collect() };
         (main, extra)
     }
 
