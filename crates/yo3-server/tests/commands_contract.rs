@@ -508,6 +508,32 @@ fn bug_sends_the_players_last_duel_pinned_with_the_note() {
     assert!(ask(&mut a, "bug again").contains("turned off"));
 }
 
+/// Nothing should depend on a server staying up: a player on this PC (Singleplayer, or a host playing on their own
+/// server: a loopback address) is told where the pinned recording is on their disk, to send it to the developer if they
+/// like; a player elsewhere is told the host keeps it.
+#[test]
+fn bug_tells_a_player_on_this_pc_where_the_recording_is_and_others_that_the_host_keeps_it() {
+    use yo3_server::recordings::{Recordings, Seat};
+    let dir = std::env::temp_dir().join(format!("yo3-bug-local-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    yo3_server::store::initialize(&dir).unwrap();
+    let recordings = Arc::new(Recordings::at(&dir));
+    let s = Server::with_world(World { recordings: Some(recordings.clone()), ..world() });
+    s.hub.lock().unwrap().reports = Reports::at(&dir);
+    let d = directory();
+    let mut here = s.join_at(&d, IpAddr::V4(Ipv4Addr::LOCALHOST));
+    let mut there = s.join_at(&d, addr(2));
+    let ids: Vec<u32> = d.lock().unwrap().accounts().flat_map(|(_, a)| a.players.iter().map(|p| p.player_id)).collect();
+    for me in ids {
+        drop(recordings.start("npc", &[Seat { player_id: Some(me), name: "Yugi".into() }, Seat { player_id: None, name: "Pegasus".into() }], false, None).unwrap());
+    }
+    let local = ask(&mut here, "bug the card did nothing");
+    let pinned = dir.join("recordings/pinned");
+    assert!(local.contains("Saved on this PC") && local.contains(&pinned.display().to_string()), "{local}");
+    let remote = ask(&mut there, "bug the card did nothing");
+    assert!(remote.contains("kept on this server") && !remote.contains(&pinned.display().to_string()), "{remote}");
+}
+
 /// A database made before duel problems gets the reports' `recording` column at the next start.
 #[test]
 fn an_older_database_gets_the_recording_column() {

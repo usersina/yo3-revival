@@ -75,6 +75,13 @@ impl Server {
         self.join_with(account, Some(directory.clone()))
     }
 
+    /// As [`Server::join_from`], with the connection coming from `addr` too (what the server knows of where a player is).
+    pub fn join_at(&self, directory: &Arc<Mutex<Directory>>, addr: std::net::IpAddr) -> Client {
+        let mut c = self.join_from(directory, addr);
+        c.session.set_peer(addr);
+        c
+    }
+
     /// An existing account, including one found by key only (as /join and add-account create).
     pub fn join_saved(&self, directory: &Arc<Mutex<Directory>>, user_id: u32) -> Client {
         let account = directory.lock().unwrap().account_of(user_id).expect("saved account");

@@ -320,9 +320,10 @@ impl FrontSession {
         }
         let me = self.player().clone();
         let latest = self.world.recordings.as_ref().and_then(|r| r.latest(me.player_id).map(|l| (r.clone(), l)));
+        let mut file = None;
         let (opponent, recording) = match &latest {
             Some((recordings, duel)) => match recordings.pin(&duel.id) {
-                Ok(_) => ((duel.opponent.player_id.unwrap_or(0), duel.opponent.name.clone()), Some(duel.id.as_str())),
+                Ok(path) => { file = Some(path); ((duel.opponent.player_id.unwrap_or(0), duel.opponent.name.clone()), Some(duel.id.as_str())) }
                 Err(e) => {
                     tracing::warn!("[bug] recording {} not pinned: {e}", duel.id);
                     ((duel.opponent.player_id.unwrap_or(0), duel.opponent.name.clone()), None)
@@ -333,10 +334,22 @@ impl FrontSession {
         match self.hub().reports.add_duel_problem((me.player_id, &me.name), (opponent.0, &opponent.1), note, recording, settings.report_limit) {
             Ok(id) => {
                 tracing::info!("[bug] #{id} from {} (recording {})", me.name, recording.unwrap_or("none"));
-                match recording {
+                let mut lines = match recording {
                     Some(_) => vec![format!("Thank you: your duel against {} was sent to the staff with your note (#{id}).", opponent.1)],
                     None => vec![format!("Thank you: your note was sent to the staff (#{id}). No recent duel of yours was recorded, so say which duel and card it was.")],
+                };
+                // Nothing should depend on a server staying up: a player on this PC (Singleplayer, or a host on their own
+                // server) is told where the recording is, to send it to the developer if they like; others that the
+                // host keeps it.
+                if let Some(file) = &file {
+                    if self.peer.is_some_and(|p| p.is_loopback()) {
+                        lines.push("Saved on this PC, to send the developer (Report a problem adds it too):".into());
+                        lines.push(file.display().to_string());
+                    } else {
+                        lines.push(format!("It is kept on this server: ask the host for #{id} if the developer needs it."));
+                    }
                 }
+                lines
             }
             Err(e) if e == "too many reports" => vec![format!("You have sent {} reports in the last hour: please wait before sending another.", settings.report_limit)],
             Err(e) => {
