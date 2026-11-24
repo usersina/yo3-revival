@@ -47,7 +47,8 @@ pub enum Action {
     Activate(u16),
     /// Attack with this monster (entering the Battle Phase first); the target is the engine's default answer.
     Attack(u16),
-    /// Chain this card's effect at the first chance its team gets to (Mirror Force at an attack).
+    /// Chain this card's effect at the first chance its team gets to (Mirror Force at an attack), or say yes when its
+    /// optional trigger is asked on its own ("use this effect?").
     Chain(u16),
     /// Chain this card's effect only in answer to an attack declaration (Zero Gardna, Mirror Force): a chance of
     /// the declaring step, not one at a summon or a phase.
@@ -519,6 +520,12 @@ impl Scenario {
             {
                 next[team] += 1;
                 self.respond(Response::Chain(Some(i)).json())?;
+            } else if let (true, Some(Action::Chain(c))) = (kind == msg::SELECT_EFFECTYN, action)
+                && p["cid"] == c
+            {
+                // A single optional trigger is asked as "use this effect?": yes.
+                next[team] += 1;
+                self.respond(Response::yes(crate::ocg::resp::EFFECTYN, true).json())?;
             } else {
                 self.pass()?;
             }

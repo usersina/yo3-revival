@@ -12,8 +12,8 @@ const HEDGEHOG: u16 = 7701; // Quillbolt Hedgehog: Level 2, 800 ATK
 const JUNK_SYNCHRON: u16 = 7687; // Tuner, Level 3
 const DSF: u16 = 8035; // Dark Strike Fighter
 const FLF: u16 = 8302; // Fortune Lady Fire
-const FORTUNE_LADY_LIGHT: u16 = 8301;
-const FORTUNE_LADY_CALLING: u16 = 14509;
+const FORTUNE_LADY_DARK: u16 = 8446; // "When a Fortune Lady monster you control destroys an opponent's monster by battle"
+const MEGAZOWLER: u16 = 4085; // DEF 2000, no anime version: Dark (Level 6 by then, 2400) destroys it in Defense Position
 const FOOLISH_BURIAL: u16 = 5236;
 const MONSTER_REBORN: u16 = 4842;
 const BLACK_PENDANT: u16 = 4317;
@@ -327,12 +327,27 @@ fn fortune_lady_fire_destroys_and_burns_when_monster_reborn_summons_it_in_attack
     clean(&s);
 }
 
+/// Fortune Lady Dark on the field and Fire in the Graveyard; Dark destroys the opponent's Megazowler (in Defense Position, so
+/// no battle damage) and its effect, a Fortune Lady effect, Special Summons Fire from the Graveyard ("When a Fortune Lady
+/// monster you control destroys an opponent's monster by battle"). Fire's trigger may then take the opponent's Warwolf.
+fn dark_revives_fire(anime: bool) -> Option<Scenario> {
+    use yo3_server::engine::{Spawn, SpawnPlace};
+    let dir = engine_dir()?;
+    let field = [Spawn { team: 0, place: SpawnPlace::Monster, cid: FORTUNE_LADY_DARK }, Spawn { team: 0, place: SpawnPlace::Grave, cid: FLF },
+        Spawn { team: 1, place: SpawnPlace::MonsterDefense, cid: MEGAZOWLER }, Spawn { team: 1, place: SpawnPlace::Monster, cid: WARWOLF }];
+    let decks = [(&passive()[..], &[][..]), (&passive()[..], &[][..])];
+    let mut s = if anime { Scenario::start_anime_field(&dir, 7, 8000, decks, &field) } else { Scenario::start_field(&dir, 7, 8000, decks, &field) }.unwrap();
+    // Dark attacks Megazowler; Fire's target, once Megazowler is gone, is the Warwolf.
+    s.prefer(&[(1, MEGAZOWLER), (1, WARWOLF), (0, FLF)]);
+    s.run_both([&[EndTurn, Attack(FORTUNE_LADY_DARK), Chain(FORTUNE_LADY_DARK)], &[EndTurn]]).unwrap();
+    assert_eq!(s.count(1, "grave", MEGAZOWLER), 1, "Dark destroyed Megazowler by battle: {}", s.context());
+    Some(s)
+}
+
 #[test]
 fn fortune_lady_fire_still_triggers_when_a_fortune_lady_effect_summons_it() {
-    let mut s = flf_duel(true, [FORTUNE_LADY_LIGHT, FORTUNE_LADY_CALLING, WARWOLF, WARWOLF, WARWOLF], passive()).unwrap_or_else(|| panic!());
-    s.prefer(&[(1, WARWOLF), (0, FLF)]);
-    s.run_both([&[EndTurn, Summon(FORTUNE_LADY_LIGHT), Activate(FORTUNE_LADY_CALLING)], &[Summon(WARWOLF)]]).unwrap();
-    assert!(s.monster(0, FLF).is_some(), "Fortune Lady Calling summoned it: {}", s.context());
+    let Some(s) = dark_revives_fire(true) else { return };
+    assert!(s.monster(0, FLF).is_some(), "Fortune Lady Dark summoned it: {}", s.context());
     assert_eq!((s.count(1, "grave", WARWOLF), s.lp(1)), (1, 6000), "{}", s.context());
     clean(&s);
 }
@@ -399,14 +414,13 @@ fn fortune_lady_fires_level_stops_at_12() {
 
 #[test]
 fn in_the_official_mode_fortune_lady_fire_keeps_its_fortune_lady_source() {
-    // Monster Reborn: no trigger. A Fortune Lady effect (Calling): the trigger.
+    // Monster Reborn: no trigger. A Fortune Lady effect (Fortune Lady Dark's): the trigger.
     let Some(s) = reborn(false, false, passive(), &[Summon(WARWOLF)], &[EndTurn]) else { return };
     assert!(s.monster(0, FLF).is_some(), "{}", s.context());
     assert!(s.monster(1, WARWOLF).is_some() && s.lp(1) == 8000, "no Fortune Lady source, no trigger: {}", s.context());
-    let mut s = flf_duel(false, [FORTUNE_LADY_LIGHT, FORTUNE_LADY_CALLING, WARWOLF, WARWOLF, WARWOLF], passive()).unwrap();
-    s.prefer(&[(1, WARWOLF), (0, FLF)]);
-    s.run_both([&[EndTurn, Summon(FORTUNE_LADY_LIGHT), Activate(FORTUNE_LADY_CALLING)], &[Summon(WARWOLF)]]).unwrap();
-    assert_eq!((s.count(1, "grave", WARWOLF), s.lp(1)), (1, 6000), "{}", s.context());
+    let Some(s) = dark_revives_fire(false) else { return };
+    assert!(s.monster(0, FLF).is_some(), "{}", s.context());
+    assert_eq!((s.count(1, "grave", WARWOLF), s.lp(1)), (1, 6000), "a Fortune Lady effect, the trigger: {}", s.context());
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
