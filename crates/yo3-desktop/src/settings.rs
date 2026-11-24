@@ -129,6 +129,10 @@ pub enum Message {
     DestinyRead(Result<bool, String>),
     DestinyDraw(bool),
     DestinySet(bool, Result<bool, String>),
+    /// The Revival rule choice: the server's value, the player's pick, and the server's answer.
+    RevivalRead(Result<String, String>),
+    Revival(Revival),
+    RevivalSet(Result<String, String>),
     /// Close the pictures dialog (during a download: stops it too).
     PicturesDialogClose,
     /// Unlock all cards: asked first (`confirm_unlock`), then done on your own server.
@@ -220,11 +224,26 @@ pub struct State {
     anime: Option<bool>,
     /// Your own server's destiny-draw value, as the server says (`None` until read, or when it can't be).
     destiny: Option<bool>,
+    /// Your own server's revival-rule value, as the server says (`None` until read, or when it can't be).
+    revival: Option<String>,
     /// The pictures dialog, opened by turning Anime cards on while pictures are missing.
     dialog: Option<Dialog>,
     /// The switch went on before the pictures were counted: offer them when the count is in.
     offer_when_counted: bool,
 }
+
+/// One choice of the Revival list: the server's `revival-rule` value and what the list shows (docs/rules-privacy.md,
+/// "House rules").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Revival { pub value: &'static str, pub label: &'static str }
+impl std::fmt::Display for Revival { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str(self.label) } }
+
+/// The three levels, as the server names them.
+pub const REVIVAL_CHOICES: [Revival; 3] = [
+    Revival { value: "official", label: "Official rules" },
+    Revival { value: "ignoring-means-all", label: "Ignoring conditions: all" },
+    Revival { value: "graveyard-is-graveyard", label: "Anime: any revival" },
+];
 
 pub const LICENCES: &str = "YO3 Revival is free software under the MIT licence. Its rules engine is built on EDOPro's core and ProjectIgnis' \
 card scripts, under the GNU Affero General Public License 3.0; its window uses iced (MIT) and the Barlow fonts (SIL Open Font License). \
@@ -235,7 +254,7 @@ impl State {
     pub fn new(ctx: &Ctx, section: Section) -> Self {
         Self { section, note: None, busy: None, direct: Direct::Unknown, prefix: ctx.settings.wine_prefix.clone(), wine: ctx.settings.wine_binary.clone(),
             confirm_reset: false, confirm_game_reset: false, confirm_unlock: false, licences: false, update: None, shortcut: yo3_desktop::shortcut::exists(),
-            moved: yo3_desktop::foreign::moved_aside(std::path::Path::new(&ctx.settings.game_dir)), pictures: None, getting: None, art_problem: None, art_busy: None, anime: None, destiny: None, dialog: None, offer_when_counted: false }
+            moved: yo3_desktop::foreign::moved_aside(std::path::Path::new(&ctx.settings.game_dir)), pictures: None, getting: None, art_problem: None, art_busy: None, anime: None, destiny: None, revival: None, dialog: None, offer_when_counted: false }
     }
 
     /// The pictures download in progress, taken out as Settings closes: the window keeps it (and its messages) until
@@ -249,7 +268,13 @@ impl State {
     pub fn has_dialog(&self) -> bool { self.dialog.is_some() }
 
     /// The first tasks: what direct start is like now, and how many anime pictures there are.
-    pub fn start(&self, ctx: &Ctx) -> Task<Message> { Task::batch([self.check_direct(ctx), self.count_pictures(ctx), self.read_anime(ctx), self.read_destiny(ctx)]) }
+    pub fn start(&self, ctx: &Ctx) -> Task<Message> { Task::batch([self.check_direct(ctx), self.count_pictures(ctx), self.read_anime(ctx), self.read_destiny(ctx), self.read_revival(ctx)]) }
+
+    fn read_revival(&self, ctx: &Ctx) -> Task<Message> {
+        let Some(backend) = ctx.backend.clone() else { return Task::none() };
+        let settings = ctx.settings.clone();
+        Task::perform(async move { tokio::task::spawn_blocking(move || backend.revival_rule(&settings).map_err(|e| format!("{e:#}"))).await.unwrap_or_else(|e| Err(e.to_string())) }, Message::RevivalRead)
+    }
 
     fn read_destiny(&self, ctx: &Ctx) -> Task<Message> {
         let Some(backend) = ctx.backend.clone() else { return Task::none() };
@@ -511,6 +536,21 @@ impl State {
                 self.good(if on { "Destiny Draw is on. It starts from your next duel against the computer." } else { "Destiny Draw is off from your next duel." });
             }
             Message::DestinySet(_, Err(error)) => { self.busy = None; self.fail(ctx, &error) }
+            Message::RevivalRead(Ok(rule)) => self.revival = Some(rule),
+            Message::RevivalRead(Err(_)) => self.revival = None,
+            Message::Revival(choice) => {
+                let Some(backend) = ctx.backend.clone() else { return Task::none() };
+                let settings = ctx.settings.clone();
+                self.busy = Some("Changing the revival rule…");
+                return job(move || backend.set_revival_rule(&settings, choice.value), Message::RevivalSet);
+            }
+            Message::RevivalSet(Ok(now)) => {
+                self.busy = None;
+                let label = REVIVAL_CHOICES.iter().find(|c| c.value == now).map_or("Official rules", |c| c.label);
+                self.revival = Some(now);
+                self.good(format!("Revival is now \u{201c}{label}\u{201d}. It starts from your next duel."));
+            }
+            Message::RevivalSet(Err(error)) => { self.busy = None; self.fail(ctx, &error) }
             // Closing the offer never stops a download: it goes on with its bar in Settings and its toast at the end.
             Message::PicturesDialogClose => self.dialog = None,
             Message::GetPictures => {
@@ -727,6 +767,22 @@ impl State {
         yo3_skin::setting("Destiny Draw", line, Some(switch.into()), None)
     }
 
+    /// The Revival rule choice of Settings → Singleplayer: your own server's `revival-rule`, which the server owns.
+    fn revival_view(&self) -> Element<'_, Message> {
+        let idle = self.busy.is_none() && self.getting.is_none();
+        let line = match &self.revival {
+            None => "The setting can't be read right now.",
+            Some(_) => "Whether Fusion, Synchro and Ritual monsters that were never properly summoned can come back from the Graveyard. From your next duel.",
+        };
+        let selected = self.revival.as_deref().and_then(|v| REVIVAL_CHOICES.iter().find(|c| c.value == v)).copied();
+        let choices: Element<'_, Message> = if idle && self.revival.is_some() {
+            pick_list(&REVIVAL_CHOICES[..], selected, Message::Revival).style(yo3_skin::choice).menu_style(yo3_skin::choice_menu).width(230).padding([6, 10]).into()
+        } else {
+            text(selected.map_or("Official rules", |c| c.label)).size(15).color(color::INK).into()
+        };
+        yo3_skin::setting("Revival", line, Some(choices), None)
+    }
+
     /// The anime card pictures (#60): how many there are and the three ways to get more.
     /// The bar of the anime pictures (#60) and its words: the download's progress, a wait of unknown length while a zip is
     /// read or written, what the last download stopped on, or how many pictures there are.
@@ -793,6 +849,7 @@ impl State {
             yo3_skin::setting_group("Cards", vec![
                 self.anime_cards_view(playing),
                 self.destiny_draw_view(),
+                self.revival_view(),
                 yo3_skin::setting("Banlist", if playing { "Your own server checks decks against it. It can change while the game is closed." }
                     else { "Your own server checks decks against it. From the next PLAY." }, Some(banlist), None),
             ]),
@@ -1018,6 +1075,23 @@ mod tests {
         assert!(state.note.as_ref().is_some_and(|n| !n.good), "a server that didn't take it is an error");
         let _ = state.update(Message::DestinyRead(Err("x".into())), &mut ctx, false);
         assert_eq!(state.destiny, None);
+    }
+
+    #[test]
+    fn the_revival_choice_follows_the_servers_answer_and_needs_no_restart() {
+        assert_eq!(REVIVAL_CHOICES.map(|c| c.value), yo3_server::engine::Revival::NAMES, "the server's three levels, in its order");
+        let mut ctx = ctx();
+        let mut state = State::new(&ctx, Section::Singleplayer);
+        assert_eq!(state.revival, None, "unread until the server answers");
+        let _ = state.update(Message::RevivalRead(Ok("official".into())), &mut ctx, true);
+        assert_eq!(state.revival.as_deref(), Some("official"));
+        let _ = state.update(Message::RevivalSet(Ok("graveyard-is-graveyard".into())), &mut ctx, true);
+        assert_eq!(state.revival.as_deref(), Some("graveyard-is-graveyard"));
+        assert!(state.note.as_ref().is_some_and(|n| n.good && n.sentence.contains("Anime: any revival") && !n.sentence.contains("RESTART")), "it starts at the next duel");
+        let _ = state.update(Message::RevivalSet(Err("x".into())), &mut ctx, false);
+        assert!(state.note.as_ref().is_some_and(|n| !n.good));
+        let _ = state.update(Message::RevivalRead(Err("x".into())), &mut ctx, false);
+        assert_eq!(state.revival, None);
     }
 
     #[test]

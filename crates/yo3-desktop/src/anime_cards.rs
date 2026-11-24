@@ -13,6 +13,9 @@ pub const NAME: &str = "anime-cards";
 /// The Destiny Draw switch's setting (#71), kept the same way.
 pub const DESTINY_DRAW: &str = "destiny-draw";
 
+/// The Revival rule choice's setting (docs/rules-privacy.md, "House rules"), kept the same way.
+pub const REVIVAL_RULE: &str = "revival-rule";
+
 impl Backend {
     /// Whether your own server plays the anime card versions: asked of the running server, else read from its saved settings.
     pub fn anime_cards(&self, settings: &Settings) -> anyhow::Result<bool> { self.flag(settings, NAME) }
@@ -25,6 +28,32 @@ impl Backend {
 
     /// Turns Destiny Draw on or off (off is the default) on your own server; it applies at the next duel, no restart.
     pub fn set_destiny_draw(&self, settings: &Settings, on: bool) -> anyhow::Result<bool> { self.set_flag(settings, DESTINY_DRAW, on) }
+
+    /// Your own server's revival rule (`official`, `ignoring-means-all` or `graveyard-is-graveyard`): read the same two ways.
+    pub fn revival_rule(&self, settings: &Settings) -> anyhow::Result<String> { self.value(settings, REVIVAL_RULE) }
+
+    /// Sets your own server's revival rule (`official`, the default, resets it); it applies at the next duel, no restart.
+    pub fn set_revival_rule(&self, settings: &Settings, rule: &str) -> anyhow::Result<String> {
+        if let Some(live) = self.live(settings) {
+            let op = if rule == "official" { Op::Reset { name: REVIVAL_RULE.into() } } else { Op::Set { name: REVIVAL_RULE.into(), value: rule.into() } };
+            api::call(&live, &op).map_err(anyhow::Error::msg)?;
+        } else {
+            let saved = self.saved_settings(settings)?;
+            let done = if rule == "official" { saved.reset(REVIVAL_RULE) } else { saved.set(REVIVAL_RULE, rule) };
+            done.map_err(anyhow::Error::msg)?;
+        }
+        self.revival_rule(settings)
+    }
+
+    /// A setting's text value on your own server: asked of the running server, else read from its saved settings.
+    fn value(&self, settings: &Settings, name: &str) -> anyhow::Result<String> {
+        if let Some(live) = self.live(settings) {
+            let answer = api::call(&live, &Op::Settings).map_err(anyhow::Error::msg)?;
+            let row = answer["settings"].as_array().and_then(|rows| rows.iter().find(|r| r["name"] == name)).context("The server doesn't know this setting.")?;
+            return Ok(row["value"].as_str().unwrap_or_default().to_string());
+        }
+        Ok(self.saved_settings(settings)?.now().value(name).as_str().unwrap_or_default().to_string())
+    }
 
     /// An on/off setting of your own server: asked of the running server, else read from its saved settings.
     fn flag(&self, settings: &Settings, name: &str) -> anyhow::Result<bool> {
@@ -125,6 +154,22 @@ mod tests {
         let data = backend.data_dir(&settings);
         assert!(yo3_server::settings::Live::open(Some(&data.join("settings.json")), Vec::new()).unwrap().now().destiny_draw, "the server's start finds it on");
         assert!(!backend.set_destiny_draw(&settings, false).unwrap());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn the_revival_rule_is_kept_the_same_way_and_official_resets_it() {
+        let root = scratch("revival");
+        let backend = Backend::new(root.clone()).unwrap();
+        let settings = Settings::default();
+        assert_eq!(backend.revival_rule(&settings).unwrap(), "official", "the official ruling until a player picks another");
+        assert_eq!(backend.set_revival_rule(&settings, "graveyard-is-graveyard").unwrap(), "graveyard-is-graveyard");
+        let data = backend.data_dir(&settings);
+        let saved = || yo3_server::settings::Live::open(Some(&data.join("settings.json")), Vec::new()).unwrap().now().revival_rule;
+        assert_eq!(saved(), yo3_server::engine::Revival::GraveyardIsGraveyard, "the server's start finds it");
+        assert!(backend.set_revival_rule(&settings, "sometimes").is_err(), "the server refuses a level it doesn't have");
+        assert_eq!(backend.set_revival_rule(&settings, "official").unwrap(), "official");
+        assert_eq!(saved(), yo3_server::engine::Revival::Official);
         let _ = std::fs::remove_dir_all(root);
     }
 

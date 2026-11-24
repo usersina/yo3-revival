@@ -24,7 +24,8 @@ Older entries describe their release at the time. For current setup, use the [RE
 - Hosts can choose a house rule on reviving monsters that "must first be properly Summoned" (Fusion, Synchro, Ritual
   monsters...), the `revival-rule` setting: the official ruling (the default), cards that say "ignoring its Summoning
   conditions" ignore that too (Illusion Gate takes a Divine Serpent Geh that was only ever sent to the Graveyard), or
-  every revival from the Graveyard does, as in the anime (Monster Reborn revives a discarded Ritual monster).
+  every revival from the Graveyard does, as in the anime (Monster Reborn revives a discarded Ritual monster). Playing alone, pick it in
+  Settings, Singleplayer, **Revival**.
 - Added cards are found by Edit Deck's Search Key filters (Special Summon, Destroy monster...), and their new-card reveal
   shows their rarity's frame.
 
