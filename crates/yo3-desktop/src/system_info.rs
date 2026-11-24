@@ -1,8 +1,10 @@
 //! Small, fail-soft operating-system details for a user-reviewed bug report.
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SystemInfo { pub os: String, pub arch: String, pub wine: Option<String> }
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct SystemInfo { pub os: String, pub arch: String, pub wine: Option<String>,
+    /// The PC's specs for a report: the processor's name, its threads, the memory in MiB and the graphics card's name.
+    #[serde(default)] pub cpu: Option<String>, #[serde(default)] pub threads: usize, #[serde(default)] pub memory_mb: Option<u64>, #[serde(default)] pub gpu: Option<String> }
 impl SystemInfo {
     pub fn collect() -> Self {
         #[cfg(windows)]
@@ -23,8 +25,46 @@ impl SystemInfo {
         }).ok().and_then(|thread|thread.join().ok()).flatten();
         #[cfg(not(target_os="linux"))]
         let wine=None;
-        Self {os,arch:std::env::consts::ARCH.into(),wine}
+        let threads=std::thread::available_parallelism().map_or(0,|n|n.get());
+        #[cfg(windows)]
+        let (cpu,memory_mb,gpu)=(registry_string_at("HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0","ProcessorNameString").map(|s|s.trim().to_owned()),
+            windows_memory_mb(),registry_string_at("SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}\\0000","DriverDesc"));
+        #[cfg(target_os="linux")]
+        let (cpu,memory_mb,gpu)={
+            let read=|path:&str|std::fs::read_to_string(path).unwrap_or_default();
+            (cpu_model(&read("/proc/cpuinfo")),mem_total_mb(&read("/proc/meminfo")),linux_gpu())
+        };
+        #[cfg(not(any(windows,target_os="linux")))]
+        let (cpu,memory_mb,gpu)=(None,None,None);
+        Self {os,arch:std::env::consts::ARCH.into(),wine,cpu,threads,memory_mb,gpu}
     }
+}
+/// The processor's name in `/proc/cpuinfo` (its first `model name`).
+#[cfg(any(target_os="linux",test))]
+fn cpu_model(cpuinfo: &str) -> Option<String> {
+    let value=cpuinfo.lines().find_map(|l|l.strip_prefix("model name").and_then(|r|r.split_once(':')).map(|(_,v)|v.trim().to_owned()))?;
+    (!value.is_empty() && value.len()<=200 && !value.chars().any(char::is_control)).then_some(value)
+}
+/// `MemTotal` in `/proc/meminfo`, in MiB.
+#[cfg(any(target_os="linux",test))]
+fn mem_total_mb(meminfo: &str) -> Option<u64> {
+    meminfo.lines().find_map(|l|l.strip_prefix("MemTotal:")).and_then(|r|r.split_whitespace().next()?.parse::<u64>().ok()).map(|kb|kb/1024)
+}
+/// The first display controller's name from `lspci` (if it is installed), bounded like the Wine probe.
+#[cfg(target_os="linux")]
+fn linux_gpu() -> Option<String> {
+    let out=std::thread::Builder::new().name("report-gpu".into()).spawn(|| {
+        tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?.block_on(
+            version_output(tokio::process::Command::new("sh").args(["-c","lspci 2>/dev/null | grep -m1 -E 'VGA|3D|Display' | cut -d: -f3-"]),std::time::Duration::from_millis(1500)))
+    }).ok().and_then(|thread|thread.join().ok()).flatten()?;
+    let out=out.trim().to_owned();
+    (!out.is_empty() && out.len()<=200).then_some(out)
+}
+#[cfg(windows)]
+fn windows_memory_mb() -> Option<u64> {
+    use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx,MEMORYSTATUSEX};
+    let mut status:MEMORYSTATUSEX=unsafe{std::mem::zeroed()};status.dwLength=std::mem::size_of::<MEMORYSTATUSEX>() as u32;
+    (unsafe{GlobalMemoryStatusEx(&mut status)}!=0).then(||status.ullTotalPhys/(1024*1024))
 }
 #[cfg(any(windows,test))]
 fn windows_description(product: Option<&str>, edition: Option<&str>, display: Option<&str>, build: Option<u32>, revision: Option<u32>) -> String {
@@ -38,9 +78,11 @@ fn windows_description(product: Option<&str>, edition: Option<&str>, display: Op
     name
 }
 #[cfg(windows)]
-fn registry_string(name: &str) -> Option<String> {
+fn registry_string(name: &str) -> Option<String> { registry_string_at("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",name) }
+#[cfg(windows)]
+fn registry_string_at(key: &str, name: &str) -> Option<String> {
     use windows_sys::Win32::System::Registry::{RegGetValueW,HKEY_LOCAL_MACHINE,RRF_RT_REG_SZ,RRF_SUBKEY_WOW6464KEY};
-    let key:Vec<u16>="SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion".encode_utf16().chain(Some(0)).collect();let name:Vec<u16>=name.encode_utf16().chain(Some(0)).collect();
+    let key:Vec<u16>=key.encode_utf16().chain(Some(0)).collect();let name:Vec<u16>=name.encode_utf16().chain(Some(0)).collect();
     let mut buffer=[0u16;256];let mut bytes=std::mem::size_of_val(&buffer) as u32;
     let status=unsafe {RegGetValueW(HKEY_LOCAL_MACHINE,key.as_ptr(),name.as_ptr(),RRF_RT_REG_SZ|RRF_SUBKEY_WOW6464KEY,std::ptr::null_mut(),buffer.as_mut_ptr().cast(),&mut bytes)};
     if status!=0 || bytes as usize>std::mem::size_of_val(&buffer) {return None}
@@ -87,6 +129,13 @@ mod tests {
         assert_eq!(windows_description(Some("Windows 10 Home"),None,Some("22H2"),Some(19045),None),"Windows 10 Home 22H2 (build 19045)");
         assert_eq!(windows_description(Some("Windows Server 2025 Standard"),None,None,Some(26100),None),"Windows Server 2025 Standard (build 26100)");
         assert_eq!(windows_description(None,None,None,None,None),"Windows");
+    }
+    #[test]
+    fn the_pcs_processor_and_memory_are_read_from_proc() {
+        assert_eq!(cpu_model("processor\t: 0\nmodel name\t: AMD Ryzen 7 5800X 8-Core Processor\nflags: x\n"),Some("AMD Ryzen 7 5800X 8-Core Processor".into()));
+        assert_eq!(cpu_model("processor\t: 0\n"),None);
+        assert_eq!(mem_total_mb("MemTotal:       32768000 kB\nMemFree: 1 kB\n"),Some(32000));
+        assert_eq!(mem_total_mb(""),None);
     }
     #[test]
     fn os_release_reads_only_pretty_name_without_shell_expansion() {

@@ -28,6 +28,31 @@ impl Report {
     pub fn export_bug(&self, destination: &Path, remove_personal: bool, context: &serde_json::Value, report_markdown: &str, system: &crate::system_info::SystemInfo) -> anyhow::Result<()> {
         self.export_to(destination,remove_personal,Some((context,report_markdown,system)),Some(GITHUB_ATTACHMENT_BYTES))
     }
+    /// The report file of Report a problem (format [`REPORT_VERSION`]): the logs with personal details removed,
+    /// `report.json` with the report's own fields beside the build and the PC, `README.txt`, and binary files (recordings).
+    #[expect(clippy::too_many_arguments, reason = "The report's parts: the file, its context, summary, PC, fields, README and recordings.")]
+    pub fn export_full(&self, destination: &Path, context: &serde_json::Value, markdown: &str, system: &crate::system_info::SystemInfo,
+        report: &serde_json::Value, readme: &str, binary: &[(String, Vec<u8>)]) -> anyhow::Result<()> {
+        let mut files = self.text_files(true, Some((context, markdown, system)))?;
+        let mut metadata: serde_json::Value = serde_json::from_str(&files["report.json"])?;
+        metadata["format"] = REPORT_FORMAT.into();
+        metadata["version"] = REPORT_VERSION.into();
+        metadata["note"] = "Report a problem's file. Send it to the developer as it is. Credentials, databases, profiles and game files are excluded; personal details are removed from the logs.".into();
+        let home = std::env::var(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).ok();
+        metadata["report"] = clean_context(report, home.as_deref(), true);
+        files.insert("report.json".into(), serde_json::to_string_pretty(&metadata)?);
+        files.insert("README.txt".into(), filter_narrative(readme, home.as_deref(), true));
+        let mut archive = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated).unix_permissions(0o600);
+        for (name, text) in files { archive.start_file(name, options)?; archive.write_all(text.as_bytes())?; }
+        let stored = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored).unix_permissions(0o600);
+        for (name, bytes) in binary { archive.start_file(name.as_str(), stored)?; archive.write_all(bytes)?; }
+        let bytes = archive.finish()?.into_inner();
+        let stage = destination.with_extension(format!("{}.zip.tmp", std::process::id()));
+        let mut file = logs::private_create(&stage)?; file.write_all(&bytes)?; file.sync_all()?; drop(file);
+        let result = std::fs::rename(&stage, destination); if result.is_err() { let _ = std::fs::remove_file(&stage); } result?;
+        Ok(())
+    }
     fn text_files(&self, remove_personal: bool, bug: Option<(&serde_json::Value,&str,&crate::system_info::SystemInfo)>) -> anyhow::Result<BTreeMap<String,String>> {
         let mut files=BTreeMap::new();
         let mut add=|name:String,text:String|->anyhow::Result<()> { files.insert(name,text);Ok(()) };
@@ -153,7 +178,7 @@ mod tests {
     fn github_archive_cap_preserves_destination_and_creates_no_partial_report() {
         let root=std::env::temp_dir().join(format!("yo3-report-cap-{}",std::process::id()));let _=std::fs::remove_dir_all(&root);std::fs::create_dir_all(&root).unwrap();
         let report=Report::prepare(&root.join("sessions"),None).unwrap();let destination=root.join("report.zip");std::fs::write(&destination,b"existing report").unwrap();
-        let system=crate::system_info::SystemInfo{os:"Windows 11".into(),arch:"x86_64".into(),wine:None};let context=serde_json::json!({"error":"Specific failure"});
+        let system=crate::system_info::SystemInfo{os:"Windows 11".into(),arch:"x86_64".into(),wine:None,cpu:None,threads:0,memory_mb:None,gpu:None};let context=serde_json::json!({"error":"Specific failure"});
         let error=report.export_to(&destination,false,Some((&context,"# A reviewed bug report",&system)),Some(128)).unwrap_err();
         assert!(error.to_string().contains("GitHub") && error.to_string().contains("128"),"{error:#}");
         assert_eq!(std::fs::read(&destination).unwrap(),b"existing report");assert!(!destination.with_extension(format!("{}.zip.tmp",std::process::id())).exists());
@@ -161,10 +186,6 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 }
-
-/// Report a problem (#31): the session's logs saved for the player, and the report form's link to open.
-/// A report ready for the form: its link, and the saved logs file when no report ID took their place.
-pub struct Prepared { pub zip: Option<PathBuf>, pub url: String }
 
 /// How much of each log a problem report from the app carries (its newest bytes).
 const REPORT_LOG_BUDGET: usize = 384 * 1024;
@@ -198,28 +219,116 @@ impl crate::Backend {
         ids.truncate(5);
         ids
     }
+}
 
-    /// The report form's link, filled in with `what`, the error and the report IDs (`ids`: the one Report a problem got
-    /// and the helper's from recent games). Without any, this session's logs (personal details removed) are saved in
-    /// `<app data>/reports/` for the player to attach.
-    pub fn report_problem(&self, what: &str, error: &str, ids: &[String]) -> anyhow::Result<Prepared> {
+/// The report file's format (#87's follow-up): one ZIP the player keeps and can send to the developer however they
+/// like, whatever server is up. `docs/report-format.md` describes it.
+pub const REPORT_FORMAT: &str = "yo3-revival-report";
+pub const REPORT_VERSION: u32 = 3;
+/// Singleplayer's newest pinned duel recordings (the `bug` command) that go in the file, and the largest of them.
+const REPORT_RECORDINGS: usize = 3;
+const REPORT_RECORDING_BYTES: u64 = 8 * 1024 * 1024;
+
+/// What the player wrote and where the report went, for [`crate::Backend::save_report`].
+#[derive(Clone, Debug, Default)]
+pub struct Details {
+    pub what: String,
+    /// How to reach the player (optional).
+    pub contact: String,
+    /// The error the app showed, if the report came from one.
+    pub error: String,
+    /// Where it was sent and the ID each server gave: ("the YO3 Revival project", "R-…").
+    pub sent: Vec<(String, String)>,
+    /// "singleplayer", or the server's name in Multiplayer.
+    pub play: String,
+    /// The launcher's settings that explain a problem (no account, key or path): screen size, direct start, banlist...
+    pub settings: serde_json::Value,
+    /// Singleplayer's server data folder, for its pinned recordings.
+    pub recordings: Option<PathBuf>,
+}
+
+/// Where a report file goes: the player's Downloads folder when there is one, else the app's own `reports/`.
+pub fn report_folder(root: &Path) -> PathBuf {
+    downloads().filter(|d| d.is_dir()).unwrap_or_else(|| root.join("reports"))
+}
+
+fn downloads() -> Option<PathBuf> {
+    #[cfg(windows)]
+    { std::env::var_os("USERPROFILE").map(|home| PathBuf::from(home).join("Downloads")) }
+    #[cfg(not(windows))]
+    {
+        let home = PathBuf::from(std::env::var_os("HOME")?);
+        // XDG's user-dirs.dirs names it (`XDG_DOWNLOAD_DIR="$HOME/Downloads"`), in the system's language.
+        let dirs = std::fs::read_to_string(home.join(".config/user-dirs.dirs")).unwrap_or_default();
+        let named = dirs.lines().find_map(|l| l.strip_prefix("XDG_DOWNLOAD_DIR=")).map(|v| v.trim().trim_matches('"').replace("$HOME", &home.to_string_lossy()));
+        Some(named.map(PathBuf::from).filter(|p| p.is_absolute() && p != &home).unwrap_or_else(|| home.join("Downloads")))
+    }
+}
+
+impl crate::Backend {
+    /// The whole report as one ZIP in [`report_folder`] (format [`REPORT_VERSION`]): `report.json` (what happened, how
+    /// to reach the player, the error, the app's build, the PC, the game's settings, where it was sent), `README.txt`
+    /// (the same for a person, and where to send it), `bug-report.md`, this session's and the latest game's logs with
+    /// personal details removed, and Singleplayer's newest pinned duel recordings. Its path.
+    pub fn save_report(&self, details: &Details) -> anyhow::Result<PathBuf> {
         use crate::bug_report::{Context, Draft};
-        let context = Context { error: error.to_owned(), ..Context::default() };
-        let draft = Draft { description: what.trim().to_owned(), steps: String::new() };
-        let system = crate::system_info::SystemInfo::collect();
-        if !ids.is_empty() {
-            self.diagnostics.line(&format!("Report a problem: the form carries report ID(s) {}", ids.join(", ")));
-            return Ok(Prepared { url: draft.url(&context, &system, None, ids)?, zip: None });
-        }
-        let dir = self.root.join("reports");
+        let dir = report_folder(&self.root);
         std::fs::create_dir_all(&dir)?;
         let name = format!("yo3-revival-report-{}.zip", chrono::Local::now().format("%Y%m%d-%H%M%S"));
         let zip = dir.join(&name);
-        let markdown = draft.markdown(&context, &system, Some(&name), &[]);
-        self.report(false)?.export_bug(&zip, true, &serde_json::to_value(&context)?, &markdown, &system)?;
-        self.diagnostics.line("Saved a problem report's logs");
-        Ok(Prepared { url: draft.url(&context, &system, Some(&name), &[])?, zip: Some(zip) })
+        let system = crate::system_info::SystemInfo::collect();
+        let context = Context { error: details.error.clone(), ..Context::default() };
+        let draft = Draft { description: details.what.trim().to_owned(), steps: String::new() };
+        let ids: Vec<String> = details.sent.iter().map(|(_, id)| id.clone()).collect();
+        let markdown = draft.markdown(&context, &system, Some(&name), &ids);
+        let mut recordings = vec![];
+        if let Some(data) = &details.recordings {
+            let mut pinned: Vec<(std::time::SystemTime, PathBuf, u64)> = std::fs::read_dir(data.join("recordings/pinned")).into_iter().flatten().flatten()
+                .filter(|e| e.file_name().to_str().is_some_and(|n| n.ends_with(".jsonl.gz")))
+                .filter_map(|e| { let m = e.metadata().ok()?; if !m.is_file() || m.len() > REPORT_RECORDING_BYTES { return None } Some((m.modified().ok()?, e.path(), m.len())) }).collect();
+            pinned.sort_by_key(|p| std::cmp::Reverse(p.0));
+            for (_, path, _) in pinned.into_iter().take(REPORT_RECORDINGS) {
+                if let (Some(file), Ok(bytes)) = (path.file_name().and_then(|n| n.to_str()), std::fs::read(&path)) { recordings.push((format!("recordings/{file}"), bytes)) }
+            }
+        }
+        let sent: Vec<serde_json::Value> = details.sent.iter().map(|(to, id)| serde_json::json!({ "to": to, "id": id })).collect();
+        let report = serde_json::json!({
+            "what": details.what.trim(), "contact": details.contact.trim(), "error": details.error.trim(), "play": details.play,
+            "settings": details.settings, "sent": sent,
+            "recordings": recordings.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>(),
+        });
+        let readme = readme(details, &system, &recordings.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>());
+        self.report(false)?.export_full(&zip, &serde_json::to_value(&context)?, &markdown, &system, &report, &readme, &recordings)?;
+        self.diagnostics.line(&format!("Report a problem: saved {}", zip.display()));
+        Ok(zip)
     }
+
+    /// The public report form's link for a player who wants to talk about it on GitHub too: their words, the error,
+    /// the report IDs and the saved file's name.
+    pub fn report_form(&self, details: &Details, zip_name: Option<&str>) -> anyhow::Result<String> {
+        use crate::bug_report::{Context, Draft};
+        let context = Context { error: details.error.clone(), ..Context::default() };
+        let draft = Draft { description: details.what.trim().to_owned(), steps: String::new() };
+        let ids: Vec<String> = details.sent.iter().map(|(_, id)| id.clone()).collect();
+        draft.url(&context, &crate::system_info::SystemInfo::collect(), zip_name, &ids)
+    }
+}
+
+/// `README.txt`: the report for a person, and what to do with the file.
+fn readme(d: &Details, s: &crate::system_info::SystemInfo, recordings: &[&str]) -> String {
+    let or = |t: &str, none: &str| if t.trim().is_empty() { none.to_owned() } else { t.trim().to_owned() };
+    let mut text = format!("YO3 Revival problem report (format {REPORT_FORMAT} {REPORT_VERSION})\n\n\
+        Send this whole ZIP file to the developer: on the project's Discord, privately, or attached to a GitHub issue.\n\
+        Your sign-in secrets are never in it, and personal details (your user folder, addresses) are removed from the logs.\n\n\
+        What happened:\n{}\n\nHow to reach you: {}\nError shown: {}\nPlaying: {}\n\n",
+        or(&d.what, "(nothing written)"), or(&d.contact, "(not given)"), or(&d.error, "(none)"), or(&d.play, "(unknown)"));
+    text.push_str(&format!("YO3 Revival {} ({})\nSystem: {} {}{}\nProcessor: {} ({} threads)\nMemory: {}\nGraphics: {}\n\n",
+        yo3_tunnel::BUILD_VERSION, yo3_tunnel::BUILD_COMMIT, s.os, s.arch, s.wine.as_ref().map(|w| format!(", {w}")).unwrap_or_default(),
+        s.cpu.as_deref().unwrap_or("unknown"), s.threads, s.memory_mb.map_or("unknown".into(), |m| format!("{m} MiB")), s.gpu.as_deref().unwrap_or("unknown")));
+    if d.sent.is_empty() { text.push_str("Not sent anywhere yet: this file is the report.\n") }
+    for (to, id) in &d.sent { text.push_str(&format!("Sent to {to} as {id}.\n")) }
+    if !recordings.is_empty() { text.push_str(&format!("Duel recordings (replayed exactly by the developer): {}\n", recordings.join(", "))) }
+    text
 }
 
 /// `R-XXXX-XXXX`, as the server makes them.
@@ -237,25 +346,41 @@ mod report_problem_tests {
     }
 
     #[test]
-    fn without_a_report_id_the_logs_are_saved_to_attach() {
-        let (backend, root) = backend("zip");
-        backend.diagnostics.line("something to report");
-        let prepared = backend.report_problem("The game froze in a duel", "The game stopped unexpectedly (exit status: 1).", &[]).unwrap();
-        assert!(prepared.zip.as_ref().is_some_and(|z| z.is_file() && z.starts_with(root.join("reports"))));
-        assert!(prepared.url.starts_with("https://github.com/usersina/yo3-revival/issues/new?") && prepared.url.contains("The+game+froze"), "{}", prepared.url);
+    fn a_report_is_always_saved_as_one_file_in_the_documented_format() {
+        // The player asked that a report never depend on the project's server: it is saved first, whatever was sent.
+        let (backend, root) = backend("format");
+        backend.diagnostics.line("token=abcdef0123456789abcdef0123456789 something to report");
+        let data = root.join("singleplayer");
+        std::fs::create_dir_all(data.join("recordings/pinned")).unwrap();
+        std::fs::write(data.join("recordings/pinned/R-7K3Q-M2PA.jsonl.gz"), b"\x1f\x8b recording").unwrap();
+        let details = super::Details { what: "Black Brutdrago closed my game".into(), contact: "Discord: duelist".into(), error: String::new(),
+            sent: vec![("the YO3 Revival project".into(), "R-AAAA-BBBB".into())], play: "singleplayer".into(),
+            settings: serde_json::json!({ "resolution": "auto", "direct_start": false }), recordings: Some(data) };
+        let zip = backend.save_report(&details).unwrap();
+        assert!(zip.is_file() && zip.extension().is_some_and(|e| e == "zip"));
+        let mut archive = zip::ZipArchive::new(std::fs::File::open(&zip).unwrap()).unwrap();
+        let names: Vec<String> = (0..archive.len()).map(|i| archive.by_index(i).unwrap().name().unwrap().to_string()).collect();
+        for name in ["report.json", "README.txt", "bug-report.md", "recordings/R-7K3Q-M2PA.jsonl.gz"] { assert!(names.iter().any(|n| n == name), "{name} in {names:?}") }
+        assert!(names.iter().any(|n| n.starts_with("sessions/")), "the logs: {names:?}");
+        let mut read = |name: &str| { let mut text = String::new(); std::io::Read::read_to_string(&mut archive.by_name(name).unwrap(), &mut text).unwrap(); text };
+        let report: serde_json::Value = serde_json::from_str(&read("report.json")).unwrap();
+        assert_eq!((report["format"].as_str(), report["version"].as_u64()), (Some(super::REPORT_FORMAT), Some(super::REPORT_VERSION as u64)));
+        assert_eq!(report["report"]["what"], "Black Brutdrago closed my game");
+        assert_eq!(report["report"]["contact"], "Discord: duelist");
+        assert_eq!(report["report"]["sent"][0]["id"], "R-AAAA-BBBB");
+        assert_eq!(report["report"]["recordings"][0], "recordings/R-7K3Q-M2PA.jsonl.gz");
+        assert!(report["system"]["threads"].as_u64().is_some_and(|t| t > 0), "the PC: {}", report["system"]);
+        assert!(report["release"].is_string() && report["commit"].is_string());
+        let readme = read("README.txt");
+        assert!(readme.contains("Send this whole ZIP file to the developer") && readme.contains("Sent to the YO3 Revival project as R-AAAA-BBBB"), "{readme}");
+        assert!(readme.contains("sign-in secrets are never in it") && !readme.contains("omitted"), "the README's own lines survive the filter: {readme}");
+        let all: String = names.iter().filter(|n| !n.starts_with("recordings/")).map(|n| read(n)).collect();
+        assert!(!all.contains("abcdef0123456789abcdef0123456789"), "no token in any file");
         drop(backend);
         std::fs::remove_dir_all(root).unwrap();
     }
 
-    #[test]
-    fn a_report_id_goes_in_the_form_and_nothing_is_saved() {
-        let (backend, root) = backend("id");
-        let prepared = backend.report_problem("The shop disconnected", "", &["R-7K3Q-M2PA".into()]).unwrap();
-        assert!(prepared.zip.is_none() && !root.join("reports").exists());
-        assert!(prepared.url.contains("R-7K3Q-M2PA"), "{}", prepared.url);
-        drop(backend);
-        std::fs::remove_dir_all(root).unwrap();
-    }
+
 
     #[test]
     fn the_helpers_report_ids_from_recent_games_are_found() {

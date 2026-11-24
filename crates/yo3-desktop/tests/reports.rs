@@ -92,7 +92,7 @@ fn bug_report_embeds_reviewed_markdown_context_and_system_with_the_same_privacy_
     let log=Session::start(&root.join("sessions"),"app",None).unwrap();log.line("Original native failure: process_exit_code=0xc0000005");log.line("[YO3 CLIENT] Chat: Alice hello");
     let context=serde_json::json!({"failure":{"message":r"Cannot load C:\Users\Alice\Game\yo3-auth.dll from 192.168.1.45:7443","stage":"mod-load","process_exit_code":"0xc0000005"},
         "account":{"name":"Alice","access_key":"short-secret"},"nested":[{"token":"short-token"}],"missing_files":[r"C:\Users\Alice\Game\yo3-auth.dll"]});
-    let system=yo3_desktop::system_info::SystemInfo{os:"Windows 11 Pro 24H2 (build 26100.1234)".into(),arch:"x86_64".into(),wine:None};
+    let system=yo3_desktop::system_info::SystemInfo{os:"Windows 11 Pro 24H2 (build 26100.1234)".into(),arch:"x86_64".into(),wine:None,..Default::default()};
     let markdown=format!("# DLL cannot load\n\nMy player cannot summon Stardust Dragon.\nCannot load C:\\Users\\Alice\\Game\\yo3-auth.dll from 192.168.1.45:7443\npassword=short-secret\n-----BEGIN PRIVATE KEY-----\nSHORT PEM CONTENT\n-----END PRIVATE KEY-----\n{}Final reproduction detail remains\n","User step. ".repeat(2000));
     let report=Report::prepare(&root.join("sessions"),None).unwrap();let full=root.join("full.zip");report.export_bug(&full,false,&context,&markdown,&system).unwrap();
     let full_text=archive_text(&full);assert!(full_text.contains("Alice") && full_text.contains("192.168.1.45"));assert!(!full_text.contains("short-secret") && !full_text.contains("short-token"));

@@ -335,16 +335,19 @@ folders written as names such as `<game>` or `<app data>`, and **Copy** puts it 
 **Report a problem** (in **Help** at the bottom right, in the guide, or on a problem's toast):
 
 1. Say what you were doing and what went wrong, and, if you'd like an answer, how to reach you (optional).
-2. Click **Send report**. **Since Unreleased:** it goes straight to the YO3 Revival project's own server with your
-   recent logs (this session's and the latest game's), personal details removed, whatever server you play on, and you
-   get a **report ID** such as `R-7K3Q-M2PA` to mention if you talk to us. Signed in to another server on Multiplayer,
-   that server's host gets it too. There is nothing to attach and no form to fill in; **Also talk about it on GitHub**
-   opens the public report form with the ID, if you want to.
+2. Click **Send report**. **Since Unreleased:** it is saved first as one file on your PC, in your **Downloads** folder:
+   what you wrote, your recent logs (this session's and the latest game's) with personal details removed, this PC's
+   details (system, processor, memory, graphics card) and, in Singleplayer, the duels you marked with `bug`
+   ([what's inside](report-format.md)). Then it goes to the YO3 Revival project's own server, and to the host when you
+   are signed in to another server on Multiplayer.
+3. The window shows the file with **Open folder** and **Copy path**, and the **report ID** when the project's server
+   took it (mention it if you talk to us). When the project's server can't be reached, the file is the report: send it
+   to the developer, on Discord, privately or attached to a GitHub issue. **Also talk about it on GitHub** opens the
+   public report form, filled in, if you want to.
 
-Before, it opened a GitHub form, and in Singleplayer it saved a ZIP to attach there, which most reports lacked. That is
-still what happens if the project's server can't be reached: the form opens with the host's report ID, or with the ZIP
-to drag in. Reports on GitHub are public, and such a ZIP can still hold player names, chat and decks, so look through
-it if that matters to you.
+Nothing depends on a server staying up: the file is always on your PC. Before, Report a problem opened a GitHub form and
+saved a file only in Singleplayer, which most reports lacked. Reports on GitHub are public, and the file can still hold
+player names, chat and decks, so look through it before posting it there.
 
 ### Problem reports
 

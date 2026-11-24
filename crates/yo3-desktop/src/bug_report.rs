@@ -116,7 +116,7 @@ fn native_number(value:&str)->Option<(u32,bool)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn system() -> SystemInfo {SystemInfo {os:"Windows 11 (build 22631)".into(),arch:"x86_64".into(),wine:None}}
+    fn system() -> SystemInfo {SystemInfo{os:"Windows 11 (build 22631)".into(),arch:"x86_64".into(),wine:None,..Default::default()}}
     fn values(url: &str) -> std::collections::HashMap<String,String> {
         reqwest::Url::parse(url).unwrap().query_pairs().map(|(key,value)|(key.into_owned(),value.into_owned())).collect()
     }
@@ -204,7 +204,7 @@ mod tests {
     #[test]
     fn markdown_scrubs_multiline_private_keys_and_includes_wine_when_present() {
         let context=Context {error:"Before\n-----BEGIN PRIVATE KEY-----\nsmall/secret+parts=\n-----END PRIVATE KEY-----\nAfter".into(),..Context::default()};
-        let system=SystemInfo {os:"Linux".into(),arch:"x86_64".into(),wine:Some("wine-10.0".into())};
+        let system=SystemInfo{os:"Linux".into(),arch:"x86_64".into(),wine:Some("wine-10.0".into()),..Default::default()};
         let report=Draft::default().markdown(&context,&system,None,&[]);assert!(report.contains("wine-10.0"));assert!(report.contains("Before"));assert!(report.contains("After"));assert!(!report.contains("small/secret+parts="));
     }
 
