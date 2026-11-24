@@ -237,7 +237,7 @@ pub struct Details {
     pub contact: String,
     /// The error the app showed, if the report came from one.
     pub error: String,
-    /// Where it was sent and the ID each server gave: ("the YO3 Revival project", "R-…").
+    /// Reports the helper sent hosts by itself after recent games that broke, for reference: (who, "R-…").
     pub sent: Vec<(String, String)>,
     /// "singleplayer", or the server's name in Multiplayer.
     pub play: String,
@@ -325,8 +325,11 @@ fn readme(d: &Details, s: &crate::system_info::SystemInfo, recordings: &[&str]) 
     text.push_str(&format!("YO3 Revival {} ({})\nSystem: {} {}{}\nProcessor: {} ({} threads)\nMemory: {}\nGraphics: {}\n\n",
         yo3_tunnel::BUILD_VERSION, yo3_tunnel::BUILD_COMMIT, s.os, s.arch, s.wine.as_ref().map(|w| format!(", {w}")).unwrap_or_default(),
         s.cpu.as_deref().unwrap_or("unknown"), s.threads, s.memory_mb.map_or("unknown".into(), |m| format!("{m} MiB")), s.gpu.as_deref().unwrap_or("unknown")));
-    if d.sent.is_empty() { text.push_str("Not sent anywhere yet: this file is the report.\n") }
-    for (to, id) in &d.sent { text.push_str(&format!("Sent to {to} as {id}.\n")) }
+    text.push_str("Nothing in this file was sent anywhere: this file is the report.\n");
+    if !d.sent.is_empty() {
+        let ids: Vec<&str> = d.sent.iter().map(|(_, id)| id.as_str()).collect();
+        text.push_str(&format!("Reports the game sent its server's host by itself after recent games that broke: {}\n", ids.join(", ")));
+    }
     if !recordings.is_empty() { text.push_str(&format!("Duel recordings (replayed exactly by the developer): {}\n", recordings.join(", "))) }
     text
 }
@@ -354,7 +357,7 @@ mod report_problem_tests {
         std::fs::create_dir_all(data.join("recordings/pinned")).unwrap();
         std::fs::write(data.join("recordings/pinned/R-7K3Q-M2PA.jsonl.gz"), b"\x1f\x8b recording").unwrap();
         let details = super::Details { what: "Black Brutdrago closed my game".into(), contact: "Discord: duelist".into(), error: String::new(),
-            sent: vec![("the YO3 Revival project".into(), "R-AAAA-BBBB".into())], play: "singleplayer".into(),
+            sent: vec![("the server of a game that broke".into(), "R-AAAA-BBBB".into())], play: "singleplayer".into(),
             settings: serde_json::json!({ "resolution": "auto", "direct_start": false }), recordings: Some(data) };
         let zip = backend.save_report(&details).unwrap();
         assert!(zip.is_file() && zip.extension().is_some_and(|e| e == "zip"));
@@ -372,7 +375,7 @@ mod report_problem_tests {
         assert!(report["system"]["threads"].as_u64().is_some_and(|t| t > 0), "the PC: {}", report["system"]);
         assert!(report["release"].is_string() && report["commit"].is_string());
         let readme = read("README.txt");
-        assert!(readme.contains("Send this whole ZIP file to the developer") && readme.contains("Sent to the YO3 Revival project as R-AAAA-BBBB"), "{readme}");
+        assert!(readme.contains("Send this whole ZIP file to the developer") && readme.contains("Nothing in this file was sent anywhere") && readme.contains("by itself after recent games that broke: R-AAAA-BBBB"), "{readme}");
         assert!(readme.contains("sign-in secrets are never in it") && !readme.contains("omitted"), "the README's own lines survive the filter: {readme}");
         let all: String = names.iter().filter(|n| !n.starts_with("recordings/")).map(|n| read(n)).collect();
         assert!(!all.contains("abcdef0123456789abcdef0123456789"), "no token in any file");

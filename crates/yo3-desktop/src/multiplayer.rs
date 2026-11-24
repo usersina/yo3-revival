@@ -466,46 +466,6 @@ pub async fn sign_out(server: &Server, device_token: &str, everywhere: bool) -> 
     ask(server, json!({ "op": "sign_out", "device_token": device_token, "everywhere": everywhere })).await.map(|_| ())
 }
 
-/// Report a problem's logs, sent to the server the player is signed in to (problem reports): the report ID to quote in
-/// the GitHub form, so nothing has to be attached. `what` is what the player wrote, `logs` the app's and the latest game's.
-pub async fn problem_report(server: &Server, session: &yo3_tunnel::Token, what: &str, error: &str, contact: &str, logs: &str) -> Result<String, Problem> {
-    let report = report_json(what, error, contact, logs);
-    for endpoint in server.endpoints().map_err(|_| Problem::Unreachable)? {
-        match tokio::time::timeout(yo3_launcher::problems::SEND_WAIT, endpoint.problem_report(session, &report)).await {
-            Ok(Ok(id)) => return Ok(id),
-            Ok(Err(e)) if e.downcast_ref::<yo3_tunnel::ReportRefused>().is_some() => return Err(Problem::Other(e.to_string())),
-            _ => {}
-        }
-    }
-    Err(Problem::Unreachable)
-}
-
-/// Report a problem's JSON (operation 7's and 8's): its first line as the summary, then what the player wrote, the
-/// error they saw and how to reach them, before the logs.
-fn report_json(what: &str, error: &str, contact: &str, logs: &str) -> serde_json::Value {
-    let summary = what.lines().map(str::trim).find(|l| !l.is_empty()).or_else(|| error.lines().next()).unwrap_or("Report a problem");
-    let mut text = String::new();
-    if !what.trim().is_empty() { text.push_str(&format!("== What the player wrote ==\n{}\n\n", what.trim())) }
-    if !error.trim().is_empty() { text.push_str(&format!("== The error shown ==\n{}\n\n", error.trim())) }
-    if !contact.trim().is_empty() { text.push_str(&format!("== How to reach them ==\n{}\n\n", contact.trim())) }
-    text.push_str(logs);
-    yo3_launcher::problems::report("report", summary, &text)
-}
-
-/// Report a problem sent to the project's own server (the official list's first) without an account (operation 8), so
-/// the project reads it whatever server the player plays on, and nobody attaches files to GitHub: its report ID.
-pub async fn anonymous_report(project: &Server, what: &str, error: &str, contact: &str, logs: &str) -> Result<String, Problem> {
-    let report = report_json(what, error, contact, logs);
-    for endpoint in project.endpoints().map_err(|_| Problem::Unreachable)? {
-        match tokio::time::timeout(yo3_launcher::problems::SEND_WAIT, endpoint.anonymous_report(&report)).await {
-            Ok(Ok(id)) => return Ok(id),
-            Ok(Err(e)) if e.downcast_ref::<yo3_tunnel::ReportRefused>().is_some() => return Err(Problem::Other(e.to_string())),
-            _ => {}
-        }
-    }
-    Err(Problem::Unreachable)
-}
-
 /// Settings → Accounts' Sign out everywhere: every device token of the account is revoked and its game sessions end.
 /// A sign-in that didn't stay has no device token to ask with, so the password signs in once more for one.
 pub async fn sign_out_everywhere(server: &Server, device_token: Option<&str>, user: &str, password: &str) -> Result<(), Problem> {

@@ -27,14 +27,12 @@ pub enum Dialog { Help, Report, Repair, ConfirmClose, Backups, Host, Support, Co
 pub struct Report { pub what: iced::widget::text_editor::Content, pub error: String, /** How to reach the player (optional). */ pub contact: String,
     pub busy: bool, pub result: Option<Result<ReportOutcome, String>> }
 
-/// Where a report went: always saved on this PC as one file (so nothing depends on a server being up), and the
-/// project's report ID when its server took it too.
+/// A saved report: always one file on this PC, never sent anywhere by itself (the player sends it to the developer),
+/// so nothing depends on a server.
 #[derive(Clone, Debug)]
 pub struct ReportOutcome {
-    /// The saved report file (`reports::save_report`, format 3).
+    /// The saved report file (`reports::save_report`).
     pub file: std::path::PathBuf,
-    /// The project's report ID, when its server took it.
-    pub id: Option<String>,
     /// The public report form, filled in, for a player who wants to talk about it on GitHub (optional).
     pub github: String,
 }
@@ -302,12 +300,8 @@ impl App {
                 let (what, error, contact) = (what.trim().to_owned(), self.report.error.clone(), self.report.contact.trim().to_owned());
                 self.report.busy = true;
                 self.report.result = None;
-                // The project's own server reads every Report a problem (operation 8, no account needed), so nobody has to
-                // attach files on GitHub. Signed in on Multiplayer (and reports on), the host gets it too (operation 7);
-                // signed in to the project's server itself, that one report is enough. If the project's server can't
-                // take it, the GitHub form opens as before.
-                let signed = self.home.multi.session().filter(|_| self.ctx.settings.problem_reports);
-                let root = self.ctx.root.clone();
+                // Only saved, as one file for the player to send the developer: no server is involved, so a report
+                // never depends on one being up.
                 let settings = &self.ctx.settings;
                 // What explains a problem, nothing personal: no account, key, address or path.
                 let summary = serde_json::json!({ "resolution": settings.resolution, "direct_start": settings.direct_start, "banlist": settings.banlist,
@@ -316,30 +310,13 @@ impl App {
                 let play = self.home.multi.session().map_or_else(|| "singleplayer".to_owned(), |(server, _)| server.name.clone());
                 let recordings = self.home.multi.session().is_none().then(|| backend.data_dir(settings));
                 return Task::perform(async move {
-                    let logs = backend.problem_logs();
-                    let project = yo3_desktop::multiplayer::official_list(&root).await.first().map(yo3_desktop::multiplayer::Server::from_listed);
-                    let mut sent: Vec<(String, String)> = vec![];
-                    let mut id = None;
-                    if let Some((server, signed)) = &signed {
-                        let to_project = project.as_ref().is_some_and(|p| p.address == server.address);
-                        match yo3_desktop::multiplayer::problem_report(server, &signed.session, &what, &error, &contact, &logs).await {
-                            Ok(got) => { if to_project { id = Some(got.clone()) } sent.push((server.name.clone(), got)) }
-                            Err(problem) => backend.diagnostics.line(&format!("Report a problem: the logs were not sent to the server: {}", problem.sentence())),
-                        }
-                    }
-                    if id.is_none() && let Some(project) = &project {
-                        match yo3_desktop::multiplayer::anonymous_report(project, &what, &error, &contact, &logs).await {
-                            Ok(got) => { id = Some(got.clone()); sent.insert(0, ("the YO3 Revival project".into(), got)) }
-                            Err(problem) => backend.diagnostics.line(&format!("Report a problem: the project's server didn't take it: {}", problem.sentence())),
-                        }
-                    }
-                    for older in backend.recent_report_ids() { if !sent.iter().any(|(_, i)| *i == older) { sent.push(("the server of a game that broke".into(), older)) } }
-                    // Always saved, whatever was sent: the file is the report, for the player to send the developer.
+                    // The IDs of the reports the helper sent hosts by itself after recent games that broke, for reference.
+                    let sent = backend.recent_report_ids().into_iter().map(|id| ("the server of a game that broke".to_owned(), id)).collect();
                     let details = yo3_desktop::reports::Details { what, contact, error, sent, play, settings: summary, recordings };
                     tokio::task::spawn_blocking(move || {
                         let file = backend.save_report(&details).map_err(|e| format!("{e:#}"))?;
                         let github = backend.report_form(&details, file.file_name().and_then(|n| n.to_str())).map_err(|e| format!("{e:#}"))?;
-                        Ok(ReportOutcome { file, id, github })
+                        Ok(ReportOutcome { file, github })
                     }).await.map_err(|e| e.to_string())?
                 }, |result| Message::Report(ReportMessage::Sent(result)));
             }
@@ -879,7 +856,7 @@ impl App {
             text("YO3 Revival is a small fan project made by players. We read every question and report.").size(15).color(color::INK),
             way(Icon::Book, "Read the guide", "Setup, playing, hosting, and fixes for common problems.", "Open guide", Message::OpenHelp(None)),
             way(Icon::Chat, "Ask the community", "Questions, ideas and servers to join, on GitHub.", "Discussions", Message::OpenLink(DISCUSSIONS.into())),
-            way(Icon::Flag, "Report a problem", "Tell us what went wrong. Your logs go with it, nothing to attach.", "Report…", Message::OpenReport(String::new())),
+            way(Icon::Flag, "Report a problem", "Tell us what went wrong. It is saved as one file with your logs, to send us.", "Report…", Message::OpenReport(String::new())),
         ].spacing(10))
     }
 
@@ -889,15 +866,10 @@ impl App {
         if let Some(Ok(outcome)) = &report.result {
             let name = outcome.file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
             let path = outcome.file.to_string_lossy().into_owned();
-            let mut col = column![].spacing(10);
-            col = match &outcome.id {
-                Some(id) => col.push(yo3_skin::rule(yo3_skin::Rule::Met, "Sent. Thank you!"))
-                    .push(text("It reached the YO3 Revival project. Mention this report ID if you talk to us about it:").size(15).color(color::INK))
-                    .push(row![text(id.clone()).size(18).font(yo3_skin::BODY_BOLD).color(color::NAVY),
-                        pill("Copy", Some(Message::Copy(id.clone())), Kind::Secondary, 90, 32)].spacing(14).align_y(Center)),
-                None => col.push(yo3_skin::rule(yo3_skin::Rule::Met, "Saved on this PC."))
-                    .push(text("The project's server couldn't take it right now, so the file below is your report. Send it to the developer: on Discord, privately, or attached to a GitHub issue.").size(15).color(color::INK)),
-            };
+            let mut col = column![
+                yo3_skin::rule(yo3_skin::Rule::Met, "Saved on this PC."),
+                text("This file is your report. Send it to the developer: on Discord, privately, or attached to a GitHub issue. Nothing was sent anywhere by itself.").size(15).color(color::INK),
+            ].spacing(10);
             col = col.push(text("The full report, with your logs and this PC's details:").size(14).color(color::INK_SOFT))
                 .push(text(name).size(15).font(yo3_skin::BODY_BOLD).color(color::INK))
                 .push(row![pill("Open folder", Some(Message::Report(ReportMessage::OpenFolder)), Kind::Secondary, 140, 32),
@@ -923,16 +895,16 @@ impl App {
             text("How can we reach you? (optional)").size(15).font(yo3_skin::BODY_BOLD).color(color::INK),
             iced::widget::text_input("Discord name, e-mail or GitHub name, if you'd like an answer", &report.contact)
                 .on_input(|c| Message::Report(ReportMessage::Contact(c))).padding(8).size(15).style(yo3_skin::field),
-            text(if report.error.is_empty() { "It is saved on this PC as one file and sent to the YO3 Revival project, with your recent logs and this PC's details, personal details removed." }
-                else { "It is saved on this PC as one file and sent to the YO3 Revival project, with the error you saw, your recent logs and this PC's details, personal details removed." }).size(13).color(color::INK_SOFT),
+            text(if report.error.is_empty() { "It is saved on this PC as one file, with your recent logs and this PC's details, personal details removed, for you to send the developer." }
+                else { "It is saved on this PC as one file, with the error you saw, your recent logs and this PC's details, personal details removed, for you to send the developer." }).size(13).color(color::INK_SOFT),
         ].spacing(8);
         match &report.result {
             Some(Err(_)) => col = col.push(yo3_skin::rule(yo3_skin::Rule::Broken, "The report couldn't be saved. Settings, Advanced, Export logs saves the logs alone.")),
-            _ if report.busy => col = col.push(text("Sending…").size(14).color(color::INK_SOFT)),
+            _ if report.busy => col = col.push(text("Saving…").size(14).color(color::INK_SOFT)),
             _ => {}
         }
         let ready = !report.busy && !report.what.text().trim().is_empty();
-        let buttons = row![Space::new().width(Fill), pill("Send report", ready.then_some(Message::Report(ReportMessage::Send)), Kind::Primary, 200, 38)];
+        let buttons = row![Space::new().width(Fill), pill("Save report", ready.then_some(Message::Report(ReportMessage::Send)), Kind::Primary, 200, 38)];
         yo3_skin::dialog("Report a problem", help, Message::CloseDialog, 520.0, 400.0, column![col, Space::new().height(Fill), buttons])
     }
 }

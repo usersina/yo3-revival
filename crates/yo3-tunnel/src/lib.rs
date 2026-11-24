@@ -331,30 +331,6 @@ impl Endpoint {
         finish_response(id, &mut tls).await
     }
 
-    /// Report a problem without an account (operation 8), for the project's server: `report` as in
-    /// [`Endpoint::problem_report`], kept under no account when the host allows it; its report id.
-    pub async fn anonymous_report(&self, report: &serde_json::Value) -> anyhow::Result<String> {
-        use std::io::Write;
-        let mut packed = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
-        packed.write_all(&serde_json::to_vec(report)?)?;
-        let body = packed.finish()?;
-        if body.len() > MAX_PROBLEM_REPORT { bail!("problem report too large") }
-        let mut stage = "TCP connect";
-        let (id, mut tls) = tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
-            let mut tls = self.open(8, &mut stage).await?;
-            stage = "send problem report";
-            tls.write_u32(body.len() as u32).await?;
-            tls.write_all(&body).await?;
-            stage = "read problem report answer";
-            let status = tls.read_u8().await.context("read problem report answer")?;
-            if status != 0 { return Err(anyhow::Error::new(ReportRefused::from_code(status))) }
-            let length = tls.read_u8().await? as usize;
-            let mut id = vec![0; length]; tls.read_exact(&mut id).await?;
-            Ok::<_, anyhow::Error>((String::from_utf8(id).context("invalid report id")?, tls))
-        }).await.with_context(|| format!("problem report timed out during {stage}"))??;
-        finish_response(id, &mut tls).await
-    }
-
     pub async fn ticket(&self, session: &Token, role: Role) -> anyhow::Result<Token> {
         let mut stage = "TCP connect";
         let (token,mut tls)=tokio::time::timeout(HANDSHAKE_TIMEOUT, async {

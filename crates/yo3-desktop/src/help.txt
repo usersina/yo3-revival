@@ -100,7 +100,7 @@ If the game doesn't start, try Verify and repair, then Report a problem.
 - This server's identity changed: don't sign in. Ask the host whether they moved the server.
 
 # report | Reporting a problem
-Report a problem saves everything as one file in your Downloads folder, with what you write, your recent logs with personal details removed, this PC's details and, in Singleplayer, the duels you marked with the bug chat command. It also sends it to the YO3 Revival project (and to the server's host when you're signed in on Multiplayer) and shows a report ID. If it couldn't be sent, or if we ask, send that file to the developer on Discord, privately, or on a GitHub issue. Add how to reach you if you'd like an answer.
+Report a problem saves everything as one file in your Downloads folder, with what you write, your recent logs with personal details removed, this PC's details and, in Singleplayer, the duels you marked with the bug chat command. Nothing is sent anywhere by itself. Send that file to the developer on Discord, privately, or on a GitHub issue. Add how to reach you if you'd like an answer.
 Without a server to send to (Singleplayer, or with sending logs turned off), it saves the logs in a file instead: drag it into the form.
 When a game's connection breaks or it closes with an error, its logs go to the server you played on by themselves, so the host can see what went wrong. Passwords and keys are never in them. Settings, Advanced, Send logs when something breaks turns this off.
 

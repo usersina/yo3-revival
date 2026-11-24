@@ -69,27 +69,3 @@ async fn a_report_needs_a_live_session_and_the_hosts_setting() {
     assert_eq!(refusal(endpoint.problem_report(&session, &report).await.unwrap_err()), ReportRefused::Off);
     assert!(Problems::new(Some(&data)).list(None, 10).is_empty());
 }
-
-#[tokio::test]
-async fn the_projects_server_takes_reports_without_an_account_when_its_host_allows_it() {
-    // TLS operation 8: Report a problem from a launcher with no account here (Singleplayer, another server). Players
-    // missed attaching their logs to GitHub, so the launcher sends them to the project's server instead. Off unless the
-    // host turns on `anonymous-reports`; filed under no account (user 0, "anonymous"), without the server's lines, at
-    // most ANONYMOUS_PER_ADDRESS a day from one address.
-    let report = json!({ "kind": "report", "summary": "Black Brutdrago closed my game", "launcher": "0.1.22",
-        "logs": "== What the player wrote ==\nBlack Brutdrago closed my game\n\n== How to reach them ==\nDiscord: duelist#1\n" });
-    let (endpoint, _, _running) = server("anon-off", &[]).await;
-    assert_eq!(refusal(endpoint.anonymous_report(&report).await.unwrap_err()), ReportRefused::Off, "off by default");
-    let (endpoint, data, _running) = server("anon", &[("anonymous-reports", "on")]).await;
-    let id = endpoint.anonymous_report(&report).await.unwrap();
-    let kept = Problems::new(Some(&data)).get(&id).unwrap();
-    assert_eq!((kept.user_id, kept.account.as_str(), kept.kind.as_str()), (0, "anonymous", "report"));
-    assert!(kept.logs.contains("Discord: duelist#1") && kept.server_log.is_empty());
-    assert_eq!(refusal(endpoint.anonymous_report(&json!({ "kind": "network" })).await.unwrap_err()), ReportRefused::Invalid,
-        "only Report a problem comes without an account");
-    for _ in 1..yo3_server::problems::ANONYMOUS_PER_ADDRESS { endpoint.anonymous_report(&report).await.unwrap(); }
-    assert_eq!(refusal(endpoint.anonymous_report(&report).await.unwrap_err()), ReportRefused::Limit, "a day's reports from one address");
-    // The `problem-reports` switch still turns every report off.
-    let (endpoint, _, _running) = server("anon-all-off", &[("anonymous-reports", "on"), ("problem-reports", "off")]).await;
-    assert_eq!(refusal(endpoint.anonymous_report(&report).await.unwrap_err()), ReportRefused::Off);
-}
