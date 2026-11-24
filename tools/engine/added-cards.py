@@ -10,8 +10,8 @@
     tools/engine/added-cards.py --find-file FILE   the same for a file of cards, one per line (`#` comments)
 
 Input (committed): engine/added/cards.tsv, one line per added card: its permanent `row` (4834 on, after the game's last;
-never reused or reordered: decks and saves store rows), its Konami id, its `stand_in` id (below), its name (for reading
-the table) and a note.
+never reused or reordered: decks and saves store rows), its Konami id, its `stand_in` id (below), its `rarity` (below,
+empty for Common), its name (for reading the table) and a note.
 
 The client keeps a card's Konami id in 14 bits (16383 at most) and looks cards up from its lowest id (3900). A newer card
 whose Konami id is beyond that gets a permanent stand-in: the lowest id from 3900 that no card has (not the game's, no
@@ -24,8 +24,15 @@ level, race, artwork; docs/client-internals.md, Card data) is learned from the g
 database also has gives its type, attribute and race next to the client's kind, attribute and race (and, for a Spell or
 Trap, its subtype: Field, Equip, Quick-Play...), and an added card may only use values the game itself shows. So no Xyz,
 Link or Pendulum card can be added (the client has no such kind), a stat beyond the nine bits (5110) is refused, and so
-is a Konami id beyond the row's 14 bits (16383). `CARD_Genre` (Edit Deck's genre search) is 0 for now: its bits are
-the client's own categories, not EDOPro's.
+is a Konami id beyond the row's 14 bits (16383). `CARD_Genre` (Edit Deck's search by effect: Special Summon, Destroy monster, Pierce, Flip Effect...) is learned the
+same way: for each of its bits, the EDOPro categories (`datas.category`, the official database's effect categories) and
+type flags that mark it on the game's cards with at least 85% precision (`learn_genre`). Bits no such rule predicts
+(Recover cards from Graveyard, Hand destruction...) stay unset: an added card is not found under them.
+
+Rarity (word b bits 24-26: 0 Common, 4 Rare, 3 Super Rare, 2 Ultra Rare, as the game's pack files place the cards in
+their tiers; 1 and 5 its top tiers; the new-card reveal's and the pack opening's glow, `_root.rale_bg`) is the table's
+optional `rarity` column: `common` (empty), `rare`, `super` or `ultra`. Bits 0-2 have no reader in the client's card
+code and are 0 on the game's newest rows; added cards leave them 0.
 
 Needs the pinned data (engine/fetch.sh) and the game (YO3_GAME_DIR, else the default Wine path).
 """
@@ -125,6 +132,51 @@ def learn(rows, data, passcode):
     return learned
 
 
+GENRE_PRECISION = 0.85
+RARITY = {'': 0, 'common': 0, 'rare': 4, 'super': 3, 'ultra': 2}
+
+
+def learn_genre(rows, genres, data, passcode):
+    """{genre bit: [('category' | 'type', bit), ...]}: a card gets the genre bit when it has any of the listed bits.
+    Learned from the game's cards: features chosen greedily, each marking the genre bit with at least
+    GENRE_PRECISION on the cards it marks and adding at least 2% (and 3 cards) of the genre bit's cards."""
+    cards = []
+    for (a, _), genre in zip(rows, genres):
+        code = passcode.get(a & 0x3FFF)
+        if a & 0x3FFF and code in data:
+            cards.append((genre, data[code]['category'], data[code]['type']))
+    def mask(test):
+        return sum(1 << i for i, c in enumerate(cards) if test(c))
+    features = [('category', bit) for bit in range(64)] + [('type', bit) for bit in range(32)]
+    marks = {f: mask(lambda c, f=f: (c[1] if f[0] == 'category' else c[2]) >> f[1] & 1) for f in features}
+    rules = {}
+    for g in range(64):
+        has = mask(lambda c: c[0] >> g & 1)
+        if has.bit_count() < 5:
+            continue
+        chosen, covered = [], 0
+        while True:
+            best = None
+            for f, m in marks.items():
+                if f in chosen or m.bit_count() < 5 or (m & has).bit_count() < GENRE_PRECISION * m.bit_count():
+                    continue
+                gain = (m & has & ~covered).bit_count()
+                if gain >= max(3, 0.02 * has.bit_count()) and (best is None or gain > best[0]):
+                    best = (gain, f)
+            if best is None:
+                break
+            chosen.append(best[1])
+            covered |= marks[best[1]]
+        if chosen:
+            rules[g] = chosen
+    return rules
+
+
+def genre_of(d, rules):
+    """An added card's CARD_Genre word, by the learned rules."""
+    return sum(1 << g for g, fs in rules.items() if any((d['category'] if k == 'category' else d['type']) >> bit & 1 for k, bit in fs))
+
+
 def encode(d, cid, learned):
     """A database card as the client's row words, `cid` the id the client knows it by (its Konami id or stand-in): (a, b, the
     reasons it can't be one). A Spell or Trap has no level or
@@ -170,14 +222,18 @@ def load():
     """Everything a card is checked against: the database, the passcodes, the game's rows and what they teach."""
     db = sqlite3.connect(os.path.join(ENGINE, 'vendor', 'BabelCDB', 'cards.cdb'))
     alias = {r[0]: r[1] for r in db.execute('select id, alias from datas')}
-    data = {r[0]: {'type': r[1], 'atk': r[2], 'def': r[3], 'level': r[4] & 0xFF, 'race': r[5], 'attribute': r[6], 'name': r[7], 'desc': r[8]}
-            for r in db.execute('select d.id, d.type, d.atk, d.def, d.level, d.race, d.attribute, t.name, t.desc from datas d join texts t on t.id = d.id')}
+    data = {r[0]: {'type': r[1], 'atk': r[2], 'def': r[3], 'level': r[4] & 0xFF, 'race': r[5], 'attribute': r[6], 'name': r[7], 'desc': r[8],
+                   'category': r[9]}
+            for r in db.execute('select d.id, d.type, d.atk, d.def, d.level, d.race, d.attribute, t.name, t.desc, d.category from datas d join texts t on t.id = d.id')}
     passcode = passcodes(alias)
     rows = client_rows()
     with open(os.path.join(ENGINE, 'card-ids.json')) as f:
         konami = {m['konami_id'] for c in json.load(f)['data'] for m in c.get('misc_info', []) if m.get('konami_id', 0) > 0}
     in_game = {a & 0x3FFF for a, _ in rows} - {0}
+    genre = ypk_file('data/bin#/CARD_Genre.bin')
+    genres = [struct.unpack_from('<Q', genre, i * 8)[0] for i in range(len(genre) // 8)]
     return {'data': data, 'passcode': passcode, 'rows': rows, 'learned': learn(rows, data, passcode),
+            'genre': learn_genre(rows, genres, data, passcode), 'genres': genres,
             'in_game': in_game, 'konami': konami, 'base': min(in_game)}
 
 
@@ -226,13 +282,16 @@ def build():
             continue
         if d['name'] != line['name']:
             problems.append(f'{line["name"]}: the database calls {code} "{d["name"]}"')
+        rarity = (line.get('rarity') or '').strip().lower()
+        if rarity not in RARITY:
+            problems.append(f'{line["name"]}: rarity "{rarity}" (common, rare, super or ultra)')
         client = sid if sid is not None else cid
         a, b, why = encode(d, client, learned)
         problems += [f'{line["name"]}: {w}' for w in why if sid is not None or cid <= 0x3FFF or 'bits' not in w]
         if why:
             continue
         card = {'row': row, 'cid': client, 'passcode': code, 'name': d['name'], 'desc': d['desc'].replace('\r\n', '\r').replace('\n', '\r'),
-                'a': a, 'b': b, 'genre': 0, 'note': line['note']}
+                'a': a, 'b': b | RARITY.get(rarity, 0) << 24, 'genre': genre_of(d, ctx['genre']), 'note': line['note']}
         if sid is not None:
             card['konami_id'] = cid
         out.append(card)
@@ -286,7 +345,7 @@ def find(names, ctx=None):
         if why:
             out.append((d['name'], None, why))
         else:
-            out.append((d['name'], f'{row}\t{cid}\t{sid or ""}\t{d["name"]}\t', []))
+            out.append((d['name'], f'{row}\t{cid}\t{sid or ""}\t\t{d["name"]}\t', []))
             row += 1
             if sid:
                 taken.add(sid)

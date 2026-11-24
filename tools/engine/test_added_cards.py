@@ -42,7 +42,7 @@ class AddedCards(unittest.TestCase):
         found = {name: (line, why) for name, line, why in added.find(
             ['black rose moonlight dragon', 'Number 39: Utopia', 'Stardust Dragon', 'Shooting Quasar Dragon', 'Nope Nope'])}
         line, why = found['Black Rose Moonlight Dragon']
-        self.assertEqual((line.split('\t')[:4], why), (['4835', '11123', '', 'Black Rose Moonlight Dragon'], []), 'the next row, its Konami id')
+        self.assertEqual((line.split('\t')[:5], why), (['4835', '11123', '', '', 'Black Rose Moonlight Dragon'], []), 'the next row, its Konami id')
         self.assertIn("can't show it", found['Number 39: Utopia'][1][0])
         self.assertEqual(found['Stardust Dragon'][1], ['the game already has it'])
         self.assertEqual(found['Shooting Quasar Dragon'][1], ['engine/added/cards.tsv already has it'])
@@ -65,7 +65,7 @@ class AddedCards(unittest.TestCase):
         ctx = added.load()
         (name, line, why), = added.find(['18847598'], ctx)  # Advanced Crystal Beast Amber Mammoth, Konami id 17632
         self.assertEqual((name, why), ('Advanced Crystal Beast Amber Mammoth', []))
-        _, cid, sid, _, _ = line.split('\t')
+        _, cid, sid, _, _, _ = line.split('\t')
         sid = int(sid)
         self.assertEqual(cid, '17632')
         self.assertTrue(ctx['base'] <= sid <= 0x3FFF and sid not in ctx['in_game'] and sid not in ctx['konami'])
@@ -90,6 +90,39 @@ class AddedCards(unittest.TestCase):
                 with mock.patch.object(added, 'TABLE', table), self.assertRaises(SystemExit) as e:
                     added.build()
                 self.assertIn(says, str(e.exception))
+
+    def test_genre_bits_follow_the_games_own_cards(self):
+        # Edit Deck's search by effect: the learned rules mark the game's cards as the game does, nearly always.
+        ctx = added.load()
+        tp = fp = 0
+        for (a, _), genre in zip(ctx['rows'], ctx['genres']):
+            code = ctx['passcode'].get(a & 0x3FFF)
+            if a & 0x3FFF and code in ctx['data']:
+                guess = added.genre_of(ctx['data'][code], ctx['genre'])
+                tp += (guess & genre).bit_count()
+                fp += (guess & ~genre).bit_count()
+        self.assertGreater(tp / (tp + fp), 0.93, 'the bits an added card gets are the game\'s for such a card')
+        self.assertIn(22, ctx['genre'], 'Flip Effect (texts 1101 + bit)')
+        quasar = added.build()['cards'][0]['genre']
+        for bit, what in ((3, 'Special Summon'), (18, 'Multiple Attack'), (10, 'Destroy monster')):
+            self.assertTrue(quasar >> bit & 1, f'Shooting Quasar Dragon is found under {what}')
+
+    def test_a_rarity_sets_the_reveals_glow_bits(self):
+        ctx = added.load()
+        (_, line, _), = added.find(['Black Rose Moonlight Dragon'], ctx)
+        with tempfile.TemporaryDirectory() as tmp:
+            table = os.path.join(tmp, 'cards.tsv')
+            with open(added.TABLE) as f:
+                text = f.read()
+            for rarity, bits in (('', 0), ('ultra', 2), ('Rare', 4)):
+                with open(table, 'w') as f:
+                    f.write(text + line.replace('\t\tBlack', f'\t{rarity}\tBlack') + 'test\n')
+                with mock.patch.object(added, 'TABLE', table):
+                    self.assertEqual(added.build()['cards'][-1]['b'] >> 24 & 7, bits, rarity)
+            with open(table, 'w') as f:
+                f.write(text + line.replace('\t\tBlack', '\tshiny\tBlack') + 'test\n')
+            with mock.patch.object(added, 'TABLE', table), self.assertRaises(SystemExit):
+                added.build()
 
 
 class Pure(unittest.TestCase):
