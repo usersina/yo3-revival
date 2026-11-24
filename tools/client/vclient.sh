@@ -11,6 +11,7 @@
 #   tools/client/vclient.sh shot NAME       screenshot the game window -> logs/shots/NAME.png
 #   tools/client/vclient.sh click X Y       left click at game coordinates (1024x768, mapped into a larger window;
 #                                           a 1024x600 window takes its own frame's coordinates)
+#   tools/client/vclient.sh hover X Y       move the pointer there without clicking (a card's large picture, a tooltip)
 #   tools/client/vclient.sh key KEY...      xdotool key names, e.g. Return Escape
 #   tools/client/vclient.sh type TEXT       type text
 #   tools/client/vclient.sh pixel X Y       print the window's colour at X Y as "R G B"
@@ -163,6 +164,10 @@ case "${1:-}" in
     "$0" shot login ;;
   shot)
     W="$(need_win)"; import -window "$W" "$LOGS/shots/${2:-shot}.png" && echo "$LOGS/shots/${2:-shot}.png" ;;
+  hover)
+    W="$(need_win)"; xy="$(window_xy "$W" "$2" "$3")"
+    xdotool windowraise "$W" 2>/dev/null || true
+    xdotool mousemove --window "$W" "${xy% *}" "${xy#* }" ;;
   click)
     W="$(need_win)"; xy="$(window_xy "$W" "$2" "$3")"
     # Raised first: with several games on one display (no window manager) the pointer reaches the top one.

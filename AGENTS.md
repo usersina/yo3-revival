@@ -220,7 +220,7 @@ tools/client/vclient.sh npc [--second]             # from the map into a duel ag
 tools/client/vclient.sh duel                       # the duel by card name (hands, field, Graveyard) and the question asked now with each
                                                    # choice by name, from the scratch server's log (--duel-check)
 tools/client/vclient.sh shot NAME                  # logs/b/shots/NAME.png, then view it
-tools/client/vclient.sh click X Y                  # also: key KEY, type TEXT, pixel X Y
+tools/client/vclient.sh click X Y                  # also: hover X Y (a card's large picture), key KEY, type TEXT, pixel X Y
 tools/client/vclient.sh stop                       # only your own instance; also clears its crashed client
 
 # In a second terminal, use YO3_INSTANCE=c (:79), a separate prefix, and another account's profile.
