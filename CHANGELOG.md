@@ -26,6 +26,9 @@ Older entries describe their release at the time. For current setup, use the [RE
   conditions" ignore that too (Illusion Gate takes a Divine Serpent Geh that was only ever sent to the Graveyard), or
   every revival from the Graveyard does, as in the anime (Monster Reborn revives a discarded Ritual monster). Playing alone, pick it in
   Settings, Singleplayer, **Revival**.
+- Smaller downloads: each edition carries only the card scripts the game can use (about 5,700 files instead of
+  19,300), and the developer documents stay on GitHub. Desktop 0.0.9 or older can't update to this version by itself:
+  download it again.
 - New card pictures for the manga Gods (Obelisk, Slifer, Ra, Dreadroot, Avatar, Eraser) and the anime Divine Serpent
   Geh, drawn for YO3 Revival.
 - Your own card pictures, as in EDOPro: put `<passcode>.jpg` or `.png` in the `pics` folder beside `anime-art` and it

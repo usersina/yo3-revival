@@ -44,6 +44,8 @@ PY = [
     'tools/engine/test_anime_map.py',
     'tools/engine/test_anime_pictures.py',
     'tools/engine/test_shipped_pictures.py',
+    'tools/release/test_bundle_docs.py',
+    'tools/engine/test_engine_scripts.py',
     'tools/engine/test_added_cards.py',
     'tools/vm/test_vm.py',
     'tools/vm/test_smoke.py',

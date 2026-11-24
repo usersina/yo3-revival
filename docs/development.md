@@ -649,10 +649,16 @@ tools/release/release.sh
 ```
 
 Set `YO3_VERSION` when building a specific unreleased version; otherwise the script uses Git's description.
-The rules engine (`yo3-engine`, built for each platform), its card scripts, card database and third-party notices are
-included. Game files, account profiles and server keys are not. Desktop 0.0.9 and older look for the old Node
-sidecar's files before installing an update, so each bundle keeps a short note at those paths (`engine/duelcore.ts`,
-`engine/package.json`, `engine/node_modules/ocgcore-wasm/package.json`, `engine/node/node[.exe]`); nothing reads them.
+The rules engine (`yo3-engine`, built for each platform), its card database, third-party notices and the card scripts
+it can load are included: `tools/engine/engine-scripts.py` keeps the game's cards, the cards of its era, the added cards,
+their anime versions and every script those reference (about 5,700 of ProjectIgnis' 19,300; `--stats`). To check a
+change to that list, build the engine folder (`tools/engine/engine-files.sh DIR`) and run the server's tests on it with
+`YO3_ENGINE_DIR=DIR/engine` (with the repository's own `engine/` files beside its `vendor/`): only the tests whose fixtures
+are cards after the game's era may fail. Game files, account profiles and server keys are not included. From the release after v0.1.22
+the bundles no longer carry the old Node sidecar's placeholder files, so Desktop 0.0.9 and older can't update to it by
+themselves (download it again). The developer documents (`tools/release/bundle-docs.py`: protocol, client internals,
+history, research, roadmap, development, dashboard and deployment) stay on GitHub: the bundles' links to them point to the
+release's tag there.
 
 Five archives are produced under `dist/`:
 
@@ -662,7 +668,7 @@ Five archives are produced under `dist/`:
 | Scripts | `yo3-revival-scripts-VERSION-linux-x86_64.tar.gz` | `yo3-revival-scripts-VERSION-windows-x86_64.zip` | `yo3-revival-scripts/` |
 | Server  | `yo3-revival-server-VERSION-linux-x86_64.tar.gz`  | (none)                                           | `yo3-revival-server/`  |
 
-All contain the shared `docs/` and root `screenshots/` tree. Desktop opens with the short project README; Scripts
+All contain the shared `docs/` (without the developer documents) and root `screenshots/` tree. Desktop opens with the short project README; Scripts
 opens with its terminal guide; Server, for a Linux server or VPS (#37), opens with the [hosting guide](hosting.md) and
 has only the server and the rules engine, plus `server.toml.example` and `systemd/` (the unit, the monitor and the
 off-machine backup, from `tools/host/`; `tools/host/test_host_scripts.py` fires each alert against a fake webhook).

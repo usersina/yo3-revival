@@ -22,17 +22,23 @@ def editions(platform):
     return ("desktop", "scripts", "server") if platform.startswith("linux") else ("desktop", "scripts")
 
 
-def relocated(guide):
-    """A guide from docs/ as an edition's entry README: sibling-document links point into docs/, anchors and URLs stay."""
-    return re.sub(r"\]\((?![a-z]+:|#)([^)]+)\)", r"](docs/\1)", (REPO / "docs" / guide).read_text())
+def relocated(guide, version="main"):
+    """A guide from docs/ as an edition's entry README: links to developer documents go to GitHub (bundle-docs.py), other
+    sibling-document links point into docs/, anchors and URLs stay."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("bundle_docs", Path(__file__).with_name("bundle-docs.py"))
+    bundle_docs = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bundle_docs)
+    text = bundle_docs.rewrite((REPO / "docs" / guide).read_text(), True, version)
+    return re.sub(r"\]\((?![a-z]+:|#)([^)]+)\)", r"](docs/\1)", text)
 
 
-def prepare_server(destination):
+def prepare_server(destination, version="main"):
     """The server bundle: the server, the rules engine, the systemd units, the monitor and off-machine backup scripts,
     an example server file and the hosting guide as its README. Nothing a player runs."""
     for name in PLAYER_FILES:
         (destination / name).unlink(missing_ok=True)
-    (destination / "README.md").write_text(relocated("hosting.md"))
+    (destination / "README.md").write_text(relocated("hosting.md", version))
     host = REPO / "tools/host"
     shutil.copyfile(host / "server.toml.example", destination / "server.toml.example")
     units = destination / "systemd"
@@ -44,12 +50,12 @@ def prepare_server(destination):
         (units / source.name).chmod(0o755 if source.suffix == ".sh" else 0o644)
 
 
-def prepare(source, destination, edition, windows):
+def prepare(source, destination, edition, windows, version="main"):
     shutil.copytree(source, destination)
     for name in ("run.sh", "run.cmd"):
         (destination / name).unlink(missing_ok=True)
     if edition == "server":
-        return prepare_server(destination)
+        return prepare_server(destination, version)
     if edition == "desktop":
         branding = REPO / "crates/yo3-desktop/assets/branding"
         for source_name, bundle_name in (("launcher.ico", "yo3-revival.ico"), ("launcher-window.png", "yo3-revival.png")):
@@ -59,7 +65,7 @@ def prepare(source, destination, edition, windows):
         (destination / name).unlink(missing_ok=True)
     # The Scripts guide lives in docs/ in source, but is also this edition's entry README.
     # Preserve its local anchors and URLs while relocating sibling-document links.
-    (destination / "README.md").write_text(relocated("scripts.md"))
+    (destination / "README.md").write_text(relocated("scripts.md", version))
     if windows:
         scripts = {
             "start-server.cmd": '@echo off\ncd /d "%~dp0"\n"%~dp0yo3-server.exe" --bind 0.0.0.0 --data-dir data --log-dir logs %*\n',
@@ -100,7 +106,7 @@ def main():
         directory = dist / ".editions" / platform / edition / f"yo3-revival-{edition}"
         if directory.exists():
             shutil.rmtree(directory)
-        prepare(Path(source), directory, edition, windows)
+        prepare(Path(source), directory, edition, windows, version)
         subprocess.run([sys.executable, str(REPO / "tools/release/bundle-licenses.py"), str(directory), target, edition], cwd=REPO, check=True)
         subprocess.run([sys.executable, str(REPO / "tools/release/bundle-manifest.py"), str(directory), edition], cwd=REPO,
                        env={**os.environ, "YO3_BUILD_VERSION": version}, check=True)

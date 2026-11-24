@@ -1,21 +1,16 @@
 #!/bin/sh
 # tools/engine/engine-files.sh DEST: what the engine program reads, into DEST/engine (tools/release/release.sh, for each platform; run
-# from the repository root). Only the scripts it loads (the root utilities, official/, and pre-errata/ and
-# pre-release/, where a few current scripts live), our own scripts that take the place of some (engine/overrides/),
-# only cards.cdb, and the pinned Konami card ids (each card's passcode, artworks and Konami ids). For the anime card
-# versions (the `anime-cards` setting, issue #60) also the unofficial scripts, cards-unofficial.cdb and the reviewed map
-# anime-cards.json. The program itself
-# goes beside yo3-server. Desktop 0.0.9 and older check an update for the old Node sidecar's files before installing
-# it; small notes stand at those paths so that they still update to this version (nothing reads them).
+# from the repository root). The root utility scripts and, of the card scripts (official/, pre-errata/ and pre-release/,
+# and unofficial/ for the anime versions), only those the engine can ever load (tools/engine/engine-scripts.py: the
+# game's cards, the added cards, their anime versions and every script those reference); our own scripts that take the
+# place of some (engine/overrides/); cards.cdb and cards-unofficial.cdb; the pinned Konami card ids; the reviewed map
+# anime-cards.json and the added cards. The program itself goes beside yo3-server.
 set -e
 e="$1/engine"
-mkdir -p "$e/vendor/CardScripts" "$e/vendor/BabelCDB" "$e/node" "$e/node_modules/ocgcore-wasm"
-note="Kept so that yo3-revival Desktop 0.0.9 and older can install this update. Nothing reads it: the rules engine is yo3-engine, beside yo3-server."
-for f in duelcore.ts package.json node_modules/ocgcore-wasm/package.json node/node node/node.exe; do
-  case "$f" in *.json) printf '{"description": "%s"}\n' "$note" ;; *) printf '%s\n' "$note" ;; esac > "$e/$f"
-done
+mkdir -p "$e/vendor/CardScripts" "$e/vendor/BabelCDB"
 cp engine/vendor/CardScripts/*.lua engine/vendor/CardScripts/COPYING engine/vendor/CardScripts/README.md "$e/vendor/CardScripts/"
-cp -r engine/vendor/CardScripts/official engine/vendor/CardScripts/pre-errata engine/vendor/CardScripts/pre-release engine/vendor/CardScripts/unofficial "$e/vendor/CardScripts/"
+scripts=$(python3 "$(dirname "$0")/engine-scripts.py" --root .)
+printf '%s\n' "$scripts" | (cd engine/vendor/CardScripts && tar cf - -T -) | (cd "$e/vendor/CardScripts" && tar xf -)
 cp engine/vendor/BabelCDB/cards.cdb engine/vendor/BabelCDB/cards-unofficial.cdb engine/vendor/BabelCDB/README.md "$e/vendor/BabelCDB/"
 cp engine/anime-cards.json "$e/anime-cards.json"
 # The cards the game never had (#75): the server adds them after the game's rows and serves them to the launcher.
@@ -41,6 +36,7 @@ except for the few card scripts in \`overrides/\` and the map \`anime-cards.json
 | ProjectIgnis card database (\`cards.cdb\`, and \`cards-unofficial.cdb\` for the anime cards) | \`vendor/BabelCDB/\` | see its README | https://github.com/ProjectIgnis/BabelCDB |
 | Konami card ids (each card's ids and artworks only, from YGOPRODeck's card info) | \`vendor/cardinfo.json\` | | https://ygoprodeck.com/api-guide/ |
 
-To get newer card scripts before the next release, replace \`vendor/CardScripts/\` and \`vendor/BabelCDB/cards.cdb\` with
-fresh copies from the sources above. A script in \`overrides/\` still takes the place of the one of the same name.
+Only the card scripts the engine can load ship (the game's cards, the added cards, their anime versions and what
+those reference). To get newer card scripts before the next release, replace \`vendor/CardScripts/\` and
+\`vendor/BabelCDB/cards.cdb\` with fresh copies from the sources above. A script in \`overrides/\` still takes the place of the one of the same name.
 EOF

@@ -142,7 +142,7 @@ tools/release/test-packaged-update.sh v0.0.5 dist/yo3-revival-desktop-v0.0.5-lin
 Releasing (`task release` builds the bundles into `dist/`): add a section at the top of CHANGELOG.md (`## vX.Y.Z (date)`,
 players' words, what changed for them), set the same workspace Cargo.toml version, then push to main (ask first, rule
 5). Release CI runs `tools/check.py`'s groups, builds and checks the Desktop, Scripts and Server bundles (every edition
-carries the docs, screenshots and the whole rules engine), publishes the release (title "vX.Y.Z (beta)", not a
+carries the player docs, screenshots and the rules engine with the card scripts it can load), publishes the release (title "vX.Y.Z (beta)", not a
 pre-release) and both GHCR images, then deploys their digests to the VPS. Never move or reuse a released tag: fix
 forward with the next version. Details: [development](docs/development.md#build-release-bundles).
 

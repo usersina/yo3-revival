@@ -19,14 +19,9 @@ cargo build --release -p yo3-server -p yo3-launcher -p yo3-desktop -p yo3-engine
 cargo build --release -p yo3-server -p yo3-launcher -p yo3-desktop -p yo3-engine --target x86_64-pc-windows-gnu
 tools/mod/build.sh
 
-# Keep repository and offline documentation links identical: README, docs/, screenshots/.
+# README, docs/ and screenshots/ as in the repository, without the developer documents (their links go to GitHub).
 docs_files() {
-  cp README.md "$1/README.md"
-  mkdir -p "$1/docs"
-  cp docs/*.md "$1/docs/"
-  cp -r screenshots "$1/"
-  cp LICENSE "$1/LICENSE"
-
+  python3 tools/release/bundle-docs.py "$1" "$version"
 }
 
 out="dist/.staging/linux-x86_64"

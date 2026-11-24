@@ -127,10 +127,10 @@ class Editions(unittest.TestCase):
                 "engine/fetch.sh": "CORE_COMMIT=core\nLUA_COMMIT=lua\n",
                 "engine/vendor/CardScripts/utility.lua": "", "engine/vendor/CardScripts/COPYING": "",
                 "engine/vendor/CardScripts/README.md": "", "engine/vendor/CardScripts/official/c1.lua": "upstream",
-                "engine/vendor/CardScripts/pre-errata/c2.lua": "", "engine/vendor/CardScripts/pre-release/c3.lua": "",
+                "engine/vendor/CardScripts/pre-errata/c22222222.lua": "", "engine/vendor/CardScripts/pre-release/c3.lua": "",
                 "engine/vendor/CardScripts/unofficial/c511009416.lua": "anime", "engine/vendor/CardScripts/unofficial/proc_unofficial.lua": "procs",
                 "engine/vendor/BabelCDB/cards.cdb": "", "engine/vendor/BabelCDB/cards-unofficial.cdb": "anime db", "engine/vendor/BabelCDB/README.md": "",
-                "engine/anime-cards.json": "{\"cards\":[]}",
+                "engine/anime-cards.json": "{\"cards\":[{\"anime\":511009416}]}",
                 "engine/added-cards.json": "{\"format\":\"yo3-added-cards\"}",
                 "engine/vendor/cardinfo.json": "{}", "engine/vendor/ygopro-core/LICENSE": "",
             }
@@ -147,12 +147,14 @@ class Editions(unittest.TestCase):
             self.assertEqual(sorted(p.name for p in (engine / "overrides").iterdir()), overrides,
                              "the engine reads engine/overrides/ beside vendor/: every override ships")
             self.assertIn("overrides/", (engine / "THIRD-PARTY.md").read_text())
-            # The anime card versions (#60): the unofficial scripts and database, and the reviewed map beside vendor/.
+            # The anime card versions (#60): the mapped unofficial scripts and database, and the reviewed map beside vendor/.
             self.assertEqual((engine / "vendor/CardScripts/unofficial/c511009416.lua").read_text(), "anime")
             self.assertEqual((engine / "vendor/CardScripts/unofficial/proc_unofficial.lua").read_text(), "procs",
                              "utility.lua loads it: the anime cards' shared procedures")
             self.assertEqual((engine / "vendor/BabelCDB/cards-unofficial.cdb").read_text(), "anime db")
-            self.assertEqual((engine / "anime-cards.json").read_text(), '{"cards":[]}')
+            self.assertEqual((engine / "anime-cards.json").read_text(), '{"cards":[{"anime":511009416}]}')
+            # Only the scripts the engine can load (engine-scripts.py): no card of the game, the map or the added cards is 22222222.
+            self.assertFalse((engine / "vendor/CardScripts/pre-errata/c22222222.lua").exists())
             # The cards the game never had (#75): the server adds them after the game's rows.
             self.assertEqual((engine / "added-cards.json").read_text(), '{"format":"yo3-added-cards"}')
             notes = (engine / "THIRD-PARTY.md").read_text()

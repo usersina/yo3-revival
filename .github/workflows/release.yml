@@ -127,13 +127,12 @@ jobs:
       - name: Bundles
         if: needs.prepare.outputs.release == 'true'
         run: YO3_VERSION="$VERSION" tools/release/release.sh
-      - name: The bundled rules engine plays every card of the client's era
+      - name: The bundled rules engine passes every server and engine test (only the card scripts it can load ship)
         if: needs.prepare.outputs.release == 'true'
         run: |
           rm -rf dist/engine-check && mkdir -p dist/engine-check
           tar -xzf "dist/yo3-revival-desktop-$VERSION-linux-x86_64.tar.gz" -C dist/engine-check
-          YO3_ENGINE_DIR="$PWD/dist/engine-check/yo3-revival-desktop/engine" \
-            YO3_ENGINE="$PWD/dist/engine-check/yo3-revival-desktop/yo3-engine" cargo nextest run -p yo3-server --test engine_cards
+          tools/engine/test-shipped.sh dist/engine-check/yo3-revival-desktop
       - name: Packaged Desktop updater opens before activation
         if: needs.prepare.outputs.release == 'true'
         timeout-minutes: 8
