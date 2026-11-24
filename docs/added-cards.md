@@ -25,8 +25,10 @@ script (all fetched by `engine/fetch.sh`). The client's own way of writing a car
 So a card can be added when:
 
 - **The client can show it.** Some game card already has its type, attribute and race. Fusion, Synchro, Ritual,
-  Effect, Tuner, Normal, Spells and Traps all work; **Xyz, Link and Pendulum cards can't be added** (the client has no
-  such kind and no place on the field for them). ATK and DEF go up to 5100 (or `?`), in tens; Levels 1 to 12.
+  Effect, Tuner and Normal monsters work, and every kind of Spell and Trap the game has (Normal, Quick-Play, Continuous,
+  Equip, Field and Ritual Spells; Normal, Continuous and Counter Traps); **Xyz, Link and Pendulum cards can't be added**
+  (the client has no such kind and no place on the field for them). ATK and DEF go up to 5100 (or `?`), in tens;
+  Levels 1 to 12.
 - **The game doesn't have it already** (a card the game has keeps its row and is only changed through the
   [anime versions](anime-cards.md)).
 - **Its script works under the rules the duels use.** Duels run EDOPro's core in Master Rule 2 mode (no Extra Monster
@@ -38,20 +40,29 @@ So a card can be added when:
 
 `tools/engine/added-cards.py --find` checks the first two and the stats for you.
 
+**A newer card's id.** The client keeps a card's Konami id in 14 bits (16383 at most) and finds a card through a table
+that starts at its lowest id (3900). Cards printed from about 2017 on have Konami ids beyond that, so such a card gets a
+**stand-in id**: the lowest id from 3900 that no card has (not the game's, no Konami card's in the pinned data, no other
+added card's). `--find` picks it and writes it in the line's `stand_in` column; the client, the server and the rules
+engine (`engine/added-cards.json`'s `cid`) all know the card by it, and `konami_id` keeps the real one. Everything that
+takes a card's id (a scenario test, `--duel-field`, `tools/engine/cardtext.py`, the picture's file name) takes the
+stand-in. About 1,200 ids are free that way.
+
 ## Add one card
 
-1. **Check it fits** and get its line, by its English name (any case):
+1. **Check it fits** and get its line, by its English name (any case), its passcode, or `cid:N` (its Konami id):
 
    ```bash
    tools/engine/added-cards.py --find "Black Rose Moonlight Dragon"
+   tools/engine/added-cards.py --find 18847598           # a passcode: names that differ between sources, homonyms
    ```
 
-   It says `ok` with the line for `engine/added/cards.tsv` (the next row, the Konami id, the name), or why the card
-   can't be added.
+   It says `ok` with the line for `engine/added/cards.tsv` (the next row, the Konami id, the stand-in id when it needs
+   one, the name), or why the card can't be added.
 2. **Add the line** to `engine/added/cards.tsv` with a short note after the last tab (who asked, the issue number).
 3. **Build the list:** `tools/engine/added-cards.py`. It writes `engine/added-cards.json`, the file the server and the
    launcher read, and refuses anything wrong with the table: a row out of order, a card the game has, a kind the client
-   can't show. `--check` compares the committed file with a fresh build (the tests run it).
+   can't show, a Konami id beyond 16383 without a stand-in, a stand-in some card already has. `--check` compares the committed file with a fresh build (the tests run it).
 4. **Add it to the picture list:** `tools/engine/anime-pictures.py` ([its picture](#its-picture)).
 5. **Write its scenario test** and check it live ([test it](#test-it)).
 6. **Record it:** the card in `docs/features.md`'s row for added cards, and a line in `CHANGELOG.md` in players' words.
@@ -110,13 +121,14 @@ Until its picture arrives, a card shows the stand-in that does ship, the "Artwor
 (`crates/yo3-launcher/assets/no-picture.png`, the project's own picture). To replace it:
 `tools/engine/no-picture.py IMAGE` crops any image to a card's shape and writes it at 200x290.
 
-To see a card's picture on the headless client, point `YO3_ANIME_ART` at a folder with `card/<Konami id>.png`
-(200x290) and `mini/<Konami id>.png` (50x72); an empty folder shows the stand-in.
+To see a card's picture on the headless client, point `YO3_ANIME_ART` at a folder with `card/<id>.png` (200x290) and
+`mini/<id>.png` (50x72), the id the client knows (the Konami id or the stand-in id); an empty folder shows the
+"Artwork not found" card.
 
 ## Its anime version
 
 With the `anime-cards` setting on, an added card can play as its anime version like any card of the game: add its row
-to `engine/anime/cards.tsv` (Konami id, name, passcode, anime passcode, `Anime`, a note), run
+to `engine/anime/cards.tsv` (Konami id or stand-in id, name, passcode, anime passcode, `Anime`, a note), run
 `tools/engine/anime-map.py` and then `tools/engine/anime-pictures.py` (the picture list then asks for the anime picture,
 its official one standing in). Test it with `Scenario::start_anime` or `start_anime_field`, and live with
 `yo3-server set anime-cards on`. The [anime cards page](anime-cards.md) has the rules for anime versions.
@@ -130,8 +142,9 @@ panel's Accounts page); the player sees it at their next map visit.
 
 The data side doesn't grow with the batch: one table, one command.
 
-1. `tools/engine/added-cards.py --find` with every candidate's name. It prints each verdict and the lines for the
-   ones that fit, in order. Choose the order before adding: rows are permanent ([below](#rules-that-never-bend)).
+1. `tools/engine/added-cards.py --find-file FILE`, FILE listing every candidate (a name, passcode or `cid:N` per line,
+   `#` comments). It prints each verdict and the lines for the ones that fit, in order, each newer card with its own
+   stand-in. Choose the order before adding: rows and stand-ins are permanent ([below](#rules-that-never-bend)).
 2. Read each script for mechanics the game never had (Xyz Materials, Link, Pendulum, the Extra Monster Zone) and drop
    those cards.
 3. Paste the lines, build, update the picture list (`added-cards.py`, `anime-pictures.py`), and run the tests.
@@ -163,6 +176,9 @@ comes with the next Desktop release; until then it shows the stand-in.
 
 - **Rows are permanent.** Decks, trunks and saves store a card's row. A row is never reused, reordered or removed: a
   card added by mistake stays (it can be left out of every pack and never given).
+- **Stand-in ids are permanent** too: the game's pictures, regulations and logs name a card by its id. If a later
+  update of the pinned data gives a real card a stand-in's id, `added-cards.py` refuses to build until that is sorted
+  out; the added card keeps its id.
 - **No hand-typed card data.** Everything comes from the pinned data and the player's game. `engine/added-cards.json`
   is generated: edit `engine/added/cards.tsv` and rebuild.
 - **No Konami files or artwork in the repository.** The pictures come from ProjectIgnis on each player's PC; the
@@ -174,7 +190,10 @@ comes with the next Desktop release; until then it shows the stand-in.
 | Message or symptom | Cause and fix |
 | --- | --- |
 | `no game card has its type (0x…)` | An Xyz, Link or Pendulum card, or a kind the client never showed: it can't be added |
-| `no card of that name with a Konami id in the pinned data` | The spelling differs from the database's (`--find` ignores case only), or the card is newer than the pins: `engine/fetch.sh --update` |
+| `no card of that name, passcode or Konami id in the pinned data` | The spelling differs from the database's (`--find` ignores case only: try the passcode), or the card is newer than the pins: `engine/fetch.sh --update` |
+| `Konami id N is beyond the client's 14 bits` | A newer card's line without its stand-in: take the line `--find` prints |
+| `stand-in N is a card of the game` / `already a card's Konami id` | A stand-in must be an id no card has: take the one `--find` prints |
+| The card is missing from Edit Deck's genre search | Added cards have no genre bits yet (`CARD_Genre` 0): name, type, attribute, Level and ATK/DEF searches find them |
 | `row N, the next is M` | Rows must follow the game's last row without a gap: use the row `--find` prints |
 | `ATK … is beyond what the client can show` | Above 5100 or not in tens: it can't be added |
 | The card is missing from Edit Deck | The launcher that started the game predates the server's list, or the game was opened without the launcher before its first PLAY: close it and PLAY from the launcher |
