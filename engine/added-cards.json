@@ -13,6 +13,18 @@
    "b": 134791568,
    "genre": 137441315864,
    "note": "first added card (#75): standard version"
+  },
+  {
+   "row": 4835,
+   "cid": 3968,
+   "passcode": 170000171,
+   "name": "Orichalcos Gigas",
+   "desc": "[Anime]\rWhile this card is face-up on the field, you cannot draw a card(s). When this card is destroyed, you can Special Summon it, but it cannot attack this turn. This card gains 500 ATK x the number of times it was Special Summoned by its own effect during this Duel.",
+   "a": 1258950528,
+   "b": 137380360,
+   "genre": 136,
+   "note": "first anime-only card: played with anime cards on",
+   "anime_only": true
   }
  ]
 }
