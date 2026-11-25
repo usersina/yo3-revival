@@ -13,16 +13,16 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.1.24 (2026-11-25)
 
 - **∞ LP.** Mystik Wok on an infinite ATK gives **∞ LP**, shown as ∞ in the LP disc. Damage, costs and gains leave it
   as it is and show nothing, no number and no reaction, as a hit by a monster with 0 ATK.
-- **∞ damage shows as ∞.** The damage pop-up shows **-∞** (red) for infinite damage and **∞** (cyan) for an infinite
-  gain, instead of 99999.
 - **∞ is one value**, for LP and ATK alike. Half or double of ∞ is ∞ (Solemn Judgment, Riryoku, Megamorph), +1000 or
   -700 leave an ∞ ATK as it is, and ∞ against ∞ is a tie. A card that takes all your LP takes ∞: Ra's "pay all but 1"
   leaves you 1 and gives Ra ∞, De-Fusion gives it back; Yu-Jo Friendship gives both players ∞; "your LP become X" makes
   it X (Life Equalizer, Wiraqocha Rasca). An infinite ATK still takes all LP, ∞ too.
+- **∞ damage shows as ∞.** The damage pop-up shows **-∞** (red) for infinite damage and **∞** (cyan) for an infinite
+  gain, instead of 99999.
 - **Comeback wins count right.** A win after your LP fell to 1000 or less counts as a comeback even when an effect set
   your LP that low (Wiraqocha Rasca, Life Equalizer) or after ∞ (Ra's "pay all but 1").
 - **Long number choices work.** A card that asks for an amount from a long list (Wall of Revealing Light, Bark of Dark
