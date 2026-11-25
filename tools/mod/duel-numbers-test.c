@@ -82,8 +82,23 @@ int main(void) {
     /* A picture with room around the sign (160x64) is shown at a quarter too, its middle on the digits' middle. */
     pic = yo3_lp_infinity_place("center", 32, 27, 13, 14, 4, 160, 64, 1);
     assert(pic.scale == 25 && pic.x == 12 && pic.y == 26);
+    /* The damage pop-up's calls, and its ∞ from a showDamage of ±100,000 or more to the next showDamage or hideDamage. */
+    double change = 0;
+    Yo3Gfx show_loss[] = {text("showDamage"), num(1), num(-100000), num(300), num(200)};
+    assert(yo3_damage_call("call", show_loss, 5, &player, &change) == 1 && player == 1 && change == -100000);
+    Yo3Gfx set_left[] = {text("setDamage"), num(0), num(38682)};
+    assert(yo3_damage_call("call", set_left, 3, &player, &change) == 2 && player == 0 && change == 38682);
+    Yo3Gfx hide[] = {text("hideDamage"), num(1)};
+    assert(yo3_damage_call("call", hide, 2, &player, &change) == 3 && player == 1 && change == 0);
+    assert(!yo3_damage_call("call", set_lp, 4, &player, &change) && !yo3_damage_call("respond", show_loss, 5, &player, &change));
+    Yo3Gfx show_bad[] = {text("showDamage"), num(2), num(-100000)};
+    assert(!yo3_damage_call("call", show_bad, 3, &player, &change) && !yo3_damage_call("call", show_loss, 2, &player, &change));
+    assert(yo3_damage_infinity(0, 1, -100000) == -1 && yo3_damage_infinity(0, 1, 100000) == 1);
+    assert(yo3_damage_infinity(0, 1, -99999) == 0 && yo3_damage_infinity(1, 1, 500) == 0);
+    assert(yo3_damage_infinity(-1, 2, 38682) == -1 && yo3_damage_infinity(0, 2, 38682) == 0);
+    assert(yo3_damage_infinity(-1, 3, 0) == 0 && yo3_damage_infinity(1, 3, 0) == 0);
     /* 16 bytes each, as the game's values. */
     assert(sizeof(Yo3Gfx) == 16);
-    puts("PASS: an infinite field ATK or DEF reaches the movie as \xe2\x88\x9e, its originals as text; setLp is recognised");
+    puts("PASS: an infinite field ATK or DEF reaches the movie as \xe2\x88\x9e, its originals as text; setLp and the damage pop-up are recognised");
     return 0;
 }

@@ -103,4 +103,28 @@ static Yo3PicPlace yo3_lp_infinity_place(const char *anchor, double x, double to
     Yo3PicPlace p = { centre - pic_w * scale / 2, top + digit_h / 2 - pic_h * scale / 2, scale * 100 };
     return p;
 }
+/* The damage pop-up (DuelCockpit 0x503AD0, the cockpit's `damage<player>`, a NumberAnimation of the animated fonts
+ * duel_font_e_anim_00 for a gain and _01 for a loss, with a minus but no ∞): FxDelegate's `call` ("showDamage", player,
+ * change, x, y) shows a change, ("setDamage", player, left) counts it down while the LP counter moves, and ("hideDamage",
+ * player) ends it. The server sends an ∞ amount's change as ±100,000, more than any finite one it shows (wire.rs
+ * LP_BEYOND); the DLL shows its own "-∞" or "∞" in place of the digits from such a showDamage to the next showDamage or
+ * hideDamage. 1 show, 2 set, 3 hide, with the player and the change (0 for hide); 0 for any other call. */
+#define YO3_DAMAGE_INFINITE 100000.0
+static int yo3_damage_call(const char *name, const Yo3Gfx *args, unsigned count, unsigned *player, double *change) {
+    if (!name || strcmp(name, "call") || count < 2) return 0;
+    const char *method = yo3_gfx_string(&args[0]);
+    if (!method || (args[1].type & 0x8f) != 3 || (args[1].v.number != 0 && args[1].v.number != 1)) return 0;
+    int kind = !strcmp(method, "showDamage") ? 1 : !strcmp(method, "setDamage") ? 2 : !strcmp(method, "hideDamage") ? 3 : 0;
+    if (!kind || (kind < 3 && (count < 3 || (args[2].type & 0x8f) != 3))) return 0;
+    *player = (unsigned)args[1].v.number;
+    *change = kind < 3 ? args[2].v.number : 0;
+    return kind;
+}
+
+/* The pop-up's ∞ after a damage call of `kind` with `change`, from `now` (-1 a loss shown as ∞, 1 a gain, 0 none). */
+static int yo3_damage_infinity(int now, int kind, double change) {
+    if (kind == 1) return change <= -YO3_DAMAGE_INFINITE ? -1 : change >= YO3_DAMAGE_INFINITE ? 1 : 0;
+    if (kind == 3) return 0;
+    return now;
+}
 #endif
