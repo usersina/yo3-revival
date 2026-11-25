@@ -157,8 +157,9 @@ Pitfalls the 2026-11-25 batch's scenarios met (`tests/anime_printed_*.rs`):
   write an override with a check (`engine/overrides/proc_equip.lua`, `c511004015.lua`).
 - **An effect that widens a summon's materials** (Synchro Materials from the hand, Ritual Materials from the Graveyard):
   each time the engine lists the summons it searches more combinations, and the anime T.G. Cyber Magician (any monster
-  in the hand) froze it past the live server's 30 s. `tests/material_search.rs` puts every such card on a crowded board
-  and wants the summons listed within 5 s; `task check:added` runs it. The self-play fails any answer slower than 5 s too
+  in the hand) froze it past the live server's 30 s, until `engine/overrides/proc_synchro.lua` remembered the Synchro
+  procedure's checks (`tests/synchro_memo.rs` holds its answers equal to ProjectIgnis'). `tests/material_search.rs` puts
+  every such card on a crowded board and wants the summons listed within 5 s; `task check:added` runs it. The self-play fails any answer slower than 5 s too
   (`task check:selfplay` for 300 duels).
 
 **Live**, on the headless client ([which tool sees what](development.md#which-tool-sees-what)), never the player's own

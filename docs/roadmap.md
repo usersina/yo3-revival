@@ -41,7 +41,7 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
       deal ∞ damage to ∞ LP (half of ∞, and ∞ minus a number, are ∞): confirm that reading.
 - [ ] Complete menu/effect coverage and automatic native UI replay/minimization. Known reveal/reversal/disabled-zone
       gaps remain visible; neither the random corpus nor matching state hashes proves all card interactions.
-- [ ] Anime card versions (#60, off by default): 658 of 661 reviewed cards play as ProjectIgnis' anime versions with the
+- [ ] Anime card versions (#60, off by default): 659 of 662 reviewed cards play as ProjectIgnis' anime versions with the
       `anime-cards` setting on ([list](anime-cards.md)), and the game shows them through the card profile; every category of
       difference is released (`PROFILE_COVERS` in `tools/engine/anime-map.py`). Time Wizard, Thousand Dragon and Temple of the Kings
       keep the game's version on purpose. Windows 11 checks passed on 2026-11-20 (stats, types, text, sorting and ranges, art
