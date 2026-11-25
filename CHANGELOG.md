@@ -13,49 +13,44 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.1.23 (2026-11-25)
 
-- New cards the game never had: Ra's Disciple, The Seal of Orichalcos, Divine Serpent Geh, Illusion Gate and
-  Underworld Circle. A host gives them with `give-cards` for now.
-- Anime-only cards, played when the host turns on anime cards: Orichalcos Gigas, Kyutora, Dexia, Aristeros, Deuteros
-  and Tritos, and Arduous Decision. Their text starts with [Anime]. With anime cards off, a deck holding one can't
-  duel, and the chat tells you which card to take out.
-- With anime cards on, Divine Serpent Geh and Underworld Circle play their anime versions.
+- **The Gods play their manga versions** with anime cards on: Obelisk, Slifer and Ra, and the Wicked Gods Dreadroot,
+  Avatar and Eraser, marked [Manga]. Each has its Divine Hierarchy, so a God is no longer destroyed in battle by a
+  stronger ordinary monster, and Obelisk's Soul Energy Max (Tribute two in the Battle Phase) wins the duel. Skill
+  Drain negates a God's effects for one turn only, as its text says. A God turned face-down by Book of Moon is still a
+  God (Spell and Trap cards can't destroy it) and turns face-up again at the end of that turn.
+- **New card: The Winged Dragon of Ra - Sphere Mode.** Tribute it for The Winged Dragon of Ra from your hand or Deck
+  with 4000 ATK and DEF. With anime cards on, that is the manga Ra, and it stays on the field with its 4000: it is Ra
+  out of its sphere form, so it doesn't go back at the End Phase as other Special Summoned Gods do.
+- **∞ on the field.** An infinite ATK shows as ∞ instead of 99999: white when it is the card's own printed ATK (the
+  anime Divine Serpent Geh), blue when an effect gave it (Obelisk's Soul Energy Max, Avatar matching it).
+- **Infinite is infinite.** Soul Energy Max, the anime Divine Serpent Geh's attack, Ring of Destruction on Geh and
+  Avatar risen to infinity take every LP a player has, even tens of millions from Mystik Wok (it used to turn into a
+  huge gain). Half of ∞ is still ∞, so the Wicked Dreadroot leaves an infinite ATK alone. The anime Geh's ∞ is its
+  printed ATK: Skill Drain negates its effects but leaves the ∞, and other cards' ATK changes (The Seal of Orichalcos,
+  Axe of Despair, Shrink, Shield & Sword) don't touch it.
+- LP above 99,999 shows as 99,999 and stays right as it changes, and a huge LP change no longer freezes the duel.
+- **New card pictures** for the manga Gods (Obelisk, Slifer, Ra, Dreadroot, Avatar, Eraser) and the anime Divine
+  Serpent Geh, drawn for YO3 Revival.
+- **Your own card pictures, as in EDOPro:** put `<passcode>.jpg` or `.png` in the `pics` folder beside `anime-art` and
+  it becomes that card's picture from the next PLAY, for anime and manga versions and the cards the game never had.
+- **New cards the game never had:** Ra's Disciple, The Seal of Orichalcos, Divine Serpent Geh, Illusion Gate and
+  Underworld Circle. A host gives them with `give-cards` for now. With anime cards on, Divine Serpent Geh and Underworld
+  Circle play their anime versions.
+- **Anime-only cards**, played when the host turns on anime cards: Orichalcos Gigas, Kyutora, Dexia, Aristeros,
+  Deuteros and Tritos, and Arduous Decision. Their text starts with [Anime]. With anime cards off, a deck holding one
+  can't duel, and the chat tells you which card to take out.
+- Added cards are found by Edit Deck's Search Key filters (Special Summon, Destroy monster...), and their new-card
+  reveal shows their rarity's frame.
 - Hosts can choose a house rule on reviving monsters that "must first be properly Summoned" (Fusion, Synchro, Ritual
   monsters...), the `revival-rule` setting: the official ruling (the default), cards that say "ignoring its Summoning
   conditions" ignore that too (Illusion Gate takes a Divine Serpent Geh that was only ever sent to the Graveyard), or
-  every revival from the Graveyard does, as in the anime (Monster Reborn revives a discarded Ritual monster). Playing alone, pick it in
-  Settings, Singleplayer, **Revival**.
-- Obelisk's Soul Energy Max and the anime Divine Serpent Geh always win the duel, even against a player with tens of
-  millions of LP (it used to turn into a huge gain). LP above 99,999 shows as 99,999 and stays right as it changes, and a huge LP change no longer freezes the duel while the
-  counter rolls.
-- The Wicked Dreadroot no longer halves an infinite ATK: half of ∞ is still ∞, so the anime Divine Serpent Geh keeps
-  its infinite damage beside it.
-- An infinite ATK shows as ∞ on the field (Obelisk's Soul Energy Max, the anime Divine Serpent Geh, Avatar matching
-  them), instead of 99999.
-- The anime Divine Serpent Geh's ∞ is its printed ATK: Skill Drain negates its effects but leaves the ∞, and other
-  cards' ATK changes (The Seal of Orichalcos, Axe of Despair, Shrink, Shield & Sword) don't touch it. Its ∞ shows in
-  white, as an ATK that is the card's own; an ∞ from an effect (Soul Energy Max, Avatar) shows in blue.
-- Infinite damage is infinite: Ring of Destruction on the anime Divine Serpent Geh, or Avatar risen to infinity attacking
-  directly, takes every LP a player has, however much Mystik Wok gave them.
-- A God turned face-down by Book of Moon is still a God (it can't be destroyed by Spell or Trap cards) and turns face-up
-  again at the end of that turn.
-- Smaller downloads: each edition carries only the card scripts the game can use (about 5,700 files instead of
+  every revival from the Graveyard does, as in the anime (Monster Reborn revives a discarded Ritual monster). Playing
+  alone, pick it in Settings, Singleplayer, **Revival**.
+- **Smaller downloads:** each edition carries only the card scripts the game can use (about 5,700 files instead of
   19,300), and the developer documents stay on GitHub. Desktop 0.0.9 or older can't update to this version by itself:
   download it again.
-- New card pictures for the manga Gods (Obelisk, Slifer, Ra, Dreadroot, Avatar, Eraser) and the anime Divine Serpent
-  Geh, drawn for YO3 Revival.
-- Your own card pictures, as in EDOPro: put `<passcode>.jpg` or `.png` in the `pics` folder beside `anime-art` and it
-  becomes that card's picture from the next PLAY, for anime and manga versions and the cards the game never had.
-- New card: The Winged Dragon of Ra - Sphere Mode. Tribute it for The Winged Dragon of Ra from your hand or Deck with
-  4000 ATK and DEF. With anime cards on, that is the manga Ra, and it stays on the field with its 4000: it is Ra out
-  of its sphere form, so it doesn't go back at the End Phase as other Special Summoned Gods do.
-- With anime cards on, Obelisk, Slifer and Ra, and the Wicked Gods Dreadroot, Avatar and Eraser, play their manga
-  versions, marked [Manga]: each with its Divine Hierarchy, so a God is no longer destroyed in battle by a stronger
-  ordinary monster, and Obelisk's Soul Energy Max (Tribute two in the Battle Phase) wins the duel. Skill Drain negates
-  a God's effects for one turn only, as its text says.
-- Added cards are found by Edit Deck's Search Key filters (Special Summon, Destroy monster...), and their new-card reveal
-  shows their rarity's frame.
 
 ## v0.1.22 (2026-11-24)
 
