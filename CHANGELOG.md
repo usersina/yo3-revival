@@ -17,7 +17,7 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 - **Infinite LP shows as ∞.** LP above 99,999 (Mystik Wok on an infinite ATK) shows **∞** in the LP disc instead of
   99,999. While it stays above that, damage shows nothing, no number and no reaction, as a hit by a monster with 0
-  ATK; the number comes back once the LP falls below. The ∞ is a placeholder picture for now.
+  ATK; the number comes back once the LP falls below.
 
 ## v0.1.23 (2026-11-25)
 

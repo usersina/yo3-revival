@@ -6,7 +6,18 @@ beside it), so a change here needs a new Desktop release.
 ## `lp-infinity.png`: the LP "∞"
 
 Shown in the duel's LP disc, in place of the five LP digits, while a player's LP is above 99,999 (Mystik Wok on an
-infinite ATK). The file here now is a generated placeholder (`make-lp-infinity.py --placeholder`).
+infinite ATK). The final geometric sign is `lp-infinity.png`, rendered from the editable `lp-infinity.svg`.
+It is original project artwork, permitted for use, modification and distribution under the repository's MIT license.
+The 160 × 64 RGBA canvas contains a 120 × 48 white sign with 8 px strokes and a sharp 75% black shadow offset 4 px
+right and down. Its visible bounds, including the shadow, are centred. It was inspected at 40 × 16 pixels on slate grey,
+and in the game under Wine (2026-11-25, a duel at 200,000 LP: centred in both LP discs, crisp beside the "LP" label).
+
+To render the vector source again (CairoSVG 2.9.1):
+
+```sh
+uv run --with cairosvg==2.9.1 python -c 'import cairosvg; cairosvg.svg2png(url="tools/mod/art/lp-infinity.svg", write_to="tools/mod/art/lp-infinity.png")'
+python3 tools/mod/make-lp-infinity.py
+```
 
 ### The request for the artist
 
@@ -21,7 +32,7 @@ infinite ATK). The file here now is a generated placeholder (`make-lp-infinity.p
 >   **112–128 px wide** (28–32 on screen, about two and a half digits). The rest of the canvas stays transparent; the
 >   game centres the whole canvas on the digits' place.
 > - **Style:** the LP digits' own (reference: `logs/lp-infinity-reference.png` on the project machine, the digits next
->   to the placeholder ∞, 6× enlarged):
+>   to the first, generated ∞, 6× enlarged):
 >   - **pure white** (#FFFFFF) fill, flat, no gradient;
 >   - **blocky, geometric strokes** with squared, slightly chamfered corners, like a digital/techno display font (the
 >     digits' 0 and 8 are rounded rectangles, not ovals): the ∞ as two squared loops joined at a crossing;
@@ -34,7 +45,7 @@ infinite ATK). The file here now is a generated placeholder (`make-lp-infinity.p
 > - **Deliver:** the 160 × 64 PNG, plus the source file (layers or vector), and a note that it may be used in the
 >   project.
 
-### Replacing the placeholder
+### Replacing the picture
 
 1. Put the artist's PNG at `tools/mod/art/lp-infinity.png` (160 × 64, RGBA; another size works if it is drawn at 4×,
    up to 280 × 96).

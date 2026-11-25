@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="64" viewBox="0 0 160 64">
+  <title>LP infinity</title>
+  <desc>Original geometric infinity symbol made for YO3 Revival. Use, modification and distribution in the project are permitted under the repository's MIT license. White sign: 120 by 48 pixels, 8 pixel stroke. Sharp black shadow: 75% opacity, offset 4 by 4 pixels.</desc>
+  <defs>
+    <path id="infinity" d="M 78,30 L 58,10 H 28 L 22,16 V 44 L 28,50 H 58 L 98,10 H 128 L 134,16 V 44 L 128,50 H 98 Z"/>
+  </defs>
+  <g fill="none" stroke-width="8" stroke-linejoin="bevel">
+    <use href="#infinity" transform="translate(4 4)" stroke="#000000" stroke-opacity="0.75"/>
+    <use href="#infinity" stroke="#FFFFFF"/>
+  </g>
+</svg>

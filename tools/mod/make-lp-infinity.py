@@ -5,6 +5,7 @@ lp-infinity-png.h, and shows it in place of the LP counter's digits when a playe
 Usage:
   make-lp-infinity.py                 the header from tools/mod/art/lp-infinity.png (after replacing that picture)
   make-lp-infinity.py --placeholder   draw the generated placeholder into tools/mod/art/lp-infinity.png first
+                                      (it replaces the art there: for tests only)
   make-lp-infinity.py --check         exit 1 when the header is not made from the picture
 
 The picture: a PNG with an alpha channel (colour type 6, 8 bits), the "∞" centred on a transparent background, drawn at
