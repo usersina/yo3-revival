@@ -415,8 +415,17 @@ impl Scenario {
     /// leave the Battle Phase), every other prompt gets the CPU's answer.
     pub fn pass(&mut self) -> Result<(), String> {
         let p = self.prompt();
-        let response = if p["type"] == msg::SELECT_IDLECMD {
+        // A turn that can't end yet (a monster that must attack: Maiden in Love's "must attack this card") goes to the
+        // Battle Phase and attacks with the first monster that can, as the client's greyed-out End Phase leaves a player.
+        let response = if p["type"] == msg::SELECT_IDLECMD && p["to_ep"] == false && p["to_bp"] == true {
+            json!({"type": 1, "action": idle::TO_BP, "index": null})
+        } else if p["type"] == msg::SELECT_IDLECMD {
             json!({"type": 1, "action": idle::TO_EP, "index": null})
+        } else if p["type"] == msg::SELECT_BATTLECMD && p["to_ep"] == false {
+            match p["attacks"].as_array().is_some_and(|a| !a.is_empty()) {
+                true => json!({"type": 1, "action": battle::ATTACK, "index": 0}),
+                false => json!({"type": 1, "action": battle::TO_M2, "index": null}),
+            }
         } else if p["type"] == msg::SELECT_BATTLECMD {
             json!({"type": 1, "action": battle::TO_EP, "index": null})
         } else if let (Some(wanted), Ok(Some(crate::ocg::message::Ask::Position(q)))) = (self.position, crate::ocg::message::Ask::lenient(p))
@@ -507,6 +516,7 @@ impl Scenario {
                         next[team] += 1;
                         self.respond(json!({"type": 1, "action": battle::ATTACK, "index": i}))?;
                     }
+                    _ if p["to_m2"] == false => self.pass()?, // a monster that must attack: pass attacks with it
                     _ => self.respond(json!({"type": 1, "action": battle::TO_M2, "index": null}))?,
                 }
             } else if let (true, Some(Action::ChainOnAttack(c))) = (kind == msg::SELECT_CHAIN, action)
