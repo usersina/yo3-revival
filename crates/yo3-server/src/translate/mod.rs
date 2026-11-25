@@ -15,7 +15,7 @@ use crate::card_options::CARD_OPTION_LABELS;
 use crate::duel::{CLIENT, CPU, CardCommand, ClientRequest, TEXT_IDS, TEXT_SLOTS, command, command_data, text_message};
 use crate::ocg::message::{Announce, AnnounceCard, Ask, Attack, Battle, Chaining, Coded, Confirm, Counter, DeckTop, Event, Field, FieldDisabled, Link, Loc, Move, Shuffle, ShuffleSet, Swap, SwapGraveDeck, SelectCard, SelectChain, SelectOption, SelectPlace, SelectPosition, SelectSum};
 use crate::ocg::{Response, battle, hint, hintmsg, idle, loc, msg, pos, reason, resp};
-use crate::wire::{Cmd, OPEN, LP_BEYOND, LP_SHOWN_MAX, shown_lp, Place, SURRENDERED, SURRENDER_TURN, Target, cmd, dialog, entry, flag, list, menu, mode, move_place, result, table_place, text, zone};
+use crate::wire::{Cmd, INFINITY_FROM, OPEN, LP_BEYOND, LP_SHOWN_MAX, shown_lp, Place, SURRENDERED, SURRENDER_TURN, Target, cmd, dialog, entry, flag, list, menu, mode, move_place, result, table_place, text, zone};
 
 mod answers;
 mod cpu;

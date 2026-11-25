@@ -401,15 +401,19 @@ pub const SURRENDER_TURN: u32 = 5;
 /// The most LP the client's counter shows (five digits) and keeps: its LP changes are clamped to 0..99999 (DuelCockpit
 /// 0x502EB0).
 pub const LP_SHOWN_MAX: i64 = 99_999;
-/// The LP sent for more than the counter shows (Mystik Wok on an infinite ATK): set LP `0xF` stores it as sent and
-/// hands it to the movie's `setLp`, where the connection DLL shows "∞" for anything above 99,999, and the DLL raises
-/// change LP's clamp to it, so a change that crosses into it lands there (`tools/mod/duel-numbers.h`; without the DLL
-/// the counter shows 99999, as before).
+/// The LP sent for ∞ LP (Mystik Wok on an infinite ATK): set LP `0xF` stores it as sent and hands it to the movie's
+/// `setLp`, where the connection DLL shows "∞" for anything above 99,999, and the DLL raises change LP's clamp to it, so
+/// a change that crosses into it lands there (`tools/mod/duel-numbers.h`; without the DLL the counter shows 99999, as
+/// before).
 pub const LP_BEYOND: i64 = 100_000;
+/// ∞: the engine makes any LP, ATK or DEF of 9,999,999 (the scripts' infinite ATK) or more exactly twice that, one value
+/// (`crates/yo3-engine/src/guards.lua`), which a finite change leaves as it is.
+pub const INFINITY_FROM: i64 = 9_999_999;
 
-/// The LP the client is sent and keeps for an engine LP.
+/// The LP the client is sent and keeps for an engine LP: LP_BEYOND ("∞") for ∞, else at most the 99,999 the counter
+/// shows (a finite LP above it shows 99,999).
 pub fn shown_lp(lp: i64) -> i64 {
-    if lp > LP_SHOWN_MAX { LP_BEYOND } else { lp.max(0) }
+    if lp >= INFINITY_FROM { LP_BEYOND } else { lp.clamp(0, LP_SHOWN_MAX) }
 }
 
 /// Duel results for a client (DuelEnd's param1).

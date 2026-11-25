@@ -583,18 +583,21 @@ fn an_lp_change_beyond_99999_reaches_the_client_as_99999() {
 
 #[test]
 fn lp_beyond_99999_stays_infinite_until_it_falls_below() {
-    // At 10,007,999 LP (Mystik Wok on an infinite ATK) the counter shows "∞" (set LP 100,000): a change that leaves the
-    // LP above 99,999 shows nothing at all, as a hit by a monster with 0 ATK (no number, sound, avatar reaction or
-    // damage line; damage, a cost or a gain alike), and one that takes it below moves the counter from 100,000 to the
-    // LP. An LPUPDATE beyond 99,999 is sent as 100,000 too.
+    // ∞ LP (the engine's one ∞ value, 19,999,998: guards.lua) shows "∞" (set LP 100,000). The engine leaves it alone for
+    // a finite amount; an amount that is itself ∞ and leaves ∞ (Solemn Judgment's half of ∞) shows nothing, as a hit by
+    // a monster with 0 ATK. One that takes it below (Ra's "pay all but 1") moves the counter from 100,000 to the LP, and
+    // one that brings ∞ back (De-Fusion on that Ra) moves it up to 100,000. A finite LP above 99,999 shows 99,999: its
+    // changes show their number, and the counter moves by what it shows.
     let (mut t, opening) = { let (mut t, _) = translator(); let o = t.opening(8000); (t, o) };
     assert_eq!(opening.iter().map(cmd).collect::<Vec<_>>(), [(1, [0; 4]), (0xF, [0, 8000, 0, 0]), (0xF, [1, 8000, 0, 0])]);
     let out: Vec<_> = t.events(&[
-        json!({ "type": 94, "player": 0, "lp": 10_007_999 }),
-        json!({ "type": 91, "player": 0, "amount": 2000 }),
-        json!({ "type": 100, "player": 0, "amount": 800 }),
-        json!({ "type": 92, "player": 0, "amount": 500 }),
+        json!({ "type": 94, "player": 0, "lp": 19_999_998 }),
+        json!({ "type": 100, "player": 0, "amount": 9_999_999 }),
+        json!({ "type": 94, "player": 0, "lp": 19_999_998 }),
+        json!({ "type": 100, "player": 0, "amount": 19_999_997 }),
+        json!({ "type": 92, "player": 0, "amount": 19_999_998 }),
         json!({ "type": 94, "player": 0, "lp": 100_500 }),
+        json!({ "type": 91, "player": 0, "amount": 300 }),
         json!({ "type": 91, "player": 0, "amount": 5000 }),
         json!({ "type": 91, "player": 0, "amount": 1000 }),
     ]).iter().map(cmd).collect();
@@ -603,9 +606,19 @@ fn lp_beyond_99999_stays_infinite_until_it_falls_below() {
         [
             (0xF, [0, 100_000, 0, 0]),
             (0xF, [0, 100_000, 0, 0]),
+            (0x10, [0, (-99_999i32) as u32, 2 << 8 | 1, 0]),
+            (0x4D, [0, (-99_999i32) as u32, 2, 0]),
+            (0x10, [0, (-99_999i32) as u32, 2 << 8, 0]),
+            (0x10, [0, 99_999, 4 << 8 | 1, 0]),
+            (0x4D, [0, 99_999, 4, 0]),
+            (0x10, [0, 99_999, 4 << 8, 0]),
+            (0xF, [0, 99_999, 0, 0]),
+            (0x10, [0, (-300i32) as u32, 1, 0]),
+            (0x4D, [0, (-300i32) as u32, 0, 0]),
+            (0x10, [0, 0, 0, 0]),
             (0x10, [0, (-5000i32) as u32, 1, 0]),
             (0x4D, [0, (-5000i32) as u32, 0, 0]),
-            (0x10, [0, (-4500i32) as u32, 0, 0]),
+            (0x10, [0, (-4799i32) as u32, 0, 0]),
             (0x10, [0, (-1000i32) as u32, 1, 0]),
             (0x4D, [0, (-1000i32) as u32, 0, 0]),
             (0x10, [0, (-1000i32) as u32, 0, 0]),
@@ -1787,10 +1800,11 @@ fn an_attack_plays_on_the_field() {
 
 #[test]
 fn battle_damage_to_an_infinite_lp_shows_as_against_0_atk() {
-    // A player whose LP stays beyond 99,999 ("∞") through a battle gets no damage figure (BattleRun 0xD), as against a
-    // monster with 0 ATK; one whose LP falls below it gets the figure.
+    // A player with ∞ LP takes no finite battle damage (the engine leaves ∞ LP alone): no damage figure (BattleRun 0xD),
+    // as against a monster with 0 ATK. A finite LP above 99,999 gets its figure, and so does ∞ LP against an ∞ ATK,
+    // which takes it all.
     let mut t = with_cards();
-    t.opening(200_000);
+    t.opening(19_999_998);
     t.events(&[json!({ "type": 50, "cid": 4101,
         "from": { "controller": 0, "location": 2, "sequence": 1, "position": 10 },
         "to": { "controller": 0, "location": 4, "sequence": 0, "position": 1 } })]);
@@ -1800,10 +1814,9 @@ fn battle_damage_to_an_infinite_lp_shows_as_against_0_atk() {
         "target": { "controller": 1, "location": 4, "sequence": 1, "position": 1, "attack": target_atk, "defense": 1200, "destroyed": true } });
     assert_eq!(shows(&t.events(&[battle(1700, 1400)])), [(0xD, [0, 0, 0, 0])]);
     assert_eq!(shows(&t.events(&[battle(1000, 1400)])), [(0xD, [0, 0, 0, 0])]);
-    // Team 1 at 100,400 LP: 300 leaves it beyond, 500 takes it below.
+    assert_eq!(shows(&t.events(&[battle(19_999_998, 1400)])), [(0xD, [0, 19_998_598, 0, 0])]);
     t.events(&[json!({ "type": 94, "player": 1, "lp": 100_400 })]);
-    assert_eq!(shows(&t.events(&[battle(1700, 1400)])), [(0xD, [0, 0, 0, 0])]);
-    assert_eq!(shows(&t.events(&[battle(1900, 1400)])), [(0xD, [0, 500, 0, 0])]);
+    assert_eq!(shows(&t.events(&[battle(1700, 1400)])), [(0xD, [0, 300, 0, 0])]);
 }
 
 #[test]

@@ -210,11 +210,12 @@ impl Translator {
                         self.lp_change += change as i64;
                         self.stats.lowest_change = self.stats.lowest_change.min(self.lp_change);
                     }
-                    // LP beyond the counter's 99,999 that stays beyond ("∞"): nothing is shown, as for a hit by a
-                    // monster with 0 ATK: no number, sound, avatar reaction or damage line, and no change to count.
+                    // ∞ LP that stays ∞: nothing is shown, as for a hit by a monster with 0 ATK: no number, sound,
+                    // avatar reaction or damage line, and no change to count. (The engine leaves ∞ LP alone for a
+                    // finite amount; an amount that is ∞ itself, Solemn Judgment's half of ∞, comes here.)
                     let team = (c.player & 1) as usize;
                     let (before, after) = (self.lp[team], (self.lp[team] + change as i64).max(0));
-                    if before > LP_SHOWN_MAX && after > LP_SHOWN_MAX {
+                    if before >= INFINITY_FROM && after >= INFINITY_FROM {
                         self.lp[team] = after;
                         continue;
                     }
@@ -224,17 +225,17 @@ impl Translator {
                     let shown = change.clamp(-99_999, 99_999);
                     out.push(command(cmd::CHANGE_LP, [p, shown as u32, damage << 8 | 1, 0]));
                     out.push(command(cmd::SPEAK_DAMAGE, [p, shown as u32, damage, 0]));
-                    // LP above the counter's 99,999 (Mystik Wok on an infinite ATK) is kept as LP_BEYOND, which the
-                    // connection DLL shows as "∞" (and lets the change keep: it raises the clamp to LP_BEYOND). The
-                    // counter moves by what it shows between LP_BEYOND and the LP, and is set to LP_BEYOND when the
-                    // move falls short of it.
+                    // ∞ LP is kept as LP_BEYOND, which the connection DLL shows as "∞" (and lets the change keep: it
+                    // raises the clamp to LP_BEYOND), a finite LP above 99,999 as 99,999. Past 99,999 the counter moves
+                    // by what it shows (0 between two LPs both shown 99,999: the count's end takes the shown change
+                    // away), and is set to LP_BEYOND when the move falls short of it.
                     self.lp[team] = after;
                     if before <= LP_SHOWN_MAX && after <= LP_SHOWN_MAX {
                         out.push(command(cmd::CHANGE_LP, [p, shown as u32, damage << 8, 0]));
                     } else {
                         let moved = (shown_lp(after) - shown_lp(before)).clamp(-99_999, 99_999);
                         out.push(command(cmd::CHANGE_LP, [p, moved as i32 as u32, damage << 8, 0]));
-                        if after > LP_SHOWN_MAX && shown_lp(before) + moved != LP_BEYOND {
+                        if after >= INFINITY_FROM && shown_lp(before) + moved != LP_BEYOND {
                             out.push(command(cmd::SET_LP, [p, LP_BEYOND as u32, 0, 0]));
                         }
                     }
@@ -242,7 +243,7 @@ impl Translator {
                 Event::AddCounter(c) => out.extend(self.counter(&c, true)),
                 Event::RemoveCounter(c) => out.extend(self.counter(&c, false)),
                 // The client shows and keeps LP up to 99,999 (its LP changes are clamped there, DuelCockpit 0x502EB0);
-                // more is sent as LP_BEYOND, "∞".
+                // ∞ is sent as LP_BEYOND, a finite LP above 99,999 as 99,999.
                 Event::LpUpdate(u) => {
                     self.lp[(u.player & 1) as usize] = u.lp as i64;
                     out.push(command(cmd::SET_LP, [self.side(u.player), shown_lp(u.lp as i64) as u32, 0, 0]));
@@ -1212,11 +1213,11 @@ impl Translator {
         let attacker = self.side(card.loc.controller) as usize;
         damage[attacker] = to_attacker as u32;
         damage[1 - attacker] = to_target as u32;
-        // A player whose LP stays beyond 99,999 ("∞") through it shows no battle damage, as against 0 ATK (the LP
-        // change is left out too).
+        // A player with ∞ LP takes no finite battle damage (the engine leaves ∞ LP alone, guards.lua): no figure, as
+        // against 0 ATK. Damage from an ∞ ATK takes it all and shows.
         for (team, lp) in self.lp.iter().enumerate() {
             let p = self.side(team as u64) as usize;
-            if *lp > LP_SHOWN_MAX && lp - damage[p] as i64 > LP_SHOWN_MAX {
+            if *lp >= INFINITY_FROM && (damage[p] as i64) < INFINITY_FROM {
                 damage[p] = 0;
             }
         }
