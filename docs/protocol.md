@@ -1949,10 +1949,13 @@ above 99999 (Mystik Wok on an infinite ATK) is sent as **100000** (`wire.rs` `LP
 sent and hands it to the movie's `setLp`, where the connection DLL shows its own "∞" picture in place of the digits,
 and the DLL raises the change clamp to 100000 (`tools/mod/duel-numbers.h`; [client
 internals](client-internals.md#numbers-in-the-duel-lp-and-atk-investigated-2026-11-24)). The translator keeps each
-side's LP from the opening (`Translator::opening`) and every change: a change that leaves the LP beyond 99999 is still
-shown (its number, sound and `0x4D`) and applied as **0**, since the end of an applied change's count is what takes the
-shown number away (live: without it "-900" stayed on screen); one that crosses 99999 is applied as the move between
-100000 and the LP shown (`translate_contract.rs` `lp_beyond_99999_stays_infinite_until_it_falls_below`). The engine
+side's LP from the opening (`Translator::opening`) and every change: a change that leaves the LP beyond 99999 (damage,
+a cost or a gain) sends nothing, as a hit by a monster with 0 ATK: no shown change (its number, sound and the avatar's
+reaction, `0x502F8D`), no `0x4D`, no applied change, and BattleRun `0xD` carries 0 for that player
+(`battle_damage_to_an_infinite_lp_shows_as_against_0_atk`). One that crosses 99999 is shown and applied as the move
+between 100000 and the LP shown (`translate_contract.rs` `lp_beyond_99999_stays_infinite_until_it_falls_below`). A
+shown change needs its applied one: the end of an applied change's count is what takes the shown number away (live: a
+shown "-900" with no applied change stayed on screen). The engine
 program adds the core's LP as an LPUPDATE after a step's last change whenever a player's LP was or is above 99999
 (`session.rs` `add_lp_beyond_the_client`; `tests/manga_gods.rs` `mystik_wok_on_geh`). Without the DLL (an older one) the
 counter clamps 100000 to 99999, as before. **Confirmed** live under Wine (2026-11-25).

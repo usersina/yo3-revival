@@ -823,11 +823,11 @@ four times the screen) and centred on the digits by the counter's `anchor` ("cen
 centre on `lpCounter._x`, 32 in the cockpit, `fontWidth` 13, digits 14 high), then shown and `lpCounter._visible` set
 false; an LP of 99999 or less shows the counter and hides the clip. The change command clamps its LP at 99999 with `cmp
 edi, 0x1869F` (`0x50301D`) and `mov edi, 0x1869F` (`0x503025`): the DLL makes both 100000 (checked bytes; a mismatch is
-logged and leaves them), so a change of 0, which the server applies while the LP stays beyond, keeps the counter at
-100000 instead of 99999 and still ends the count, which takes the shown change away. The cockpit's colour fonts
+logged and leaves them), so a change that crosses into it lands on 100000 rather than 99999 (the server sends nothing
+for a change that leaves the LP beyond: [protocol](protocol.md)). The cockpit's colour fonts
 (`duel_font_b_00` white, `b_01` red for low LP) need no second picture: an LP beyond 99999 is never low. Live under Wine,
-2026-11-25: both discs ∞ at 200,000 and 100,500 LP, kept through damage and a cost with their numbers shown and
-cleared, back to "99800" after 700 damage from 100,500.
+2026-11-25: both discs ∞ at 200,000 and 100,500 LP, kept through damage with nothing shown, back to "99800" after 700
+damage from 100,500.
 
 ## Data formats
 
