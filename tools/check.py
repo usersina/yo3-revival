@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PY = [
     'tools/mod/test_fixture_layout.py',
     'tools/mod/test_winmm_exports.py',
+    'tools/mod/test_lp_infinity.py',
     'tools/client/test_vclient.py',
     'tools/client/test_duel_state.py',
     'tools/client/test_ui_scenario.py',

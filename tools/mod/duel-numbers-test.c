@@ -57,8 +57,33 @@ int main(void) {
     assert(back.x > 9.999 && back.x < 10.001 && back.y > 19.999 && back.y < 20.001);
     Yo3Place same = yo3_numbers_place(10, 20, 40, 14, 100, 100);
     assert(same.x == 10 && same.y == 20);
+    /* setLp (player, LP, colour): recognised with its player and LP; anything else not. */
+    unsigned player = 9; double lp = -1;
+    Yo3Gfx set_lp[] = {text("setLp"), num(1), num(100000), num(0)};
+    assert(yo3_lp_call("call", set_lp, 4, &player, &lp) && player == 1 && lp == 100000);
+    Yo3Gfx set_lp_small[] = {text("setLp"), num(0), num(8000)};
+    assert(yo3_lp_call("call", set_lp_small, 3, &player, &lp) && player == 0 && lp == 8000);
+    Yo3Gfx set_lp_bad[] = {text("setLp"), num(2), num(8000)};
+    assert(!yo3_lp_call("call", set_lp_bad, 3, &player, &lp));
+    Yo3Gfx set_lp_color[] = {text("setLpColor"), num(0), num(1)};
+    assert(!yo3_lp_call("call", set_lp_color, 3, &player, &lp) && !yo3_lp_call("respond", set_lp, 4, &player, &lp));
+    assert(!yo3_lp_call("call", set_lp, 2, &player, &lp) && !yo3_lp_call("call", atk, 6, &player, &lp));
+    /* The picture at a quarter of its pixels (116x56 shows 29x14, a digit's height), centred on the digits by the
+     * counter's anchor; a counter scaled 200% shows it at half its pixels. */
+    Yo3PicPlace pic = yo3_lp_infinity_place("center", 32, 27, 13, 14, 4, 116, 56, 1);
+    assert(pic.scale == 25 && pic.y == 27 && pic.x == 32 - 14.5);
+    pic = yo3_lp_infinity_place("right", 100, 10, 13, 14, 4, 116, 56, 1);
+    assert(pic.x == 100 - 26 - 14.5 && pic.y == 10);
+    pic = yo3_lp_infinity_place("left", 100, 10, 13, 14, 4, 116, 56, 1);
+    assert(pic.x == 100 + 26 - 14.5);
+    assert(yo3_lp_infinity_place(NULL, 32, 27, 13, 14, 4, 116, 56, 1).x == 32 - 14.5);
+    pic = yo3_lp_infinity_place("center", 32, 27, 26, 28, 4, 116, 56, 2);
+    assert(pic.scale == 50 && pic.x == 32 - 29 && pic.y == 27);
+    /* A picture with room around the sign (160x64) is shown at a quarter too, its middle on the digits' middle. */
+    pic = yo3_lp_infinity_place("center", 32, 27, 13, 14, 4, 160, 64, 1);
+    assert(pic.scale == 25 && pic.x == 12 && pic.y == 26);
     /* 16 bytes each, as the game's values. */
     assert(sizeof(Yo3Gfx) == 16);
-    puts("PASS: an infinite field ATK or DEF reaches the movie as \xe2\x88\x9e, its originals as text");
+    puts("PASS: an infinite field ATK or DEF reaches the movie as \xe2\x88\x9e, its originals as text; setLp is recognised");
     return 0;
 }

@@ -72,4 +72,35 @@ static Yo3Place yo3_numbers_place(double x, double y, double width, double heigh
     Yo3Place p = { x + width / 2 - w * to / 200, y + height / 2 - h * to / 200 };
     return p;
 }
+/* LP beyond the counter (Mystik Wok on an infinite ATK). The LP counter is data/gfx/duel_cockpit.swf's
+ * `cockpit<player>.lpCounter`, a NumberSprite of five picture digits (the font sprites duel_font_b_00/01, 13x14 frames
+ * num0..num9 and minus): it has no "∞". The server sends LP above 99,999 as 100,000 (wire.rs LP_BEYOND); set LP 0xF
+ * stores it as sent and hands it on through FxDelegate's `call` ("setLp", player, lp, colour) from 0x5035A0, where the
+ * counter would clamp it to 99999. Such an LP goes to the movie as 99999, and the DLL hides the digits and shows its own
+ * picture of "∞" in their place (duel-numbers.h). 1 for a setLp call, with its player and LP. */
+static int yo3_lp_call(const char *name, const Yo3Gfx *args, unsigned count, unsigned *player, double *lp) {
+    if (!name || strcmp(name, "call") || count < 3) return 0;
+    const char *method = yo3_gfx_string(&args[0]);
+    if (!method || strcmp(method, "setLp") || (args[1].type & 0x8f) != 3 || (args[2].type & 0x8f) != 3) return 0;
+    if (args[1].v.number != 0 && args[1].v.number != 1) return 0;
+    *player = (unsigned)args[1].v.number;
+    *lp = args[2].v.number;
+    return 1;
+}
+
+/* Where the "∞" picture goes, in the cockpit's coordinates: centred on the counter's digits, at `scale` (the counter's
+ * own, times YO3_LP_INFINITY_SCALE: the picture is drawn at four times the screen's size, so a 14-pixel digit is 56 of
+ * its pixels). The counter at `x` lays its `figures` digits (`digit_w` apart, `digit_h` high from `top`) by its `anchor`
+ * (NumberSprite.onFigureChanged): "right" ends them at `x`, "left" starts them there, "center" (the LP counter's, live)
+ * centres them on it. `pic_w` x `pic_h` is the picture's size in pixels. */
+#define YO3_LP_INFINITY_SCALE 0.25
+typedef struct { double x, y, scale; } Yo3PicPlace;
+static Yo3PicPlace yo3_lp_infinity_place(const char *anchor, double x, double top, double digit_w, double digit_h,
+                                         unsigned figures, double pic_w, double pic_h, double counter_scale) {
+    double scale = counter_scale * YO3_LP_INFINITY_SCALE, wide = digit_w * figures, centre = x;
+    if (anchor && !strcmp(anchor, "right")) centre = x - wide / 2;
+    else if (anchor && !strcmp(anchor, "left")) centre = x + wide / 2;
+    Yo3PicPlace p = { centre - pic_w * scale / 2, top + digit_h / 2 - pic_h * scale / 2, scale * 100 };
+    return p;
+}
 #endif
