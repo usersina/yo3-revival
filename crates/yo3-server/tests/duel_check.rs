@@ -229,6 +229,46 @@ fn duels_with_the_gods() {
     assert!(gods >= 2, "Gods were summoned: {played:?}");
 }
 
+/// Both players at ∞ LP (the engine's one ∞ value, `guards.lua`), with anime cards on, among the cards that pay, give,
+/// take or set LP (Dian Keto, Premature Burial, Mystik Wok, Yu-Jo Friendship, Reversal Quiz, Solemn Judgment, Life
+/// Equalizer, Self-Destruct Button, Wall of Revealing Light, Hope for Escape, Riryoku...), change ATK (Axe of Despair,
+/// Megamorph, Shadow Spell) or deal ∞ (the Gods, Ring of Destruction): finite changes leave ∞ alone, and the client's
+/// view is checked against the engine after every step. `YO3_CHECK_DUELS=n` plays n duels instead of 12.
+#[test]
+fn duels_at_infinite_lp() {
+    let Some(dir) = engine_dir() else { return };
+    if yo3_server::engine::anime_problem(&dir).is_some() {
+        return;
+    }
+    let per: u64 = std::env::var("YO3_CHECK_DUELS").ok().and_then(|n| n.parse().ok()).unwrap_or(12);
+    let pool = selfplay::AnimePool {
+        // Obelisk, Slifer, Ra, Avatar, the Gene-Warped Warwolf, Kuriboh and other cheap Tributes.
+        monsters: vec![4998, 4999, 5000, 7091, 6960, 5586, 4064, 4054, 6390, 6000, 5526],
+        // Dian Keto, Premature Burial, Mystik Wok, Yu-Jo Friendship, Reversal Quiz, Megamorph, Riryoku, Monster Reborn,
+        // Axe of Despair, De-Fusion, Dark Hole.
+        spells: vec![4348, 4966, 5978, 5754, 5541, 4663, 5009, 4842, 4310, 5118, 4342],
+        // Solemn Judgment, Life Equalizer, Self-Destruct Button, Wall of Revealing Light, Hope for Escape, Ring of
+        // Destruction, Shadow Spell, Mirror Force.
+        traps: vec![4861, 6708, 5916, 5990, 9354, 5005, 4675, 4887],
+        extra: vec![],
+    };
+    let lp_cards = [4348u16, 4966, 5978, 5754, 5541, 5009, 4861, 6708, 5916, 5990, 9354];
+    let mut failures = vec![];
+    let mut played: BTreeMap<u16, u32> = BTreeMap::new();
+    for seed in 1500..1500 + per {
+        let (a, b) = (selfplay::anime_deck(&pool, seed * 2), selfplay::anime_deck(&pool, seed * 2 + 1));
+        let decks = [(&a.0[..], &a.1[..]), (&b.0[..], &b.1[..])];
+        match selfplay::play_anime_at(&dir, seed, decks, (seed % 2) as usize, seed.is_multiple_of(3), 19_999_998) {
+            Ok(p) => for (cid, n) in p.activated.iter().chain(&p.summoned) { *played.entry(*cid).or_default() += n },
+            Err(e) => failures.push(format!("seed {seed}: {e}")),
+        }
+    }
+    assert!(failures.is_empty(), "{} duel(s) failed:\n{}", failures.len(), failures.join("\n\n"));
+    eprintln!("cards activated or summoned: {played:?}");
+    let used = lp_cards.iter().filter(|c| played.contains_key(c)).count();
+    assert!(used >= 4, "LP cards were played at ∞: {played:?}");
+}
+
 /// The self-play under the broadest `revival-rule` house rule, `graveyard-is-graveyard` (Monster Reborn and every revival
 /// reach monsters never properly Summoned): the client's view must follow the engine through those revivals too.
 /// `YO3_CHECK_DUELS=n` plays n duels instead of 30.

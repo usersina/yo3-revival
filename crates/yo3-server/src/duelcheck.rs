@@ -995,6 +995,8 @@ pub mod selfplay {
         pub revival: crate::engine::Revival,
         /// What the card profile says of its cards, by row (the duel check judges the engine's cards against it).
         pub expect: HashMap<u16, crate::profile::Expect>,
+        /// Both players' start LP; None: 8000, and 2000 every fourth duel so that duels reach their end too.
+        pub lp: Option<u32>,
     }
 
     /// The cards the reviewed anime map approves, by what a deck keeps them in (Konami ids), for self-play with the
@@ -1127,6 +1129,7 @@ pub mod selfplay {
             anime: false,
             revival: crate::engine::Revival::Official,
             expect: HashMap::new(),
+            lp: None,
         };
         play_with(dir, seed, decks, &data, [&[], &[]], client_team, hidden)
     }
@@ -1142,6 +1145,7 @@ pub mod selfplay {
             anime: false,
             revival,
             expect: HashMap::new(),
+            lp: None,
         };
         play_with(dir, seed, decks, &data, [&[], &[]], client_team, hidden)
     }
@@ -1168,6 +1172,12 @@ pub mod selfplay {
         play_anime_with(dir, seed, decks, client_team, hidden, |_| {})
     }
 
+    /// [`play_anime`] with both players starting at `lp`: ∞ LP (`crate::wire::INFINITY_FROM` or more, which the engine
+    /// makes its one ∞ value) puts every card that pays, gives, takes or sets LP against ∞.
+    pub fn play_anime_at(dir: &Path, seed: u64, decks: [(&[u16], &[u16]); 2], client_team: usize, hidden: bool, lp: u32) -> Result<Played, String> {
+        play_anime_data(dir, seed, decks, client_team, hidden, |_| {}, Some(lp))
+    }
+
     /// [`play_anime`] with `tweak` run over the profile's expectations first: a test makes the profile say what the engine
     /// does not play, which the duel check must report.
     pub fn play_anime_with(
@@ -1177,6 +1187,18 @@ pub mod selfplay {
         client_team: usize,
         hidden: bool,
         tweak: impl FnOnce(&mut HashMap<u16, crate::profile::Expect>),
+    ) -> Result<Played, String> {
+        play_anime_data(dir, seed, decks, client_team, hidden, tweak, None)
+    }
+
+    fn play_anime_data(
+        dir: &Path,
+        seed: u64,
+        decks: [(&[u16], &[u16]); 2],
+        client_team: usize,
+        hidden: bool,
+        tweak: impl FnOnce(&mut HashMap<u16, crate::profile::Expect>),
+        lp: Option<u32>,
     ) -> Result<Played, String> {
         let (token_cards, tokens) = client_tokens(dir)?;
         let mut cards = card_data(&decks);
@@ -1194,6 +1216,7 @@ pub mod selfplay {
                 tweak(&mut expect);
                 expect
             },
+            lp,
         };
         play_with(dir, seed, decks, &data, [&[], &[]], client_team, hidden)
     }
@@ -1298,7 +1321,7 @@ pub mod selfplay {
         let mut opening = vec![setup(first, &deck(mine), &deck(theirs))];
         opening.extend(table);
         // Every fourth duel starts low, so that duels reach their end too.
-        let lp = if seed.is_multiple_of(4) { 2000 } else { 8000 };
+        let lp = data.lp.unwrap_or(if seed.is_multiple_of(4) { 2000 } else { 8000 });
         opening.extend(t.opening(lp));
         opening.extend(piles());
         model.apply_all(&opening);
