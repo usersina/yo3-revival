@@ -9,6 +9,19 @@
                                            (any case), its passcode, or `cid:N` (its Konami id)
                                            `anime:N` (an anime-only card's passcode in the unofficial database)
     tools/engine/added-cards.py --find-file FILE   the same for a file of cards, one per line (`#` comments)
+    tools/engine/added-cards.py --add CARD [CARD...] --note TEXT [--checked]
+                                           add them: each line with the note at the end of engine/added/cards.tsv, a
+                                           printed card's line in engine/anime/cards.tsv (in id order), then this build,
+                                           tools/engine/anime-map.py and tools/engine/anime-pictures.py. All or nothing:
+                                           a card that can't be added, or one whose script --find notes (below) before
+                                           you read it and pass --checked, writes nothing
+    tools/engine/added-cards.py --add-file FILE --note TEXT [--checked]   the same for a file of cards
+
+--find also reads the script each card would play (our override, else ProjectIgnis') and notes the lines that use a
+mechanic the game never had (Xyz Materials or Monsters, Link, Pendulum Zones and Scales, the Extra Monster Zone; "cannot
+be used as Xyz/Link Material" is left alone), or a missing script: the client may show such a card, but the duel can't
+play it as written. Read the lines; drop the card, or add it with --checked when they are harmless (a filter that only
+skips Xyz Monsters).
 
 Input (committed): engine/added/cards.tsv, one line per added card: its permanent `row` (4834 on, after the game's last;
 never reused or reordered: decks and saves store rows), its Konami id, its `stand_in` id (below), its `rarity` (below,
@@ -56,6 +69,7 @@ import os
 import re
 import sqlite3
 import struct
+import subprocess
 import sys
 import zlib
 
@@ -63,6 +77,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, '..', '..'))
 ENGINE = os.path.join(ROOT, 'engine')
 TABLE = os.path.join(ENGINE, 'added', 'cards.tsv')
+ANIME_TABLE = os.path.join(ENGINE, 'anime', 'cards.tsv')
 OUT = os.path.join(ENGINE, 'added-cards.json')
 FORMAT = 'yo3-added-cards'
 STAT_MAX = 0x1FE * 10  # nine bits of tens; 0x1FF is the client's "?"
@@ -152,15 +167,67 @@ EFFECT_WORD = re.compile(r'\b(?:CATEGORY|EFFECT)_[A-Z_]+')
 SCRIPT_FOLDERS = ['official', 'pre-errata', 'pre-release', 'unofficial']
 
 
-def script_words(code):
-    """The effect words (CATEGORY_..., EFFECT_...) of the script the engine plays for `code`: our override, else
-    ProjectIgnis' (crates/yo3-engine cards.rs' order)."""
+def script_path(code):
+    """The script the engine plays for `code`: our override, else ProjectIgnis' (crates/yo3-engine cards.rs' order)."""
     for path in [os.path.join(ENGINE, 'overrides', f'c{code}.lua')] + [
             os.path.join(ENGINE, 'vendor', 'CardScripts', folder, f'c{code}.lua') for folder in SCRIPT_FOLDERS]:
         if os.path.exists(path):
-            with open(path, encoding='utf-8', errors='replace') as f:
-                return set(EFFECT_WORD.findall(f.read()))
-    return set()
+            return path
+    return None
+
+
+def script_text(code):
+    path = script_path(code)
+    if not path:
+        return None
+    with open(path, encoding='utf-8', errors='replace') as f:
+        return f.read()
+
+
+def script_words(code):
+    """The effect words (CATEGORY_..., EFFECT_...) of the script the engine plays for `code`."""
+    return set(EFFECT_WORD.findall(script_text(code) or ''))
+
+
+# Mechanics the game never had, as ProjectIgnis' scripts name them. A line that only forbids using the card as Xyz or
+# Link Material is harmless: Master Rule 2 never asks.
+MECHANICS = [
+    ('Xyz', re.compile(r'TYPE_XYZ|Xyz\.|Overlay|IsXyzLevel|IsRank|GetRank|REASON_XYZ|SUMMON_TYPE_XYZ')),
+    ('Link', re.compile(r'TYPE_LINK|Link\.|GetLinked|LinkMarker|LINK_MARKER|IsLink|GetLink|REASON_LINK|SUMMON_TYPE_LINK')),
+    ('Pendulum', re.compile(r'TYPE_PENDULUM|Pendulum\.|LOCATION_PZONE|Scale|SUMMON_TYPE_PENDULUM')),
+    ('the Extra Monster Zone', re.compile(r'ExtraMonsterZone|InExtraMZone|LOCATION_EMZONE|IsInMainMZone')),
+]
+HARMLESS = re.compile(r'EFFECT_CANNOT_BE_(?:XYZ|LINK)_MATERIAL')
+
+
+def mechanics(text):
+    """[(mechanic, its line numbers)] in a script's `text`, in MECHANICS' order."""
+    out = []
+    lines = [l.split('--', 1)[0] for l in text.split('\n')]  # Lua comments name mechanics too
+    for what, pattern in MECHANICS:
+        hits = [i for i, l in enumerate(lines, 1) if pattern.search(l) and not HARMLESS.search(l)]
+        if hits:
+            out.append((what, hits))
+    return out
+
+
+def notes(line, ctx):
+    """What to read in the script of a card --find approved (its cards.tsv `line`): mechanics the game never had, or no
+    script at all (a Normal Monster needs none)."""
+    if not line:
+        return []
+    parts = line.split('\t')
+    if parts[4]:
+        code, d = int(parts[4]), ctx['anime'].get(int(parts[4]))
+    else:
+        code = ctx['passcode'].get(int(parts[1]))
+        d = ctx['data'].get(code)
+    text = script_text(code)
+    if text is None:
+        normal = d is not None and d['type'] & 0x11 == 0x11 and not d['type'] & 0x20
+        return [] if normal else [f'no script c{code}.lua: it would play with no effect']
+    rel = os.path.relpath(script_path(code), ROOT)
+    return [f'{what}: {rel} lines {", ".join(map(str, hits))}' for what, hits in mechanics(text)]
 
 
 def features(d, code, category=True):
@@ -320,7 +387,10 @@ def stand_in_problem(sid, ctx, taken):
 
 
 def next_stand_in(ctx, taken):
-    return next(i for i in range(ctx['base'], 0x4000) if stand_in_problem(i, ctx, taken) is None)
+    return next((i for i in range(ctx['base'], 0x4000) if stand_in_problem(i, ctx, taken) is None), None)
+
+
+NO_STAND_IN = 'no stand-in id is left: every id the client can hold from its lowest (3900) to 16383 is taken'
 
 
 def build():
@@ -442,7 +512,9 @@ def find(names, ctx=None):
             if problem:
                 why.append(problem)
             sid = next_stand_in(ctx, taken)
-            why += encode(d, sid, ctx['learned'])[2]
+            if sid is None:
+                why.append(NO_STAND_IN)
+            why += encode(d, sid or ctx['base'], ctx['learned'])[2]
             if why:
                 out.append((d['name'], None, why))
             else:
@@ -459,8 +531,11 @@ def find(names, ctx=None):
             why.append('the game already has it')
         if cid in listed:
             why.append('engine/added/cards.tsv already has it')
-        sid = next_stand_in(ctx, taken) if cid > 0x3FFF or cid in taken else None
-        why += encode(d, sid or cid, ctx['learned'])[2]
+        needs = cid > 0x3FFF or cid in taken
+        sid = next_stand_in(ctx, taken) if needs else None
+        if needs and sid is None:
+            why.append(NO_STAND_IN)
+        why += encode(d, sid or (ctx['base'] if needs else cid), ctx['learned'])[2]
         if why:
             out.append((d['name'], None, why))
         else:
@@ -525,6 +600,62 @@ HELD_FIXES = {
 }
 
 
+def report(results, ctx):
+    """Each card's verdict, with the script lines to read."""
+    for name, line, why in results:
+        anime_only = line and line.split('\t')[4]
+        print(f'{name}: ' + (('ok (anime-only: played with anime cards on)' if anime_only else 'ok') if line else 'cannot be added: ' + '; '.join(why)))
+        for note in notes(line, ctx):
+            print(f'  read first: {note}')
+
+
+def regenerate():
+    """This build, then tools/engine/anime-map.py and tools/engine/anime-pictures.py (each reads the one before): 0 when
+    all three wrote their files."""
+    for tool in ('added-cards.py', 'anime-map.py', 'anime-pictures.py'):
+        r = subprocess.run([sys.executable, os.path.join(HERE, tool)])
+        if r.returncode != 0:
+            print(f'tools/engine/{tool} failed: fix the tables (git diff engine/) and run it again', file=sys.stderr)
+            return 1
+    return 0
+
+
+def add(cards, note, checked=False):
+    """--add: both tables' lines for `cards`, then the generators; nothing written unless every card can go in."""
+    ctx = load()
+    results = find(cards, ctx)
+    report(results, ctx)
+    if not all(line for _, line, _ in results):
+        print('\nnothing added: every card must fit (drop the ones that cannot)')
+        return 1
+    noted = [name for name, line, _ in results if notes(line, ctx)]
+    if noted and not checked:
+        print(f'\nnothing added: read the lines noted for {", ".join(noted)}; drop those cards, or add again with --checked')
+        return 1
+    note = ' '.join(note.split())
+    with open(TABLE, encoding='utf-8') as f:
+        text = f.read()
+    with open(TABLE, 'w', encoding='utf-8') as f:
+        f.write(text if text.endswith('\n') else text + '\n')
+        for _, line, _ in results:
+            f.write(line + note + '\n')
+    rows = anime_rows(results, ctx)
+    if rows:
+        with open(ANIME_TABLE, encoding='utf-8') as f:
+            head, *lines = f.read().rstrip('\n').split('\n')
+        have = {int(l.split('\t')[0]) for l in lines}
+        lines += [r['line'] for r in rows if r['cid'] not in have]
+        lines.sort(key=lambda l: int(l.split('\t')[0]))
+        with open(ANIME_TABLE, 'w', encoding='utf-8') as f:
+            f.write(head + '\n' + '\n'.join(lines) + '\n')
+    print(f'\nadded {len(results)} card(s) to engine/added/cards.tsv' + (' and engine/anime/cards.tsv' if rows else '') + '; rebuilding...')
+    if regenerate():
+        return 1
+    print('\nNext (docs/added-cards.md): a scenario test per effect, `task check:added`, a live check, then '
+          'docs/features.md and CHANGELOG.md. Rows and stand-ins are permanent once committed: check the order first.')
+    return 0
+
+
 def render(doc):
     return json.dumps(doc, indent=1, ensure_ascii=False) + '\n'
 
@@ -532,22 +663,36 @@ def render(doc):
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--check', action='store_true', help='compare the committed file with a fresh build')
-    p.add_argument('--find', nargs='+', metavar='CARD', help='whether these cards (names, passcodes or cid:N) can be added, and their table lines')
+    p.add_argument('--find', nargs='*', metavar='CARD', help='whether these cards (names, passcodes or cid:N) can be added, and their table lines')
     p.add_argument('--find-file', metavar='FILE', help='the same for the cards in FILE, one per line')
+    p.add_argument('--add', nargs='*', metavar='CARD', help='add these cards to both tables and rebuild (all or nothing)')
+    p.add_argument('--add-file', metavar='FILE', help='the same for the cards in FILE, one per line')
+    p.add_argument('--note', help="--add: the table's note for each card (who asked, the issue)")
+    p.add_argument('--checked', action='store_true', help='--add: the scripts --find notes were read and are fine')
     args = p.parse_args(argv)
+    def from_file(path):
+        with open(path, encoding='utf-8-sig') as f:
+            return [l.strip() for l in f if l.strip() and not l.lstrip().startswith('#')]
     if args.find_file:
-        with open(args.find_file, encoding='utf-8-sig') as f:
-            args.find = (args.find or []) + [l.strip() for l in f if l.strip() and not l.lstrip().startswith('#')]
+        args.find = (args.find or []) + from_file(args.find_file)
+    if args.add_file:
+        args.add = (args.add or []) + from_file(args.add_file)
+    for flag, cards in (('--add', args.add), ('--find', args.find)):
+        if cards == []:
+            p.error(f'{flag} needs cards (names, passcodes, cid:N, anime:N) or {flag}-file FILE')
+    if args.add:
+        if not args.note:
+            p.error('--add needs --note (who asked, the issue): the table keeps it')
+        return add(args.add, args.note, args.checked)
     if args.find:
-        results = find(args.find)
-        for name, line, why in results:
-            anime_only = line and line.split('\t')[4]
-            print(f'{name}: ' + (('ok (anime-only: played with anime cards on)' if anime_only else 'ok') if line else 'cannot be added: ' + '; '.join(why)))
+        ctx = load()
+        results = find(args.find, ctx)
+        report(results, ctx)
         lines = [line for _, line, _ in results if line]
         if lines:
-            print('\nLines for engine/added/cards.tsv (add a note after the last tab):')
+            print('\nLines for engine/added/cards.tsv (add a note after the last tab), or add them with --add CARD... --note TEXT:')
             print('\n'.join(lines))
-        rows = anime_rows(results, load()) if lines else []
+        rows = anime_rows(results, ctx) if lines else []
         if rows:
             outcomes = anime_outcomes(rows)
             print('\nLines for engine/anime/cards.tsv (every printed card needs one; it keeps the table sorted by id), then run '

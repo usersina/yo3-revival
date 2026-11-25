@@ -92,6 +92,14 @@ class AddedCards(unittest.TestCase):
                     added.build()
                 self.assertIn(says, str(e.exception))
 
+    def test_a_newer_card_is_refused_when_no_stand_in_is_left(self):
+        # About 1,200 ids are free: when they run out, --find says so instead of failing.
+        ctx = added.load()
+        with mock.patch.object(added, 'stand_in_problem', lambda *a: 'taken'):
+            (name, line, why), = added.find(['18847598'], ctx)
+        self.assertIsNone(line)
+        self.assertTrue(any('no stand-in id is left' in w for w in why), why)
+
     def test_genre_bits_follow_the_games_own_cards(self):
         # Edit Deck's search by effect: the learned rules mark the game's cards as the game does, nearly always.
         ctx = added.load()
@@ -163,6 +171,41 @@ class AddedCards(unittest.TestCase):
         self.assertEqual(added.anime_outcomes(rows)[11123][0], 'mapped')
 
 
+    def test_find_notes_mechanics_the_game_never_had(self):
+        # The client can show a Spell, but Pendulum Call works on Pendulum Zones, Xyz Reborn brings back an Xyz Monster
+        # and Link Restart a Link Monster: --find names those lines to read. Black Rose Moonlight Dragon and Ash Blossom
+        # mention none.
+        ctx = added.load()
+        notes = {name: added.notes(line, ctx) for name, line, _ in added.find(
+            ['Pendulum Call', 'Xyz Reborn', 'Link Restart', 'Black Rose Moonlight Dragon', 'Ash Blossom & Joyous Spring'], ctx)}
+        self.assertTrue(any('Pendulum' in n for n in notes['Pendulum Call']), notes)
+        self.assertTrue(any('Xyz' in n for n in notes['Xyz Reborn']), notes)
+        self.assertTrue(any('Link' in n for n in notes['Link Restart']), notes)
+        self.assertEqual((notes['Black Rose Moonlight Dragon'], notes['Ash Blossom & Joyous Spring']), ([], []))
+
+    def test_add_writes_both_tables_and_rebuilds(self):
+        # --add: the line with its note at the end of engine/added/cards.tsv, the anime table's line in id order, then the
+        # three generators. A card that can't be added, or one with notes not yet read (--checked), writes nothing.
+        with tempfile.TemporaryDirectory() as tmp:
+            table, anime = os.path.join(tmp, 'cards.tsv'), os.path.join(tmp, 'anime.tsv')
+            for src, dst in ((added.TABLE, table), (added.ANIME_TABLE, anime)):
+                with open(src, encoding='utf-8') as a, open(dst, 'w', encoding='utf-8') as b:
+                    b.write(a.read())
+            before = [open(table).read(), open(anime).read()]
+            ran = []
+            with mock.patch.object(added, 'TABLE', table), mock.patch.object(added, 'ANIME_TABLE', anime), \
+                    mock.patch.object(added, 'regenerate', lambda: ran.append(1) or 0):
+                self.assertEqual(added.main(['--add', 'Black Rose Moonlight Dragon', 'Number 39: Utopia', '--note', 'test']), 1)
+                self.assertEqual(added.main(['--add', 'Pendulum Call', '--note', 'test']), 1)
+                self.assertEqual(([open(table).read(), open(anime).read()], ran), (before, []), 'nothing written')
+                self.assertEqual(added.main(['--add', 'Black Rose Moonlight Dragon', '--note', 'asked by test']), 0)
+            last = open(table).read().rstrip('\n').split('\n')[-1].split('\t')
+            self.assertEqual((last[1], last[5], last[6]), ('11123', 'Black Rose Moonlight Dragon', 'asked by test'))
+            ids = [int(l.split('\t')[0]) for l in open(anime).read().rstrip('\n').split('\n')[1:]]
+            self.assertIn(11123, ids)
+            self.assertEqual(ids, sorted(ids), 'the anime table stays in id order')
+            self.assertEqual(ran, [1])
+
 class Pure(unittest.TestCase):
     def test_the_databases_unofficial_text_note_is_left_out(self):
         desc = 'Cannot attack.\r\n\r\n* The above text is unofficial and describes the card\'s functionality in the OCG.'
@@ -173,6 +216,12 @@ class Pure(unittest.TestCase):
         f = added.fields(18 << 3 | 1 << 8 | 12 << 12 | 1 << 19 | 1 << 27)
         self.assertEqual((f['kind'], f['attribute'], f['level'], f['race'], f['art']), (18, 1, 12, 1, 1))
 
+
+    def test_mechanics_name_their_lines_and_leave_material_rules_alone(self):
+        lua = 'local s,id=GetID()\nfunction s.filter(c) return c:IsType(TYPE_XYZ) end\n' \
+              'e1:SetCode(EFFECT_CANNOT_BE_XYZ_MATERIAL)\nDuel.GetFieldGroup(tp,LOCATION_PZONE,0)\n'
+        self.assertEqual(added.mechanics(lua), [('Xyz', [2]), ('Pendulum', [4])])
+        self.assertEqual(added.mechanics('e1:SetCode(EFFECT_CANNOT_BE_LINK_MATERIAL)\n'), [])
 
 if __name__ == '__main__':
     unittest.main()

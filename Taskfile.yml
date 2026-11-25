@@ -50,6 +50,15 @@ tasks:
       - cargo nextest run -p yo3-server --test duel_check
       - python3 tools/engine/coverage.py {{.CLI_ARGS}}
 
+  check:added:
+    desc: "After adding cards: the generated card files, then every added card's tests (smoke, scenarios, self-played duels)"
+    cmds:
+      - python3 tools/engine/added-cards.py --check
+      - python3 tools/engine/anime-map.py --check
+      - python3 tools/engine/anime-pictures.py --check
+      - cargo build --release -p yo3-engine
+      - cargo nextest run --release -p yo3-server -E 'binary(added_cards_smoke) | binary(added_cards) | binary(added_batch) | test(duels_with_the_added_cards)'
+
   check:shipped:
     desc: "The server's and engine's tests against a built bundle's pruned engine (-- dist/.editions/linux-x86_64/desktop/yo3-revival-desktop --release)"
     cmds:
@@ -60,6 +69,16 @@ tasks:
     cmds:
       - cargo nextest run -p yo3-server --test deck_coverage
       - python3 tools/engine/coverage.py --decks {{.CLI_ARGS}}
+
+  # Cards the game never had (docs/added-cards.md)
+  cards:find:
+    desc: "Whether cards can be added, their table lines and the script lines to read (-- \"Card Name\" ... | --find-file FILE)"
+    cmds:
+      - python3 tools/engine/added-cards.py --find {{.CLI_ARGS}}
+  cards:add:
+    desc: "Add cards to both tables and rebuild (-- \"Card Name\" ... --note \"who asked, #issue\" [--checked])"
+    cmds:
+      - python3 tools/engine/added-cards.py --add {{.CLI_ARGS}}
 
   # Builds
   build:dev:

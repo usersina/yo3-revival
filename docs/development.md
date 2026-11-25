@@ -275,10 +275,10 @@ the [working guide](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md#
 
 ## Add a card the game never had
 
-Since #75 the server can add cards after the game's own (the first: Shooting Quasar Dragon): a row in
-`engine/added/cards.tsv` (`tools/engine/added-cards.py --find NAME` checks a card fits and prints it), then
-`tools/engine/added-cards.py`, `tools/engine/anime-pictures.py`, a scenario test per effect and a live check. The
-whole procedure, batches, testing, pictures and how the cards reach the game: [Adding cards](added-cards.md).
+Since #75 the server can add cards after the game's own (the first: Shooting Quasar Dragon): `task cards:find -- NAME`
+checks a card fits (its kind, its stats, its script's mechanics), `task cards:add -- NAME --note TEXT` writes both
+tables and runs the generators, then a scenario test per effect, `task check:added` and a live check. The whole
+procedure, batches, testing, pictures and how the cards reach the game: [Adding cards](added-cards.md).
 
 ## Duel diagnostics
 

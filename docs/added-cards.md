@@ -34,13 +34,15 @@ So a card can be added when:
 - **The game doesn't have it already** (a card the game has keeps its row and is only changed through the
   [anime versions](anime-cards.md)).
 - **Its script works under the rules the duels use.** Duels run EDOPro's core in Master Rule 2 mode (no Extra Monster
-  Zone, no Pendulum Zones). A card from 2013 on may name mechanics the game never had. Read the script
-  (`engine/vendor/` after `engine/fetch.sh`) before adding a card that mentions Xyz Materials, Link Arrows, the Extra
-  Monster Zone or Pendulum Scales: such a card is a poor fit even when the client could draw it.
+  Zone, no Pendulum Zones). A card from 2013 on may use mechanics the game never had: Pendulum Call is a Spell the
+  client can show, but it works on Pendulum Zones. `--find` reads each card's script and notes the lines that use Xyz
+  Materials or Monsters, Link, Pendulum Zones and Scales or the Extra Monster Zone, or a card with no script ("read
+  first"). Read those lines: drop the card, or add it with `--checked` when they are harmless (a filter that only skips
+  Xyz Monsters). About one card in eight that fits otherwise gets a note.
 - **The pinned data knows it.** A card newer than the pins needs `engine/fetch.sh --update`
   ([development](development.md#the-rules-engine)).
 
-`tools/engine/added-cards.py --find` checks the first two and the stats for you.
+`task cards:find` (`tools/engine/added-cards.py --find`) checks all of these for you, the script's by its notes.
 
 **A newer card's id.** The client keeps a card's Konami id in 14 bits (16383 at most) and finds a card through a table
 that starts at its lowest id (3900). Cards printed from about 2017 on have Konami ids beyond that, so such a card gets a
@@ -48,7 +50,7 @@ that starts at its lowest id (3900). Cards printed from about 2017 on have Konam
 added card's). `--find` picks it and writes it in the line's `stand_in` column; the client, the server and the rules
 engine (`engine/added-cards.json`'s `cid`) all know the card by it, and `konami_id` keeps the real one. Everything that
 takes a card's id (a scenario test, `--duel-field`, `tools/engine/cardtext.py`, the picture's file name) takes the
-stand-in. About 1,200 ids are free that way.
+stand-in. About 1,200 ids are free that way; when they run out, `--find` says so.
 
 **What the tool also writes.** Edit Deck's **Search Key** filters (Special Summon, Destroy monster, Pierce, Flip
 Effect...) read a card's genre bits (`CARD_Genre`). The tool learns them from the game's own cards: each genre bit is
@@ -61,36 +63,43 @@ table's optional `rarity` column: empty for Common, or `rare`, `super`, `ultra`.
 
 ## Add one card
 
-1. **Check it fits** and get its line, by its English name (any case), its passcode, or `cid:N` (its Konami id):
+1. **Check it fits**, by its English name (any case), its passcode, or `cid:N` (its Konami id):
 
    ```bash
-   tools/engine/added-cards.py --find "Black Rose Moonlight Dragon"
-   tools/engine/added-cards.py --find 18847598           # a passcode: names that differ between sources, homonyms
+   task cards:find -- "Black Rose Moonlight Dragon"
+   task cards:find -- 18847598           # a passcode: names that differ between sources, homonyms
    ```
 
-   It says `ok` with the line for `engine/added/cards.tsv` (the next row, the Konami id, the stand-in id when it needs
-   one, an empty rarity, the name), or why the card can't be added. For a printed card it also gives the line for
-   `engine/anime/cards.tsv` (every card a player can hold has one there; it names the anime version when the pinned
-   data has one) and what `tools/engine/anime-map.py` will make of it: mapped, or held and why, with the fix when there is
-   a usual one (a "?" ATK the anime database spells 0 needs a corrected record in `engine/anime/records.json`).
-2. **Add the lines**: the first to `engine/added/cards.tsv` with a short note after the last tab (who asked, the issue
-   number), the second (a printed card) to `engine/anime/cards.tsv`, then run `tools/engine/anime-map.py`.
-3. **Build the list:** `tools/engine/added-cards.py`. It writes `engine/added-cards.json`, the file the server and the
-   launcher read, and refuses anything wrong with the table: a row out of order, a card the game has, a kind the client
-   can't show, a Konami id beyond 16383 without a stand-in, a stand-in some card already has. `--check` compares the committed file with a fresh build (the tests run it).
-4. **Add it to the picture list:** `tools/engine/anime-pictures.py` ([its picture](#its-picture)).
-5. **Write its scenario test** and check it live ([test it](#test-it)).
-6. **Record it:** the card in `docs/features.md`'s row for added cards, and a line in `CHANGELOG.md` in players' words.
+   It says `ok`, or why the card can't be added, and under an `ok` the script lines to read first, if any. It also
+   prints the lines both tables will get (the next row, the Konami id, the stand-in id when it needs one; for a printed
+   card, the line for `engine/anime/cards.tsv`, which every card a player can hold has) and what
+   `tools/engine/anime-map.py` will make of its anime version: mapped, or held and why, with the fix when there is a
+   usual one (a "?" ATK the anime database spells 0 needs a corrected record in `engine/anime/records.json`).
+2. **Add it**, with a note for the table (who asked, the issue):
 
-The data steps take minutes. Most of the work is step 5: each effect needs a test that plays it.
+   ```bash
+   task cards:add -- "Black Rose Moonlight Dragon" --note "asked by Alice (#80)"
+   ```
+
+   This writes its line at the end of `engine/added/cards.tsv` and a printed card's line in `engine/anime/cards.tsv` (in
+   id order), then runs the three generators: `tools/engine/added-cards.py` (`engine/added-cards.json`, the file the
+   server and the launcher read), `tools/engine/anime-map.py` and `tools/engine/anime-pictures.py` (Desktop's
+   [picture list](#its-picture)). It writes nothing unless every card fits, nor while a card has notes you haven't
+   read (`--checked` once you have). The build refuses anything wrong with the table (a row out of order, a card the
+   game has, a kind the client can't show, a Konami id beyond 16383 without a stand-in, a stand-in some card already
+   has); a table edited by hand is checked the same way.
+3. **Write its scenario tests** and check it live ([test it](#test-it)), then `task check:added`.
+4. **Record it:** the card in `docs/features.md`'s row for added cards, and a line in `CHANGELOG.md` in players' words.
+
+The data steps take a minute. Most of the work is step 3: each effect needs a test that plays it.
 
 ## Test it
 
 **Without writing anything**, every added card is already covered by two tests: `added_cards_smoke.rs` puts each one on
 the field (and a copy in hand) and plays two turns each way through the real core, so a script that errors or a card the
 client's view can't follow fails at once; and the duel check's `duels_with_the_added_cards` self-plays duels full of
-added cards (anime versions off, then on with the anime-only ones). Run them after adding a batch:
-`cargo nextest run --release -p yo3-server --test added_cards_smoke --test duel_check`.
+added cards (anime versions off, then on with the anime-only ones). `task check:added` runs them, with the added
+cards' scenarios and the generated files' checks, after a fresh build of the rules engine.
 
 **A scenario test for each effect** in `crates/yo3-server/tests/added_cards.rs`. A scenario plays a duel through the
 real rules engine and checks both players' views of the board after every step, the same check every duel gets with
@@ -116,8 +125,8 @@ assert!(s.problems.is_empty(), "{:#?}", s.problems);
 assert_eq!(s.attack_of(0, QUASAR), Some(4000), "Dark Hole was negated");
 ```
 
-The self-played duels of `tests/duel_check.rs` use the game's own cards only, so an added card is covered by its
-scenarios and the live check, not by them.
+The self-played duels play an added card by its scripts at random; a scenario is what proves each effect does what
+its text says.
 
 **Live**, on the headless client ([which tool sees what](development.md#which-tool-sees-what)), never the player's own
 setup: a scratch server (`task dev:server`), then either
@@ -130,8 +139,8 @@ setup: a scratch server (`task dev:server`), then either
   catches any difference between the game and the engine.
 
 `tools/client/vclient.sh npc` takes the client from the map into a duel against the computer (the talk, the deck, the
-janken, going first; `--second`). Every added card shows the same "Artwork not found" picture until its own arrives, so
-which card is which isn't visible: `tools/client/vclient.sh duel` lists each side's hand, field and Graveyard by name,
+janken, going first; `--second`). An added card shows the "Artwork not found" picture until its own arrives (to see
+one, [its picture](#its-picture)), so which card is which isn't always visible: `tools/client/vclient.sh duel` lists each side's hand, field and Graveyard by name,
 and the question the duel asks now with each choice by name, in the dialog's order (from the scratch server's log, with
 `--duel-check` on).
 
@@ -140,19 +149,26 @@ when it should; its summon animation; each effect's dialogs on both clients; no 
 
 ## Its picture
 
-The game draws a card from two pictures: a 200x290 face and a 50x72 thumbnail. **The project ships no card picture**:
-like the anime cards', an added card's picture comes from ProjectIgnis' picture server, by its official passcode, on
-each player's PC (Desktop's **Card pictures**, [how](anime-cards.md#artwork)). `tools/engine/anime-pictures.py` adds
-the added cards to Desktop's picture list (`engine/anime/pictures.tsv`); the list is compiled into Desktop, so a new
-card's picture reaches players with the next release.
+The game draws a card from two pictures: a 200x290 face and a 50x72 thumbnail. The launcher makes them on the player's
+PC, for every card of Desktop's picture list (`engine/anime/pictures.tsv`, which `task cards:add` updates through
+`tools/engine/anime-pictures.py`; it is compiled into Desktop, so a new card's place in it reaches players with the
+next release). The first of these a card has wins ([which picture](anime-cards.md#artwork)):
 
-Until its picture arrives, a card shows the stand-in that does ship, the "Artwork not found" card
-(`crates/yo3-launcher/assets/no-picture.png`, the project's own picture). To replace it:
-`tools/engine/no-picture.py IMAGE` crops any image to a card's shape and writes it at 200x290.
+1. **The player's own**, in the `pics` folder as EDOPro has it: `pics/<passcode>.jpg` or `.png`, beside `anime-art` in
+   the launcher's data folder or beside `yo3.exe` ([players' guide](launcher.md#card-pictures)). It works for every
+   card of the list, an added card included, by its anime passcode first and then its official one.
+2. **The project's own pictures**, shipped in the launcher: the owner's artwork for the manga Gods and the anime Divine
+   Serpent Geh, as 200x290 faces (`crates/yo3-launcher/assets/pics/`, made by `tools/engine/shipped-pictures.py`,
+   listed in `crates/yo3-launcher/src/art/pics.rs`'s `SHIPPED`). A picture goes there only when the owner gives it.
+3. **A downloaded picture**: ProjectIgnis' picture server, by the card's passcode (Desktop's **Card pictures**,
+   [how](anime-cards.md#artwork)). The project hosts none of these.
+4. **The stand-in**, "Artwork not found" (`crates/yo3-launcher/assets/no-picture.png`, the project's own picture).
+   `tools/engine/no-picture.py IMAGE` crops any image to a card's shape and writes it at 200x290 to replace it.
 
-To see a card's picture on the headless client, point `YO3_ANIME_ART` at a folder with `card/<id>.png` (200x290) and
-`mini/<id>.png` (50x72), the id the client knows (the Konami id or the stand-in id); an empty folder shows the
-"Artwork not found" card.
+To see a card's picture on the headless client, point `YO3_ANIME_ART` at an empty folder of your own (never the
+player's): the launcher fills it with the shipped pictures and with any `pics/<passcode>.png` beside it (the folder's
+parent's `pics`), so a picture of the card there shows it. A picture already made at 200x290 can go in
+`card/<id>.png` instead (the id the client knows: the Konami id or the stand-in id).
 
 ## Its anime version
 
@@ -209,13 +225,12 @@ panel's Accounts page); the player sees it at their next map visit.
 
 The data side doesn't grow with the batch: one table, one command.
 
-1. `tools/engine/added-cards.py --find-file FILE`, FILE listing every candidate (a name, passcode or `cid:N` per line,
+1. `task cards:find -- --find-file FILE`, FILE listing every candidate (a name, passcode or `cid:N` per line,
    `#` comments). It prints each verdict and the lines for the ones that fit, in order, each newer card with its own
    stand-in. Choose the order before adding: rows and stand-ins are permanent ([below](#rules-that-never-bend)).
-2. Read each script for mechanics the game never had (Xyz Materials, Link, Pendulum, the Extra Monster Zone) and drop
-   those cards.
-3. Paste the lines (both tables), build, update the anime map and the picture list (`added-cards.py`,
-   `anime-map.py`, `anime-pictures.py`), and run the tests.
+2. Read the lines each "read first" note names, and drop the cards that need a mechanic the game never had.
+3. Add the ones you keep with `task cards:add -- --add-file FILE --note "the batch, #issue"` (the same file, cut down;
+   `--checked` when you read every noted script and kept the cards anyway), then `task check:added`.
 4. Write the scenarios. They are independent of each other, so they can be written in parallel, one card each.
 5. One live session for the whole batch: `give-cards` each card, then Edit Deck and a duel or two with
    `--duel-field` placing several of them at once (an NPC duel needs one client), `vclient.sh duel` naming them.
@@ -249,8 +264,8 @@ comes with the next Desktop release; until then it shows the stand-in.
   out; the added card keeps its id.
 - **No hand-typed card data.** Everything comes from the pinned data and the player's game. `engine/added-cards.json`
   is generated: edit `engine/added/cards.tsv` and rebuild.
-- **No Konami files or artwork in the repository.** The pictures come from ProjectIgnis on each player's PC; the
-  only shipped picture is the project's own stand-in.
+- **No Konami files or artwork in the repository.** Downloaded pictures come from ProjectIgnis on each player's PC; the
+  only shipped pictures are the project's own (the stand-in, and the owner's artwork in `crates/yo3-launcher/assets/pics/`).
 - **Each effect is tested.** A card goes in with a scenario per effect, as any card effect a player reports does.
 
 ## When something goes wrong
@@ -264,9 +279,12 @@ comes with the next Desktop release; until then it shows the stand-in.
 | `N is no anime card (ot 4, no alias)` / `registers no effect (a placeholder)` | An anime-only card must be the unofficial database's anime card itself, with a working script |
 | A deck is refused with "… is an anime card: this server has anime cards off" | It holds an anime-only card: take it out, or turn `anime-cards` on |
 | The card is missing from one of Edit Deck's Search Key filters | Its genre bits are learned from the EDOPro categories (below, [what a card needs](#what-a-card-needs)): about half of the game's marks have such a rule, the others (Recover cards from Graveyard, Hand destruction...) are never set for an added card |
+| `read first: Pendulum: ... lines N` (or Xyz, Link, the Extra Monster Zone) | Its script uses a mechanic the game never had: read the lines; drop the card, or add it with `--checked` when they are harmless |
+| `nothing added: ...` | `task cards:add` writes all the cards or none: drop the ones that can't go in, or read their notes and add `--checked` |
+| `no stand-in id is left` | Every id from 3900 to 16383 is taken: no newer card can be added |
 | `row N, the next is M` | Rows must follow the game's last row without a gap: use the row `--find` prints |
 | `ATK … is beyond what the client can show` | Above 5100 or not in tens: it can't be added |
 | The card is missing from Edit Deck | The launcher that started the game predates the server's list, or the game was opened without the launcher before its first PLAY: close it and PLAY from the launcher |
-| "Artwork not found" in the game | Its picture isn't downloaded yet (Settings, Game, Card pictures), or it isn't in the picture list: run `tools/engine/anime-pictures.py` |
+| "Artwork not found" in the game | Its picture isn't downloaded yet (Settings, Game, Card pictures), or the player has none in `pics`, or it isn't in the picture list yet: `task cards:add` runs `tools/engine/anime-pictures.py`, and the list reaches players with the next Desktop release |
 | A spawned card isn't on the field in a scenario | `start_field` takes it from that player's deck or Extra Deck: put a copy there |
 | `ERROR duel check` with an added card | The players' views and the engine differ after one of its effects: a scenario that plays that effect will name the step |
