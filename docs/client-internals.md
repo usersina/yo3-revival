@@ -776,7 +776,7 @@ needs a Play before opening `yo3.exe` alone.
 ### Numbers in the duel: LP and ATK (investigated 2026-11-24)
 
 How the duel shows LP and ATK, and why only ATK and DEF can show more than 99999 (the engine's infinite ATK is 9,999,999). The field's ATK and
-DEF show "∞" since 2026-11-24 (`tools/mod/duel-numbers.h`, below); LP stays at most 99999. All of it is drawn by Flash movies (Scaleform GFx), which the game feeds numbers through its one invoke
+DEF show "∞" since 2026-11-24, and LP above 99999 since 2026-11-25 (`tools/mod/duel-numbers.h`, below). All of it is drawn by Flash movies (Scaleform GFx), which the game feeds numbers through its one invoke
 (`0x5CB1B0`, see "The UI probe"):
 
 - **LP**: DuelCockpit `0x502EB0` handles the LP commands. `0xF` stores the LP as sent and calls `0x5035A0`, which
@@ -795,7 +795,7 @@ DEF show "∞" since 2026-11-24 (`tools/mod/duel-numbers.h`, below); LP stays at
 
 So a text field can show "∞" given a string instead of a number (the invoke takes `char *` and `wchar_t *` values, as
 the connection DLL's Rental Card List Return button already passes), while the LP counter and the damage numbers would
-need a picture the game doesn't have.
+need a picture the game doesn't have (the LP's is the DLL's own, below; the damage numbers still show -99999).
 
 The connection DLL does it (`tools/mod/duel-numbers.h`, logic and test in `duel-numbers-logic.h`/`duel-numbers-test.c`):
 it detours the invoke `0x5CB1B0` and, in `call("setProp", prop, value)`, sends an ATK or DEF (prop 6, 7) above the
@@ -810,6 +810,24 @@ detour of its own; `detour.h` is their shared helper). Live, 2026-11-24: Geh sho
 in blue, the ∞ about the digits' height; Obelisk "4000 / 4000". Since a printed infinity is the card's original ATK too
 (`guards.lua`), the anime Geh's ∞ is white (equal to its original, both sent as "∞") and an effect's blue: live,
 2026-11-25, Geh "∞ / 0" in white beside Avatar's "∞ / ∞" in blue, no duel check drift.
+
+**LP "∞" (2026-11-25).** The LP counter has no ∞ frame, so the DLL carries a picture of its own:
+`tools/mod/art/lp-infinity.png` (its spec: `tools/mod/art/README.md`), compiled in as `lp-infinity-png.h` by
+`tools/mod/make-lp-infinity.py`. The server sends an LP above 99999 as 100000 ([protocol](protocol.md), LP changes).
+The detour recognises `call("setLp", player, lp, colour)`: above 99999 it passes 99999 on, and after the call makes
+(once per cockpit) a clip `yo3Infinity` in `_root.cockpit<player>` (createEmptyMovieClip, depth 16000 + player), a child
+`pic` in it, and loads the picture into that with the movie's own `loadMovie`, from a copy the DLL writes to the
+temporary folder (`yo3-revival-lp-infinity-<bytes>.png`): the file system's createAndOpenFile opens an absolute path no
+archive holds from disk, as for the card art. The clip is scaled to 25% of the counter's scale (the picture is drawn at
+four times the screen) and centred on the digits by the counter's `anchor` ("center" for LP, read live: the digits
+centre on `lpCounter._x`, 32 in the cockpit, `fontWidth` 13, digits 14 high), then shown and `lpCounter._visible` set
+false; an LP of 99999 or less shows the counter and hides the clip. The change command clamps its LP at 99999 with `cmp
+edi, 0x1869F` (`0x50301D`) and `mov edi, 0x1869F` (`0x503025`): the DLL makes both 100000 (checked bytes; a mismatch is
+logged and leaves them), so a change of 0, which the server applies while the LP stays beyond, keeps the counter at
+100000 instead of 99999 and still ends the count, which takes the shown change away. The cockpit's colour fonts
+(`duel_font_b_00` white, `b_01` red for low LP) need no second picture: an LP beyond 99999 is never low. Live under Wine,
+2026-11-25: both discs ∞ at 200,000 and 100,500 LP, kept through damage and a cost with their numbers shown and
+cleared, back to "99800" after 700 damage from 100,500.
 
 ## Data formats
 

@@ -13,6 +13,12 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- **Infinite LP shows as ∞.** LP above 99,999 (Mystik Wok on an infinite ATK) shows **∞** in the LP disc instead of
+  99,999, and stays ∞ while damage leaves it above that; it shows the number again once it falls below. The ∞ is a
+  placeholder picture for now.
+
 ## v0.1.23 (2026-11-25)
 
 - **The Gods play their manga versions** with anime cards on: Obelisk, Slifer and Ra, and the Wicked Gods Dreadroot,

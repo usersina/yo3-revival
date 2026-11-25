@@ -1943,11 +1943,19 @@ signed change, kind << 8 | shown}` (DuelCockpit `0x502EB0`) for ocgcore's DAMAGE
 twice as Konami's server sent it: with `shown` 1 it shows the change's number and plays the kind's sound (4 a gain:
 recover sound, 2 a cost: payment sound, else damage), with 0 it applies the change (clamped to 0–99999); the damage
 line `0x4D` goes between. Kinds from the original logs: 0 effect damage, 1 battle damage (after BattleRun), 2 a cost, 4
-a gain. Before the logs we sent the second only, so changes applied silently. `0xF` for LPUPDATE, capped at 99999: the
-client keeps no more LP than that (its changes are clamped there). Past 99999 (Mystik Wok on an infinite ATK) a change
-alone would leave the client counting from 99999, so the engine program adds the core's LP as an LPUPDATE after a step's
-last change whenever a player's LP was or is above 99999 (`session.rs` `add_lp_beyond_the_client`; `tests/manga_gods.rs`
-`mystik_wok_on_geh`): the client shows 99999 for any LP above it, and the right LP again once it comes back under.
+a gain. Before the logs we sent the second only, so changes applied silently. `0xF` for LPUPDATE. The client's counter
+shows five digits and its changes are clamped to 0–99999 (`0x50301D`/`0x503025`, the binary's only 99999), so an LP
+above 99999 (Mystik Wok on an infinite ATK) is sent as **100000** (`wire.rs` `LP_BEYOND`, ours): `0xF` stores a value as
+sent and hands it to the movie's `setLp`, where the connection DLL shows its own "∞" picture in place of the digits,
+and the DLL raises the change clamp to 100000 (`tools/mod/duel-numbers.h`; [client
+internals](client-internals.md#numbers-in-the-duel-lp-and-atk-investigated-2026-11-24)). The translator keeps each
+side's LP from the opening (`Translator::opening`) and every change: a change that leaves the LP beyond 99999 is still
+shown (its number, sound and `0x4D`) and applied as **0**, since the end of an applied change's count is what takes the
+shown number away (live: without it "-900" stayed on screen); one that crosses 99999 is applied as the move between
+100000 and the LP shown (`translate_contract.rs` `lp_beyond_99999_stays_infinite_until_it_falls_below`). The engine
+program adds the core's LP as an LPUPDATE after a step's last change whenever a player's LP was or is above 99999
+(`session.rs` `add_lp_beyond_the_client`; `tests/manga_gods.rs` `mystik_wok_on_geh`). Without the DLL (an older one) the
+counter clamps 100000 to 99999, as before. **Confirmed** live under Wine (2026-11-25).
 
 A change itself is sent as at most ±99999 (`translate_contract.rs` `an_lp_change_beyond_99999_reaches_the_client_as_99999`):
 a larger one froze the duel (live, 2026-11-24: Mystik Wok's +9,999,999 froze an NPC duel for over three minutes). The
