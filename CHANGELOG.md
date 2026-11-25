@@ -13,6 +13,11 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- **The card panel shows ∞ too.** A card with an infinite ATK reads "ATK ∞" in the card panel beside the field instead of
+  a long number.
+
 ## v0.1.24 (2026-11-25)
 
 - **∞ LP.** Mystik Wok on an infinite ATK gives **∞ LP**, shown as ∞ in the LP disc. Damage, costs and gains leave it

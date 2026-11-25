@@ -829,6 +829,13 @@ for a change that leaves the LP beyond: [protocol](protocol.md)). The cockpit's 
 2026-11-25: both discs ∞ at 200,000 and 100,500 LP, kept through damage with nothing shown, back to "99800" after 700
 damage from 100,500.
 
+**Card panel "∞" (2026-11-25).** The card panel beside the field (`data/gfx/infowin.swf`) gets a field card's lines
+through FxDelegate's `call("setDuelCardText", text, name, name colour, picture, level, original level, colour,
+attribute, race, atkdef, def text)`: the game builds `atkdef` itself ("ATK 19999998/DEF 0", HTML, char*), and the
+panel's `setDuelCardText` puts it in `infwin.atkdef.htmlText` as it is. The detour rewrites any number of 9,999,999 or
+more in it to "∞" (`yo3_panel_call`, `yo3_panel_infinity`; a wide string the same way). Live under Wine, 2026-11-25:
+the anime Geh selected on the field read "ATK ∞/DEF 0".
+
 **Damage pop-up "∞" (2026-11-25).** The pop-up is the cockpit's `damage<player>`, a NumberAnimation of the animated
 fonts `duel_font_e_anim_00` (gain, cyan) and `_01` (loss, red), 26×32 digits that drop in one by one, with a minus and
 no ∞. DuelCockpit `0x503AD0` sends a shown change as `call("showDamage", player, change, x, y)` (also beside a card,
