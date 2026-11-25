@@ -8,6 +8,13 @@ PowerShell. Run from the extracted bundle, or substitute `./target/release/yo3-s
 
 - [Command-line reference](#command-line-reference)
   - [Server options](#server-options)
+  - [The server file](#the-server-file)
+  - [Live settings](#live-settings)
+  - [Moderation and maintenance](#moderation-and-maintenance)
+  - [Official events (the Stadium)](#official-events-the-stadium)
+  - [The Championship (the map's Tournament tile)](#the-championship-the-maps-tournament-tile)
+  - [Player reports and banlists](#player-reports-and-banlists)
+  - [The admin panel](#the-admin-panel)
   - [Account commands](#account-commands)
   - [Network settings](#network-settings)
   - [Existing data and backups](#existing-data-and-backups)
@@ -48,6 +55,8 @@ storage. Select the complete installation with `--game-dir` and retry; keep exis
 | `--dashboard-port`          | Opt-in staff API on loopback TCP; disabled when omitted, `0` assigns a free port. Separate from host commands |
 | `--dashboard-socket`        | Unix staff API socket mounted by nginx; mutually exclusive with `--dashboard-port`. TOML: `dashboard_socket` |
 | `--dashboard-origin`        | Exact web origin for the Unix socket, e.g. `https://play.example.com`; required with the socket. No paths or public plain HTTP. [Proxy setup](docker.md) |
+| `--staff-mfa`               | `required` (default): staff need an authenticator; `optional` while staff enroll (those enrolled still need their code). TOML: `staff_mfa`. [Staff MFA](dashboard.md#staff-mfa-and-recovery) |
+| `--dashboard-public-backups` | Let the socket router serve backup downloads to a proxy that forwards them (the shipped nginx never does). Off by default. TOML: `dashboard_public_backups` |
 | `--auth-cert`, `--auth-key` | Explicit TLS certificate/key files                                                                   |
 | `--duel-check`              | Compare each player's modeled client state with the rules engine after each step                     |
 | `--no-packet-log`           | Disable separate raw packet files; decoded packet traces remain in bounded session diagnostics       |
@@ -115,7 +124,7 @@ while the server runs or stopped, and each applies at its own moment:
 | `report-limit` | 5 | At the game's next request | Reports (`/report` in the chat) one player may send in an hour; 0 turns them off |
 | `games-per-device` | 1 | At once | Games one PC may run at once (the launcher's Play as another account): a launcher sends a random install id with its sign-ins, and a second game from the same one is refused past this number (admins and moderators are exempt). The default changes nothing until a host raises it ([linked accounts](hosting.md#linked-accounts-and-fair-play)) |
 | `linked-accounts` | `fair` | At once | `fair`: accounts seen on one PC or address are linked, and a duel between them pays no BP and counts no record, rating or title, and they can't trade or rent to each other. `off`: they are strangers |
-| `problem-reports` | `on` | At once | `on`: players' launchers send a game's log here when it breaks, and with Report a problem; `problem-reports` and `problem-report ID` read them ([hosting](hosting.md#logs-and-privacy)). `off`: none are taken or kept |
+| `problem-reports` | `on` | At once | `on`: players' launchers send a game's log here when it breaks; `problem-reports` and `problem-report ID` read them ([hosting](hosting.md#logs-and-privacy)). `off`: none are taken or kept |
 | `clean-game` | `off` | At once | `on`: the launcher refuses to start the game here while another program's file or network software is inside it ([hosting](hosting.md#clean-game)) |
 | `news` | A welcome | At the game's next request | The Information list: `TITLE \| BODY` for one entry, or a JSON list of `{title, body}` (1 to 10) |
 | `address-burst`, `address-refill-seconds`, `backoff-max-seconds` | 10, 3, 900 | At once | The [throttle](authentication.md#passwords-and-throttling) on account requests |

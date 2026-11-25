@@ -157,12 +157,13 @@ next release). The first of these a card has wins ([which picture](anime-cards.m
 1. **The player's own**, in the `pics` folder as EDOPro has it: `pics/<passcode>.jpg` or `.png`, beside `anime-art` in
    the launcher's data folder or beside `yo3.exe` ([players' guide](launcher.md#card-pictures)). It works for every
    card of the list, an added card included, by its anime passcode first and then its official one.
-2. **The project's own pictures**, shipped in the launcher: the owner's artwork for the manga Gods and the anime Divine
+2. **A face the player put in `anime-art/card` by hand** (200x290, named by the id the client knows).
+3. **The project's own pictures**, shipped in the launcher: the owner's artwork for the manga Gods and the anime Divine
    Serpent Geh, as 200x290 faces (`crates/yo3-launcher/assets/pics/`, made by `tools/engine/shipped-pictures.py`,
    listed in `crates/yo3-launcher/src/art/pics.rs`'s `SHIPPED`). A picture goes there only when the owner gives it.
-3. **A downloaded picture**: ProjectIgnis' picture server, by the card's passcode (Desktop's **Card pictures**,
+4. **A downloaded picture**: ProjectIgnis' picture server, by the card's passcode (Desktop's **Card pictures**,
    [how](anime-cards.md#artwork)). The project hosts none of these.
-4. **The stand-in**, "Artwork not found" (`crates/yo3-launcher/assets/no-picture.png`, the project's own picture).
+5. **The stand-in**, "Artwork not found" (`crates/yo3-launcher/assets/no-picture.png`, the project's own picture).
    `tools/engine/no-picture.py IMAGE` crops any image to a card's shape and writes it at 200x290 to replace it.
 
 To see a card's picture on the headless client, point `YO3_ANIME_ART` at an empty folder of your own (never the

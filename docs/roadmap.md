@@ -32,9 +32,11 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
 
 **Duels**
 
+- [ ] The manga Gods and the added cards in more places: as a spectator, and the Gods' Soul Energy Max and the added
+      cards' effects on Windows (an NPC duel with Geh, Obelisk, Avatar and Skill Drain passed on Windows 11, 2026-11-25).
 - [ ] Complete menu/effect coverage and automatic native UI replay/minimization. Known reveal/reversal/disabled-zone
       gaps remain visible; neither the random corpus nor matching state hashes proves all card interactions.
-- [ ] Anime card versions (#60, off by default): 415 of 418 reviewed cards play as ProjectIgnis' anime versions with the
+- [ ] Anime card versions (#60, off by default): 421 of 424 reviewed cards play as ProjectIgnis' anime versions with the
       `anime-cards` setting on ([list](anime-cards.md)), and the game shows them through the card profile; every category of
       difference is released (`PROFILE_COVERS` in `tools/engine/anime-map.py`). Time Wizard, Thousand Dragon and Temple of the Kings
       keep the game's version on purpose. Windows 11 checks passed on 2026-11-20 (stats, types, text, sorting and ranges, art
@@ -193,6 +195,11 @@ with many players. GitHub issue #16 tracks convenience features, #17 the Champio
 | CardSwap `0x1B`                                                           | each of the two words carries the face and position of the card arriving there (MSG_SWAP, Magical Hats)                                                                                                                                                                                                                                                                                                      | Read in the code (`0x4FF000` case `0x1B`); live only for Creature Swap, whose two monsters were both face-up attack                                                                   |
 | Magical Hats' new places                                                  | read back from the duel after the step (the engine's `places`), matched by id                                                                                                                                                                                                                                                                                                                               | The core's message lists only old places (the core's writing order as remembered, and ocgcore-wasm's pairing); the self-played duels agree with the engine, the client never saw it   |
 | Xyz materials                                                             | CardVanish as one becomes a material, a move from an empty field slot as it leaves                                                                                                                                                                                                                                                                                                                           | How Online 3 showed materials is unknown; the client lacks the Xyz Monsters tried                                                                                                     |
+| House rules for the Gods and infinity (ours, not a ruling)                | Skill Drain negates a God for one turn; Sphere Mode's manga Ra stays with 4000; a face-down God keeps its Hierarchy and turns face-up after the turn; damage from an infinite ATK takes all LP; a printed ∞ is the card's own ATK, shown white ([anime cards](anime-cards.md), `guards.lua`, `proc_unofficial.lua`) |
+| `revival-rule` levels beyond `official`                                   | `ignoring-means-all` and `graveyard-is-graveyard`: our readings of what "ignoring its Summoning conditions" and an anime revival allow ([house rules](rules-privacy.md#house-rules)) |
+| Surrender/draw dialog threshold                                           | before the fifth turn (either player's): the original's text only says "5th" ([protocol](protocol.md)) |
+| Draw and Shuffle commands' place                                          | beside Konami's menu entries Draw (12) and Shuffle (13): which place Konami used is a guess ([protocol](protocol.md)) |
+| An NPC's duel-log block                                                   | its npc_id as `player_id`, its name, level 0, no avatar, record or speeches ([protocol](protocol.md)) |
 
 ### Settled by the client's own code (no longer guesses)
 

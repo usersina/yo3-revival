@@ -1,7 +1,8 @@
 # Code signing policy
 
-**Status: proposed for SignPath Foundation review.** Published releases are currently unsigned. No certificate has
-been approved and CI signing is not enabled. This page describes the policy proposed for future signed releases.
+**Status: a proposal, deferred.** SignPath Foundation declined the application, and Authenticode signing waits until it
+can be funded (#48). Published releases are unsigned (their update files carry the project's own Ed25519 signatures);
+no certificate exists and CI signing is not enabled. This page describes the policy for future signed releases.
 
 If approved, the signing service will be credited as follows:
 
@@ -45,16 +46,16 @@ and our [download and antivirus help](guide.md#windows-smartscreen-and-antivirus
 
 The launcher checks GitHub for new releases at startup. Versions configured with an official server list also fetch
 that list from GitHub. These requests expose ordinary network metadata, such as your IP address, to GitHub; update
-checks do not include your Revival account credentials. An update downloads in the background only when its signature
-checks out, and installs when you restart the app ([application updates](launcher.md#application-updates)).
+checks do not include your Revival account credentials. An update downloads when you choose it (or by itself with
+**Download updates automatically** on), is used only when its signature checks out, and installs when you restart the app ([application updates](launcher.md#application-updates)).
 
 Account and gameplay requests go to the Revival server you select. Its operator controls that server's account
 data and logs, including gameplay and chat. Hosting on your own computer keeps that server data on your computer.
 
-Diagnostic logs are retained locally. **Report a problem** sends your recent logs, with passwords, keys and tokens
-removed, to the host of the server you are signed in to and gets back a report ID; it then opens a GitHub issue form
-filled in with your words and that ID, which you submit yourself. Without a server to send to, it saves the logs in a
-ZIP on your PC instead. Issues are public. Logs can include player names, chat, decks, paths and network addresses.
+Diagnostic logs are retained locally. **Report a problem** saves one file on your PC (your Downloads folder) with your
+words and your recent logs, passwords, keys and tokens removed; it sends nothing, and you decide where to send it
+([what's inside](report-format.md)). When a game breaks, its helper sends that game's log to the server you played on
+(off in Settings → Advanced). Issues are public. Logs can include player names, chat, decks, paths and network addresses.
 The reports exclude credentials, databases, private profiles and original game files.
 See [reporting and log retention](launcher.md#logs-and-support) and [GitHub's privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
 

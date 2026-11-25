@@ -11,11 +11,19 @@ Rust/OpenAPI/Orval generation and contract checks.
   - [Build from source](#build-from-source)
   - [Checks](#checks)
     - [Tools](#tools)
+  - [Check the launcher](#check-the-launcher)
+    - [The official server list](#the-official-server-list)
+  - [Storage cost](#storage-cost)
+  - [Capacity (R7, #27)](#capacity-r7-27)
   - [Which tool sees what](#which-tool-sees-what)
+  - [Add a card the game never had](#add-a-card-the-game-never-had)
   - [Duel diagnostics](#duel-diagnostics)
+    - [Effect coverage and scenario tests (#67)](#effect-coverage-and-scenario-tests-67)
     - [The rules engine](#the-rules-engine)
   - [Build release bundles](#build-release-bundles)
   - [Verify the packaged updater](#verify-the-packaged-updater)
+    - [Signing releases](#signing-releases)
+    - [launcher.db and released launchers](#launcherdb-and-released-launchers)
   - [Publish a release](#publish-a-release)
 
 ## Build from source
@@ -431,7 +439,7 @@ one:
    show many old rulings, under other passcodes: compare them with the client's text, and copy only what it says.
 3. Copy ProjectIgnis' script from `engine/vendor/CardScripts/official/`, change it with a `yo3-revival override:`
    comment saying what and why, and add a row to the README.
-4. Rebuild the engine and sweep the card: `YO3_CARD_SWEEP=<cid>, YO3_CARD_SWEEP_SEEDS=10 cargo nextest run --release -p
+4. Rebuild the engine and sweep the card: `YO3_CARD_SWEEP=<cid> YO3_CARD_SWEEP_SEEDS=10 cargo nextest run --release -p
    yo3-server --test card_sweep --no-capture` (the report counts the duels it was used in).
 
 Both release editions ship the folder as `engine/overrides/` (`tools/engine/engine-files.sh`, checked by
@@ -441,7 +449,7 @@ compares like with like. After `engine/fetch.sh --update`, compare each overridd
 from: carry an upstream change over, or delete an override upstream has fixed.
 
 **Anime card versions (#60).** The host's `anime-cards` setting starts the engine with `YO3_ANIME=1`
-(`Engine::start_with`, `crates/yo3-engine/src/cards.rs`): the cards `engine/anime-cards.json` maps play as their
+(`Engine::start_with` in `crates/yo3-server/src/engine.rs`, `Cards::open_with` in `crates/yo3-engine/src/cards.rs`): the cards `engine/anime-cards.json` maps play as their
 ProjectIgnis unofficial versions (data from `cards-unofficial.cdb`, scripts from `CardScripts/unofficial/`, which also
 holds `proc_unofficial.lua`), keyed by the client's Konami id as ever. Nothing is derived from upstream aliases. The map is
 made by `tools/engine/anime-map.py` from `engine/anime/cards.tsv` (one row per card of the game: Konami id, name, the
@@ -485,7 +493,7 @@ The card sweep (`tests/card_sweep.rs`) plays each card in a self-played duel thr
 both decks, two in the opening hand (twice in each Extra Deck for Fusion and Synchro Monsters). Every duel check also
 runs the round trip: each answer the engine offers must be reachable through the client's windows, and choices the
 server makes for the player are counted. By default it sweeps 24 cards; before a release or after engine changes run
-all of them (about 15 minutes on 12 cores):
+all of them (10 to 15 minutes on 12 cores):
 
 ```bash
 YO3_CARD_SWEEP=all cargo nextest run --release -p yo3-server --test card_sweep --no-capture

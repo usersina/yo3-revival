@@ -70,8 +70,8 @@ code from the host.
 ![Auto Duel in the duel menu](../screenshots/auto-duel.png)
 
 The chosen banlist applies to Create Duel. The banlist used for Auto Duel and computer duels is the one you log in
-with: the host's (**Season 16** unless they chose another) until you pick your own with
-[`banlist` in the chat](#chat-commands). The Yugi, Jaden and Yusei character decks hold cards Season 16 forbids or
+with: the host's (**Season 16** unless they chose another; **Unlimited** on your own Singleplayer server) until you pick
+your own with [`banlist` in the chat](#chat-commands). The Yugi, Jaden and Yusei character decks hold cards Season 16 forbids or
 limits (Heavy Storm, Premature Burial...), so either edit them or choose `unlimited` (or another list that allows
 them) and log in again; your starter deck is fine. Auto Duel only matches players on the same banlist, so nobody
 brings a deck the other's list forbids.
@@ -125,6 +125,9 @@ Summon. Its Synchro Materials are in the Graveyard by then, so they don't count:
 alone gives 2300 ATK. With another Quillbolt Hedgehog still on the field it becomes 3100. See the official
 [Junk Warrior](https://www.db.yugioh-card.com/yugiohdb/card_search.action?cid=7696&ope=2) card text.
 
+Revivals follow the official rules unless the host chose otherwise: a monster that must first be properly Summoned
+can't be brought back by Monster Reborn when it never was ([the `revival-rule` house rule](rules-privacy.md#house-rules)).
+
 A few more rules that look like bugs and are not (each has a scenario test, `crates/yo3-server/tests/card_scenarios.rs`):
 Zero Gardna must be used when the attack is declared: used earlier in your own turn it protects only that turn.
 Mist Valley Soldier returns a monster that survived its battle without asking you. Turret Warrior gains only the ATK
@@ -152,18 +155,19 @@ If a protected monster disappears, a slot appears empty but remains occupied, or
 
 Playing alone, turn on **Anime cards** in Desktop's Settings → Singleplayer: it is your own server's `anime-cards` setting, off
 by default, and it shows what the server really has. Turning it on offers the anime pictures right away (a dialog: about 10 MB
-from ProjectIgnis' picture server, N of 419 cards without one, **Get pictures** or **Not now**; the switch stays on either way).
+from ProjectIgnis' picture server, how many cards have none yet, **Get pictures** or **Not now**; the switch stays on either way).
 A host of a server sets `anime-cards` to `on` ([the setting](guide.md#live-settings)) for everyone who plays there; a server you
-join is always its host's choice and has no switch for you. It is off by default, and takes effect at the next duel; a game that
-is already open shows RESTART THE GAME on the main screen, because the game fetches its cards once when it starts. Then NPC duels and duels between players play **416 cards by their anime
-effects** instead of the game's: Card of Sanctity has both players draw until they hold six cards, Mirror Force also hurts
+join is always its host's choice and has no switch for you. A change takes effect at the next duel; a game that is already open
+shows RESTART THE GAME on the main screen, because the game fetches its cards once when it starts. Then NPC duels and duels
+between players play **421 cards by their anime effects** instead of the game's: Card of Sanctity has both players draw until they hold six cards, Mirror Force also hurts
 you by the ATK difference to each of your weaker monsters it destroys, Junk Warrior's ATK follows the Level 2 or lower
 monsters you control from moment to moment, and so on. [The list](anime-cards.md) names every card and says why 3 others
 keep the game's version.
 
 The game shows those cards as their anime versions too (the **card profile**, [how it works](anime-cards.md#the-card-profile)):
 the card's type, Level, ATK, DEF, attribute and race, its effect text, and whether it belongs in the Main or the Extra Deck.
-An anime card's text starts with an **[Anime]** line, so you can tell which cards play as their anime versions.
+An anime card's text starts with an **[Anime]** line, so you can tell which cards play as their anime versions; the six
+Gods start with **[Manga]**.
 Your card keeps its place: Flame Swordsman is still the Flame Swordsman you own, and becomes the anime's Normal Monster, a Main
 Deck card.
 
@@ -183,12 +187,26 @@ Deck card.
   else when you press **Get pictures**, with **Cancel**); **Add from a file** takes a zip a friend made with **Save to a file**.
   They show from the next PLAY. A card with no picture (not fetched yet, or the download was cancelled or failed) keeps
   the game's own picture with the anime card's stats and text, and your own pictures are never replaced
-  ([how](anime-cards.md#artwork)).
+  ([how](anime-cards.md#artwork)). The manga Gods and the anime Divine Serpent Geh come with pictures of their own, and
+  any card's picture can be your own: put it in the `pics` folder, named by the card's passcode, as in EDOPro
+  ([where](launcher.md#card-pictures)).
 - **Reconstructions.** Dark Strike Fighter and Fortune Lady Fire have no real anime script upstream, so ours are rebuilt from
   descriptions of the episodes and the card's text says so ([what each does](anime-cards.md#reconstructions)): Dark Strike
   Fighter Tributes another monster for Level x 200 damage and cannot attack that turn; Fortune Lady Fire destroys a monster and
   burns its ATK whenever it is Special Summoned face-up in Attack Position. They are our best reading, not verified against
   the footage.
+- **The Gods play their manga versions:** Obelisk, Slifer and Ra, and the Wicked Gods Dreadroot, Avatar and Eraser, each
+  with its manga effect and the **Divine Hierarchy** (Ra and Avatar 2, the others 1): a God isn't destroyed by battle with
+  a monster of lower Hierarchy and you take no battle damage from that battle, and other cards' effects only apply to it
+  for one turn. Obelisk's Soul Energy Max (Tribute 2 monsters) makes its ATK infinite and wins the duel. **The Winged
+  Dragon of Ra - Sphere Mode** summons Ra from your hand or Deck; the manga Ra it summons stays on the field with 4000
+  ATK/DEF. [The rules in detail](anime-cards.md).
+- **Infinite ATK and huge LP.** An infinite ATK shows as **∞** on the field: white when it is the card's own printed ATK
+  (the anime Divine Serpent Geh), blue when an effect gave it (Soul Energy Max, Avatar matching it). Damage from an
+  infinite ATK takes all your LP, however many you have. LP above 99,999 (Mystik Wok on an infinite ATK) shows as 99,999,
+  the most the game draws; the duel still counts the real amount.
+- **Anime-only cards** (Orichalcos Gigas, Orichalcos Kyutora, Arduous Decision...) play only with anime cards on. With
+  them off, a deck holding one can't duel: the chat names the card to take out.
 - **The Egyptian Gods and Skill Drain.** Skill Drain negates the Gods that are already on the field until the end of that turn
   (Ra's ATK is 0 for the rest of it), then they come back although Skill Drain stays face up. A God summoned while Skill Drain is
   face up is not affected, until the next Skill Drain is activated: each activation negates the Gods on the field for
@@ -255,7 +273,8 @@ The main playable features are:
 - **Duels:** NPC opponents, Auto Duel, Create Duel, Single and Match Mode, spectating, and the client's choice dialogs
   and animations.
 - **Cards and decks:** Edit Deck, official character decks, booster packs, structure decks, trading and rentals; cards the
-  game never had (Shooting Quasar Dragon so far: your host gives them) and the cards' [anime versions](#anime-card-versions).
+  game never had (Shooting Quasar Dragon, Ra's Disciple, The Seal of Orichalcos, Divine Serpent Geh and more: your host
+  gives them) and the cards' [anime versions](#anime-card-versions).
 - **Community:** chat rooms, whispers, [chat commands](#chat-commands), player search, friends, D-Mail, teams and player-run knockout tournaments.
 - **Customization:** avatar settings, card protectors and avatar items bought in the shop.
 
@@ -390,9 +409,7 @@ their owner, even across a server restart (they are kept in the SQLite rentals d
 Main Menu → Rental Card List shows what they lent and borrowed. To give cards back before the term ends, the borrower
 selects the rental on its **Borrowed** tab and presses the round-arrow Return button under the list ("Return these
 cards now."): the row greys out and the cards are back with their owner at once. There is no confirmation, so pick the
-row first. This works for shop rentals too. Editor saves live locally in
-`Documents\Yu-Gi-Oh! ONLINE 3`; saving a deck or selecting it for a duel also sends it to the server. A deck that used a borrowed
-card is no longer valid once the rental ends.
+row first. This works for shop rentals too. A deck that used a borrowed card is no longer valid once the rental ends.
 
 Limitations: this is a beta. Computer opponents think through their turn and yours, but only plan around the
 cards you show (and the heroes, Yugi, Jaden and Yusei, always draw the card they need).

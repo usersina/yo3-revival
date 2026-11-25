@@ -13,7 +13,8 @@ Staff MFA (#43, since v0.1.4): the dashboard requires password plus an authentic
 account. Seeds are sealed at rest with `data/staff-mfa.key`, codes work once per 30-second step, recovery codes are hashed
 and single-use, every attempt is throttled, sensitive operations need a check in the last five minutes, sessions end on
 password recovery, MFA reset and sign-out everywhere, and recovery is a local command the staff router cannot reach.
-Public backup downloads need `--dashboard-public-backups` and then an admin, a recent check and an audit row. Details,
+Public backup downloads need `--dashboard-public-backups` and then an admin, a recent check and an audit row; the
+shipped nginx refuses them whatever the flag. Details,
 the policy setting and the residual risks: [Staff MFA and recovery](dashboard.md#staff-mfa-and-recovery). Not yet
 reviewed against the real VPS behind nginx.
 
@@ -77,9 +78,9 @@ fixes of the patch check, the request pace and the outbox were checked on the pr
 
 Ordered by severity. Each needs a decision or a larger change than this review should make.
 
-1. **Medium: updates are verified only by a digest from the same GitHub response.** Anyone who can publish a release,
-   such as a stolen maintainer token, can ship an update. Proposed: a detached ed25519 signature checked against a
-   key built into the launcher, as the signed server list already does. This needs key handling decided.
+1. **Done: updates are signed** (#32). Each release's `SHA256SUMS` carries an Ed25519 signature checked against a key
+   built into Desktop (`updates/signature.rs`); an unsigned or wrongly signed newer release is refused. Still open: the
+   signing key lives in a repository secret, so whoever holds it can ship an update.
 2. **Medium: the launch cookie appears in a browser command line.** The game's old website links open
    `http://127.0.0.1:PORT/session/<cookie>/web/…` (`tools/mod/web-links-logic.h`). Under Wine another local user
    can read it in `/proc`, and it lands in browser history. Proposed: serve `web/` on the proxy without the cookie
@@ -88,9 +89,10 @@ Ordered by severity. Each needs a decision or a larger change than this review s
    added and selected at once, with any name. Its identity is the attacker's own, so pinning raises no warning, and
    the next sign-in sends the password there. Proposed: the trust screen with address and fingerprint, names capped
    and cleaned, and unlisted servers marked "not verified".
-4. **Low–medium: BP can be farmed.** A loss pays 30 BP and a win 100, even for a duel left at once. Two players
-   (one account is enough) can farm without limit. This needs a decision: a minimum number of turns, nothing for two
-   players of one account, or a daily cap.
+4. **Low–medium: BP can be farmed.** A loss pays 30 BP and a win 100, even for a duel left at once. With
+   `linked-accounts = fair` (the default), accounts seen on one PC or address earn nothing from each other; two
+   people on different networks can still farm without limit. This needs a decision: a minimum number of turns or a
+   daily cap.
 5. **Low–medium: the per-User ID backoff lets anyone lock a player out.** One wrong password every 15 minutes keeps
    a User ID waiting, and recovery uses the same backoff. Proposed: key it on User ID and network, with a higher
    ceiling across networks.
@@ -154,7 +156,7 @@ Ordered by severity. Each needs a decision or a larger change than this review s
   - The keyring holds device tokens only, never passwords.
   - Updates download over HTTPS from fixed GitHub hosts, are hashed while streaming, and are never a downgrade.
   - Archive extraction refuses links, `..`, absolute paths and reserved names.
-  - Report a problem uploads nothing: it writes a local ZIP with home paths and IPs masked, for the player to look at.
+  - Report a problem uploads nothing: it writes one file in Downloads with home paths and IPs masked, for the player to look at.
   - No shell is ever built from server text.
 - **Logs**
   - Account requests log the address, operation and result code, never a password, token or code.

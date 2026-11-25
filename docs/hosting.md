@@ -50,7 +50,7 @@ loopback address; you reach them through SSH.
 | File | What it is |
 | --- | --- |
 | `yo3-server` | The server; `yo3-server --help` lists its options and admin commands |
-| `yo3-engine`, `engine/` | The rules engine and its card scripts and database (`engine/THIRD-PARTY.md` says whose they are) |
+| `yo3-engine`, `engine/` | The rules engine, the card scripts it can load (about 5,700: no Rush Duel, Speed Duel, Skill or unmapped anime scripts) and its database (`engine/THIRD-PARTY.md` says whose they are) |
 | `server.toml.example` | The [server file](guide.md#the-server-file) for this layout |
 | `systemd/yo3-server.service` | The service |
 | `systemd/yo3-monitor.service`, `.timer`, `yo3-monitor.sh`, `alerts.env.example` | The [monitor and its alerts](#monitoring-and-alerts) |
@@ -214,8 +214,8 @@ an admin's, can run them. This HTML panel asks for the authenticator code too wh
 is not yet ready for this can start with `--staff-mfa optional` (`staff_mfa = "optional"` in `server.toml`, or
 `YO3_STAFF_MFA=optional` for Compose) while staff enroll: accounts that have enrolled always need their code, the rest
 keep a password-only session. Remove it afterwards. Backups are not downloadable through the public dashboard unless the
-server runs with `--dashboard-public-backups`; then an admin needs a code checked in the last five minutes and every
-download is audited. More: [Staff MFA and recovery](dashboard.md#staff-mfa-and-recovery).
+server runs with `--dashboard-public-backups` behind a proxy that forwards them; then an admin needs a code checked in the
+last five minutes and every download is audited. The shipped nginx configuration refuses downloads whatever the flag (404), so with Compose a backup is copied on the host. More: [Staff MFA and recovery](dashboard.md#staff-mfa-and-recovery).
 
 ## Admin commands on the server
 
@@ -291,7 +291,7 @@ time to be running at the start (a Championship the server missed by more than a
   banlist NAME`. Auto Duel only pairs players on the same list. An account's page shows its list, and any staff may set
   it (`yo3 set-banlist Someone unlimited`, or `default`); it applies at the player's next login.
 - **Anime card versions.** `yo3 set anime-cards on` (a [live setting](guide.md#live-settings), off by default, at the
-  next duel) makes NPC and player duels play 416 cards by their anime effects, the others as the game has them, and the
+  next duel) makes NPC and player duels play 421 cards by their anime effects, the others as the game has them, and the
   game show them as the anime cards (the [card profile](anime-cards.md#the-card-profile): the server's `/web/card-profile`, which
   each game fetches once at start, so **a change needs the players to restart their games** (Desktop offers RESTART THE GAME while a game runs the old cards, and until they do
   the server refuses every duel of an open game that loaded another profile, with a chat line saying why; a server restart
@@ -390,7 +390,8 @@ check** too: any uptime service's TCP check on `<server-address>:7443`, alerting
   again after.
 - The panel's **Logs** page shows the newest lines since the server started, with credentials masked.
 - **Problem reports.** When a player's game breaks (its connection drops, or it closes with an error) their launcher
-  sends that game's log here, and Report a problem does too, with a report ID the player quotes on GitHub. Each one is
+  sends that game's log here with a report ID (Report a problem sends nothing since v0.1.22: it saves a file on the
+  player's PC). Each one is
   kept in `reports/` in the data folder with the server's own lines about that account from the 15 minutes before.
   `problem-reports [--who WHO]` lists them, `problem-report ID [--out FILE]` shows one; the dashboard's **Problem
   reports** page has both. Kept 30 days (2,000 reports, 256 MB at most); 20 a day per account. `set problem-reports

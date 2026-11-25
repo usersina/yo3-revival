@@ -188,7 +188,7 @@ existing build/package paths stay the same. Git cleanup removes the link, leavin
 Cargo still checks source, dependency, compiler and build-script inputs before reuse. This replaces the remote
 Rust cache archive, including its upload and tool-pruning post action. Tool installations and the Cargo registry
 remain outside this cache. The helper clears only its marked cache when it exceeds 40 GiB or the filesystem has
-less than 20 GiB free, and refuses the build if eviction cannot restore that free space. A missing/cleared cache
+less than 45 GiB free, and refuses the build if eviction cannot restore that free space. A missing/cleared cache
 only makes the next build cold. Never share it with pull-request jobs or other repositories.
 
 Regression checks exercise real Git cleanup and a changed Rust executable, bounded eviction, preservation of

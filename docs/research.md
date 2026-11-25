@@ -45,7 +45,7 @@ These are estimates, not measurements.
 ## 1. What's inside your install (verified locally)
 
 - **Archives.** `package/*.ypk` are ZIP local headers with signature `YO\x03\x04` and no central directory. Together
-  they hold 12,098 files. Extract with `tools/ypk.py`.
+  they hold 12,098 files. Extract with `tools/re/ypk.py`.
 - **Card database.** Konami's standard format (`data/bin#/CARD_Prop.bin`, `CARD_Indx_*`, `CARD_Name_*`,
   `CARD_Desc_*`, `CARD_IntID`, `CARD_Genre`), the same family Tag Force, LotD and Master Duel use.
   - **4,824 cards**, keyed by **Konami card IDs**: 4007 = Blue-Eyes, 4041 = Dark Magician, 39xx = tokens.
@@ -58,7 +58,7 @@ These are estimates, not measurements.
   - `DLG_Text_*.bin` holds **597 duel prompt strings** ("Select @21st @3monster@0 as @3Tribute@0.") — every question
     the server-side engine could ask.
 - **Encrypted data files decrypt with the network cipher.** This is independently confirmed by xan1242/ygo3_decoder.
-  The plaintext is the **EasyMultiPlay key/value format the server sends**. `tools/emp.py` decodes it.
+  The plaintext is the **EasyMultiPlay key/value format the server sends**. `tools/re/emp.py` decodes it.
   - `data/recipe/*.y3d`: 163 preset decks (`deck_id`, `deck_type`, `main`/`extra`/`side` as u16 BE
     **CARD_Prop row indexes**, `pbin_no`, `name_id`…).
   - `data/pack/*.y3a`: 82 booster packs (`pack_id`, `pack_type`, `pack` = card list, `pack_image`…).
@@ -121,7 +121,7 @@ RunSummon, RunFusion, MonstShuffle…`), plus `TuningSet/Run` for Synchro and th
 | [iteratequickly/ygo3-research](https://github.com/iteratequickly/ygo3-research) (MIT, Nov 2026) | Working Online 3 gate/front stub in Python, HTTP patch server, YPK extractor. Start here.                                                                                                                                      |
 | [xan1242/ygo3_decoder](https://github.com/xan1242/ygo3_decoder) (MIT, 2020)                     | Online 3 file codec                                                                                                                                                                                                            |
 | [xan1242/YGO3Hack](https://github.com/xan1242/YGO3Hack) (MIT, 2022)                             | DLL hack: offline boot into any scene; `YGO3_MenuIDs.h` lists scene IDs. Probably the "offline patch" from elitepvpers.                                                                                                        |
-| [setokaiba666/YOLaucher](https://github.com/setokaiba666/YOLaucher) (Oct 2026, license TODO)    | Full Online 2 server. `tools/yo2emu/duelcore/` = ocgcore as a standalone JSON-lines process (game-independent). `research/traductor/NOTES.md` = 170 KB on the engine command set and translation. Lobby, trade and deck notes. |
+| [setokaiba666/YOLaucher](https://github.com/setokaiba666/YOLaucher) (Oct 2026, license TODO)    | Full Online 2 server. Its `tools/yo2emu/duelcore/` (in that repository) = ocgcore as a standalone JSON-lines process (game-independent). `research/traductor/NOTES.md` = 170 KB on the engine command set and translation. Lobby, trade and deck notes. |
 | [y7ya-com/duel-evolution](https://github.com/y7ya-com/duel-evolution) (MIT code, Oct 2026)      | Online 2 recompiled to C/WASM plus a TypeScript server; playable at original.ygoevolution.com                                                                                                                                  |
 | [pixeltris/YgoMaster](https://github.com/pixeltris/YgoMaster) (MIT)                             | Konami engine API, view and dialog enums, headless PvP design                                                                                                                                                                  |
 | [edo9300/ygopro-core](https://github.com/edo9300/ygopro-core) (AGPL-3.0+)                       | Rules engine with `MR1`/`MR2`/`GOAT` presets; restrict the pool through the card/script readers                                                                                                                                |

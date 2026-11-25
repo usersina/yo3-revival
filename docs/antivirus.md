@@ -26,8 +26,8 @@ Checked with v0.1.3 on Windows 11 with Microsoft Defender (signatures 1.463.368.
 release page (2026-11-19):
 
 1. **Downloading** the zip: no warning in Edge, and Defender didn't flag it.
-2. **Extract All**: about 15,000 small files (mostly the rules engine's card scripts), which Defender checks one by one,
-   so this took about 18 minutes on our test PC. Let it finish: a half-extracted folder won't start.
+2. **Extract All**: thousands of small files (mostly the rules engine's card scripts), which Defender checks one by one:
+   about 15,000 took 18 minutes on our test PC before v0.1.23, which ships about 6,900. Let it finish: a half-extracted folder won't start.
 3. **The first start** of `yo3-revival.exe`: SmartScreen says "Windows protected your PC" with only **Don't run**.
    Choose **More info**; it shows "App: yo3-revival.exe, Publisher: Unknown publisher" and adds **Run anyway**. This
    is because the files aren't signed yet ([why](#why-yo3-revival-gets-flagged)); check the download first.

@@ -211,7 +211,7 @@ press **I saved it**), then Settings. In a text box the first Escape only leaves
 
 Settings → Game → **Card pictures** (v0.1.17 (2026-11-22); before, **Anime pictures** under the Anime cards switch in Settings →
 Singleplayer) holds the pictures of the anime cards and of the [cards the game never had](anime-cards.md#artwork) (Shooting
-Quasar Dragon): about 10 MB from ProjectIgnis' picture server. The game's own cards keep their artwork.
+Quasar Dragon, Divine Serpent Geh and the others your host gives): about 10 MB from ProjectIgnis' picture server. The game's own cards keep their artwork.
 
 ![Settings, Game, Card pictures: the switch, the bar and its buttons](../screenshots/settings-card-pictures.png)
 
@@ -225,7 +225,8 @@ Quasar Dragon): about 10 MB from ProjectIgnis' picture server. The game's own ca
 - **Add from a file…** adds a zip of pictures and **Save to a file…** makes one.
 - **Your own pictures, as in EDOPro:** put a card's picture in the `pics` folder beside `anime-art` in the launcher's
   data folder (`%LOCALAPPDATA%\YO3 Revival\pics` on Windows, `~/.local/share/yo3-revival/pics` on Linux), named by
-  its passcode (`513000137.png`, `82103466.jpg`), any size. It shows from the next PLAY on that card, whether it is an
+  its passcode (`513000137.png`, `82103466.jpg`), a PNG or JPEG in a card's shape, up to 4096 pixels a side and 24 MB (a
+  `pics` folder beside `yo3.exe` works too). It shows from the next PLAY on that card, whether it is an
   anime or manga version or a card the game never had, and wins over every other picture. You can copy EDOPro's
   `pics` folder in as it is. The manga Gods and the anime Divine Serpent Geh come with pictures of their own.
 - Pictures show from the next PLAY, and your own pictures are never replaced. Until its picture arrives, a card the game
@@ -355,8 +356,8 @@ names, chat and decks, so look through it before posting it there.
 
 When a game's connection breaks or the game closes with an error, YO3 Revival's helper sends that game's log to the
 server you played on, before signing out. The host reads it by its report ID, beside the server's own log of the same
-minutes, without asking you for anything. The game's log says the ID (`Problem report R-… sent`), and Report a problem
-puts it in the form. A game that ended well sends nothing.
+minutes, without asking you for anything. The game's log says the ID (`Problem report R-… sent`), and Report a problem's
+file lists the recent ones. A game that ended well sends nothing.
 
 The logs never hold your password, keys or tokens: they are removed when written, and again by the server. They do
 hold your player names and what the game did. Untick it in Setup, or turn off Settings → Advanced → **Send logs when
@@ -427,7 +428,7 @@ Settings → Singleplayer → **Open data folder** and Settings → Advanced →
 | `singleplayer/` | Your own server: `server.db` (accounts, cards, decks, BP, mail, duel logs), `server.crt` and `server.key` (its identity), `backups/` |
 | `hosting/` | Host for friends' server, the same files as `singleplayer/` |
 | `logs/`, `profiles/` | Diagnostics, and the private files the game's helper reads (no keys or passwords: those are in the system's credential store) |
-| `reports/` | ZIPs saved by Report a problem when no report ID could be had |
+| `reports/` | Report a problem's file when this PC has no Downloads folder |
 
 Each server start makes a consistent database backup under its folder's `backups/`. These backups exclude the identity
 key: to keep everything, back up the **whole folder** with the server stopped. Players should also back up their local

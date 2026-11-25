@@ -60,5 +60,6 @@ python3 tools/logs/yo3log.py logs/ --duel 20261124-101500-001 --json | jq .     
 python3 tools/logs/yo3log.py logs/ --src dll,wine --grep "page fault"            # the game side of a crash
 ```
 
-`--json` prints yo3-log/1 lines (old logs converted), for `jq`. For lnav, install `tools/logs/yo3-log.lnav.json`
+The game's, the engine's and packet traces (`src` `client`, `engine`, `packet`) are left out unless `--traces` is
+given. Other filters: `--src`, `--player`, `--report`, `--session`, `--until` (`--help` lists them). `--json` prints yo3-log/1 lines (old logs converted), for `jq`. For lnav, install `tools/logs/yo3-log.lnav.json`
 (`lnav -i tools/logs/yo3-log.lnav.json`) and open the files.

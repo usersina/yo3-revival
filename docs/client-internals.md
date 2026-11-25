@@ -775,7 +775,7 @@ needs a Play before opening `yo3.exe` alone.
 
 ### Numbers in the duel: LP and ATK (investigated 2026-11-24)
 
-How the duel shows LP and ATK, for showing more than 99999 (the engine's infinite ATK is 9,999,999). The field's ATK and
+How the duel shows LP and ATK, and why only ATK and DEF can show more than 99999 (the engine's infinite ATK is 9,999,999). The field's ATK and
 DEF show "∞" since 2026-11-24 (`tools/mod/duel-numbers.h`, below); LP stays at most 99999. All of it is drawn by Flash movies (Scaleform GFx), which the game feeds numbers through its one invoke
 (`0x5CB1B0`, see "The UI probe"):
 

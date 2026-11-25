@@ -2,7 +2,7 @@
 
 Desktop's **Report a problem** saves the whole report as one ZIP on the player's PC and sends nothing, so a report never
 depends on a server. Players send that file to the developer as it is: on Discord, privately, or attached to a GitHub
-issue. This page defines what is in it (format `yo3-revival-report`, version 3), for whoever reads one.
+issue. This page defines what is in it (format `yo3-revival-report`, version 4), for whoever reads one.
 
 The file is `yo3-revival-report-YYYYMMDD-HHMMSS.zip`, in the player's **Downloads** folder (Windows: the user's
 `Downloads`; Linux: XDG's download folder, else `~/Downloads`), or in the app's own `reports/` folder when there is

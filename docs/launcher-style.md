@@ -113,10 +113,10 @@ Sizes: 15 px body, 14 px captions and footer, 19 px frame titles, about half the
 - **Window:** fixed 1024×640 logical pixels, scaled by the display's scale factor. Borderless with our own title bar;
   the `main_screen` example's `--system-frame` falls back to the window manager's frame (the launcher has no such option).
 - **Title bar** 50 px: logo left, the two tabs centred, window controls right. Dragging the bar moves the window.
-- **Footer** 34 px: version and update state left, Help and Discord right.
+- **Footer** 44 px: Support us left, version and update state in the middle, Help and Settings right.
 - **Body:** 16 px between panels, 18 px from the window's sides. The side panel is 372 px wide.
 - **Frames:** 6 px rim, 30 px title strip, 12 px below the strip, 14 px side padding.
-- **Dialogs:** 470 px wide, centred.
+- **Dialogs:** 470 px wide (Need a hand? 600), centred.
 
 ## Words
 
