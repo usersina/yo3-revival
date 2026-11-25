@@ -25,7 +25,7 @@ const CHANGE_OF_HEART: u16 = 4860;
 const CREATURE_SWAP: u16 = 5162;
 const RAIGEKI_BREAK: u16 = 5544; // discard 1 card: destroy 1 card on the field
 const SPHERE: u16 = 11927; // The Winged Dragon of Ra - Sphere Mode
-const INFINITE: i64 = 9_999_999;
+const INFINITE: i64 = 19_999_998; // ∞: any ATK, DEF or LP of 9,999,999 or more is exactly this (guards.lua)
 
 /// The God in the hand, three Warwolves to Tribute, the opponent's `theirs` and `extra` in place.
 fn duel(god: u16, theirs: &[u16], extra: &[Spawn]) -> Option<Scenario> {
@@ -316,8 +316,7 @@ fn ring_of_destruction_on_geh() {
 }
 
 /// Mystik Wok on Divine Serpent Geh: the printed card's ATK and DEF are 0, so Wok can't use it; the anime one gives its
-/// infinite ATK as LP. Past 99,999 the client shows 99,999 (it keeps no more) and stays there after a Warwolf's 2000: the
-/// engine gives the LP after each change above 99,999, where the client alone would count down from 99,999 to 97,999.
+/// infinite ATK as LP: ∞ LP, which the client shows as ∞ and which a Warwolf's 2000 leaves as it is.
 #[test]
 fn mystik_wok_on_geh() {
     let Some(mut s) = field(false, 8000, &[Spawn { team: 0, place: Hand, cid: WOK }, mine(GEH)]) else { return };
@@ -326,21 +325,21 @@ fn mystik_wok_on_geh() {
     let Some(mut s) = field(true, 8000, &[Spawn { team: 0, place: Hand, cid: WOK }, mine(GEH), theirs(WARWOLF)]) else { return };
     s.prefer(&[(0, GEH)]);
     s.run(&[Activate(WOK)]).unwrap();
-    assert_eq!(s.lp(0), 8000 + INFINITE, "{}", s.context());
+    assert_eq!(s.lp(0), INFINITE, "{}", s.context());
     s.run_both([&[EndTurn], &[Attack(WARWOLF)]]).unwrap();
-    assert_eq!(s.lp(0), 8000 + INFINITE - 2000, "a direct attack: {}", s.context());
+    assert_eq!(s.lp(0), INFINITE, "a direct attack leaves ∞ LP: {}", s.context());
     clean(&s);
 }
 
-/// Three Mystik Woks on three anime Gehs: 30,007,997 LP. The opponent's anime Geh then attacks directly for "a hundred
-/// times your LP", past the core's 32 bits: it used to wrap into a gain of a billion LP. Now it takes all of it.
+/// Three Mystik Woks on three anime Gehs: ∞ LP (∞ and more is ∞). The opponent's anime Geh then attacks directly for "a
+/// hundred times your LP", past the core's 32 bits: it used to wrap into a gain of a billion LP. Now it takes all of it.
 #[test]
 fn infinite_damage_past_32_bits_still_wins() {
     let Some(mut s) = field(true, 8000, &[Spawn { team: 0, place: Hand, cid: WOK }, Spawn { team: 0, place: Hand, cid: WOK },
         Spawn { team: 0, place: Hand, cid: WOK }, mine(GEH), mine(GEH), mine(GEH), theirs(GEH)]) else { return };
     s.prefer(&[(0, GEH)]);
     s.run(&[Activate(WOK), Activate(WOK), Activate(WOK)]).unwrap();
-    assert!(s.lp(0) > 30_000_000, "{}", s.context());
+    assert_eq!(s.lp(0), INFINITE, "{}", s.context());
     let r = s.run_both([&[EndTurn], &[Attack(GEH)]]);
     assert!(r.is_err_and(|e| e.contains("the duel is over")), "{}", s.context());
     assert_eq!(s.lp(0), 0, "{}", s.context());
@@ -359,13 +358,13 @@ fn soul_energy_max_takes_even_lp_from_mystik_wok() {
 }
 
 /// Damage that is an infinite ATK is infinite (`crates/yo3-engine/src/guards.lua`): Avatar risen to infinity beside the
-/// anime Geh attacks a player directly, and the 10,007,999 LP Mystik Wok gave them are all gone.
+/// anime Geh attacks a player directly, and the ∞ LP Mystik Wok gave them are all gone.
 #[test]
 fn avatar_at_infinity_takes_all_lp() {
     let Some(mut s) = field(true, 8000, &[Spawn { team: 0, place: Hand, cid: WOK }, mine(GEH), theirs(AVATAR), theirs(GEH)]) else { return };
     s.prefer(&[(0, GEH)]);
     s.run(&[Activate(WOK)]).unwrap();
-    assert_eq!(s.lp(0), 8000 + INFINITE, "{}", s.context());
+    assert_eq!(s.lp(0), INFINITE, "{}", s.context());
     let r = s.run_both([&[EndTurn], &[Attack(AVATAR)]]);
     assert!(r.is_err_and(|e| e.contains("the duel is over")), "{}", s.context());
     assert_eq!(s.lp(0), 0, "{}", s.context());
@@ -373,7 +372,7 @@ fn avatar_at_infinity_takes_all_lp() {
 }
 
 /// Ring of Destruction on the anime Geh deals its infinite ATK to both players: both lose, a draw, even with the
-/// 10,007,999 LP Mystik Wok gave one of them.
+/// ∞ LP Mystik Wok gave one of them.
 #[test]
 fn ring_of_destruction_on_geh_is_a_draw_whatever_the_lp() {
     let Some(mut s) = field(true, 8000, &[Spawn { team: 0, place: Hand, cid: WOK }, mine(GEH), Spawn { team: 0, place: SpellSet, cid: RING }, theirs(GEH)]) else { return };
