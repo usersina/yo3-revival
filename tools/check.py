@@ -48,6 +48,7 @@ PY = [
     'tools/release/test_bundle_docs.py',
     'tools/engine/test_engine_scripts.py',
     'tools/engine/test_added_cards.py',
+    'tools/engine/test_script_risks.py',
     'tools/vm/test_vm.py',
     'tools/vm/test_smoke.py',
     'tools/dev/test_scratch_server.py',

@@ -247,6 +247,28 @@ def infinity_hints(line, ctx):
     return out
 
 
+def risk_hints(line, ctx):
+    """Non-blocking: lines of the script of a card --find approved that match a pattern which broke duels
+    (tools/engine/script-risks.py): a first card used unchecked after a cost, or an effect that widens a summon's
+    materials (crates/yo3-server/tests/material_search.rs covers those)."""
+    if not line:
+        return []
+    parts = line.split('\t')
+    code = int(parts[4]) if parts[4] else ctx['passcode'].get(int(parts[1]))
+    text = script_text(code)
+    if text is None:
+        return []
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('script_risks', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'script-risks.py'))
+    risky = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(risky)
+    rel = os.path.relpath(script_path(code), ROOT)
+    advice = {'first card unchecked': 'if its cost can leave nothing to choose, the effect stops on a Lua error: read them, '
+                                      'and write an override with a check (engine/overrides/) when it can happen',
+              'widens materials': 'tests/material_search.rs puts it on a crowded board: run it (`task check:added` does)'}
+    return [f'{what}: {rel} lines {", ".join(map(str, lines))}; {advice[what]}' for what, lines in risky.risks(text)]
+
+
 def notes(line, ctx):
     """What to read in the script of a card --find approved (its cards.tsv `line`): mechanics the game never had, or no
     script at all (a Normal Monster needs none)."""
@@ -645,6 +667,8 @@ def report(results, ctx):
             print(f'  read first: {note}')
         for hint in infinity_hints(line, ctx):
             print(f'  at ∞: {hint}')
+        for hint in risk_hints(line, ctx):
+            print(f'  script: {hint}')
 
 
 def regenerate():
