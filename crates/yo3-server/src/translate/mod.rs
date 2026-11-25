@@ -562,10 +562,11 @@ pub struct Translator {
     /// from Traps (`Translator::card_kinds`).
     stats: crate::titles::DuelStats,
     card_kinds: HashMap<u16, u32>,
-    lp_change: i64,
     /// Each engine team's LP, from the opening (`Translator::opening`) and every change since: the client is sent
-    /// [`shown_lp`] of it, as its counter keeps at most 99,999.
+    /// [`shown_lp`] of it, as its counter keeps at most 99,999. The client's lowest is its stats' `lowest_change` from
+    /// `start_lp` (a comeback title), whatever changed it: damage, an effect that sets LP, ∞ settling.
     lp: [i64; 2],
+    start_lp: i64,
     /// How many card names the CPU has declared: each try names the next card of the duel's (the core asks again
     /// when a name doesn't fit).
     declared: usize,
@@ -609,6 +610,7 @@ impl Translator {
     /// The duel's start with both players at `lp`: start, then set LP for each side (the client's player first).
     pub fn opening(&mut self, lp: u32) -> [Message; 3] {
         self.lp = [lp as i64; 2];
+        self.start_lp = lp as i64;
         let lp = shown_lp(lp as i64) as u32;
         [command(cmd::DUEL_START, [0; 4]), command(cmd::SET_LP, [CLIENT, lp, 0, 0]), command(cmd::SET_LP, [CPU, lp, 0, 0])]
     }
@@ -664,6 +666,14 @@ impl Translator {
     /// the win's reason (`crate::titles`).
     pub fn stats(&self) -> &crate::titles::DuelStats {
         &self.stats
+    }
+
+    /// An engine team's LP is now `lp`: kept, and the client's lowest noted for its stats.
+    fn set_lp(&mut self, team: usize, lp: i64) {
+        self.lp[team] = lp;
+        if self.side(team as u64) == CLIENT {
+            self.stats.lowest_change = self.stats.lowest_change.min(lp - self.start_lp);
+        }
     }
 
     /// The Tuners among the cards, by Konami id: a Synchro Summon's tuning tells the Tuners' levels from the others'.
@@ -732,8 +742,8 @@ impl Translator {
             conceded: false,
             stats: Default::default(),
             card_kinds: HashMap::new(),
-            lp_change: 0,
             lp: [0; 2],
+            start_lp: 0,
             counters: HashMap::new(),
             declared: 0,
             revealing: vec![],

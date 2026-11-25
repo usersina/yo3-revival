@@ -627,6 +627,26 @@ fn lp_beyond_99999_stays_infinite_until_it_falls_below() {
 }
 
 #[test]
+fn the_lowest_lp_for_a_comeback_is_the_real_lp() {
+    // A comeback title counts the client's lowest LP (titles.rs COMEBACK_LP): the LP itself, not the sum of the changes
+    // shown. An effect that sets LP (the anime Rasca: 1) counts, and so does ∞: Mystik Wok on an ∞ ATK, the engine
+    // settling it at ∞, then Ra's "pay all but 1" leaves 1, where the sum of the changes said 8001. Team 0 is the client.
+    let (mut t, _) = translator();
+    t.opening(8000);
+    t.events(&[json!({ "type": 94, "player": 0, "lp": 1 }), json!({ "type": 94, "player": 0, "lp": 8000 })]);
+    assert_eq!(t.stats().lowest_change, 1 - 8000, "set to 1");
+    let (mut t, _) = translator();
+    t.opening(8000);
+    t.events(&[
+        json!({ "type": 92, "player": 0, "amount": 19_999_998 }),
+        json!({ "type": 94, "player": 0, "lp": 19_999_998 }),
+        json!({ "type": 100, "player": 0, "amount": 19_999_997 }),
+        json!({ "type": 91, "player": 1, "amount": 7999 }),
+    ]);
+    assert_eq!(t.stats().lowest_change, 1 - 8000, "∞, then all but 1");
+}
+
+#[test]
 fn the_cpu_summons_then_attacks_with_everything_then_ends_its_turn() {
     // A placeholder AI: Normal Summon (or Set) the first monster it may, go to battle, attack with each attacker,
     // end the turn.
