@@ -837,7 +837,8 @@ its end as `call("hideDamage", player)`: the pop-up stays up while the counter m
 The server sends an ∞ amount as ±100000, more than any finite change it shows (99999 at most). From such a showDamage
 to the next showDamage or hideDamage the DLL passes ±99999 on, keeps one clip `yo3Infinity` (depth 16100) in the
 pop-up with `art/damage-infinity-loss.png` ("-∞") or `-gain.png` ("∞") loaded (loaded and placed again when the sign
-changes; a second clip made in the same call failed, `createEmptyMovieClip` false), placed at 25% on the digits' middle
+changes; the invoke's own answer is no guide: `createEmptyMovieClip` answered false and still made the clip, on
+Windows 11 and once under Wine, so the DLL reads back what is there, and stops trying for that pop-up after a failure), placed at 25% on the digits' middle
 (`anchor` "center", `fontWidth` 26, digits 32 high), and makes the digits `num0`…`num7` transparent (`_alpha` 0: the
 pop-up shows them through `_visible`); otherwise the digits come back and the clip hides. A count the raised clamp keeps
 at 100000 doesn't move the counter and the pop-up went at once (live: about a quarter second), so into or out of ∞ the

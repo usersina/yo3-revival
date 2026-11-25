@@ -91,7 +91,8 @@ static int picture_load(void *movie, const char *clip, const char *sprite, int i
     numbers_anchor(movie, sprite, anchor, sizeof anchor);
     GfxValue load[1] = { gfx_text(file) };
     snprintf(method, sizeof method, "%s.pic.loadMovie", clip);
-    if (!gfx_invoke(movie, method, load, 1)) PIC_FAIL("loadMovie failed");
+    /* The invoke's answer is no guide (false for calls that worked, live on Windows 11): `pic` was checked when made. */
+    gfx_invoke(movie, method, load, 1);
     double k = scale / 100;
     Yo3PicPlace place = yo3_lp_infinity_place(anchor, x, y + top * k, width * k, digit_h * k, (unsigned)figures, pic->w, pic->h, k);
     gfx_set(movie, PIC_PATH(clip, "_x"), gfx_num(place.x));
@@ -106,21 +107,26 @@ static int picture_load(void *movie, const char *clip, const char *sprite, int i
     return 1;
 }
 
-/* Makes `parent`.`name` (depth `depth`) with an empty `pic` inside, when it isn't there: 1 when it is there now, with
- * `*made` 1 when it was just made. */
+/* Makes `parent`.`name` (depth `depth`) with an empty `pic` inside, when they aren't both there: 1 when they are there
+ * now, with `*made` 1 when they were just made. What is there is read back (`_x`): the invoke's own answer is no guide
+ * (live on Windows 11, createEmptyMovieClip answered false and made the clip). */
 static int picture_clip(void *movie, const char *parent, const char *name, int depth, int *made) {
-    char path[160], method[160]; double v;
+    char path[160], inner_path[176], method[160]; double v;
     snprintf(path, sizeof path, "%s.%s._x", parent, name);
+    snprintf(inner_path, sizeof inner_path, "%s.%s.pic._x", parent, name);
     *made = 0;
-    if (gfx_number(movie, path, &v)) return 1;
+    if (gfx_number(movie, inner_path, &v)) return 1;
     GfxValue make[2] = { gfx_text(name), gfx_num(depth) }, inner[2] = { gfx_text("pic"), gfx_num(1) };
-    snprintf(method, sizeof method, "%s.createEmptyMovieClip", parent);
-    if (!gfx_invoke(movie, method, make, 2)) {
-        char line[200]; snprintf(line, sizeof line, "[YO3 MOD] infinity: no clip %s.%s: createEmptyMovieClip failed\r\n", parent, name);
-        starter_log(line); return 0;
+    if (!gfx_number(movie, path, &v)) {
+        snprintf(method, sizeof method, "%s.createEmptyMovieClip", parent);
+        gfx_invoke(movie, method, make, 2);
     }
     snprintf(method, sizeof method, "%s.%s.createEmptyMovieClip", parent, name);
-    gfx_invoke(movie, method, inner, 2);
+    if (gfx_number(movie, path, &v)) gfx_invoke(movie, method, inner, 2);
+    if (!gfx_number(movie, inner_path, &v)) {
+        char line[200]; snprintf(line, sizeof line, "[YO3 MOD] infinity: no clip %s.%s: createEmptyMovieClip made none\r\n", parent, name);
+        starter_log(line); return 0;
+    }
     *made = 1;
     return 1;
 }
@@ -149,7 +155,7 @@ static void lp_show(void *movie, unsigned player, int infinite) {
  * the movie moves and animates), `yo3Infinity`, holding the loss or the gain picture (loaded again, and placed again, when
  * the sign changes), shown and the digits made transparent while the pop-up shows an ∞ amount (`_alpha`: the pop-up
  * reveals its digits one by one through `_visible`); the digits back and the clip hidden otherwise. */
-static int damage_infinity[2], damage_applied[2], damage_loaded[2];
+static int damage_infinity[2], damage_applied[2], damage_loaded[2], damage_failed[2];
 static void damage_show(void *movie, unsigned player, int sign) {
     char popup[32], clip[48], path[128]; double v; int made;
     snprintf(popup, sizeof popup, "_root.damage%u", player);
@@ -157,10 +163,14 @@ static void damage_show(void *movie, unsigned player, int sign) {
 #define DMG_PATH(fmt, ...) (snprintf(path, sizeof path, fmt, __VA_ARGS__), path)
     if (!sign && !damage_applied[player]) return;
     if (sign) {
+        /* Once per pop-up: a failure leaves its digits, without trying again on every frame of its count. */
+        if (damage_failed[player]) return;
+        damage_failed[player] = 1;
         if (!picture_clip(movie, popup, "yo3Infinity", 16100, &made)) return;
         if ((made || damage_loaded[player] != sign)
             && !picture_load(movie, clip, popup, 1, &yo3_pictures[sign < 0 ? YO3_PIC_LOSS : YO3_PIC_GAIN])) return;
         damage_loaded[player] = sign;
+        damage_failed[player] = 0;
     }
     for (int i = 0; i < 8; ++i)
         if (gfx_number(movie, DMG_PATH("%s.num%d._alpha", popup, i), &v)) gfx_set(movie, path, gfx_num(sign ? 0 : 100));
@@ -182,7 +192,10 @@ static int __attribute__((thiscall,force_align_arg_pointer)) numbers_invoke_hook
     else if(damage && change*change>=YO3_DAMAGE_INFINITE*YO3_DAMAGE_INFINITE && count<=12) {
         memcpy(out,args,count*sizeof *out); out[2].v.number=change<0?-YO3_SHOWN_MAX:YO3_SHOWN_MAX; args=out;
     }
-    if(damage) damage_infinity[popup]=yo3_damage_infinity(damage_infinity[popup],damage,change);
+    if(damage) {
+        damage_infinity[popup]=yo3_damage_infinity(damage_infinity[popup],damage,change);
+        if(damage!=2) damage_failed[popup]=0;
+    }
     if(yo3_invoke_observer) yo3_invoke_observer(name,args,count);
     int result=numbers_invoke(movie,name,args,count);
     if(scale) numbers_scale(movie,field,infinite);
