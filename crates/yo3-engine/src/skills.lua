@@ -58,7 +58,8 @@ end
 -- A testing aid (the server's --duel-field, scenario tests): when the duel starts, before the opening hands are drawn,
 -- the first card `code` of the player's Deck or Extra Deck goes to `loc` (the core's location bits) in position `pos`.
 -- The core reports the move as any other, so the client sees the card arrive. A monster put on the field this way was
--- not summoned: effects that count its materials see none.
+-- not summoned: effects that count its materials see none, and a Fusion, Synchro or Ritual Monster was never properly
+-- summoned, so nothing can Special Summon it from the Graveyard later (summon it in the test instead).
 function YO3Skill.Spawn(p,code,loc,pos)
 	local e=Effect.GlobalEffect()
 	e:SetType(EFFECT_TYPE_FIELD+EFFECT_TYPE_CONTINUOUS)
@@ -70,6 +71,9 @@ function YO3Skill.Spawn(p,code,loc,pos)
 			if loc==LOCATION_HAND then Duel.SendtoHand(tc,nil,REASON_RULE)
 			elseif loc==LOCATION_GRAVE then Duel.SendtoGrave(tc,REASON_RULE)
 			elseif loc==LOCATION_REMOVED then Duel.Remove(tc,POS_FACEUP,REASON_RULE)
+			elseif loc==LOCATION_SZONE and tc:IsType(TYPE_FIELD) then
+				-- A Field Spell goes to the Field Zone, where it applies.
+				Duel.MoveToField(tc,p,p,LOCATION_FZONE,pos,true)
 			else
 				-- The first free zone, so the core asks no one where it goes.
 				local zone=0
