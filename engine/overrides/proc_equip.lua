@@ -1,5 +1,5 @@
 --Override (engine/overrides/README.md): an Equip Spell that resolves with no target does nothing; upstream raised a Lua
---error (Auxiliary.EquipOperation indexed a nil target), which ended the duel.
+--error (Auxiliary.EquipOperation indexed a nil target) partway through the effect.
 --add procedure to equip spells equipping by rule
 function Auxiliary.AddEquipProcedure(c,p,f,eqlimit,cost,tg,op,con,prop)
 	--Note: p==0 is check equip spell controler, p==1 for opponent's, PLAYER_ALL for both player's monsters

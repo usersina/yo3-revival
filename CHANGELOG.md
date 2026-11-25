@@ -21,8 +21,8 @@ Older entries describe their release at the time. For current setup, use the [RE
   versions.
 - **Anime card fixes.** With anime cards on, Iron Cage sends the monster to its owner's Graveyard, Dark Element summons
   Dark Guardian, Advanced Crystal Beast Emerald Tortoise can turn a monster that attacked to Defense Position, Spirit
-  Shield negates the attack even with its last Fiend, and Catapult Turtle no longer stops a duel when its target is gone.
-- **An Equip Spell left with no monster to equip** does nothing instead of ending the duel with an error.
+  Shield negates the attack even with its last Fiend, and Catapult Turtle's effect no longer fails when its target is gone.
+- **An Equip Spell left with no monster to equip** does nothing instead of failing with a script error.
 - **A monster made a Tuner by an effect** (Noble Knight's Spearholder) tunes as one in the Synchro Summon's animation.
 
 ## v0.1.25 (2026-11-25)
