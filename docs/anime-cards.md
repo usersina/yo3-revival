@@ -246,6 +246,10 @@ a rule of ours): the scripts' own "100 times the LP" (Soul Energy Max, Geh's att
 LP a player has, however much Mystik Wok gave them; the core's 32 bits once wrapped the largest into a gain. Half of
 infinity is still infinite: Dreadroot halves every other monster but an infinite ATK or DEF (`engine/overrides/c513000137.lua`),
 so Geh under it keeps its infinite damage and Avatar ties it at infinity.
+The anime Geh's infinity is printed (its card says "ATTACK ∞"): it is the card's ATK, not an effect, though the script can
+only give it as ATK "?" and an effect. So Skill Drain negates Geh's effects but leaves its infinite ATK, and other cards'
+effects that change ATK (The Seal of Orichalcos, Axe of Despair, Shrink, Shield & Sword) don't touch it (`guards.lua`'s
+list of printed infinities, a rule of ours; [adding cards](added-cards.md#infinite-atk)).
 A God's control can't switch (Change of Heart and Creature Swap find no target), the opponent can't Tribute it (Sphere
 Mode takes other monsters) and Shrink halves it for the turn. Book of Moon turns it face-down, as the manga text only keeps
 a God from Spell/Trap effects that would make it leave the field; but face-down it is still a God (its Hierarchy is the

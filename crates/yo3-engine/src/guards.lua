@@ -32,3 +32,44 @@ infinite_battle:SetOperation(function(e, tp, eg, ep, ev, re, r, rp)
 	end
 end)
 Duel.RegisterEffect(infinite_battle, 0)
+
+-- A printed infinity. A card whose printed ATK is infinite (in the anime: "ATTACK ∞") has it as its ATK, not as an
+-- effect: the scripts can only give it as ATK "?" and an effect that makes it 9,999,999, which Skill Drain would negate
+-- and other cards would raise, halve or swap. So a card on this list, while in a Monster Zone, keeps its ATK at
+-- infinity whatever negates its effects (its other effects are still negated), and is unaffected by other cards' effects
+-- that change its ATK. Its DEF is an ordinary number. Cards that become infinite through an effect (Obelisk's Soul Energy
+-- Max) are not on the list: docs/added-cards.md, "Infinite ATK".
+local PRINTED_INFINITY = {
+	[170000170] = true, -- Divine Serpent Geh (Anime)
+}
+local ATK_CHANGES = {}
+for _, name in ipairs({"EFFECT_UPDATE_ATTACK", "EFFECT_SET_ATTACK", "EFFECT_SET_ATTACK_FINAL", "EFFECT_SET_BASE_ATTACK",
+		"EFFECT_SET_BASE_ATTACK_FINAL", "EFFECT_SWAP_AD", "EFFECT_SWAP_BASE_AD"}) do
+	if _G[name] then ATK_CHANGES[_G[name]] = true end
+end
+local PRINTED_FLAG = 830000002
+local function printed_infinity(c)
+	return PRINTED_INFINITY[c:GetOriginalCode()] and c:GetFlagEffect(PRINTED_FLAG) == 0
+end
+local printed = Effect.GlobalEffect()
+printed:SetType(EFFECT_TYPE_FIELD + EFFECT_TYPE_CONTINUOUS)
+printed:SetCode(EVENT_ADJUST)
+printed:SetProperty(EFFECT_FLAG_CANNOT_DISABLE + EFFECT_FLAG_IGNORE_IMMUNE)
+printed:SetOperation(function()
+	for c in aux.Next(Duel.GetMatchingGroup(printed_infinity, 0, LOCATION_MZONE, LOCATION_MZONE, nil)) do
+		c:RegisterFlagEffect(PRINTED_FLAG, RESET_EVENT + RESETS_STANDARD, 0, 1)
+		local atk = Effect.CreateEffect(c)
+		atk:SetType(EFFECT_TYPE_SINGLE)
+		atk:SetProperty(EFFECT_FLAG_SINGLE_RANGE + EFFECT_FLAG_CANNOT_DISABLE + EFFECT_FLAG_UNCOPYABLE)
+		atk:SetRange(LOCATION_MZONE)
+		atk:SetCode(EFFECT_SET_ATTACK_FINAL)
+		atk:SetValue(INFINITY)
+		atk:SetReset(RESET_EVENT + RESETS_STANDARD)
+		c:RegisterEffect(atk, true)
+		local unaffected = atk:Clone()
+		unaffected:SetCode(EFFECT_IMMUNE_EFFECT)
+		unaffected:SetValue(function(e, te) return te:GetOwner() ~= e:GetHandler() and ATK_CHANGES[te:GetCode()] == true end)
+		c:RegisterEffect(unaffected, true)
+	end
+end)
+Duel.RegisterEffect(printed, 0)

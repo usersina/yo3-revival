@@ -12,6 +12,7 @@ The first is **Shooting Quasar Dragon** (#75). This guide is for whoever adds th
 - [Its picture](#its-picture)
 - [Its anime version](#its-anime-version)
 - [Anime-only cards](#anime-only-cards)
+- [Infinite ATK](#infinite-atk)
 - [Give it to players](#give-it-to-players)
 - [Add a batch](#add-a-batch)
 - [How it reaches the game](#how-it-reaches-the-game)
@@ -179,6 +180,24 @@ Konami id and no official data: its data and script are ProjectIgnis' anime ones
   engine loads it only with the setting on.
 - **Review it like an anime version**: its script is the community's reconstruction of what the anime showed; a card
   whose anime text is unknown waits. Test it with `Scenario::start_anime` or `start_anime_field`.
+
+## Infinite ATK
+
+The engine has no ∞: ProjectIgnis' scripts give an infinite ATK as 9,999,999, and most of what the game does with it keys
+off that number, so a new card scripted that way has it with nothing more to do: ∞ on the field (the connection DLL),
+its battle damage and effect damage of 9,999,999 or more take every LP, Avatar matches it rather than going 1 above, and
+Dreadroot leaves it alone. Two kinds need a look:
+
+- **A printed ∞** (the card itself says "ATTACK ∞", like the anime Divine Serpent Geh): its script can only give it as
+  ATK "?" and an effect, which Skill Drain would negate and other cards would change. Add its passcode to
+  `PRINTED_INFINITY` in `crates/yo3-engine/src/guards.lua`: it then keeps ∞ in a Monster Zone whatever negates its
+  effects, and other cards' ATK changes don't touch it. Its DEF stays an ordinary number. Test it as
+  `tests/manga_gods.rs` tests Geh (`skill_drain_leaves_a_printed_infinity`, `other_cards_leave_a_printed_infinity`).
+- **An effect that makes an ATK ∞** (Obelisk's Soul Energy Max, a spell "its ATK becomes ∞"): read how the script sets
+  it. A final value (`EFFECT_SET_ATTACK_FINAL`, as Soul Energy Max) is what the card keeps; an amount added
+  (`EFFECT_UPDATE_ATTACK`) can still be changed by other cards, and the 32-bit core caps what adds on top. Give it a
+  scenario test with Dreadroot, The Seal of Orichalcos and Avatar beside it, and add it to the Gods' self-play pool
+  (`duel_check.rs` `duels_with_the_gods`) if it meets the Gods.
 
 ## Give it to players
 

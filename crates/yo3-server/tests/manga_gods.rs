@@ -469,3 +469,56 @@ fn geh_under_dreadroot_keeps_its_infinite_damage() {
     assert_eq!(s.lp(1), 0, "{}", s.context());
     clean(&s);
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// A printed infinite ATK (guards.lua's PRINTED_INFINITY, for now the anime Geh): it is the card's ATK, not an effect, so
+// negating the card's effects leaves it, and no other card raises, lowers, halves, sets or swaps it.
+
+const SEAL: u16 = 10327; // The Seal of Orichalcos: "All monsters you control gain 500 ATK."
+const AXE_OF_DESPAIR: u16 = 4310; // equip: +1000 ATK
+const SHIELD_AND_SWORD: u16 = 4811; // swaps the original ATK and DEF of every face-up monster until the End Phase
+
+/// Skill Drain negates the anime Geh's effects, but its infinite ATK is its printed ATK: it stays.
+#[test]
+fn skill_drain_leaves_a_printed_infinity() {
+    let Some(mut s) = field(true, 8000, &[mine(GEH), Spawn { team: 0, place: SpellSet, cid: SKILL_DRAIN }]) else { return };
+    s.run(&[Activate(SKILL_DRAIN)]).unwrap();
+    assert_eq!(s.count(0, "szone", SKILL_DRAIN), 1, "Skill Drain is face-up: {}", s.context());
+    assert_eq!(s.attack_of(0, GEH), Some(INFINITE), "{}", s.context());
+    clean(&s);
+}
+
+/// Other cards' ATK changes don't touch a printed infinity: The Seal of Orichalcos' 500 and Axe of Despair's 1000 (the
+/// Warwolf beside it gains them), Shrink's half, Shield & Sword's swap (the Warwolf's 100 DEF becomes its ATK, not Geh's 0).
+#[test]
+fn other_cards_leave_a_printed_infinity() {
+    let Some(mut s) = field(true, 8000, &[mine(GEH), mine(WARWOLF), Spawn { team: 0, place: Hand, cid: SEAL }]) else { return };
+    s.run(&[Activate(SEAL)]).unwrap();
+    assert_eq!((s.attack_of(0, GEH), s.attack_of(0, WARWOLF)), (Some(INFINITE), Some(2500)), "the Seal: {}", s.context());
+    clean(&s);
+    let Some(mut s) = field(true, 8000, &[mine(GEH), Spawn { team: 0, place: Hand, cid: AXE_OF_DESPAIR }]) else { return };
+    s.prefer(&[(0, GEH)]);
+    let _ = s.run(&[Activate(AXE_OF_DESPAIR)]);
+    assert_eq!(s.attack_of(0, GEH), Some(INFINITE), "Axe of Despair: {}", s.context());
+    clean(&s);
+    let Some(mut s) = field(true, 8000, &[theirs(GEH), Spawn { team: 0, place: Hand, cid: SHRINK }]) else { return };
+    s.prefer(&[(1, GEH)]);
+    let _ = s.run(&[Activate(SHRINK)]);
+    assert_eq!(s.attack_of(1, GEH), Some(INFINITE), "Shrink: {}", s.context());
+    clean(&s);
+    let Some(mut s) = field(true, 8000, &[theirs(GEH), mine(WARWOLF), Spawn { team: 0, place: Hand, cid: SHIELD_AND_SWORD }]) else { return };
+    s.run(&[Activate(SHIELD_AND_SWORD)]).unwrap();
+    assert_eq!(s.count(0, "grave", SHIELD_AND_SWORD), 1, "Shield & Sword resolved: {}", s.context());
+    assert_eq!((s.attack_of(1, GEH), s.attack_of(0, WARWOLF)), (Some(INFINITE), Some(100)), "Shield & Sword: {}", s.context());
+    clean(&s);
+}
+
+/// Avatar beside a printed infinity under the Seal: Geh stays at infinity, and so does Avatar (its own +500 included).
+#[test]
+fn avatar_matches_a_printed_infinity_exactly() {
+    let Some(mut s) = field(true, 8000, &[mine(GEH), mine(AVATAR), Spawn { team: 0, place: Hand, cid: SEAL }]) else { return };
+    s.run(&[Activate(SEAL)]).unwrap();
+    assert_eq!(s.attack_of(0, GEH), Some(INFINITE), "{}", s.context());
+    assert!(s.attack_of(0, AVATAR).is_some_and(|a| a >= INFINITE), "{}", s.context());
+    clean(&s);
+}
