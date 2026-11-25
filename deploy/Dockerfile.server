@@ -35,7 +35,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,targe
 # A card override or a change to the anime card map only repackages data; it never recompiles the native programs.
 COPY engine/overrides engine/overrides
 COPY engine/anime-cards.json engine/added-cards.json engine/
-COPY tools/engine/engine-files.sh tools/engine/engine-files.sh
+COPY engine/anime/cards.tsv engine/anime/cards.tsv
+COPY tools/engine/engine-files.sh tools/engine/engine-scripts.py tools/engine/
 RUN tools/engine/engine-files.sh /out
 COPY LICENSE /out/LICENSE
 COPY tools/containers/server-rootfs.sh /tmp/server-rootfs.sh
