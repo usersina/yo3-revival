@@ -591,22 +591,22 @@ fn force_resonator_goes_to_the_graveyard_for_its_effect() {
 
 /// "if it attacks this turn, your opponent cannot activate cards or effects that target a monster(s) until the end of
 /// the Damage Step." Control: without the Resonator the opponent's Set Book of Moon answers the attack; with it, the
-/// answer never becomes possible.
+/// answer never becomes possible. The second player uses it (the first can't attack in its first turn, and the effect
+/// lasts only this turn).
 #[test]
-#[ignore = "bug: Book of Moon can still be activated on the attacker after Force Resonator's effect (EFFECT_CANNOT_SELECT_EFFECT_TARGET)"]
 fn force_resonator_stops_the_opponent_targeting_an_attacker() {
-    let spawns = [put(0, Monster, WARWOLF), put(1, SpellSet, BOOK_OF_MOON)];
+    let spawns = [put(1, Monster, WARWOLF), put(0, SpellSet, BOOK_OF_MOON)];
     let Some(mut control) = duel(false, &[], &spawns) else { return };
-    control.run_both([&[Attack(WARWOLF)], &[ChainOnAttack(BOOK_OF_MOON)]]).unwrap();
+    control.run_both([&[ChainOnAttack(BOOK_OF_MOON)], &[Attack(WARWOLF)]]).unwrap();
     clean(&control);
-    assert_eq!(control.count(1, "grave", BOOK_OF_MOON), 1, "Book of Moon was used: {}", control.context());
-    let spawns = [put(0, Monster, FORCE_RESONATOR), put(0, Monster, WARWOLF), put(1, SpellSet, BOOK_OF_MOON)];
+    assert_eq!(control.count(0, "grave", BOOK_OF_MOON), 1, "Book of Moon was used: {}", control.context());
+    let spawns = [put(1, Monster, FORCE_RESONATOR), put(1, Monster, WARWOLF), put(0, SpellSet, BOOK_OF_MOON)];
     let Some(mut s) = duel(false, &[], &spawns) else { return };
-    s.prefer(&[(0, WARWOLF)]);
-    let result = s.run_both([&[Activate(FORCE_RESONATOR), Attack(WARWOLF)], &[ChainOnAttack(BOOK_OF_MOON)]]);
+    s.prefer(&[(1, WARWOLF)]);
+    let result = s.run_both([&[ChainOnAttack(BOOK_OF_MOON)], &[Activate(FORCE_RESONATOR), Attack(WARWOLF)]]);
     clean(&s);
     assert!(result.as_ref().is_err_and(|e| e.contains("never became possible")), "the opponent could not use Book of Moon: {result:?}\n{}", s.context());
-    assert_eq!(s.count(1, "grave", BOOK_OF_MOON), 0, "{}", s.context());
+    assert_eq!(s.count(0, "grave", BOOK_OF_MOON), 0, "{}", s.context());
 }
 
 /// "Once per turn: You can Special Summon 1 "Meklord Army" monster from your hand."
