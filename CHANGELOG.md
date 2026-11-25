@@ -21,6 +21,8 @@ Older entries describe their release at the time. For current setup, use the [RE
   -700 leave an ∞ ATK as it is, and ∞ against ∞ is a tie. A card that takes all your LP takes ∞: Ra's "pay all but 1"
   leaves you 1 and gives Ra ∞, De-Fusion gives it back; Yu-Jo Friendship gives both players ∞; "your LP become X" makes
   it X (Life Equalizer, Wiraqocha Rasca). An infinite ATK still takes all LP, ∞ too.
+- **Comeback wins count right.** A win after your LP fell to 1000 or less counts as a comeback even when an effect set
+  your LP that low (Wiraqocha Rasca, Life Equalizer) or after ∞ (Ra's "pay all but 1").
 - **Long number choices work.** A card that asks for an amount from a long list (Wall of Revealing Light, Bark of Dark
   Ruler with a lot of LP) offered only part of it, sometimes nothing; it now offers 255 choices, up to the largest.
 

@@ -12,7 +12,7 @@ The first is **Shooting Quasar Dragon** (#75). This guide is for whoever adds th
 - [Its picture](#its-picture)
 - [Its anime version](#its-anime-version)
 - [Anime-only cards](#anime-only-cards)
-- [Infinite ATK](#infinite-atk)
+- [Infinite ATK and LP](#infinite-atk-and-lp)
 - [Give it to players](#give-it-to-players)
 - [Add a batch](#add-a-batch)
 - [How it reaches the game](#how-it-reaches-the-game)
@@ -198,7 +198,7 @@ Konami id and no official data: its data and script are ProjectIgnis' anime ones
 - **Review it like an anime version**: its script is the community's reconstruction of what the anime showed; a card
   whose anime text is unknown waits. Test it with `Scenario::start_anime` or `start_anime_field`.
 
-## Infinite ATK
+## Infinite ATK and LP
 
 ProjectIgnis' scripts give an infinite ATK as 9,999,999. The engine makes ∞ one value (`crates/yo3-engine/src/guards.lua`):
 any LP, ATK or DEF of 9,999,999 or more becomes exactly 19,999,998, which finite changes leave as it is (+1000, -700,
@@ -219,6 +219,21 @@ A card that takes or gives LP as ATK (Ra's "pay all but 1", Granel) turns ∞ LP
   (`EFFECT_UPDATE_ATTACK`) is ∞ too while the total is 9,999,999 or more, and other cards' finite changes leave it. Give it a
   scenario test with Dreadroot, The Seal of Orichalcos and Avatar beside it, and add it to the Gods' self-play pool
   (`duel_check.rs` `duels_with_the_gods`) if it meets the Gods.
+
+`task cards:find` points these cards out under "at ∞", without holding them back: a script that sets LP, works an amount
+out from LP, or makes an ∞ of its own (9,999,999), and a card whose ATK is "?" with an ∞ in its script (maybe a printed
+∞). Before adding one:
+
+- **Script ∞ as 9,999,999**, in an override too: the engine makes anything from there up its one ∞. Never `math.huge` or
+  `0x7fffffff`: the core works in 32 bits, and a sum past them wraps into a negative ATK or LP.
+- **A printed ∞ ATK goes in `PRINTED_INFINITY`** (above). A printed ∞ DEF has no rule yet: ask before adding one.
+- **No loop once per LP point.** A list as long as the LP is fine (Bark of Dark Ruler builds 200,000 entries at ∞, and a
+  declaration of more than 255 numbers reaches the player as 255, up to the largest), a loop over every LP point is 20
+  million steps.
+- **Give it a case at ∞** in `crates/yo3-server/tests/infinite_lp.rs`: the card played with ∞ LP or against an ∞ ATK,
+  what the LP and ATK become, and `clean` (both players' views). The rules to check it by are above: a finite change
+  leaves ∞, an amount that is itself ∞ moves as is, "becomes X" is X, ∞ against ∞ ties. If it is a card many decks will
+  hold, add it to `duel_check.rs` `duels_at_infinite_lp`'s pool too (both players at ∞, self-played).
 
 ## Give it to players
 
