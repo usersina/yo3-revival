@@ -13,6 +13,13 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- **358 more cards from the anime.** Cards the Duel Monsters, GX and 5D's anime showed that the game never had: the
+  Advanced Crystal Beasts, Valkyries, Timelords, T.G. monsters, Fortune Fairies, Life Stream Dragon, the Legendary
+  Dragon Spells and many more. A host gives them with `give-cards`; with anime cards on, 239 of them play their anime
+  versions.
+
 ## v0.1.25 (2026-11-25)
 
 - **The card panel shows ∞ too.** A card with an infinite ATK reads "ATK ∞" in the card panel beside the field instead of
