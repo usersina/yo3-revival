@@ -108,6 +108,7 @@ task check -- py docs           # seconds: the hermetic Python tests and the doc
 task check                      # everything CI's release job runs (tools/check.py: lint py docs rust dashboard e2e)
 task check:mod                  # local only: the connection DLL's Wine tests (tools/check.py mod)
 task check:cards                # the duel check, then which card effects it exercised (tools/engine/coverage.py)
+task check:selfplay             # 300 self-played duels each with the added cards and the anime versions (slow answers fail)
 task check:added                # after adding cards (docs/added-cards.md): generated files, smoke, scenarios, self-play
 task logs -- PATH [--level warn] [--user N]   # any logs (sessions, server, packets, a report ZIP) as one timeline (docs/logs.md)
 task dev:server                 # a scratch server on free ports with two key accounts; prints the client exports

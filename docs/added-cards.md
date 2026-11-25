@@ -142,6 +142,20 @@ Pitfalls the 2026-11-25 batch's scenarios met (`tests/anime_printed_*.rs`):
   damage from the hand: a filler deck of Kuriboh changes battles with anime cards on.
 - **Check the helper card's own data** (`tools/engine/cardtext.py`): a "Rock" that is a Pyro tests nothing.
 
+**Two patterns that broke duels**, which `task cards:find` points out under "script:" without holding the card back
+(`tools/engine/script-risks.py` lists them for every script the engine plays):
+
+- **A first card used unchecked after a cost**: a script checks that a target exists, pays its cost, then takes the first
+  card chosen and uses it (`local tc=Duel.GetFirstTarget()` then `tc:IsRelateToEffect(e)`). When the cost leaves nothing
+  to choose (the anime Orichalcos Sword of Sealing's discard set off a card that wiped the field), the Lua error stops
+  the effect halfway; a live duel logs it and goes on, the self-play fails. Read the lines; when the cost can do that,
+  write an override with a check (`engine/overrides/proc_equip.lua`, `c511004015.lua`).
+- **An effect that widens a summon's materials** (Synchro Materials from the hand, Ritual Materials from the Graveyard):
+  each time the engine lists the summons it searches more combinations, and the anime T.G. Cyber Magician (any monster
+  in the hand) froze it past the live server's 30 s. `tests/material_search.rs` puts every such card on a crowded board
+  and wants the summons listed within 5 s; `task check:added` runs it. The self-play fails any answer slower than 5 s too
+  (`task check:selfplay` for 300 duels).
+
 **Live**, on the headless client ([which tool sees what](development.md#which-tool-sees-what)), never the player's own
 setup: a scratch server (`task dev:server`), then either
 
