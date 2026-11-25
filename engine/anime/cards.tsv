@@ -4920,7 +4920,7 @@ cid	name	edopro_id	anime_id	status	note
 9484	Meklord Army of Skiel	75733063	511002528	Anime	added card (#75)
 9485	Meklord Army of Granel	2137678	511002529	Anime	added card (#75)
 9486	Meklord Astro Dragon Asterisk	38522377	511001644	Anime	added card (#75)
-9487	T.G. Cyber Magician	64910482	513000182	Anime	added card (#75)
+9487	T.G. Cyber Magician	64910482		Kept	added card (#75); upstream 513000182: a Synchro Summon with it as material can stop the rules engine (self-play, seed 537): it plays as printed
 9488	T.G. Striker	1315120			added card (#75)
 9489	T.G. Jet Falcon	37300735	513000036	Anime	added card (#75)
 9490	T.G. Catapult Dragon	64898834	513000035	Anime	added card (#75)
@@ -5069,7 +5069,7 @@ cid	name	edopro_id	anime_id	status	note
 13806	Glife the Phantom Bird	899287	511000436	Anime	added card (#75)
 13807	Hexe Trude	46294982	511000434	Anime	added card (#75)
 13808	Golden Castle of Stromberg	72283691	513000144	Anime	added card (#75)
-13809	Glass Slippers	9677699	511000433	Anime	added card (#75)
+13809	Glass Slippers	9677699		Kept	added card (#75); upstream 511000433: its move to the opponent's monster after Prinzessin's battle damage never happens in the engine (scenario 2026-11-25): it plays as printed
 13810	Iron Cage	45072394	511001419	Anime	added card (#75)
 13811	Litmus Doom Swordsman	72566043			added card (#75)
 13812	Litmus Doom Ritual	8955148			added card (#75)
