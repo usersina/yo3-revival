@@ -76,6 +76,19 @@ cid	name	edopro_id	anime_id	status	note
 3975	Malus Token				
 3976	Illusion Gate	33017964			added card (#75, stand-in): upstream has a video game version only
 3978	Underworld Circle	73443672	513000118	Anime	added card (#75, stand-in)
+3989	Kuribah	44632120	511000153	Anime	added card (#75)
+3991	Kuribee	71036835	511000151	Anime	added card (#75)
+3992	Kuriboo	7021574	511000154	Anime	added card (#75)
+3993	Kuribeh	34419588	511000152	Anime	added card (#75)
+3994	Kuribabylon	70914287	511000150	Anime	added card (#75)
+3996	Five Star Twilight	6309986	511000148	Anime	added card (#75)
+4000	Yowie	33393090	511000633	Anime	added card (#75)
+4001	Penguin Sword	69792699	511000375	Anime	added card (#75)
+4002	D - Force	6186304		Kept	added card (#75); upstream 100000270: its anime script has an effect used from the Deck (EFFECT_CANNOT_DRAW, EFFECT_DRAW_COUNT), which the client's menus have not been shown to offer: it plays as printed
+4003	Doctor D	32671443	511000310	Anime	added card (#75)
+4004	Dragonroid	9069157	511001190	Anime	added card (#75)
+4005	Rebirth Judgment	45064756			added card (#75)
+4006	Summon Storm	71459861			added card (#75)
 4007	Blue-Eyes White Dragon	89631139			
 4008	Mystical Elf	15025844	511009014	Anime	
 4009	Hitotsu-Me Giant	76184692			
@@ -730,14 +743,19 @@ cid	name	edopro_id	anime_id	status	note
 4658	Magical Labyrinth	64389297			
 4659	Warrior Elimination	90873992			
 4660	Salamandra	32268901			
+4661	Wing Requital	8843569	511000736	Anime	added card (#75)
 4662	Eternal Rest	95051344			
 4663	Megamorph	22046459			
 4664	Metalmorph	68540058			
+4665	Noble Knight's Shield-Bearer	34242278			added card (#75)
 4666	Acid Rain	21323861			
 4667	Crush Card Virus	57728570	513000009	Anime	
 4668	Eradicating Aerosol	94716515	511002426	Anime	
 4669	Breath of Light	20101223			
 4670	Eternal Draught	56606928			
+4671	Horse of the Floral Knights	71736213	513000103	Anime	added card (#75)
+4672	Noble Knight's Spearholder	7721912			added card (#75)
+4673	Centaur Mina	33129626			added card (#75)
 4674	Shine Palace	82878489			
 4675	Shadow Spell	29267084			
 4676	Black Luster Ritual	55761792			
@@ -745,21 +763,30 @@ cid	name	edopro_id	anime_id	status	note
 4678	Harpie's Feather Duster	18144506			
 4679	War-Lion Ritual	54539105			
 4680	Beastly Mirror Ritual	81933259			
+4681	Soul Binding Gate	6909330	513000082	Anime	added card (#75)
 4682	Commencement Dance	43417563			
 4683	Hamburger Recipe	80811661			
+4684	Piri Reis Map	33907039	511001757	Anime	added card (#75)
 4685	Novox's Prayer	43694075			
+4686	Ice Mirror	69492187			added card (#75)
 4687	House of Adhesive Tape	15083728			
 4688	Eatgaboon	42578427			
+4689	Royal Straight Slasher	11020863	511000089	Anime	added card (#75)
+4690	Royal Straight	58415502	511000088	Anime	added card (#75)
 4691	Acid Trap Hole	41356845			
 4692	Widespread Ruin	77754944			
 4693	Goblin Fan	4149689			
 4694	Bad Reaction to Simochi	40633297			
 4695	Reverse Trap	77622396			
 4696	Fake Trap	3027001			
+4697	Dice Dungeon	11808215	511001152	Anime	added card (#75)
 4698	Turtle Oath	76806714			
+4699	Dimension Dice	47292920	316000124	Anime	added card (#75)
 4700	Resurrection of Chakra	39399168			
+4701	Clockwork Night	84797028	511000405	Anime	added card (#75)
 4702	Javelin Beetle Pact	41182875			
 4703	Garma Sword Oath	78577570			
+4704	EN Shuffle	10186633	100000555	Anime	added card (#75)
 4705	Revival of Dokurorider	31066283			
 4706	Fortress Whale's Oath	77454922			
 4707	Performance of Sword	4849037			
@@ -776,13 +803,16 @@ cid	name	edopro_id	anime_id	status	note
 4718	Meteor Dragon	64271667			
 4719	Meteor B. Dragon	90660762			
 4720	Firewing Pegasus	27054370			
+4721	Battle of Sleeping Spirits	46570372	511002899	Anime	added card (#75)
 4722	Garma Sword	90844184			
 4723	Javelin Beetle	26932788			
 4724	Fortress Whale	62337487			
 4725	Dokurorider	99721536			
+4726	Advanced Crystal Beast Ruby Carbuncle	83575471	511001114	Anime	added card (#75)
 4727	Black Magic Ritual	76792184			
 4728	Magician of Black Chaos	30208479			
 4729	Slot Machine	3797883			
+4730	Advanced Crystal Beast Amethyst Cat	19963185	511001115	Anime	added card (#75)
 4731	Red Archery Girl	65570596			
 4732	Ryu-Ran	2964201			
 4733	Manga Ryu-Ran	38369349			
@@ -797,6 +827,7 @@ cid	name	edopro_id	anime_id	status	note
 4742	Blast Sphere	26302522	511002509	Anime	
 4743	Hyozanryu	62397231			
 4744	Alpha The Magnet Warrior	99785935			
+4745	Legion the Fiend Jester	25280974			added card (#75)
 4746	Invitation to a Dark Sleep	52675689			
 4747	Lord of D.	17985575			
 4748	Red-Eyes Black Metal Dragon	64335804			
@@ -816,6 +847,7 @@ cid	name	edopro_id	anime_id	status	note
 4762	Reflect Bounder	2851070	511020012	Anime	
 4763	Beta The Magnet Warrior	39256679			
 4764	Big Shield Gardna	65240384			
+4765	Advanced Crystal Beast Emerald Tortoise	46358784	511001134	Anime	added card (#75)
 4766	Dark Magician Girl	38033121			
 4767	Alligator's Sword	64428736		Kept	upstream 511003060: the anime Normal Monster is equivalent
 4768	Insect Queen	91512835			
@@ -829,7 +861,12 @@ cid	name	edopro_id	anime_id	status	note
 4776	Deepsea Warrior	24128274			
 4777	Bite Shoes	50122883			
 4778	Spikebot	87511987			
+4779	Advanced Crystal Beast Topaz Tiger	72843899	511001148	Anime	added card (#75)
 4780	Satellite Cannon	50400231	511777001	Anime	
+4781	Advanced Crystal Beast Amber Mammoth	18847598	511001135	Anime	added card (#75)
+4782	Advanced Crystal Beast Cobalt Eagle	45236142	511001111	Anime	added card (#75)
+4783	Advanced Crystal Beast Sapphire Pegasus	71620241	511001101	Anime	added card (#75)
+4784	Morphtronic Impact Return	44413654	511000933	Anime	added card (#75)
 4785	The Last Warrior from Another Planet	86099788			
 4786	Dunames Dark Witch	12493482			
 4787	Garnecia Elefantis	49888191			
@@ -837,16 +874,23 @@ cid	name	edopro_id	anime_id	status	note
 4789	Beast of Talwar	11761845			
 4790	Cyber-Tech Alligator	48766543			
 4792	Gamma The Magnet Warrior	11549357			
+4793	Crystal Skull	7903368			added card (#75)
 4794	Time Machine	80987696	511247012	Anime	
 4795	Copycat	26376390	511002387	Anime	
+4796	Curse Reflection Doll	33391067	500000152	Anime	added card (#75)
+4797	Stonehenge	70786111	511001803	Anime	added card (#75)
 4798	Toon World	15259703			
 4799	Gorgon's Eye	52648457	511002444	Anime	
+4800	Mimicat	88032456	511001136	Anime	added card (#75)
+4801	ALERT!	26372118			added card (#75)
 4802	Black Illusion Ritual	41426869			
 4803	Brain Control	87910978	511002549	Anime	
 4804	Negate Attack	14315573	511004341	Anime	Era and type decision open (Quick-Play in the Japanese anime, Trap or Counter Trap elsewhere); the ZEXAL entry 511756005 is a different card and is not used.
 4805	Multiply	40703222	810000034	Anime	
 4806	7 Completed	86198326			
+4807	Golden Rule	3574681	511001921	Anime	added card (#75)
 4808	Lightforce Sword	49587034	511600004	Anime	
+4809	Dragon Nails	76076738	810000089	Anime	added card (#75)
 4810	The Flute of Summoning Dragon	43973174			
 4811	Shield & Sword	52097679			
 4812	Graceful Charity	79571449			
@@ -857,12 +901,20 @@ cid	name	edopro_id	anime_id	status	note
 4817	Mind Control	37520316	511000278	Anime	
 4818	Scapegoat	73915051			
 4819	Amplifier	303660	810000042	Anime	
+4820	Roulette Spider	36708764			added card (#75)
 4821	Card Destruction	72892473			
+4822	Dark Renewal	9287078	100000073	Anime	added card (#75)
 4823	Tragedy	35686187	511008009	Anime	
+4824	Dark Corridor	98696958	511000468	Anime	added card (#75)
+4825	Eye of Illusion	23446369	511005001	Anime	added card (#75)
 4826	Mystical Refpanel	35563539			
+4827	Kaitoptera	50834074			added card (#75)
 4828	Ectoplasmer	97342942	511003218	Anime	
+4829	Horned Saurus	86239173			added card (#75)
 4830	Dark Magic Curtain	99789342	511002532	Anime	
+4831	Anti-Magic Arrows	97120394	513000121	Anime	added card (#75)
 4832	Insect Barrier	23615409			
+4833	Arcana Force XV - The Fiend	59712426	100000116	Anime	added card (#75)
 4834	Magical Arm Shield	96008713			
 4835	Fissure	66788016			
 4836	Trap Hole	4206964			
@@ -988,6 +1040,7 @@ cid	name	edopro_id	anime_id	status	note
 4956	Ceasefire	36468556			
 4957	Light of Intervention	62867251			
 4958	Respect Play	8951260			
+4959	Bonfire	85106525	170000121	Anime	added card (#75)
 4960	Imperial Order	61740673			
 4961	Skull Invitation	98139712			
 4962	Magical Hats	81210420			
@@ -1022,6 +1075,10 @@ cid	name	edopro_id	anime_id	status	note
 4991	Earthshaker	60866277			
 4992	Enchanted Javelin	96355986			
 4993	Mirror Wall	22359980	513000002	Anime	
+4994	Combat Wheel	12501230	511002690	Anime	added card (#75)
+4995	Ashoka Pillar	58996839			added card (#75)
+4996	Cabrera Stone	84384943			added card (#75)
+4997	Triangle O	11489642			added card (#75)
 4998	Obelisk the Tormentor	10000000	513000135	Manga	the manga version (the owner's choice), Divine Hierarchy 1
 4999	Slifer the Sky Dragon	10000020	513000136	Manga	the manga version (the owner's choice), Divine Hierarchy 1
 5000	The Winged Dragon of Ra	10000010	513000134	Manga	the manga version (the owner's choice), Divine Hierarchy 2
@@ -1036,6 +1093,8 @@ cid	name	edopro_id	anime_id	status	note
 5009	Riryoku	34016756	511000474	Anime	
 5010	Sword of Dragon's Soul	61405855			
 5011	Seal of the Ancients	97809599			
+5013	Totem Pole	47873397	511000202	Anime	added card (#75)
+5014	Earthbound Release	84262395	100000430	Anime	added card (#75)
 5015	Luminous Soldier	57482479			
 5016	King Tiger Wanghu	83986578			
 5017	Command Knight	10375182			
@@ -1060,6 +1119,7 @@ cid	name	edopro_id	anime_id	status	note
 5036	Souleater	31242786			
 5037	Slate Warrior	78636495			
 5038	Shapesnatch	4035199			
+5039	Fire Recovery	42516299	170000120	Anime	added card (#75)
 5040	Electromagnetic Bagworm	7914843			
 5041	Timeater	44913552			
 5042	Mucus Yolk	70307656			
@@ -1067,21 +1127,46 @@ cid	name	edopro_id	anime_id	status	note
 5044	Rigorous Reaver	39180960			
 5045	Moisture Creature	75285069			
 5046	Boneheimer	98456117			
+5047	Dark Guardian	26746975	511000137	Anime	added card (#75)
 5048	Flame Dancer	12883044			
+5049	Dark Element	53194323	511000138	Anime	added card (#75)
+5050	Grief Tablet	18046862	511000414	Anime	added card (#75)
+5052	The Duke of Demise	45445571	511000117	Anime	added card (#75)
 5053	Sonic Jammer	84550200			
+5054	Spirit Shield	8324284	511000116	Anime	added card (#75)
+5055	Ocean of Regeneration	44728989	511001324	Anime	added card (#75)
+5056	Clear Phantom	70717628			added card (#75)
+5057	Clear Rage Golem	7102732			added card (#75)
+5058	Clear Cube	33506331			added card (#75)
 5059	Gearfried the Iron Knight	423705			
 5060	Humanoid Slime	46821314			
 5061	Worm Drake	73216412			
 5062	Humanoid Worm Drake	5600127			
 5063	Revival Jam	31709826	513000142	Anime	
+5064	Clear Vicious Knight	70095046			added card (#75)
 5065	Flying Fish	31987274			
 5066	Amphibian Beast	67371383			
 5067	Rocket Warrior	30860696			
+5068	Clear Wall	6089145	513000165	Anime	added card (#75)
 5069	The Legendary Fisherman	3643300			
+5070	Singularity Fiend	32484853	511001232	Anime	added card (#75)
+5071	Break the Seal	69873498			added card (#75)
 5072	Robolady	92421852			
 5073	Roboyarou	38916461			
+5074	Ancient Gear Statue	32762201	500000006	Anime	added card (#75)
+5075	Double Fusion	10218411	511001334	Anime	added card (#75)
+5076	Maiden in Love	8445808			added card (#75)
+5077	Conduction Warrior Linear Magnum Plus Minus	44839512	170000116	Anime	added card (#75)
+5078	Eucalyptus Mole	71228611	511001229	Anime	added card (#75)
 5079	Lightning Conger	27671321			
+5080	Matador Archfiend	7622360			added card (#75)
+5081	Ritual of the Matador	70105073			added card (#75)
+5082	Chaos Distill	6500778			added card (#75)
+5084	Hero's Rule 1: Five Freedoms	33995387			added card (#75)
+5085	Soul Union	69389481	511000483	Anime	added card (#75)
 5086	Spherous Lady	52121290			
+5087	Magnet Warrior Sigma Plus	51826619			added card (#75)
+5089	Magnet Warrior Sigma Minus	87814728			added card (#75)
 5090	Shining Abyss	87303357			
 5091	Archfiend of Gilfer	50287060			
 5092	Gadget Soldier	86281779			
@@ -1089,11 +1174,15 @@ cid	name	edopro_id	anime_id	status	note
 5094	The Masked Beast	49064413			
 5095	Melchid the Four-Face Beast	86569121			
 5096	Nuvia the Wicked	12953226			
+5097	Masked Beast Des Gardius	48948935			added card (#75)
+5098	The Mask of Remnants	22610082			added card (#75)
 5099	Soul Exchange	68005187	513000054	Anime	
+5100	Subspace Battle	89693655	511000496	Anime	added card (#75)
 5101	Chosen One	21888494	513000116	Anime	
 5102	Mask of Weakness	57882509			
 5103	Curse of the Masked Beast	94377247			
 5104	Mask of Dispel	20765952			
+5105	Orichalcos Sword of Sealing	847217	511001650	Anime	added card (#75)
 5106	Mask of Restrict	29549364			
 5107	Mask of the Accursed	56948373			
 5108	Mask of Brutality	82432018			
@@ -1103,7 +1192,9 @@ cid	name	edopro_id	anime_id	status	note
 5112	Infinite Dismissal	54109233	511002884	Anime	
 5113	Fairy Box	21598948			
 5114	Torrential Tribute	53582587	511310007	Anime	
+5115	Rainbow Bridge Bifrost	32236916	100000539	Anime	added card (#75)
 5116	Multiplication of Ants	22493811	511018004	Anime	
+5117	Lightning Crash	89753095	511000612	Anime	added card (#75)
 5118	De-Fusion	95286165			
 5119	Jam Breeding Machine	21770260	511002461	Anime	
 5120	Nightmare's Steelcage	58775978			
@@ -1140,13 +1231,26 @@ cid	name	edopro_id	anime_id	status	note
 5151	Rain of Mercy	66719324			
 5152	Monster Recovery	93108433	511000373	Anime	
 5153	Type Zero Magic Crusher	21237481			
+5154	Dark Tuner Catastrogue	15141103			added card (#75)
+5155	Dark Tuner Nightmare Hand	51546708			added card (#75)
+5156	Gatling Ogre	88931417			added card (#75)
+5157	Infernity Doom Slinger	14425515	513000108	Anime	added card (#75)
+5158	Full Moon Mirror	44857722	511000919	Anime	added card (#75)
+5159	Dark Tyranno	46826483			added card (#75)
+5160	Arcana Force XII - The Hangman	72321198			added card (#75); its anime row 513000163 is not mapped: upstream makes it an alias of another anime card (100000106)
 5161	Yellow Luster Shield	4542651			
 5162	Creature Swap	31036355			
+5163	Candelato, the Beast of Light	8315896	511000647	Anime	added card (#75)
 5164	Spring of Rebirth	94425169			
 5165	Dark Magician				
 5166	Thousand Knives	63391643			
+5167	Plasma Warrior Eitom	45700805			added card (#75)
 5168	Mystic Box	25774450			
+5169	Invincible Demise Lord	71108540	810000001	Anime	added card (#75)
 5170	Ground Collapse	90502999			
+5171	Doll Hammer	44088353	511001470	Anime	added card (#75)
+5172	Quick Summon	10086952			added card (#75)
+5173	D - Burst	47471667	511000311	Anime	added card (#75)
 5193	Lady Panther	38480590			
 5194	The Unfriendly Amazon	65475294			
 5195	Amazoness Archer	91869203			
@@ -1234,6 +1338,7 @@ cid	name	edopro_id	anime_id	status	note
 5285	Makyura the Destructor	21593977			
 5286	Amazoness Archers	67987611			
 5287	Rope of Life	93382620	511020009	Anime	
+5289	Flying Elephant	66765023		Kept	added card (#75); upstream 511002505 has no script: it plays as printed
 5290	Spell Shattering Arrow	93260132			
 5291	Amazoness Chain Master	29654737	810000028	Anime	
 5292	Viser Des	56043446			
@@ -1398,10 +1503,13 @@ cid	name	edopro_id	anime_id	status	note
 5478	Toon Goblin Attack Force	15270885			
 5479	Card of Sanctity	42664989	511001126	Anime	
 5480	Dark Designator	78053598			
+5481	Multiple Destruction	14057297	511000627	Anime	added card (#75)
 5482	Puppet Master	41442341	511002194	Anime	
 5483	Gernia	77936940	511027032	Anime / Normal	
 5484	Newdoria	4335645			
 5485	Lord Poison	40320754			
+5486	Spell of Pain	76714458	511001785	Anime	added card (#75)
+5487	Attack Guidance Armor	3103067	511002051	Anime	added card (#75)
 5488	Blade Knight	39507162			
 5489	Helpoemer	76052811			
 5490	Hidden Soldiers	2047519			
@@ -1463,8 +1571,10 @@ cid	name	edopro_id	anime_id	status	note
 5548	Rite of Spirit	30450531			
 5549	Non Aggression Area	76848240			
 5550	D. Tribe	2833249			
+5551	Lullaby of Obedience	39238953	511000168	Anime	added card (#75)
 5552	Y-Dragon Head	65622692			
 5553	XY-Dragon Cannon	2111707			
+5554	Life Shaver	38105306	511001125	Anime	added card (#75)
 5555	Z-Metal Tank	64500000			
 5556	XYZ-Dragon Cannon	91998119			
 5557	Soul Rope	37383714	511001593	Anime	
@@ -1476,6 +1586,8 @@ cid	name	edopro_id	anime_id	status	note
 5564	Lekunga	62543393			
 5574	Cloning	86871614	511600007	Anime	
 5575	Cost Down	23265313	511002540	Anime	
+5576	Card of Demise	59750328	511001149	Anime	added card (#75)
+5577	Magical Trick Mirror	85758066	511001112	Anime	added card (#75)
 5578	People Running About	12143771			
 5579	Oppressed People	58538870			
 5580	United Resistance	85936485			
@@ -1531,6 +1643,9 @@ cid	name	edopro_id	anime_id	status	note
 5630	Spell Absorption	51481927	511000377	Anime	
 5631	Diffusion Wave-Motion	87880531			
 5632	Fiend's Sanctuary	24874630	511001596	Anime	
+5636	Juragedo	59546797		Kept	added card (#75); upstream 511000286 has no script: it plays as printed
+5637	Left Arm Offering	86541496	511000415	Anime	added card (#75)
+5638	Dark Spell Regeneration	12930501	810000002	Anime	added card (#75)
 5641	Great Angus	11813953			
 5642	Aitsu	48202661			
 5643	Sonic Duck	84696266			
@@ -1677,6 +1792,8 @@ cid	name	edopro_id	anime_id	status	note
 5800	Ray of Hope	82529174		Kept	upstream 511000901 is a different card or a prize card
 5803	Nightmare Penguin	81306586			
 5804	Perfect Machine King	18891691	511001057	Anime	
+5806	Giant Rex	80280944	100000315	Anime	added card (#75)
+5807	Penguin Torpedo	17679043	511000642	Anime	added card (#75)
 5810	Chiron the Mage	16956455	511310000	Anime	
 5811	Ojama Yellow	42941100			
 5812	Ojama Black	79335209			
@@ -1986,7 +2103,9 @@ cid	name	edopro_id	anime_id	status	note
 6149	Hallowed Life Barrier	88789641			
 6150	The Tricky	14778250			
 6151	Green Gadget	41172955			
+6152	Rebellion	87567063	511001109	Anime	added card (#75)
 6153	Stronghold the Moving Fortress	13955608			
+6154	Ties of the Brethren	40450317	100000478	Anime	added card (#75)
 6155	Red Gadget	86445415			
 6156	Yellow Gadget	13839120			
 6158	Tricky Spell 4	75622824			
@@ -2529,6 +2648,7 @@ cid	name	edopro_id	anime_id	status	note
 6784	Elemental Hero Stratos	40044918			
 6785	Hero's Bond	76442616			
 6790	Dragonic Knight	38109772			
+6791	Toy Soldier	65504487			added card (#75); its anime row 511600241 is not mapped: upstream makes it an alias of another card (511000005)
 6794	Zeta Reticulant	64382839			
 6796	Sabersaurus	37265642			
 6797	Miracle Jurassic Egg	63259351			
@@ -2559,21 +2679,33 @@ cid	name	edopro_id	anime_id	status	note
 6823	Jurassic World	10080320	511002874	Anime	
 6824	Volcanic Eruption	42175079			
 6825	Seismic Shockwave	79569173			
+6829	White Knight Lord	14732294	511000595	Anime	added card (#75)
 6830	Cyberdark Horn	41230939	511001124	Anime	
 6831	Cyberdark Edge	77625948	511001146	Anime	
 6832	Cyberdark Keel	3019642	511001123	Anime	
 6833	Cyberdark Dragon	40418351	511001117	Anime	
+6834	Power Wall	76403456	513000104	Anime	added card (#75)
 6835	Super Vehicroid - Stealth Union	3897065	511002959	Anime	
+6836	Dyna Base	39396763	511001649	Anime	added card (#75)
+6837	Dyna Tank	75780818	511001648	Anime	added card (#75)
+6839	Double Evolution Pill	38179121	100000318	Anime	added card (#75)
 6841	Ancient Gear Engineer	1953925			
 6842	Ancient Gear Tank	37457534			
 6843	Ancient Gear Explosive	4446672	511024009	Anime	
 6844	Ancient Gear Fist	40830387			
+6845	Cyber Angel Benten	77235086			added card (#75)
+6846	Cyber Angel Idaten	3629090			added card (#75)
+6847	Cyber Angel Dakini	39618799			added card (#75)
+6848	Cyber Petit Angel	76103404	511001521	Anime	added card (#75)
+6849	Prima Light	2507443	511000132	Anime	added card (#75)
+6850	Machine Angel Ritual	39996157			added card (#75)
 6854	Cyber Ogre	64268668			
 6855	Cyber Esper	91663373			
 6856	Cyber Ogre 2	37057012			
 6858	Cyber Shadow Gardna	90440725			
 6859	Byroad Sacrifice	36935434	511756006	Anime	
 6860	Trojan Blast	63323539			
+6861	Ice Knight	99328137	511000688	Anime	added card (#75)
 6863	Elemental Hero Knospe	62107981			
 6865	Rose Bud	25090294			
 6866	Elemental Hero Poison Rose	51085303			
@@ -2902,6 +3034,7 @@ cid	name	edopro_id	anime_id	status	note
 7248	Trade-In	38120068			
 7251	The Big Saturn	34004470			
 7252	Elemental Hero Plasma Vice	60493189			
+7253	Fossil Warrior Skull King	96897184			added card (#75)
 7254	Over Limit	23282832	511005644	Anime	
 7255	Contact Out	69270537			
 7256	Swing of Memories	96765646			
@@ -2911,6 +3044,7 @@ cid	name	edopro_id	anime_id	status	note
 7260	Evil Hero Lightning Golem	21947653			
 7261	Evil Hero Dark Gaia	58332301			
 7262	Dark Fusion	94820406			
+7263	Fossil Dragon Skullgios	21225115			added card (#75)
 7264	Cloudian - Eye of the Typhoon	57610714	511001786	Anime	
 7265	Cloudian - Ghost Fog	83604828			
 7266	Cloudian - Nimbusman	20003527			
@@ -4772,8 +4906,232 @@ cid	name	edopro_id	anime_id	status	note
 9446	Sorciere de Fleur	36405256			
 9447	Z-ONE	62499965	511000279	Anime	
 9448	Blue Rose Dragon	98884569			
+9472	Junk Servant	78922939			added card (#75)
+9473	Unknown Synchron	15310033	511002135	Anime	added card (#75)
+9474	Salvage Warrior	41705642			added card (#75)
+9475	Necro Defender	77700347			added card (#75)
+9476	Mystic Piper	14198496	511010533	Anime	added card (#75)
+9477	Force Resonator	40583194			added card (#75)
+9478	Clock Resonator	77087109	511002880	Anime	added card (#75)
+9480	Blackwing - Kogarashi the Wanderer	49460512			added card (#75)
+9481	Morphtronic Lantron	76865611	511002877	Anime	added card (#75)
+9482	Morphtronic Staplen	2250266			added card (#75)
+9483	Meklord Army of Wisel	39648965	511002530	Anime	added card (#75)
+9484	Meklord Army of Skiel	75733063	511002528	Anime	added card (#75)
+9485	Meklord Army of Granel	2137678	511002529	Anime	added card (#75)
+9486	Meklord Astro Dragon Asterisk	38522377	511001644	Anime	added card (#75)
+9487	T.G. Cyber Magician	64910482	513000182	Anime	added card (#75)
+9488	T.G. Striker	1315120			added card (#75)
+9489	T.G. Jet Falcon	37300735	513000036	Anime	added card (#75)
+9490	T.G. Catapult Dragon	64898834	513000035	Anime	added card (#75)
+9491	T.G. Warwolf	293542	513000181	Anime	added card (#75)
+9492	T.G. Rush Rhino	36687247	513000183	Anime	added card (#75)
+9493	Buster Blaster	63676256			added card (#75)
+9508	Junk Berserker	59771339	511027027	Anime	added card (#75)
+9509	Life Stream Dragon	25165047	511000558	Anime	added card (#75)
+9510	T.G. Recipro Dragonfly	62560742	511001973	Anime	added card (#75)
+9511	T.G. Wonder Magician	98558751			added card (#75)
+9512	T.G. Power Gladiator	24943456			added card (#75)
+9513	T.G. Blade Blaster	51447164	513000015	Anime	added card (#75)
+9514	T.G. Halberd Cannon	97836203	513000014	Anime	added card (#75)
+9516	Scarlet Security	50215517			added card (#75)
+9517	Red Dragon Vase	87614611	511002483	Anime	added card (#75)
+9518	Resonator Call	23008320			added card (#75)
+9520	Fortissimo the Mobile Fortress	86997073	511009088	Anime	added card (#75)
+9521	Boon of the Meklord Emperor	12986778	511002378	Anime	added card (#75)
+9535	Power-Up Adapter	78586116			added card (#75)
+9536	Chaos Infinity	4081825	511002527	Anime	added card (#75)
+9553	Meklord Astro Mekanikle	63468625	511002517	Anime	added card (#75)
+9554	T.G. Hyper Librarian	90953320			added card (#75)
+9698	Metaion, the Timelord	74530899	513000039	Anime	added card (#75)
+9708	Sephylon, the Ultimate Timelord	8967776	513000052	Anime	added card (#75)
 9709	Shooting Quasar Dragon	35952884	513000031	Anime	added card (#75)
+9714	Ceruli, Guru of Dark World	7623640			added card (#75)
+9799	Sonic Warrior	17932494			added card (#75)
+9800	Influence Dragon	54936498	511002689	Anime	added card (#75)
+9801	Crimson Blader	80321197	511001501	Anime	added card (#75)
+9802	Bright Star Dragon	16719802	511001435	Anime	added card (#75)
+9938	Counterforce	30488793			added card (#75)
+10116	Ancient Dragon	38520918			added card (#75); its anime row 511000128 is not mapped: a Level 8 2800/2100 LIGHT card of the same name, not this Level 4 card
+10213	Miracle Contact	35255456	511600380	Anime	added card (#75)
+10214	Advanced Dark	12644061			added card (#75)
+10309	Mono Synchron	56897896			added card (#75)
+10310	Steam Synchron	83295594	511002136	Anime	added card (#75)
+10325	Amulet Dragon	75380687	170000158	Anime	added card (#75)
+10326	The Eye of Timaeus	1784686	170000152	Anime	added card (#75)
 10327	The Seal of Orichalcos	48179391			added card (#75): no anime version upstream
+10864	Blue Flame Swordsman	50903514	511756000	Anime	added card (#75)
+10865	Harpie Lady Phoenix Formation	86308219	513000107	Anime	added card (#75)
+10955	Stand-Off	65384188			added card (#75)
+10982	Cybernetic Fusion Support	58199906			added card (#75)
+10983	Powerful Rebirth	84298614	511010702	Anime	added card (#75)
+11120	Electromagnetic Turtle	34710660	511002957	Anime	added card (#75)
+11129	Black Illusion	32754886	100000536	Anime	added card (#75)
+11149	Legendary Knight Timaeus	80019195	170000202	Anime	added card (#75)
+11151	Dark Magician Girl the Dragon Knight	43892408	170000157	Anime	added card (#75)
+11152	Legend of Heart	89397517	170000201	Anime	added card (#75)
+11153	Berserker Soul	15381252	511600130	Anime	added card (#75)
+11154	Relay Soul	42776960	511002521	Anime	added card (#75)
+11155	Guardian Dreadscythe	18175965		Kept	added card (#75); upstream 511002452: its anime script has an effect used from the Deck (EVENT_TO_GRAVE), which the client's menus have not been shown to offer: it plays as printed
+11156	Celestial Sword - Eatos	55569674			added card (#75)
+11157	Reaper Scythe - Dreadscythe	81954378			added card (#75)
+11158	Guarded Treasure	17052477	500000051	Anime	added card (#75)
+11159	Soul Charge	54447022	511000552	Anime	added card (#75)
+11160	Sabatiel - The Philosopher's Stone	80831721		Kept	added card (#75); upstream 513000057: its anime script has an effect used from the Deck (EVENT_DESTROYED), which the client's menus have not been shown to offer: it plays as printed
+11161	Flash Fusion	17236839	100000471	Anime	added card (#75)
+11162	Battle Fusion	43225434	513000161	Anime	added card (#75)
+11163	Final Fusion	89719143	513000179	Anime	added card (#75)
+11164	Pair Cycroid	16114248	511002958	Anime	added card (#75)
+11165	Ayers Rock Sunrise	42502956			added card (#75)
+11166	Doble Passe	79997591			added card (#75)
+11167	Carboneddon	15981690			added card (#75)
+11168	Mathematician	41386308	513000164	Anime	added card (#75)
 11169	Ra's Disciple	74875003			added card (#75)
+11170	Mound of the Bound Creator	269012	100000280	Anime	added card (#75)
+11171	Shooting Star	47264717			added card (#75)
+11172	Blackwing - Oroshi the Squall	73652465			added card (#75)
+11174	Blackwing - Hurricane the Tornado	36442179	511013029	Anime	added card (#75)
+11175	Black Sonic	72930878			added card (#75)
+11177	Shadow Impulse	35329581			added card (#75)
+11178	Assault Dog	72714226			added card (#75)
+11179	Gate Blocker	8102334	100100090	Anime	added card (#75)
+11180	Wiretap	34507039			added card (#75)
+11465	Jormungardr the Nordic Serpent	64203620			added card (#75)
+11466	Fenrir the Nordic Wolf	91697229			added card (#75)
+11467	Stardust Flash	27196937	810000057	Anime	added card (#75)
+11673	Scramble Egg	75078585	511000623	Anime	added card (#75)
+11880	Timaeus the Knight of Destiny	53315891	170000210	Anime	added card (#75)
+11881	Legendary Knight Critias	85800949	170000203	Anime	added card (#75)
+11882	Doom Virus Dragon	22804644	170000150	Anime	added card (#75)
+11883	Tyrant Burst Dragon	58293343	170000155	Anime	added card (#75)
+11884	Mirror Force Dragon	84687358	170000154	Anime	added card (#75)
+11885	The Fang of Critias	11082056	170000151	Anime	added card (#75)
+11886	Tyrant Wing	57470761	170000149	Anime	added card (#75)
+11887	Legendary Knight Hermos	84565800	170000204	Anime	added card (#75)
+11888	Time Magic Hammer	10960419	140000131	Anime	added card (#75)
+11889	Rocket Hermos Cannon	46354113	170000197	Anime	added card (#75)
+11890	Goddess Bow	83743222	170000194	Anime	added card (#75)
+11891	Red-Eyes Black Dragon Sword	19747827	170000193	Anime	added card (#75)
+11892	The Claw of Hermos	46232525	170000153	Anime	added card (#75)
+11893	Double Magical Arm Bind	72621670	511001116	Anime	added card (#75)
+11894	Lord of the Red	19025379	511002050	Anime	added card (#75)
+11895	Red-Eyes Transmigration	45410988			added card (#75)
+11897	Dark Dragon Ritual	18803791			added card (#75)
+11898	Red-Eyes Spirit	44397496	511017003	Anime	added card (#75)
+11899	Red-Eyes Burn	71782404	100000113	Anime	added card (#75)
+11901	Toon Kingdom	43175858			added card (#75)
+11902	Toon Rollback	70560957	511000410	Anime	added card (#75)
+11903	Shadow Toon	6958551	511000549	Anime	added card (#75)
+11904	Comic Hand	33453260			added card (#75)
+11905	Toon Mask	79447365	511000915	Anime	added card (#75)
+11906	Toon Briefcase	5832914	511000629	Anime	added card (#75)
 11927	The Winged Dragon of Ra - Sphere Mode	10000080			added card (#75)
+12062	Synkron Resonator	77360173	810000045	Anime	added card (#75)
+12063	Chain Resonator	13764881			added card (#75)
+12064	Mirror Resonator	40159926			added card (#75)
+12066	Red Cocoon	2542230	511000902	Anime	added card (#75)
+12236	Holding Arms	43730887	511000164	Anime	added card (#75)
+12237	Holding Legs	70124586	511000165	Anime	added card (#75)
+12240	Trap Hole of Spikes	75902998	511001121	Anime	added card (#75)
+12539	Ritual Sanctuary	95658967	511000133	Anime	added card (#75)
+12540	Red Nova	21142671			added card (#75)
+12541	Zushin the Sleeping Giant	67547370	513000162	Anime	added card (#75)
+12542	Hand-Holding Genie	94535485	513000087	Anime	added card (#75)
+12543	Scrum Force	20920083			added card (#75)
+12568	Magnet Reverse	80352158	810000102	Anime	added card (#75)
+12569	Magnet Force	17841166	511000302	Anime	added card (#75)
+12571	Tribute Burial	80230510	511000169	Anime	added card (#75)
+12572	Dark Sanctuary	16625614	511000119	Anime	added card (#75)
 12671	Divine Serpent Geh	82103466	170000170	Anime	added card (#75): Dartz's, summoned by Shunoros
+12706	Destiny HERO - Dark Angel	26964762	100000274	Anime	added card (#75)
+12707	Destiny HERO - Celestial	63362460	100000275	Anime	added card (#75)
+12708	D Cubed	99357565	511000308	Anime	added card (#75)
+12899	Diabound Kernel	51644030	511000118	Anime	added card (#75)
+12900	Harpie's Feather Storm	87639778	100000296	Anime	added card (#75)
+12903	Dark Summoning Beast	87917187	513000106	Anime	added card (#75)
+12904	Fallen Paradise	13301895			added card (#75)
+12905	White Veil	49306994	513000089	Anime	added card (#75)
+12999	Clear Effector	58518520	511001459	Anime	added card (#75)
+13001	Converging Wishes	20007374	513000056	Anime	added card (#75)
+13155	Spacetime Transcendence	39041729	511000657	Anime	added card (#75)
+13156	Jurassic Impact	65430834	513000091	Anime	added card (#75)
+13157	Lazion, the Timelord	92435533	513000041	Anime	added card (#75)
+13158	Zaphion, the Timelord	28929131	513000003	Anime	added card (#75)
+13159	Sadion, the Timelord	65314286	513000044	Anime	added card (#75)
+13160	Kamion, the Timelord	91712985	513000040	Anime	added card (#75)
+13161	Time Maiden	27107590	513000048	Anime	added card (#75)
+13800	Orgoth the Relentless	15744417		Kept	added card (#75); upstream 140000074 has no script: it plays as printed
+13801	Summon Dice	41139112	511000480	Anime	added card (#75)
+13802	Prinzessin	78527720	511000431	Anime	added card (#75)
+13803	Pumpkin Carriage	14512825	511000432	Anime	added card (#75)
+13804	Iron Hans	41916534	511001416	Anime	added card (#75)
+13805	Iron Knight	73405179	511001415	Anime	added card (#75)
+13806	Glife the Phantom Bird	899287	511000436	Anime	added card (#75)
+13807	Hexe Trude	46294982	511000434	Anime	added card (#75)
+13808	Golden Castle of Stromberg	72283691	513000144	Anime	added card (#75)
+13809	Glass Slippers	9677699	511000433	Anime	added card (#75)
+13810	Iron Cage	45072394	511001419	Anime	added card (#75)
+13811	Litmus Doom Swordsman	72566043			added card (#75)
+13812	Litmus Doom Ritual	8955148			added card (#75)
+13813	Living Fossil	34959756	110000102	Anime	added card (#75)
+13814	Slash Draw	71344451	511600139	Anime	added card (#75)
+13815	Michion, the Timelord	7733560	513000045	Anime	added card (#75)
+13816	Hailon, the Timelord	34137269	513000042	Anime	added card (#75)
+13817	Raphion, the Timelord	60222213	513000050	Anime	added card (#75)
+13818	Gabrion, the Timelord	6616912	513000043	Anime	added card (#75)
+13819	Sandaion, the Timelord	33015627	513000049	Anime	added card (#75)
+13820	Empty Machine	9409625	513000046	Anime	added card (#75)
+13821	Infinite Machine	36894320	513000047	Anime	added card (#75)
+13822	Infinite Light	72883039	513000051	Anime	added card (#75)
+13992	Valkyrie Dritte	3026686	100000534	Anime	added card (#75)
+13993	Valkyrie Zweite	30411385	100000533	Anime	added card (#75)
+13994	Valkyrie Erste	66809920	100000537	Anime	added card (#75)
+13995	Valkyrie Brunhilde	2204038	100000538	Anime	added card (#75)
+13996	Fortune Chariot	39299733	100000527	Anime	added card (#75)
+13997	Ride of the Valkyries	65687442	100000532	Anime	added card (#75)
+13998	Mischief of the Time Goddess	92182447	511600383	Anime	added card (#75)
+13999	Goddess Skuld's Oracle	38576155	511000419	Anime	added card (#75)
+14000	Goddess Verdande's Guidance	64961254	511000420	Anime	added card (#75)
+14001	Goddess Urd's Verdict	91969909	511000421	Anime	added card (#75)
+14361	Final Light	17956906			added card (#75)
+14362	Apple of Enlightenment	43341600	100000545	Anime	added card (#75)
+14539	Valkyrie's Embrace	45584727	100000529	Anime	added card (#75)
+14540	Pegasus Wing	72083436	100000526	Anime	added card (#75)
+14541	Loge's Flame	18478530	100000542	Anime	added card (#75)
+14546	Ipiria	70744296	511000639	Anime	added card (#75)
+14547	Water of Life	7133305	511001417	Anime	added card (#75)
+14548	Gold Moon Coin	43528009	511000429	Anime	added card (#75)
+14549	Gingerbread House	79922118	511000430	Anime	added card (#75)
+14550	Fortune Fairy Hikari	6311717			added card (#75)
+14551	Fortune Fairy En	32305461			added card (#75)
+14552	Fortune Fairy Hu	79890560			added card (#75)
+14553	Fortune Fairy Swee	5298175			added card (#75)
+14554	Fortune Fairy Ann	31683874			added card (#75)
+14555	Fortune Fairy Chee	68078978			added card (#75)
+14556	Unacceptable Result	4072687			added card (#75)
+14557	Miracle Stone	31461282			added card (#75)
+14558	Lucky Loan	67955331			added card (#75)
+14559	T.G. Gear Zombie	94350039			added card (#75)
+14560	T.G. Drill Fish	30348744			added card (#75)
+14561	T.G. Metal Skeleton	66733743			added card (#75)
+14562	Sonic Stun	93138457	511001025	Anime	added card (#75)
+15137	Chaos Core	54040484	100000257	Anime	added card (#75)
+15144	Dimension Fusion Destruction	89190953	100000365	Anime	added card (#75)
+15332	Egyptian God Slime	42166000	511000285	Anime	added card (#75)
+15365	Weathering Soldier	23147658			added card (#75)
+15366	Fossil Warrior Skull Knight	59531356			added card (#75)
+15367	Fossil Warrior Skull Bone	86520461			added card (#75)
+15368	Fossil Dragon Skullgar	12015000			added card (#75)
+15369	Fossil Fusion	59419719			added card (#75)
+15370	Time Stream	85808813			added card (#75)
+15371	Specimen Inspection	12292422	100000531	Anime	added card (#75)
+15372	Miracle Rupture	44297127	100000167	Anime	added card (#75)
+15373	Psychic Wave	80681226	511000532	Anime	added card (#75)
+15374	Armored White Bear	17170970			added card (#75)
+15375	Afterglow	43575579	511050013	Anime	added card (#75)
+15376	High Rate Draw	70569684			added card (#75)
+15879	Flint Cragger	84778110	511000527	Anime	added card (#75)
+15880	Shell Knight	10163855	511001588	Anime	added card (#75)
+15881	Fossil Machine Skull Convoy	57157964			added card (#75)
+15882	Fossil Machine Skull Wagon	83656563			added card (#75)
+15883	Fossil Machine Skull Buggy	10040267			added card (#75)

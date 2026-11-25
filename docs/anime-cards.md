@@ -2,7 +2,7 @@
 
 <!-- Made by tools/engine/anime-map.py from engine/anime/cards.tsv: do not edit by hand. -->
 
-With the `anime-cards` setting on (a host sets it; a single player turns on **Anime cards** in Desktop's Settings → Singleplayer: [playing](playing.md#anime-card-versions)), the 421 cards below play by their anime effects, ProjectIgnis' unofficial scripts (CardScripts `915c6ff`), in NPC and player duels, and the game shows them as their anime versions: the **card profile**. The other cards, and the 3 retained or held back below, play and show as they always did. The reviewed table is the issue [#60](https://github.com/usersina/yo3-revival/issues/60); an unofficial script loading without an error is not proof of anime accuracy, only that it plays.
+With the `anime-cards` setting on (a host sets it; a single player turns on **Anime cards** in Desktop's Settings → Singleplayer: [playing](playing.md#anime-card-versions)), the 660 cards below play by their anime effects, ProjectIgnis' unofficial scripts (CardScripts `915c6ff`), in NPC and player duels, and the game shows them as their anime versions: the **card profile**. The other cards, and the 3 retained or held back below, play and show as they always did. The reviewed table is the issue [#60](https://github.com/usersina/yo3-revival/issues/60); an unofficial script loading without an error is not proof of anime accuracy, only that it plays.
 
 ## The card profile
 
@@ -58,6 +58,8 @@ These cards differ from the game's in what the client draws; the profile covers 
 | Card | What the client shows now |
 | --- | --- |
 | Alchemy Cycle | subtype: +Counter |
+| Ancient Gear Statue | def: 800 -> 500 |
+| Anti-Magic Arrows | subtype: -Quick-Play |
 | Ape Fighter | level: 4 -> 5 |
 | Arcana Force EX - The Dark Ruler | attribute: 16 -> 32 |
 | Barox | deck: Main/Extra Deck placement differs (Fusion -> Main Deck)<br>type: +Normal<br>atk: 1380 -> 1800<br>def: 1530 -> 2000 |
@@ -68,13 +70,18 @@ These cards differ from the game's in what the client draws; the profile covers 
 | Boost Warrior | type: +Tuner |
 | Bowganian | level: 3 -> 4 |
 | Call of the Haunted | kind: the game's card is a Trap, the anime one a Spell |
+| Candelato, the Beast of Light | flags: +Special Summon only |
 | Castle of Dark Illusions | flags: -Flip |
 | Chiron the Mage | race: 32768 -> 16384 |
 | Chthonian Blast | kind: the game's card is a Trap, the anime one a Spell |
+| Clock Resonator | race: 8 -> 32 |
+| Conduction Warrior Linear Magnum Plus Minus | flags: -Special Summon only |
 | Contract with Exodia | type: +Ritual |
+| Converging Wishes | subtype: +Continuous |
 | Copycat | kind: the game's card is a Monster, the anime one a Spell |
 | Cyber Blader | level: 7 -> 6 |
 | Cyber Raider | type: +Normal, -Effect<br>race: 32 -> 1<br>attribute: 32 -> 1 |
+| Dark Spell Regeneration | kind: the game's card is a Trap, the anime one a Spell |
 | Dark Tinker | level: 2 -> 3 |
 | Dark-Eyes Illusionist | flags: -Flip<br>def: 1400 -> 0 |
 | Des Feral Imp | type: +Normal, -Effect<br>flags: -Flip<br>race: 524288 -> 8 |
@@ -90,6 +97,7 @@ These cards differ from the game's in what the client draws; the profile covers 
 | Earthbound Immortal Wiraqocha Rasca | atk: 100 -> 1<br>def: 100 -> 1 |
 | Earthbound Wave | subtype: -Counter |
 | Ectoplasmer | subtype: -Continuous, +Field |
+| Egyptian God Slime | atk: 3000 -> -2<br>def: 3000 -> -2 |
 | Elemental Hero Divine Neos | atk: 2500 -> 3000 |
 | Elemental Hero Flame Wingman | level: 6 -> 8 |
 | Elemental Hero Neo Bubbleman | deck: Main/Extra Deck placement differs (Main Deck -> Fusion)<br>flags: -Special Summon only |
@@ -98,32 +106,46 @@ These cards differ from the game's in what the client draws; the profile covers 
 | Evil Hero Infernal Sniper | type: -Effect |
 | Exodia Necross | type: +Ritual<br>flags: -Special Summon only |
 | Extra Veiler | type: +Tuner |
+| Eye of Illusion | subtype: -Quick-Play |
 | Fiend's Sanctuary | subtype: +Quick-Play |
 | Five-Headed Dragon | deck: Main/Extra Deck placement differs (Fusion -> Main Deck)<br>type: +Ritual |
 | Flame Swordsman | deck: Main/Extra Deck placement differs (Fusion -> Main Deck)<br>type: +Normal |
 | Future Fusion | subtype: -Continuous, +Equip |
 | Gernia | type: +Normal, -Effect<br>race: 16 -> 8 |
 | Goblin Zombie | type: +Normal, -Effect |
+| Goddess Bow | kind: the game's card is a Monster, the anime one a Spell |
 | Gold Sarcophagus | subtype: +Continuous |
 | Golden Homunculus | flags: +Special Summon only<br>atk: 1500 -> -2<br>def: 1500 -> -2 |
 | Gorgon's Eye | subtype: +Continuous |
 | Granadora | attribute: 2 -> 32 |
 | Hamon, Lord of Striking Thunder | race: 4096 -> 2097152<br>attribute: 16 -> 64 |
+| Harpie's Feather Storm | subtype: +Counter |
+| Holding Arms | def: 1200 -> 0<br>attribute: 32 -> 1 |
+| Holding Legs | attribute: 32 -> 1 |
 | Infinite Dismissal | subtype: -Continuous |
 | Interdimensional Matter Transporter | kind: the game's card is a Trap, the anime one a Spell |
+| Ipiria | level: 2 -> 3 |
 | Ivy Shackles | kind: the game's card is a Trap, the anime one a Spell |
 | Jigen Bakudan | flags: -Flip |
 | Judgment of Anubis | subtype: -Counter |
+| Junk Berserker | atk: 2700 -> 2500 |
+| Kuribabylon | atk: 1500 -> -2<br>def: 1000 -> 200 |
 | Labyrinth Tank | deck: Main/Extra Deck placement differs (Fusion -> Main Deck)<br>type: +Normal |
 | Larvae Moth | type: +Normal, -Effect<br>flags: -Special Summon only |
 | Lava Golem | flags: -Special Summon only |
+| Left Arm Offering | kind: the game's card is a Spell, the anime one a Trap |
 | Level Modulation | kind: the game's card is a Spell, the anime one a Trap |
+| Life Shaver | subtype: -Continuous |
 | Lightforce Sword | kind: the game's card is a Trap, the anime one a Spell |
 | Little-Winguard | type: +Normal, -Effect |
 | Loki, Lord of the Aesir | race: 2 -> 2097152<br>attribute: 32 -> 64 |
+| Lord of the Red | def: 2100 -> 2000<br>race: 8192 -> 1 |
 | Machine Conversion Factory | subtype: -Equip |
 | Magicians Unite | subtype: +Quick-Play |
+| Magnet Reverse | subtype: -Quick-Play |
 | Megasonic Eye | level: 5 -> 4 |
+| Meklord Astro Dragon Asterisk | flags: -Special Summon only |
+| Meklord Astro Mekanikle | flags: -Special Summon only |
 | Meklord Emperor Granel ∞ | flags: -Special Summon only |
 | Meklord Emperor Skiel ∞ | flags: -Special Summon only<br>atk: 2200 -> 0<br>def: 2200 -> 0 |
 | Meklord Emperor Wisel ∞ | flags: -Special Summon only<br>atk: 2500 -> 0<br>def: 2500 -> 0 |
@@ -133,24 +155,37 @@ These cards differ from the game's in what the client draws; the profile covers 
 | Neos Wiseman | deck: Main/Extra Deck placement differs (Main Deck -> Fusion)<br>flags: -Special Summon only |
 | Odin, Father of the Aesir | race: 4 -> 2097152<br>attribute: 16 -> 64 |
 | Over Limit | subtype: +Continuous |
+| Pair Cycroid | level: 5 -> 6 |
 | Perfect Machine King | deck: Main/Extra Deck placement differs (Main Deck -> Fusion)<br>def: 1500 -> 2200 |
+| Pumpkin Carriage | def: 300 -> 800 |
 | Pumpking the King of Ghosts | atk: 1800 -> 1500 |
 | Rainbow Dark Dragon | attribute: 32 -> 16 |
 | Rapid Warrior | level: 4 -> 3 |
 | Raviel, Lord of Phantasms | race: 8 -> 2097152<br>attribute: 32 -> 64 |
 | Reaper of the Cards | flags: -Flip<br>atk: 1380 -> 1800<br>def: 1930 -> 2000 |
+| Rebellion | subtype: -Quick-Play |
+| Red Cocoon | subtype: +Continuous |
+| Red-Eyes Black Dragon Sword | kind: the game's card is a Monster, the anime one a Spell |
 | Red-Eyes Darkness Metal Dragon | flags: +Special Summon only |
+| Rocket Hermos Cannon | kind: the game's card is a Monster, the anime one a Spell |
+| Royal Straight | subtype: -Quick-Play |
 | Skull Dice | kind: the game's card is a Trap, the anime one a Spell |
 | Soul Taker | subtype: +Quick-Play |
 | Spell Absorption | subtype: +Quick-Play, -Continuous |
+| Subspace Battle | subtype: +Continuous |
 | Supersonic Skull Flame | atk: 2600 -> 3000<br>def: 2000 -> 2300 |
 | Swordstalker | type: -Normal, +Effect |
+| Synkron Resonator | def: 100 -> 300 |
+| T.G. Recipro Dragonfly | def: 300 -> 100 |
 | The Eye of Truth | kind: the game's card is a Trap, the anime one a Spell |
 | The Wicked Avatar | race: 8 -> 2097152<br>attribute: 32 -> 64 |
 | The Wicked Dreadroot | race: 8 -> 2097152<br>attribute: 32 -> 64 |
 | The Wicked Eraser | race: 8 -> 2097152<br>attribute: 32 -> 64 |
 | Theinen the Great Sphinx | flags: -Special Summon only |
 | Thor, Lord of the Aesir | race: 32768 -> 2097152<br>attribute: 1 -> 64 |
+| Time Magic Hammer | kind: the game's card is a Monster, the anime one a Spell |
+| Time Maiden | flags: +Special Summon only<br>race: 4 -> 2 |
+| Toon Rollback | subtype: +Quick-Play |
 | Tragedy | kind: the game's card is a Trap, the anime one a Spell |
 | Trap Eater | type: -Tuner |
 | Uria, Lord of Searing Flames | race: 128 -> 2097152<br>attribute: 4 -> 64 |
@@ -167,16 +202,16 @@ A card is released only when the client side of each difference is proven: the c
 
 | Category | What the client shows | Cards that differ | Test card and scenario |
 | --- | --- | ---: | --- |
-| flags | nothing: Flip and Special Summon only are shown nowhere, the engine plays the anime card | 19 | Wall of Ivy: its token comes when it is attacked face-up |
-| subtype | a Spell or Trap's own kind (Continuous, Quick-Play, Equip, Field, Counter) | 16 | Fiend's Sanctuary: a Quick-Play Spell, activated on the opponent's turn |
+| flags | nothing: Flip and Special Summon only are shown nowhere, the engine plays the anime card | 24 | Wall of Ivy: its token comes when it is attacked face-up |
+| subtype | a Spell or Trap's own kind (Continuous, Quick-Play, Equip, Field, Counter) | 27 | Fiend's Sanctuary: a Quick-Play Spell, activated on the opponent's turn |
 | type | Normal, Effect, Tuner, Ritual and the other kinds of monster | 24 | Boost Warrior: a Tuner, so it Synchro Summons |
 | deck | Main or Extra Deck: a Fusion Monster is an Extra Deck card, a Normal one a Main Deck card | 10 | Perfect Machine King: a Fusion Monster, Fusion Summoned from the Extra Deck |
-| level | Level | 10 | Rapid Warrior: Level 3, so it makes the Level 6 Synchro Monster |
-| attribute | attribute | 16 | Granadora: DARK, so Umiiruka does not raise it |
-| race | type of monster (Warrior, Beast...) | 14 | Chiron the Mage: a Beast, so Sogen does not raise it |
-| atk | ATK, also a number that is not a multiple of ten, and `?` | 11 | Pumpking the King of Ghosts: 1500 ATK, the damage it takes |
-| def | DEF, as ATK | 11 | Earthbound Immortal Chacu Challhua: 1600 DEF |
-| kind | Monster, Spell or Trap | 15 | Mind Control: a Trap, activated on the opponent's turn |
+| level | Level | 12 | Rapid Warrior: Level 3, so it makes the Level 6 Synchro Monster |
+| attribute | attribute | 18 | Granadora: DARK, so Umiiruka does not raise it |
+| race | type of monster (Warrior, Beast...) | 17 | Chiron the Mage: a Beast, so Sogen does not raise it |
+| atk | ATK, also a number that is not a multiple of ten, and `?` | 14 | Pumpking the King of Ghosts: 1500 ATK, the damage it takes |
+| def | DEF, as ATK | 19 | Earthbound Immortal Chacu Challhua: 1600 DEF |
+| kind | Monster, Spell or Trap | 21 | Mind Control: a Trap, activated on the opponent's turn |
 
 Negate Attack is the pinned database's anime card (a Quick-Play Spell that negates the attack and ends the Battle Phase), not the Counter Trap the game has; the version is the issue's open era decision, shown here so it can be checked in play.
 
@@ -277,6 +312,14 @@ Clear Vice Dragon and Blackwing - Aurora the Northern Lights play by ProjectIgni
 | Clear Vice Dragon | 513000096 | ATK ? (-2), DEF 0, Level 8 |
 | Blackwing - Aurora the Northern Lights | 511002602 | ATK ? (-2), DEF 0, Level 10 |
 | Divine Serpent Geh | 170000170 | ATK ? (-2), DEF 0, Level 10 |
+| Pumpkin Carriage | 511000432 | ATK ? (-2), DEF 800, Level 3 |
+| Iron Hans | 511001416 | ATK ? (-2), DEF 800, Level 4 |
+| Iron Knight | 511001415 | ATK ? (-2), DEF 700, Level 4 |
+| Hexe Trude | 511000434 | ATK ? (-2), DEF 2100, Level 8 |
+| The Eye of Timaeus | 170000152 | ATK ? (-2), DEF 0, Level 0 |
+| The Fang of Critias | 170000151 | ATK ? (-2), DEF 0, Level 0 |
+| The Claw of Hermos | 170000153 | ATK ? (-2), DEF 0, Level 0 |
+| Legend of Heart | 170000201 | ATK ? (-2), DEF 0, Level 0 |
 
 Temple of the Kings (5231) keeps the game's version: its anime rules would need a reconstruction of Duel Monsters episodes 87 and 89 (which cards the sealed-card effect may seal, the set restrictions, how far the protection reaches, the release costs and when the card is lost). The upstream script mixes the original, later and printed rules, so it is never enabled; nothing is implemented.
 
@@ -284,49 +327,74 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 
 | Card | Anime card | Notes |
 | --- | --- | --- |
+| Advanced Crystal Beast Amber Mammoth | 511001135 |  |
+| Advanced Crystal Beast Amethyst Cat | 511001115 |  |
+| Advanced Crystal Beast Cobalt Eagle | 511001111 |  |
+| Advanced Crystal Beast Emerald Tortoise | 511001134 |  |
+| Advanced Crystal Beast Ruby Carbuncle | 511001114 |  |
+| Advanced Crystal Beast Sapphire Pegasus | 511001101 |  |
+| Advanced Crystal Beast Topaz Tiger | 511001148 |  |
+| Afterglow | 511050013 |  |
 | Alchemy Cycle | 511027026 |  |
 | Amazoness Chain Master | 810000028 |  |
 | Amplifier | 810000042 |  |
+| Amulet Dragon | 170000158 |  |
 | Ancient Gear Explosive | 511024009 |  |
+| Ancient Gear Statue | 500000006 |  |
 | Andro Sphinx | 513000028 |  |
+| Anti-Magic Arrows | 513000121 |  |
 | Ape Fighter | 511001396 |  |
 | Ape Magician | 511001395 |  |
+| Apple of Enlightenment | 100000545 |  |
 | Arcana Force 0 - The Fool | 511016002 |  |
 | Arcana Force EX - The Dark Ruler | 511005639 |  |
 | Arcana Force EX - The Light Ruler | 511003201 | names other anime cards |
 | Arcana Force VII - The Chariot | 511016000 |  |
+| Arcana Force XV - The Fiend | 100000116 |  |
 | Armityle the Chaos Phantom | 511000253 | names other anime cards |
 | Armored Cybern | 511002821 |  |
 | Assault Armor | 511777005 |  |
 | Assault Mode Activate | 511002480 |  |
+| Attack Guidance Armor | 511002051 |  |
 | Barox | 511002909 |  |
 | Barrel Dragon | 511000769 |  |
+| Battle Fusion | 513000161 |  |
+| Battle of Sleeping Spirits | 511002899 | names other anime cards |
 | Battle Waltz | 511002844 | makes Waltz Token |
 | Berserk Dragon | 511000378 |  |
+| Berserker Soul | 511600130 |  |
 | Bickuribox | 511002614 |  |
 | Bicorn Re'em | 511002882 |  |
 | Black Feather Beacon | 810000052 |  |
 | Black Garden | 511014000 | makes Rose Token |
+| Black Illusion | 100000536 |  |
 | Black-Winged Dragon | 511027112 |  |
 | Blackboost | 810000051 |  |
 | Blackwing - Aurora the Northern Lights | 511002602 |  |
 | Blackwing - Backlash | 511030014 |  |
 | Blackwing - Boreas the Sharp | 511600076 |  |
 | Blackwing - Calima the Haze | 511002623 |  |
+| Blackwing - Hurricane the Tornado | 511013029 |  |
 | Blackwing - Silverwind the Ascendant | 511001954 |  |
 | Blackwing - Vayu the Emblem of Honor | 511002219 |  |
 | Blackwing - Zephyrus the Elite | 511001961 |  |
 | Blast Held by a Tribute | 511005091 |  |
 | Blast Sphere | 511002509 | names other anime cards |
+| Blue Flame Swordsman | 511756000 |  |
 | Blue-Eyes Shining Dragon | 511002418 |  |
+| Bonfire | 170000121 |  |
+| Boon of the Meklord Emperor | 511002378 |  |
 | Boost Warrior | 511600376 |  |
 | Bowganian | 511005647 |  |
 | Brain Control | 511002549 |  |
+| Bright Star Dragon | 511001435 |  |
 | Burial from a Different Dimension | 511002813 |  |
 | Burning Land | 511002578 |  |
 | Byroad Sacrifice | 511756006 |  |
 | Call of the Haunted | 511002048 |  |
+| Candelato, the Beast of Light | 511000647 |  |
 | Card Breaker | 810000050 |  |
+| Card of Demise | 511001149 |  |
 | Card of Sacrifice | 511002552 |  |
 | Card of Safe Return | 511000258 |  |
 | Card of Sanctity | 511001126 |  |
@@ -335,6 +403,8 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Castle of Dark Illusions | 511002167 |  |
 | Catapult Turtle | 511004015 |  |
 | Chaos Burst | 511002837 |  |
+| Chaos Core | 100000257 |  |
+| Chaos Infinity | 511002527 |  |
 | Chaos King Archfiend | 511009313 |  |
 | Chevalier de Fleur | 511002227 |  |
 | Chimeratech Fortress Dragon | 511002463 |  |
@@ -344,18 +414,26 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Chthonian Alliance | 511002542 |  |
 | Chthonian Blast | 511002541 |  |
 | Chthonian Soldier | 511001211 |  |
+| Clear Effector | 511001459 |  |
 | Clear Vice Dragon | 513000096 | names other anime cards |
+| Clear Wall | 513000165 |  |
+| Clock Resonator | 511002880 |  |
+| Clockwork Night | 511000405 |  |
 | Cloning | 511600007 | makes copies of a monster |
 | Cloudian - Eye of the Typhoon | 511001786 |  |
 | Cocoon of Evolution | 511600069 | names other anime cards |
+| Combat Wheel | 511002690 |  |
+| Conduction Warrior Linear Magnum Plus Minus | 170000116 | names other anime cards |
 | Contact | 511600382 |  |
 | Contract with Exodia | 511000241 |  |
+| Converging Wishes | 513000056 |  |
 | Convert Contact | 511600348 |  |
 | Copy Plant | 511003025 |  |
 | Copycat | 511002387 | names other anime cards |
 | Cosmic Compass | 511600432 | makes Compass Token |
 | Cost Down | 511002540 |  |
 | Creation Resonator | 511002603 |  |
+| Crimson Blader | 511001501 |  |
 | Crimson Fire | 511010530 |  |
 | Crimson Mefist | 511001274 |  |
 | Crush Card Virus | 513000009 |  |
@@ -363,7 +441,9 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Crystal Beast Ruby Carbuncle | 511001823 |  |
 | Crystal Counter | 511001108 |  |
 | Crystal Pair | 511001129 |  |
+| Curse Reflection Doll | 500000152 |  |
 | Cyber Blader | 511001600 |  |
+| Cyber Petit Angel | 511001521 |  |
 | Cyber Phoenix | 511007022 |  |
 | Cyber Prima | 511001598 |  |
 | Cyber Raider | 511002828 |  |
@@ -375,15 +455,25 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Cybernetic Hidden Technology | 511002826 |  |
 | Cyclone Blade | 511000309 |  |
 | Cyclone Boomerang | 511023008 |  |
+| D - Burst | 511000311 |  |
 | D - Time | 511002728 |  |
+| D Cubed | 511000308 | names other anime cards |
 | D2 Shield | 511002879 |  |
 | Damage Polarizer | 511003243 |  |
 | Dandylion | 511005643 | makes Fluff Token |
 | Dark Bribe | 511013023 |  |
+| Dark Corridor | 511000468 |  |
 | Dark Cure | 511247006 |  |
 | Dark Diviner | 511600138 |  |
+| Dark Element | 511000138 |  |
+| Dark Guardian | 511000137 |  |
 | Dark Magic Curtain | 511002532 |  |
+| Dark Magician Girl the Dragon Knight | 170000157 |  |
+| Dark Renewal | 100000073 |  |
+| Dark Sanctuary | 511000119 | names other anime cards |
+| Dark Spell Regeneration | 810000002 |  |
 | Dark Strike Fighter | 513000079 |  |
+| Dark Summoning Beast | 513000106 | names other anime cards |
 | Dark Tinker | 511014001 |  |
 | Dark-Eyes Illusionist | 511002416 |  |
 | Darkness Neosphere | 511310113 | names other anime cards |
@@ -393,28 +483,44 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Destiny End Dragoon | 511002195 |  |
 | Destiny Hero - Blade Master | 511027000 |  |
 | Destiny Hero - Captain Tenacious | 511018024 |  |
+| Destiny HERO - Celestial | 100000275 |  |
+| Destiny HERO - Dark Angel | 100000274 |  |
 | Destiny Hero - Dogma | 511002729 |  |
 | Destiny Hero - Dreadmaster | 511806001 |  |
 | Destiny Hero - Plasma | 511000614 |  |
 | Destruction of Destiny | 511001910 |  |
+| Diabound Kernel | 511000118 |  |
+| Dice Dungeon | 511001152 |  |
 | Different Dimension Dragon | 511010701 |  |
+| Dimension Dice | 316000124 |  |
 | Dimension Explosion | 511002824 |  |
+| Dimension Fusion Destruction | 100000365 |  |
 | Discord | 511001212 |  |
 | Divine Relic Mjollnir | 511002988 |  |
 | Divine Serpent Geh | 170000170 |  |
+| Doctor D | 511000310 |  |
+| Doll Hammer | 511001470 |  |
+| Doom Virus Dragon | 170000150 |  |
 | Doomcaliber Knight | 511002514 |  |
 | Doppelwarrior | 511600433 | makes Doppel Token |
+| Double Evolution Pill | 100000318 |  |
+| Double Fusion | 511001334 |  |
+| Double Magical Arm Bind | 511001116 |  |
 | Double Spell | 513000055 |  |
 | Dragged Down into the Grave | 511000218 |  |
 | Dragon Capture Jar | 511001040 |  |
 | Dragon Master Knight | 511002859 |  |
+| Dragon Nails | 810000089 |  |
 | Dragon Piper | 511756001 |  |
+| Dragonroid | 511001190 |  |
 | Dreamsprite | 511600193 |  |
 | Drill Synchron | 511002910 |  |
 | Drill Warrior | 511001982 |  |
 | Drillago | 511003056 |  |
 | Driven Daredevil | 511001967 |  |
 | Dungeon Worm | 511130000 |  |
+| Dyna Base | 511001649 | names other anime cards |
+| Dyna Tank | 511001648 | names other anime cards |
 | Earthbound Immortal Aslla piscu | 511000239 |  |
 | Earthbound Immortal Ccapac Apu | 511000255 |  |
 | Earthbound Immortal Ccarayhua | 511000263 |  |
@@ -422,8 +528,11 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Earthbound Immortal Cusillu | 511000250 |  |
 | Earthbound Immortal Uru | 511000242 |  |
 | Earthbound Immortal Wiraqocha Rasca | 511000252 |  |
+| Earthbound Release | 100000430 |  |
 | Earthbound Wave | 511013025 |  |
 | Ectoplasmer | 511003218 |  |
+| Egyptian God Slime | 511000285 |  |
+| Electromagnetic Turtle | 511002957 |  |
 | Elemental Hero Aqua Neos | 511023010 |  |
 | Elemental Hero Bubbleman | 810000011 |  |
 | Elemental Hero Chaos Neos | 511001652 |  |
@@ -438,10 +547,13 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Elemental Hero Storm Neos | 511023007 |  |
 | Elemental Hero Tempest | 511600286 |  |
 | Elemental Hero Thunder Giant | 511002533 |  |
+| Empty Machine | 513000046 |  |
+| EN Shuffle | 100000555 |  |
 | Enemy Controller | 511000604 |  |
 | Energy Drain | 511001307 |  |
 | Eradicating Aerosol | 511002426 |  |
 | Etoile Cyber | 511001599 |  |
+| Eucalyptus Mole | 511001229 |  |
 | Evil Hero Infernal Prodigy | 511024010 |  |
 | Evil Hero Infernal Sniper | 511023015 | names other anime cards |
 | Exodia Necross | 511000240 |  |
@@ -449,46 +561,88 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Exploder Dragonwing | 511013005 |  |
 | Expressroid | 511009089 |  |
 | Extra Veiler | 511013004 |  |
+| Eye of Illusion | 511005001 |  |
 | Fiend's Sanctuary | 511001596 | makes Metal Fiend Token |
 | Fiendish Chain | 511600109 |  |
 | Final Attack Orders | 513000111 |  |
+| Final Fusion | 513000179 |  |
 | Fire Ant Ascator | 511009950 |  |
+| Fire Recovery | 170000120 |  |
+| Five Star Twilight | 511000148 |  |
 | Five-Headed Dragon | 511013020 |  |
 | Flame Swordsman | 511001128 |  |
+| Flash Fusion | 100000471 |  |
+| Flint Cragger | 511000527 |  |
 | Fog King | 511001783 | names other anime cards |
 | Foolish Burial | 511001056 |  |
 | Formula Synchron | 511001963 |  |
+| Fortissimo the Mobile Fortress | 511009088 | names other anime cards |
+| Fortune Chariot | 100000527 |  |
 | Fortune Lady Earth | 511027035 | names other anime cards |
 | Fortune Lady Fire | 511247002 |  |
 | Fortune Lady Light | 511021000 |  |
 | Fortune Lady Water | 511247003 |  |
 | Fossil Dyna Pachycephalo | 511024011 |  |
+| Full Moon Mirror | 511000919 | names other anime cards |
 | Future Fusion | 513000094 |  |
+| Gabrion, the Timelord | 513000043 | names other anime cards |
+| Gate Blocker | 100100090 | names other anime cards |
 | Gernia | 511027032 |  |
+| Giant Rex | 100000315 |  |
+| Gingerbread House | 511000430 |  |
+| Glass Slippers | 511000433 |  |
+| Glife the Phantom Bird | 511000436 |  |
 | Glow-Up Bulb | 511002598 |  |
 | Goblin Zombie | 511003057 |  |
+| Goddess Bow | 170000194 | names other anime cards |
+| Goddess Skuld's Oracle | 511000419 |  |
+| Goddess Urd's Verdict | 511000421 |  |
+| Goddess Verdande's Guidance | 511000420 |  |
+| Gold Moon Coin | 511000429 |  |
 | Gold Sarcophagus | 511000208 |  |
+| Golden Castle of Stromberg | 513000144 |  |
 | Golden Homunculus | 511003217 |  |
+| Golden Rule | 511001921 |  |
 | Gorgon's Eye | 511002444 |  |
 | Graceful Dice | 511000541 |  |
 | Granadora | 511002127 |  |
 | Great Moth | 511002501 |  |
+| Grief Tablet | 511000414 |  |
 | Grinder Golem | 511002836 | makes Grinder Token |
+| Guarded Treasure | 500000051 |  |
 | Guardian Eatos | 511001771 |  |
+| Hailon, the Timelord | 513000042 | names other anime cards |
 | Hamon, Lord of Striking Thunder | 511000246 |  |
 | Hand Destruction | 511002601 |  |
+| Hand-Holding Genie | 513000087 |  |
+| Harpie Lady Phoenix Formation | 513000107 |  |
+| Harpie's Feather Storm | 100000296 |  |
+| Hexe Trude | 511000434 |  |
+| Holding Arms | 511000164 |  |
+| Holding Legs | 511000165 |  |
 | Honest | 511021006 |  |
 | Hope for Escape | 810000006 |  |
+| Horse of the Floral Knights | 513000103 |  |
 | Hundred Eyes Dragon | 513000004 |  |
 | Hyper Synchron | 511002755 |  |
+| Ice Knight | 511000688 |  |
 | Ido the Supreme Magical Force | 511003208 |  |
 | Infernity Beetle | 511010703 |  |
 | Infernity Destroyer | 511023004 |  |
+| Infernity Doom Slinger | 513000108 |  |
 | Infernity Mirage | 511010511 |  |
 | Infernity Randomizer | 511130001 |  |
 | Inferno Tempest | 511002523 |  |
 | Infinite Dismissal | 511002884 |  |
+| Infinite Light | 513000051 | names other anime cards |
+| Infinite Machine | 513000047 |  |
+| Influence Dragon | 511002689 |  |
 | Interdimensional Matter Transporter | 511002539 |  |
+| Invincible Demise Lord | 810000001 |  |
+| Ipiria | 511000639 |  |
+| Iron Cage | 511001419 |  |
+| Iron Hans | 511001416 |  |
+| Iron Knight | 511001415 |  |
 | Ivy Shackles | 511021002 |  |
 | Jam Breeding Machine | 511002461 | makes Slime Token |
 | Jigen Bakudan | 511000772 |  |
@@ -496,27 +650,48 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Jinzo - Lord | 513000120 |  |
 | Jinzo - Returner | 511020007 |  |
 | Judgment of Anubis | 511002446 |  |
+| Junk Berserker | 511027027 |  |
 | Junk Gardna | 511600105 |  |
 | Junk Warrior | 511009416 |  |
+| Jurassic Impact | 513000091 |  |
 | Jurassic World | 511002874 |  |
 | Justice Bringer | 511010531 |  |
+| Kamion, the Timelord | 513000040 | names other anime cards |
 | Kazejin | 511002508 |  |
 | King's Knight | 511001594 |  |
+| Kuribabylon | 511000150 |  |
+| Kuribah | 511000153 |  |
+| Kuribee | 511000151 |  |
+| Kuribeh | 511000152 |  |
 | Kuriboh | 511002854 |  |
+| Kuriboo | 511000154 |  |
 | Labyrinth Tank | 511002616 |  |
 | Larvae Moth | 511002500 |  |
 | Last Resort | 511005642 |  |
 | Lava Golem | 511600435 |  |
+| Lazion, the Timelord | 513000041 | names other anime cards |
+| Left Arm Offering | 511000415 |  |
+| Legend of Heart | 170000201 | names other anime cards |
+| Legendary Knight Critias | 170000203 |  |
+| Legendary Knight Hermos | 170000204 | names other anime cards |
+| Legendary Knight Timaeus | 170000202 |  |
 | Level Eater | 511013018 |  |
 | Level Modulation | 511756003 |  |
 | Liberty at Last! | 511002574 |  |
+| Life Shaver | 511001125 | names other anime cards |
+| Life Stream Dragon | 511000558 |  |
 | Light Barrier | 511005633 |  |
 | Lightforce Sword | 511600004 |  |
+| Lightning Crash | 511000612 |  |
 | Lightning Tricorn | 511002229 |  |
 | Lineage of Destruction | 511002484 |  |
 | Little-Winguard | 511009331 |  |
+| Living Fossil | 110000102 |  |
 | Ljosalf of the Nordic Alfar | 511002796 |  |
+| Loge's Flame | 100000542 |  |
 | Loki, Lord of the Aesir | 511000260 |  |
+| Lord of the Red | 511002050 |  |
+| Lullaby of Obedience | 511000168 |  |
 | Machine Conversion Factory | 511002415 |  |
 | Mad Archfiend | 511013001 |  |
 | Magic Formula | 511002515 |  |
@@ -524,7 +699,10 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Magical Dimension | 511600038 |  |
 | Magical Mallet | 511000613 |  |
 | Magical Stone Excavation | 511016003 |  |
+| Magical Trick Mirror | 511001112 | names other anime cards |
 | Magicians Unite | 511600006 |  |
+| Magnet Force | 511000302 |  |
+| Magnet Reverse | 810000102 |  |
 | Majestic Red Dragon | 513000078 |  |
 | Makiu, the Magical Mist | 511002502 |  |
 | Malefic Blue-Eyes White Dragon | 513000068 |  |
@@ -538,27 +716,45 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Malefic World | 511001597 |  |
 | Malevolent Catastrophe | 511000376 |  |
 | Mark of the Rose | 511030007 |  |
+| Mathematician | 513000164 |  |
 | Mausoleum of the Emperor | 511756002 |  |
 | Megasonic Eye | 511600239 |  |
+| Meklord Army of Granel | 511002529 |  |
+| Meklord Army of Skiel | 511002528 |  |
+| Meklord Army of Wisel | 511002530 |  |
+| Meklord Astro Dragon Asterisk | 511001644 |  |
+| Meklord Astro Mekanikle | 511002517 |  |
 | Meklord Emperor Granel ∞ | 511003222 |  |
 | Meklord Emperor Skiel ∞ | 513000173 |  |
 | Meklord Emperor Wisel ∞ | 513000167 |  |
 | Mesmeric Control | 511002166 |  |
+| Metaion, the Timelord | 513000039 | names other anime cards |
 | Metal Reflect Slime | 511009214 |  |
 | Meteor Flare | 511013009 |  |
 | Meteor of Destruction | 511021008 |  |
+| Michion, the Timelord | 513000045 | names other anime cards |
+| Mimicat | 511001136 |  |
 | Mind Control | 511000278 |  |
+| Miracle Contact | 511600380 |  |
 | Miracle Locus | 511002911 |  |
+| Miracle Rupture | 100000167 |  |
 | Mirage Tube | 511600375 |  |
 | Mirror Force | 513000001 |  |
+| Mirror Force Dragon | 170000154 |  |
 | Mirror Gate | 511310017 |  |
 | Mirror Wall | 513000002 |  |
+| Mischief of the Time Goddess | 511600383 |  |
 | Monster Recovery | 511000373 |  |
 | Monster Reincarnation | 511001651 |  |
 | Moon Dragon Quilla | 513000186 | names other anime cards |
+| Morphtronic Impact Return | 511000933 |  |
+| Morphtronic Lantron | 511002877 |  |
 | Morphtronic Vacuumen | 511002597 |  |
+| Mound of the Bound Creator | 100000280 |  |
+| Multiple Destruction | 511000627 |  |
 | Multiplication of Ants | 511018004 | names other anime cards |
 | Multiply | 810000034 | makes copies of a monster |
+| Mystic Piper | 511010533 |  |
 | Mystical Elf | 511009014 |  |
 | Natural Disaster | 511027782 |  |
 | Negate Attack | 511004341 |  |
@@ -568,41 +764,63 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | No Entry!! | 511600322 |  |
 | Null and Void | 810000055 |  |
 | Obelisk the Tormentor | 513000135 |  |
+| Ocean of Regeneration | 511001324 |  |
 | Odin, Father of the Aesir | 511000264 | names other anime cards |
 | Offering to the Immortals | 511247015 | makes Ceremonial Token |
 | Orichalcos Shunoros | 170000167 | names other anime cards |
+| Orichalcos Sword of Sealing | 511001650 |  |
 | Over Limit | 511005644 |  |
 | Overdoom Line | 511003005 |  |
 | Overload Fusion | 511010525 |  |
 | Owner's Seal | 810000071 |  |
+| Pair Cycroid | 511002958 |  |
 | Parallel Selection | 511027651 |  |
+| Pegasus Wing | 100000526 |  |
+| Penguin Sword | 511000375 |  |
+| Penguin Torpedo | 511000642 |  |
 | Perfect Machine King | 511001057 |  |
 | Phantasmal Martyrs | 511002835 | makes Phantasmal Martyr Token |
 | Phantom of Chaos | 511001926 |  |
 | Phantom Skyblaster | 511002834 | makes Skyblaster Token |
 | Phoenixian Cluster Amaryllis | 511027024 |  |
+| Piri Reis Map | 511001757 |  |
 | Poison Chain | 511027135 |  |
 | Power Bond | 511002825 | treated as Polymerization (24094653) |
 | Power Pickaxe | 511001782 |  |
 | Power Tool Dragon | 511600116 |  |
+| Power Wall | 513000104 |  |
+| Powerful Rebirth | 511010702 |  |
+| Prima Light | 511000132 |  |
+| Prinzessin | 511000431 |  |
+| Psychic Wave | 511000532 |  |
+| Pumpkin Carriage | 511000432 |  |
 | Pumpking the King of Ghosts | 511001147 |  |
 | Puppet Master | 511002194 |  |
 | Pyramid of Light | 511001887 |  |
 | Quickdraw Synchron | 511002860 |  |
 | Rain Storm | 511600439 |  |
+| Rainbow Bridge Bifrost | 100000539 |  |
 | Rainbow Dark Dragon | 511001139 |  |
 | Rainbow Dragon | 511600140 |  |
+| Raphion, the Timelord | 513000050 | names other anime cards |
 | Rapid Warrior | 511002881 |  |
 | Rare Value | 511600378 |  |
 | Raviel, Lord of Phantasms | 511000261 | makes Phantasm Token |
 | Reaper of the Cards | 511002504 |  |
+| Rebellion | 511001109 |  |
+| Red Cocoon | 511000902 |  |
 | Red Dragon Archfiend/Assault Mode | 511002518 |  |
+| Red Dragon Vase | 511002483 |  |
 | Red Nova Dragon | 513000013 |  |
 | Red Screen | 511600437 |  |
+| Red-Eyes Black Dragon Sword | 170000193 |  |
+| Red-Eyes Burn | 100000113 |  |
 | Red-Eyes Darkness Metal Dragon | 511000670 | names other anime cards |
+| Red-Eyes Spirit | 511017003 |  |
 | Reflect Bounder | 511020012 |  |
 | Regenerating Rose | 511005737 | makes Regenerating Rose Token |
 | Reinforce Truth | 511018015 |  |
+| Relay Soul | 511002521 |  |
 | Release Restraint | 511027011 |  |
 | Release Restraint Wave | 511013016 |  |
 | Remote Revenge | 511010535 |  |
@@ -610,16 +828,27 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Reversal of Fate | 511016001 |  |
 | Revival Jam | 513000142 |  |
 | Revival Rose | 511002845 |  |
+| Ride of the Valkyries | 100000532 |  |
 | Ring of Defense | 511002776 |  |
 | Riryoku | 511000474 |  |
 | Rise of the Snake Deity | 511002525 |  |
+| Ritual Sanctuary | 511000133 |  |
+| Rocket Hermos Cannon | 170000197 |  |
 | Rope of Life | 511020009 |  |
+| Royal Straight | 511000088 |  |
+| Royal Straight Slasher | 511000089 |  |
 | Sacred Knight Joan | 511002960 |  |
+| Sadion, the Timelord | 513000044 | names other anime cards |
 | Sage's Stone | 511777009 |  |
 | Samsara Lotus | 511002833 |  |
+| Sandaion, the Timelord | 513000049 | names other anime cards |
 | Sanga of the Thunder | 511002506 |  |
 | Satellite Cannon | 511777001 |  |
 | Sauropod Brachion | 511003090 |  |
+| Scramble Egg | 511000623 |  |
+| Sephylon, the Ultimate Timelord | 513000052 |  |
+| Shadow Toon | 511000549 |  |
+| Shell Knight | 511001588 |  |
 | Shield Worm | 511005645 |  |
 | Shining Silver Force | 511013017 |  |
 | Shooting Quasar Dragon | 513000031 |  |
@@ -627,30 +856,45 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Shrink | 511002777 |  |
 | Silent Doom | 511020001 |  |
 | Silver Wing | 511010532 |  |
+| Singularity Fiend | 511001232 |  |
 | Skull Dice | 511000540 |  |
 | Skull Flame | 511050012 |  |
 | Skyscraper | 511002379 |  |
 | Skyscraper 2 - Hero City | 511777006 |  |
+| Slash Draw | 511600139 |  |
 | Slifer the Sky Dragon | 513000136 |  |
 | Solemn Authority | 511777010 |  |
+| Sonic Stun | 511001025 |  |
 | Sorcerer of Dark Magic | 513000095 |  |
+| Soul Binding Gate | 513000082 | names other anime cards |
+| Soul Charge | 511000552 |  |
 | Soul Exchange | 513000054 |  |
 | Soul Rope | 511001593 |  |
 | Soul Taker | 511000372 |  |
+| Soul Union | 511000483 |  |
+| Spacetime Transcendence | 511000657 |  |
+| Specimen Inspection | 100000531 |  |
 | Spell Absorption | 511000377 |  |
 | Spell Calling | 511024007 |  |
 | Spell Chronicle | 511000300 |  |
 | Spell Gear | 511777004 |  |
+| Spell of Pain | 511001785 |  |
 | Spellbinding Circle | 511001016 |  |
 | Sphinx Teleia | 513000029 |  |
 | Spider Web | 511002589 |  |
+| Spirit Shield | 511000116 |  |
+| Stardust Flash | 810000057 |  |
 | Stardust Phantom | 511002883 |  |
 | Stardust Xiaolong | 511002807 |  |
 | Starlight Road | 511002520 |  |
 | Stealthroid | 511002894 |  |
+| Steam Synchron | 511002136 |  |
+| Stonehenge | 511001803 |  |
 | Stygian Sergeants | 511002841 |  |
+| Subspace Battle | 511000496 |  |
 | Suijin | 511002507 |  |
 | Summon Cloud | 511001924 |  |
+| Summon Dice | 511000480 |  |
 | Sun Dragon Inti | 511001981 |  |
 | Sunlight Unicorn | 511018014 |  |
 | Super Polymerization | 511003010 |  |
@@ -659,7 +903,20 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Survival Instinct | 511600441 |  |
 | Swordstalker | 810000114 |  |
 | Synchro Material | 511002750 |  |
+| Synkron Resonator | 810000045 |  |
+| T.G. Blade Blaster | 513000015 |  |
+| T.G. Catapult Dragon | 513000035 | names other anime cards |
+| T.G. Cyber Magician | 513000182 |  |
+| T.G. Halberd Cannon | 513000014 |  |
+| T.G. Jet Falcon | 513000036 | names other anime cards |
+| T.G. Recipro Dragonfly | 511001973 |  |
+| T.G. Rush Rhino | 513000183 |  |
+| T.G. Warwolf | 513000181 |  |
+| The Claw of Hermos | 170000153 |  |
+| The Duke of Demise | 511000117 |  |
+| The Eye of Timaeus | 170000152 |  |
 | The Eye of Truth | 511002295 |  |
+| The Fang of Critias | 170000151 |  |
 | The Golden Apples | 511003080 | makes Malus Token |
 | The Shallow Grave | 511002531 |  |
 | The Wicked Avatar | 513000138 |  |
@@ -669,22 +926,40 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Theinen the Great Sphinx | 513000030 |  |
 | Thor, Lord of the Aesir | 511000247 |  |
 | Thunder Unicorn | 511002706 |  |
+| Ties of the Brethren | 100000478 |  |
+| Timaeus the Knight of Destiny | 170000210 | names other anime cards |
 | Time Machine | 511247012 |  |
+| Time Magic Hammer | 140000131 |  |
+| Time Maiden | 513000048 |  |
+| Toon Briefcase | 511000629 |  |
+| Toon Mask | 511000915 |  |
+| Toon Rollback | 511000410 |  |
 | Torrential Tribute | 511310007 |  |
+| Totem Pole | 511000202 |  |
 | Tour of Doom | 511011004 |  |
 | Tragedy | 511008009 |  |
 | Trap Eater | 511013002 |  |
+| Trap Hole of Spikes | 511001121 |  |
 | Trap Jammer | 511013024 |  |
 | Treasure Map | 511600359 |  |
+| Tribute Burial | 511000169 |  |
 | Trust Guardian | 511310011 |  |
 | Tuning | 511002846 |  |
 | Turbo Cannon | 511002708 |  |
 | Tyr of the Nordic Champions | 511002985 |  |
+| Tyrant Burst Dragon | 170000155 |  |
+| Tyrant Wing | 170000149 |  |
 | Ultimate Ancient Gear Golem | 511027033 |  |
 | Underground Arachnid | 511600137 |  |
 | Underworld Circle | 513000118 |  |
+| Unknown Synchron | 511002135 |  |
 | Uria, Lord of Searing Flames | 511000234 |  |
+| Valkyrie Brunhilde | 100000538 |  |
+| Valkyrie Dritte | 100000534 |  |
+| Valkyrie Erste | 100000537 |  |
 | Valkyrie of the Nordic Ascendant | 511000251 | makes Einherjar Token |
+| Valkyrie Zweite | 100000533 |  |
+| Valkyrie's Embrace | 100000529 |  |
 | Variety Comes Out | 511010537 |  |
 | Vehicroid Connection Zone | 511003235 |  |
 | Vennominaga the Deity of Poisonous Snakes | 511002110 |  |
@@ -692,19 +967,26 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Virus Cannon | 513000122 |  |
 | Wall of Ivy | 511001522 | makes Ivy Token |
 | Wall Shadow | 511000477 |  |
+| Water of Life | 511001417 |  |
+| White Knight Lord | 511000595 |  |
 | White Night Dragon | 511001784 |  |
+| White Veil | 513000089 | names other anime cards |
 | Wicked Rebirth | 511002989 |  |
 | Wild Tornado | 511004111 |  |
+| Wing Requital | 511000736 |  |
 | Winged Kuriboh | 511018019 |  |
 | Witch of the Black Rose | 511027025 |  |
 | Wroughtweiler | 511024001 |  |
+| Yowie | 511000633 |  |
 | Yubel | 511001391 |  |
 | Yubel - Terror Incarnate | 511001392 |  |
 | Yubel - The Ultimate Nightmare | 511600424 |  |
 | Z-ONE | 511000279 |  |
+| Zaphion, the Timelord | 513000003 | names other anime cards |
 | Zero Force | 511001873 |  |
 | Zoma the Spirit | 511000212 |  |
 | Zombie Warrior | 511002615 |  |
+| Zushin the Sleeping Giant | 513000162 | names other anime cards |
 
 ## The game's version retained
 
@@ -733,12 +1015,18 @@ Extra Deck), or when the research or the script is not settled. Each reason is k
 | Alligator's Sword | upstream 511003060: the anime Normal Monster is equivalent |
 | Anthrosaurus | upstream 511003069: the anime Normal Monster is equivalent |
 | Card Guard | upstream 511000155 is a different card or a prize card |
+| D - Force | added card (#75); upstream 100000270: its anime script has an effect used from the Deck (EFFECT_CANNOT_DRAW, EFFECT_DRAW_COUNT), which the client's menus have not been shown to offer: it plays as printed |
 | Fiend's Mirror | upstream 511002611 is a different card or a prize card |
+| Flying Elephant | added card (#75); upstream 511002505 has no script: it plays as printed |
+| Guardian Dreadscythe | added card (#75); upstream 511002452: its anime script has an effect used from the Deck (EVENT_TO_GRAVE), which the client's menus have not been shown to offer: it plays as printed |
 | Hero of the East | upstream 511003068: the anime Normal Monster is equivalent |
+| Juragedo | added card (#75); upstream 511000286 has no script: it plays as printed |
 | Kageningen | upstream 511003066: the anime Normal Monster is equivalent |
 | Little D | upstream 511003059: the anime Normal Monster is equivalent |
 | Meotoko | upstream 511003063: the anime Normal Monster is equivalent |
+| Orgoth the Relentless | added card (#75); upstream 140000074 has no script: it plays as printed |
 | Ray of Hope | upstream 511000901 is a different card or a prize card |
+| Sabatiel - The Philosopher's Stone | added card (#75); upstream 513000057: its anime script has an effect used from the Deck (EVENT_DESTROYED), which the client's menus have not been shown to offer: it plays as printed |
 | Short Circuit | upstream 511000181 is a different card or a prize card |
 | Skull Stalker | upstream 511003064: the anime Normal Monster is equivalent |
 | Stone Armadiller | upstream 511003067: the anime Normal Monster is equivalent |
@@ -746,12 +1034,125 @@ Extra Deck), or when the research or the script is not settled. Each reason is k
 | Wolf | upstream 511003065: the anime Normal Monster is equivalent |
 | Zera the Mant | upstream 511002610 is a different card or a prize card |
 
-Every other card of the game (4,339 of 4,778 in `engine/anime/cards.tsv`) has no anime_id: no anime version, or none we use, and keeps its current behaviour.
+Every other card of the game (4,452 of 5,136 in `engine/anime/cards.tsv`) has no anime_id: no anime version, or none we use, and keeps its current behaviour.
 
 | Card | Note |
 | --- | --- |
+| Advanced Dark | added card (#75) |
+| ALERT! | added card (#75) |
+| Ancient Dragon | added card (#75); its anime row 511000128 is not mapped: a Level 8 2800/2100 LIGHT card of the same name, not this Level 4 card |
+| Arcana Force XII - The Hangman | added card (#75); its anime row 513000163 is not mapped: upstream makes it an alias of another anime card (100000106) |
+| Armored White Bear | added card (#75) |
+| Ashoka Pillar | added card (#75) |
+| Assault Dog | added card (#75) |
+| Ayers Rock Sunrise | added card (#75) |
+| Black Sonic | added card (#75) |
+| Blackwing - Kogarashi the Wanderer | added card (#75) |
+| Blackwing - Oroshi the Squall | added card (#75) |
+| Break the Seal | added card (#75) |
+| Buster Blaster | added card (#75) |
+| Cabrera Stone | added card (#75) |
+| Carboneddon | added card (#75) |
+| Celestial Sword - Eatos | added card (#75) |
+| Centaur Mina | added card (#75) |
+| Ceruli, Guru of Dark World | added card (#75) |
+| Chain Resonator | added card (#75) |
+| Chaos Distill | added card (#75) |
+| Clear Cube | added card (#75) |
+| Clear Phantom | added card (#75) |
+| Clear Rage Golem | added card (#75) |
+| Clear Vicious Knight | added card (#75) |
+| Comic Hand | added card (#75) |
+| Counterforce | added card (#75) |
+| Crystal Skull | added card (#75) |
+| Cyber Angel Benten | added card (#75) |
+| Cyber Angel Dakini | added card (#75) |
+| Cyber Angel Idaten | added card (#75) |
+| Cybernetic Fusion Support | added card (#75) |
+| Dark Dragon Ritual | added card (#75) |
+| Dark Tuner Catastrogue | added card (#75) |
+| Dark Tuner Nightmare Hand | added card (#75) |
+| Dark Tyranno | added card (#75) |
 | Deck Devastation Virus | Its anime appearance (ZEXAL) has the game's text. ProjectIgnis' Deck Destruction Virus (511001119) is another card, from the Pyramid of Light film. |
+| Doble Passe | added card (#75) |
+| Fallen Paradise | added card (#75) |
+| Fenrir the Nordic Wolf | added card (#75) |
+| Final Light | added card (#75) |
+| Force Resonator | added card (#75) |
+| Fortune Fairy Ann | added card (#75) |
+| Fortune Fairy Chee | added card (#75) |
+| Fortune Fairy En | added card (#75) |
+| Fortune Fairy Hikari | added card (#75) |
+| Fortune Fairy Hu | added card (#75) |
+| Fortune Fairy Swee | added card (#75) |
+| Fossil Dragon Skullgar | added card (#75) |
+| Fossil Dragon Skullgios | added card (#75) |
+| Fossil Fusion | added card (#75) |
+| Fossil Machine Skull Buggy | added card (#75) |
+| Fossil Machine Skull Convoy | added card (#75) |
+| Fossil Machine Skull Wagon | added card (#75) |
+| Fossil Warrior Skull Bone | added card (#75) |
+| Fossil Warrior Skull King | added card (#75) |
+| Fossil Warrior Skull Knight | added card (#75) |
+| Gatling Ogre | added card (#75) |
+| Hero's Rule 1: Five Freedoms | added card (#75) |
+| High Rate Draw | added card (#75) |
+| Horned Saurus | added card (#75) |
+| Ice Mirror | added card (#75) |
 | Illusion Gate | added card (#75, stand-in): upstream has a video game version only |
+| Jormungardr the Nordic Serpent | added card (#75) |
+| Junk Servant | added card (#75) |
+| Kaitoptera | added card (#75) |
+| Legion the Fiend Jester | added card (#75) |
+| Litmus Doom Ritual | added card (#75) |
+| Litmus Doom Swordsman | added card (#75) |
+| Lucky Loan | added card (#75) |
+| Machine Angel Ritual | added card (#75) |
+| Magnet Warrior Sigma Minus | added card (#75) |
+| Magnet Warrior Sigma Plus | added card (#75) |
+| Maiden in Love | added card (#75) |
+| Masked Beast Des Gardius | added card (#75) |
+| Matador Archfiend | added card (#75) |
+| Miracle Stone | added card (#75) |
+| Mirror Resonator | added card (#75) |
+| Mono Synchron | added card (#75) |
+| Morphtronic Staplen | added card (#75) |
+| Necro Defender | added card (#75) |
+| Noble Knight's Shield-Bearer | added card (#75) |
+| Noble Knight's Spearholder | added card (#75) |
+| Plasma Warrior Eitom | added card (#75) |
+| Power-Up Adapter | added card (#75) |
+| Quick Summon | added card (#75) |
 | Ra's Disciple | added card (#75) |
+| Reaper Scythe - Dreadscythe | added card (#75) |
+| Rebirth Judgment | added card (#75) |
+| Red Nova | added card (#75) |
+| Red-Eyes Transmigration | added card (#75) |
+| Resonator Call | added card (#75) |
+| Ritual of the Matador | added card (#75) |
+| Roulette Spider | added card (#75) |
+| Salvage Warrior | added card (#75) |
+| Scarlet Security | added card (#75) |
+| Scrum Force | added card (#75) |
+| Shadow Impulse | added card (#75) |
+| Shooting Star | added card (#75) |
+| Sonic Warrior | added card (#75) |
+| Stand-Off | added card (#75) |
+| Summon Storm | added card (#75) |
+| T.G. Drill Fish | added card (#75) |
+| T.G. Gear Zombie | added card (#75) |
+| T.G. Hyper Librarian | added card (#75) |
+| T.G. Metal Skeleton | added card (#75) |
+| T.G. Power Gladiator | added card (#75) |
+| T.G. Striker | added card (#75) |
+| T.G. Wonder Magician | added card (#75) |
+| The Mask of Remnants | added card (#75) |
 | The Seal of Orichalcos | added card (#75): no anime version upstream |
 | The Winged Dragon of Ra - Sphere Mode | added card (#75) |
+| Time Stream | added card (#75) |
+| Toon Kingdom | added card (#75) |
+| Toy Soldier | added card (#75); its anime row 511600241 is not mapped: upstream makes it an alias of another card (511000005) |
+| Triangle O | added card (#75) |
+| Unacceptable Result | added card (#75) |
+| Weathering Soldier | added card (#75) |
+| Wiretap | added card (#75) |

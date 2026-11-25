@@ -29,6 +29,19 @@ const GRANEL: u16 = 9265; // the anime Meklord Emperor Granel ∞: its original 
 const SHADOW_SPELL: u16 = 4675; // -700 ATK
 const AXE_OF_DESPAIR: u16 = 4310; // +1000 ATK
 const MEGAMORPH: u16 = 4663; // with more LP than the opponent: half the original ATK
+// Added cards (engine/added/cards.tsv) that pay, set or compare LP:
+const CYBERNETIC_FUSION_SUPPORT: u16 = 10982; // pay half your LP
+const DARK_ELEMENT: u16 = 5049; // pay half your LP: a Gate Guardian from the hand
+const GATE_GUARDIAN: u16 = 4380;
+const SOUL_CHARGE: u16 = 11159; // lose 1000 LP per monster revived
+const MULTIPLE_DESTRUCTION: u16 = 5481; // lose 300 LP per card returned
+const MICHION: u16 = 13815; // Michion, the Timelord: after battling, halve the opponent's LP
+const HAILON: u16 = 13816; // Hailon, the Timelord: after battling, with less LP, inflict the difference
+const LIFE_STREAM: u16 = 9509; // Life Stream Dragon: when Synchro Summoned, your LP can become 4000
+const POWER_TOOL: u16 = 8137;
+const TURBO_SYNCHRON: u16 = 7870; // a Level 1 Tuner
+const JURASSIC_IMPACT: u16 = 13156; // with less LP: destroy every monster, 1000 damage each to both players
+const SABERSAURUS: u16 = 6796;
 
 fn hand(team: u32, cid: u16) -> Spawn { Spawn { team, place: Hand, cid } }
 fn set(team: u32, cid: u16) -> Spawn { Spawn { team, place: SpellSet, cid } }
@@ -36,10 +49,15 @@ fn mon(team: u32, cid: u16) -> Spawn { Spawn { team, place: Monster, cid } }
 
 /// Team 0 at ∞ LP (Mystik Wok on the anime Geh: 8000 and ∞ is ∞), with `spawns` in place; team 1 at 8000.
 fn infinite(spawns: &[Spawn]) -> Option<Scenario> {
+    infinite_extra(&[], spawns)
+}
+
+/// [`infinite`] with team 0's Extra Deck.
+fn infinite_extra(extra: &[u16], spawns: &[Spawn]) -> Option<Scenario> {
     let dir = engine_dir()?;
     let mut field = vec![hand(0, WOK), mon(0, GEH)];
     field.extend_from_slice(spawns);
-    let decks = [(&[KURIBOH; 40][..], &[][..]), (&[KURIBOH; 40][..], &[][..])];
+    let decks = [(&[KURIBOH; 40][..], extra), (&[KURIBOH; 40][..], &[][..])];
     let mut s = Scenario::start_anime_field(&dir, 7, 8000, decks, &field).expect("the duel starts");
     s.prefer(&[(0, GEH)]);
     s.run(&[Activate(WOK)]).unwrap();
@@ -181,5 +199,95 @@ fn a_long_number_declaration_keeps_255_choices_and_the_largest() {
     assert!(options.windows(2).all(|w| w[0] < w[1]), "in order: {options:?}");
     s.run(&[]).unwrap();
     assert_eq!(s.lp(0), INFINITE, "{}", s.context());
+    clean(&s);
+}
+
+/// Both players at ∞ from the start, anime versions off: the added printed cards as printed (with anime cards on,
+/// several play their anime versions, tested below where they differ).
+fn both_infinite(extra: &[u16], spawns: &[Spawn]) -> Option<Scenario> {
+    let dir = engine_dir()?;
+    let decks = [(&[KURIBOH; 40][..], extra), (&[KURIBOH; 40][..], &[][..])];
+    let s = Scenario::start_field(&dir, 7, 20_000_000, decks, spawns).expect("the duel starts");
+    assert_eq!((s.lp(0), s.lp(1)), (INFINITE, INFINITE), "{}", s.context());
+    Some(s)
+}
+
+#[test]
+fn half_of_infinite_lp_as_a_cost_leaves_it() {
+    // Cybernetic Fusion Support and Dark Element pay half the LP: half of ∞ is ∞.
+    let Some(mut s) = both_infinite(&[], &[hand(0, CYBERNETIC_FUSION_SUPPORT)]) else { return };
+    s.run(&[Activate(CYBERNETIC_FUSION_SUPPORT)]).unwrap();
+    assert_eq!((s.lp(0), s.count(0, "grave", CYBERNETIC_FUSION_SUPPORT)), (INFINITE, 1), "{}", s.context());
+    clean(&s);
+    let Some(mut s) = both_infinite(&[], &[hand(0, DARK_ELEMENT), hand(0, GATE_GUARDIAN), Spawn { team: 0, place: Grave, cid: GATE_GUARDIAN }]) else { return };
+    s.prefer(&[(0, GATE_GUARDIAN)]);
+    s.run(&[Activate(DARK_ELEMENT)]).unwrap();
+    assert_eq!((s.lp(0), s.count(0, "mzone", GATE_GUARDIAN)), (INFINITE, 1), "Gate Guardian summoned: {}", s.context());
+    clean(&s);
+}
+
+#[test]
+fn lp_lost_per_card_leaves_infinite_lp() {
+    // Soul Charge: 1000 per monster revived; Multiple Destruction: 300 per card returned. Both finite: ∞ stays.
+    let Some(mut s) = both_infinite(&[], &[hand(0, SOUL_CHARGE), Spawn { team: 0, place: Grave, cid: WARWOLF }]) else { return };
+    s.run(&[Activate(SOUL_CHARGE)]).unwrap();
+    assert_eq!((s.lp(0), s.count(0, "mzone", WARWOLF)), (INFINITE, 1), "{}", s.context());
+    clean(&s);
+    let Some(mut s) = both_infinite(&[], &[set(0, MULTIPLE_DESTRUCTION)]) else { return };
+    s.run_both([&[EndTurn, Activate(MULTIPLE_DESTRUCTION)], &[EndTurn]]).unwrap();
+    assert_eq!((s.lp(0), s.count(0, "grave", MULTIPLE_DESTRUCTION)), (INFINITE, 1), "{}", s.context());
+    clean(&s);
+}
+
+#[test]
+fn michion_halves_infinite_lp_to_infinity() {
+    // The printed Michion halves the opponent's LP: half of ∞ is ∞.
+    let Some(mut s) = both_infinite(&[], &[hand(1, MICHION), mon(0, WARWOLF)]) else { return };
+    s.run_both([&[EndTurn], &[Summon(MICHION), Attack(MICHION), EndTurn]]).unwrap();
+    assert_eq!((s.lp(0), s.count(1, "mzone", MICHION)), (INFINITE, 1), "{}", s.context());
+    clean(&s);
+}
+
+#[test]
+fn the_anime_timelords_against_infinite_lp_inflict_infinity() {
+    // The anime Michion inflicts damage equal to half the opponent's LP, the anime Hailon the difference between the LP
+    // (8000 against ∞): each amount is itself ∞, which takes every LP.
+    for timelord in [MICHION, HAILON] {
+        // Summoned with two Tributes (the anime ones have no procedure of their own; a spawned one shuffles itself back
+        // into the Deck at its controller's first Standby Phase).
+        let Some(mut s) = infinite(&[hand(1, timelord), mon(1, WARWOLF), mon(1, WARWOLF)]) else { return };
+        let r = s.run_both([&[EndTurn], &[Summon(timelord), Attack(timelord), EndTurn]]);
+        assert!(r.is_err_and(|e| e.contains("the duel is over")), "{timelord}: {}", s.context());
+        assert_eq!(s.lp(0), 0, "{timelord}: {}", s.context());
+        clean(&s);
+    }
+}
+
+#[test]
+fn hailon_against_infinite_lp_inflicts_infinity() {
+    // The printed Hailon: with less LP than the opponent, the difference as damage. Both at ∞: no difference, nothing.
+    let Some(mut s) = both_infinite(&[], &[hand(1, HAILON), mon(0, WARWOLF)]) else { return };
+    s.run_both([&[EndTurn], &[Summon(HAILON), Attack(HAILON), EndTurn]]).unwrap();
+    assert_eq!((s.lp(0), s.lp(1)), (INFINITE, INFINITE), "{}", s.context());
+    clean(&s);
+}
+
+#[test]
+fn life_stream_dragon_makes_infinite_lp_4000() {
+    // "You can make your LP become 4000": LP that becomes a number is that number, from ∞ too.
+    let Some(mut s) = both_infinite(&[LIFE_STREAM, POWER_TOOL], &[mon(0, POWER_TOOL), mon(0, TURBO_SYNCHRON)]) else { return };
+    s.run(&[SpSummon(LIFE_STREAM), Chain(LIFE_STREAM)]).unwrap();
+    assert_eq!((s.lp(0), s.count(0, "mzone", LIFE_STREAM)), (4000, 1), "{}", s.context());
+    clean(&s);
+}
+
+#[test]
+fn jurassic_impact_against_infinite_lp_leaves_it() {
+    // Team 1 (8000, less than ∞) destroys every monster and each player takes 1000 per monster it had: finite, so ∞
+    // stays (anime cards on: the anime version).
+    let Some(mut s) = infinite(&[set(1, JURASSIC_IMPACT), mon(1, SABERSAURUS), mon(1, SABERSAURUS)]) else { return };
+    assert_eq!(s.count(1, "szone", JURASSIC_IMPACT), 1, "{}", s.context());
+    s.run_both([&[EndTurn], &[Activate(JURASSIC_IMPACT)]]).unwrap();
+    assert_eq!((s.lp(0), s.lp(1), s.count(1, "grave", SABERSAURUS)), (INFINITE, 6000, 2), "{}", s.context());
     clean(&s);
 }

@@ -39,7 +39,7 @@ class AnimeMap(unittest.TestCase):
         self.assertEqual(len(TABLE), len(CARDS), 'a Konami id twice')
         counts = {s: sum(1 for c in CARDS.values() if c['status'] == s) for s in ('mapped', 'default', 'held')}
         self.assertEqual(counts, MAP['counts'])
-        self.assertEqual(sum(counts.values()), 424, '415 candidates, the 3 cards that needed custom work, the added cards with anime versions (#75: Shooting Quasar Dragon, Divine Serpent Geh, Underworld Circle) and the three Wicked Gods (their manga versions)')
+        self.assertEqual(sum(counts.values()), 663, '415 candidates, the 3 cards that needed custom work, the added cards with anime versions (#75: Shooting Quasar Dragon, Divine Serpent Geh, Underworld Circle), the three Wicked Gods (their manga versions) and 239 of the printed cards added from the anime (#75, 2026-11-25)')
         for c in CARDS.values():
             self.assertEqual(bool(c.get('holds')), c['status'] == 'held', c['name'])
 
@@ -77,7 +77,21 @@ class AnimeMap(unittest.TestCase):
         # (engine/anime/records.json) and the script (engine/overrides/) are ours; the game's cid and the official card stay.
         recs = {r['cid']: r for r in MAP['records']}
         # Clear Vice Dragon, Blackwing - Aurora and anime Divine Serpent Geh (an added card, #75) keep the game's "?" ATK.
-        self.assertEqual(sorted(recs), [8035, 8302, 8538, 9093, 12671])
+        self.assertEqual(sorted(recs), [8035, 8302, 8538, 9093, 10326, 11152, 11885, 11892, 12671, 13803, 13804, 13805, 13807])
+        # Pumpkin Carriage, Iron Hans, Iron Knight and Hexe Trude (added cards, #75): the pinned database marks their anime
+        # rows Tokens (0x4021), so a copy sent to the hand would vanish; the record is the row as an Effect Monster.
+        tokens = {13803: 511000432, 13804: 511001416, 13805: 511001415, 13807: 511000434}
+        for cid, code in tokens.items():
+            c, r = CARDS[cid], recs.pop(cid)
+            self.assertEqual((c['status'], c['script'], c.get('upstream_record')), ('mapped', 'unofficial/c%d.lua' % code, True))
+            self.assertEqual((r['type'], r['alias'], r['reconstruction']), (0x21, r['official'], False))
+        # The Eye of Timaeus, The Fang of Critias, The Claw of Hermos and Legend of Heart (added cards): the anime rows have no
+        # type at all, so the record gives each the official card's, a Normal Spell (the Legendary Dragons' archetype too).
+        spells = {10326: 170000152, 11885: 170000151, 11892: 170000153, 11152: 170000201}
+        for cid, code in spells.items():
+            c, r = CARDS[cid], recs.pop(cid)
+            self.assertEqual((c['status'], c['script'], c.get('upstream_record'), c.get('differs')), ('mapped', 'unofficial/c%d.lua' % code, True, None))
+            self.assertEqual((r['type'], r['setcode'], r['alias']), (0x2, 0 if cid == 11152 else 161, r['official']))
         upstream = {8538: 513000096, 9093: 511002602, 12671: 170000170}
         for cid, code in upstream.items():
             c, r = CARDS[cid], recs[cid]

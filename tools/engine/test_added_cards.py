@@ -64,14 +64,14 @@ class AddedCards(unittest.TestCase):
 
     def test_a_newer_card_gets_a_stand_in_id_the_client_can_hold(self):
         ctx = added.load()
-        (name, line, why), = added.find(['18847598'], ctx)  # Advanced Crystal Beast Amber Mammoth, Konami id 17632
-        self.assertEqual((name, why), ('Advanced Crystal Beast Amber Mammoth', []))
+        (name, line, why), = added.find(['15443125'], ctx)  # Spright Starter, Konami id 17457
+        self.assertEqual((name, why), ('Spright Starter', []))
         _, cid, sid, _, _, _, _ = line.split('\t')
         sid = int(sid)
-        self.assertEqual(cid, '17632')
+        self.assertEqual(cid, '17457')
         self.assertTrue(ctx['base'] <= sid <= 0x3FFF and sid not in ctx['in_game'] and sid not in ctx['konami'])
-        self.assertEqual(added.find(['cid:17632'], ctx)[0][0], name, 'by Konami id too')
-        self.assertEqual(added.find(['Advanced Crystal Beast Amber Mammoth', 'Advanced Crystal Beast Amethyst Cat'], ctx)[1][1].split('\t')[2],
+        self.assertEqual(added.find(['cid:17457'], ctx)[0][0], name, 'by Konami id too')
+        self.assertEqual(added.find(['Spright Starter', 'Steel-Stringed Sacrifice'], ctx)[1][1].split('\t')[2],
                          str(added.next_stand_in(ctx, {sid} | {int(l['stand_in']) for l in added.table() if l['stand_in']})), 'each card of a batch its own stand-in')
         # The table takes it: the client's id is the stand-in, the real one is kept.
         with tempfile.TemporaryDirectory() as tmp:
@@ -82,7 +82,7 @@ class AddedCards(unittest.TestCase):
                 f.write(text + line + 'test\n')
             with mock.patch.object(added, 'TABLE', table):
                 card = added.build()['cards'][-1]
-            self.assertEqual((card['cid'], card['konami_id'], card['a'] & 0x3FFF, card['passcode']), (sid, 17632, sid, 18847598))
+            self.assertEqual((card['cid'], card['konami_id'], card['a'] & 0x3FFF, card['passcode']), (sid, 17457, sid, 15443125))
             for wrong, says in ((line.replace(f'\t{sid}\t', '\t\t'), 'give it a stand-in'),
                                 (line.replace(f'\t{sid}\t', '\t3900\t'), 'is a card of the game'),
                                 (line.replace(f'\t{sid}\t', '\t9709\t'), "already a card's Konami id")):
@@ -184,14 +184,14 @@ class AddedCards(unittest.TestCase):
         self.assertEqual((notes['Black Rose Moonlight Dragon'], notes['Ash Blossom & Joyous Spring']), ([], []))
 
     def test_find_points_out_what_plays_differently_at_infinity(self):
-        # Without holding a card back, --find points out a script that sets LP (Life Stream Dragon), works an amount out
+        # Without holding a card back, --find points out a script that sets LP (Super All In!), works an amount out
         # from LP and sets it (Lucky Punch's half), for a case at ∞; Ash Blossom touches neither and gets none. The
         # approved line and the blocking notes are unchanged.
         ctx = added.load()
         found = {name: (line, added.infinity_hints(line, ctx), added.notes(line, ctx)) for name, line, _ in added.find(
-            ['Life Stream Dragon', 'Lucky Punch', 'Ash Blossom & Joyous Spring'], ctx)}
+            ['Super All In!', 'Lucky Punch', 'Ash Blossom & Joyous Spring'], ctx)}
         self.assertTrue(all(line for line, _, _ in found.values()), found)
-        self.assertTrue(any(h.startswith('sets LP') for h in found['Life Stream Dragon'][1]), found)
+        self.assertTrue(any(h.startswith('sets LP') for h in found['Super All In!'][1]), found)
         self.assertTrue({'sets LP', 'works an amount out from LP'} <= {h.split(':')[0] for h in found['Lucky Punch'][1]}, found)
         self.assertTrue(any('infinite_lp.rs' in h for h in found['Lucky Punch'][1]), found)
         self.assertEqual(found['Ash Blossom & Joyous Spring'][1], [])
