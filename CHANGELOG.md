@@ -34,7 +34,8 @@ Older entries describe their release at the time. For current setup, use the [RE
 - An infinite ATK shows as ∞ on the field (Obelisk's Soul Energy Max, the anime Divine Serpent Geh, Avatar matching
   them), instead of 99999.
 - The anime Divine Serpent Geh's ∞ is its printed ATK: Skill Drain negates its effects but leaves the ∞, and other
-  cards' ATK changes (The Seal of Orichalcos, Axe of Despair, Shrink, Shield & Sword) don't touch it.
+  cards' ATK changes (The Seal of Orichalcos, Axe of Despair, Shrink, Shield & Sword) don't touch it. Its ∞ shows in
+  white, as an ATK that is the card's own; an ∞ from an effect (Soul Energy Max, Avatar) shows in blue.
 - Infinite damage is infinite: Ring of Destruction on the anime Divine Serpent Geh, or Avatar risen to infinity attacking
   directly, takes every LP a player has, however much Mystik Wok gave them.
 - A God turned face-down by Book of Moon is still a God (it can't be destroyed by Spell or Trap cards) and turns face-up

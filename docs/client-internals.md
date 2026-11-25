@@ -807,7 +807,9 @@ below), so the originals (prop 4, 5) always go as their decimal string: ActionSc
 them as strings, where U+221E is above every digit, and numbers with them as numbers, as before. The movie does nothing
 else with these four. The detour also reports each call to the UI probe (`ui-probe.h` observes through it instead of a
 detour of its own; `detour.h` is their shared helper). Live, 2026-11-24: Geh shows "∞ / 0" and Avatar beside it "∞ / ∞",
-in blue, the ∞ about the digits' height; Obelisk "4000 / 4000".
+in blue, the ∞ about the digits' height; Obelisk "4000 / 4000". Since a printed infinity is the card's original ATK too
+(`guards.lua`), the anime Geh's ∞ is white (equal to its original, both sent as "∞") and an effect's blue: live,
+2026-11-25, Geh "∞ / 0" in white beside Avatar's "∞ / ∞" in blue, no duel check drift.
 
 ## Data formats
 

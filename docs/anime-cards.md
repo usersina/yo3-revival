@@ -248,7 +248,8 @@ infinity is still infinite: Dreadroot halves every other monster but an infinite
 so Geh under it keeps its infinite damage and Avatar ties it at infinity.
 The anime Geh's infinity is printed (its card says "ATTACK ∞"): it is the card's ATK, not an effect, though the script can
 only give it as ATK "?" and an effect. So Skill Drain negates Geh's effects but leaves its infinite ATK, and other cards'
-effects that change ATK (The Seal of Orichalcos, Axe of Despair, Shrink, Shield & Sword) don't touch it (`guards.lua`'s
+effects that change ATK (The Seal of Orichalcos, Axe of Despair, Shrink, Shield & Sword) don't touch it. Its original ATK
+is infinite too, so the field shows its ∞ in white and an effect's ∞ (Soul Energy Max, Avatar) in blue (`guards.lua`'s
 list of printed infinities, a rule of ours; [adding cards](added-cards.md#infinite-atk)).
 A God's control can't switch (Change of Heart and Creature Swap find no target), the opponent can't Tribute it (Sphere
 Mode takes other monsters) and Shrink halves it for the turn. Book of Moon turns it face-down, as the manga text only keeps

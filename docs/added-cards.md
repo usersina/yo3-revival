@@ -191,7 +191,8 @@ Dreadroot leaves it alone. Two kinds need a look:
 - **A printed ∞** (the card itself says "ATTACK ∞", like the anime Divine Serpent Geh): its script can only give it as
   ATK "?" and an effect, which Skill Drain would negate and other cards would change. Add its passcode to
   `PRINTED_INFINITY` in `crates/yo3-engine/src/guards.lua`: it then keeps ∞ in a Monster Zone whatever negates its
-  effects, and other cards' ATK changes don't touch it. Its DEF stays an ordinary number. Test it as
+  effects, other cards' ATK changes don't touch it, and its original ATK is ∞ too (white on the field, where an effect's ∞
+  is blue; the card profile's "?" accepts it). Its DEF stays an ordinary number. Test it as
   `tests/manga_gods.rs` tests Geh (`skill_drain_leaves_a_printed_infinity`, `other_cards_leave_a_printed_infinity`).
 - **An effect that makes an ATK ∞** (Obelisk's Soul Energy Max, a spell "its ATK becomes ∞"): read how the script sets
   it. A final value (`EFFECT_SET_ATTACK_FINAL`, as Soul Energy Max) is what the card keeps; an amount added

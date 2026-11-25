@@ -299,14 +299,15 @@ impl Expect {
 
     /// The differences between the profile's ATK and DEF and an engine monster on the field (`state`'s card: base_attack,
     /// base_defense), as text: what the card's script makes the base stats, since the core reports the base with the card's
-    /// own set-base effects applied. The core reports "?" as a negative number or 0. Level, race and attribute are not judged
-    /// here: on the field they are the effects' as much as the card's (Zombie World, Level Limit, Glow-Up Bulb); see
+    /// own set-base effects applied. The core reports "?" as a negative number or 0, or as infinity (9,999,999) for a printed
+    /// infinity the card's "?" stands for (the anime Geh: `guards.lua`, `PRINTED_INFINITY`). Level, race and attribute are
+    /// not judged here: on the field they are the effects' as much as the card's (Zombie World, Level Limit, Glow-Up Bulb); see
     /// [`card_problems`](Self::card_problems).
     pub fn problems(&self, engine: &serde_json::Value) -> Vec<String> {
         let signed = |key: &str| engine[key].as_i64().map(|v| if v > i64::from(i32::MAX) { v - (1 << 32) } else { v });
         let stat = |want: Stat, key: &str| match (want, signed(key)) {
             (_, None) => None,
-            (Stat::Unknown, Some(v)) if v <= 0 => None,
+            (Stat::Unknown, Some(v)) if v <= 0 || v >= 9_999_999 => None,
             (Stat::Unknown, Some(v)) => Some(format!("{key} {v}, the profile \"?\"")),
             (Stat::Value(w), Some(v)) if i64::from(w) == v => None,
             (Stat::Value(w), Some(v)) => Some(format!("{key} {v}, the profile {w}")),
@@ -640,9 +641,10 @@ mod tests {
         assert_eq!((atk_only.problems(&wrong).len(), atk_only.card_problems(&wrong).len()), (1, 0));
         assert_eq!(Expect { judge: Judge::of(&["kind".to_string()]), ..want }.card_problems(&wrong).len(), 3, "a card whose kind changes is new in everything");
         assert!(Expect { judge: Judge::default(), ..want }.problems(&wrong).is_empty());
-        // "?" is a negative number or 0 in the core; a number is not "?".
+        // "?" is a negative number or 0 in the core, or a printed infinity; a number is not "?".
         let unknown = Expect { atk: Stat::Unknown, ..want };
         assert!(unknown.problems(&json!({"base_attack": 4294967294u64})).is_empty());
+        assert!(unknown.problems(&json!({"base_attack": 9_999_999})).is_empty());
         assert_eq!(unknown.problems(&json!({"base_attack": 300})).len(), 1);
         // Missing fields and Level 0 are not judged.
         assert!(want.problems(&json!({"level": 0})).is_empty() && want.card_problems(&json!({"level": 0})).is_empty());

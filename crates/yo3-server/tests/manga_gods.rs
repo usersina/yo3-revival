@@ -522,3 +522,14 @@ fn avatar_matches_a_printed_infinity_exactly() {
     assert!(s.attack_of(0, AVATAR).is_some_and(|a| a >= INFINITE), "{}", s.context());
     clean(&s);
 }
+
+/// A printed infinity is the card's original ATK too, so the field shows it white (an ATK equal to the original; the
+/// connection DLL sends both as "∞"), while Obelisk's Soul Energy Max, an effect, is blue (above its original 4000).
+/// The client's record has the original as the engine does (the duel check).
+#[test]
+fn a_printed_infinity_is_the_original_atk() {
+    let Some(s) = field(true, 8000, &[mine(GEH), theirs(AVATAR)]) else { return };
+    assert_eq!(s.monster(0, GEH).and_then(|c| c["base_attack"].as_i64()), Some(INFINITE), "{}", s.context());
+    assert_ne!(s.monster(1, AVATAR).and_then(|c| c["base_attack"].as_i64()), Some(INFINITE), "Avatar's is its effect: {}", s.context());
+    clean(&s);
+}

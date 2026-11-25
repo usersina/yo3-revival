@@ -37,8 +37,8 @@ Duel.RegisterEffect(infinite_battle, 0)
 -- effect: the scripts can only give it as ATK "?" and an effect that makes it 9,999,999, which Skill Drain would negate
 -- and other cards would raise, halve or swap. So a card on this list, while in a Monster Zone, keeps its ATK at
 -- infinity whatever negates its effects (its other effects are still negated), and is unaffected by other cards' effects
--- that change its ATK. Its DEF is an ordinary number. Cards that become infinite through an effect (Obelisk's Soul Energy
--- Max) are not on the list: docs/added-cards.md, "Infinite ATK".
+-- that change its ATK; its original ATK is infinite too. Its DEF is an ordinary number. Cards that become infinite
+-- through an effect (Obelisk's Soul Energy Max) are not on the list: docs/added-cards.md, "Infinite ATK".
 local PRINTED_INFINITY = {
 	[170000170] = true, -- Divine Serpent Geh (Anime)
 }
@@ -66,6 +66,10 @@ printed:SetOperation(function()
 		atk:SetValue(INFINITY)
 		atk:SetReset(RESET_EVENT + RESETS_STANDARD)
 		c:RegisterEffect(atk, true)
+		-- Its original ATK too, as printed: the field shows it white (equal to the original), an effect's infinity blue.
+		local original = atk:Clone()
+		original:SetCode(EFFECT_SET_BASE_ATTACK)
+		c:RegisterEffect(original, true)
 		local unaffected = atk:Clone()
 		unaffected:SetCode(EFFECT_IMMUNE_EFFECT)
 		unaffected:SetValue(function(e, te) return te:GetOwner() ~= e:GetHandler() and ATK_CHANGES[te:GetCode()] == true end)
