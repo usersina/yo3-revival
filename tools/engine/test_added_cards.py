@@ -183,6 +183,20 @@ class AddedCards(unittest.TestCase):
         self.assertTrue(any('Link' in n for n in notes['Link Restart']), notes)
         self.assertEqual((notes['Black Rose Moonlight Dragon'], notes['Ash Blossom & Joyous Spring']), ([], []))
 
+    def test_find_points_out_what_plays_differently_at_infinity(self):
+        # Without holding a card back, --find points out a script that sets LP (Life Stream Dragon), works an amount out
+        # from LP and sets it (Lucky Punch's half), for a case at ∞; Ash Blossom touches neither and gets none. The
+        # approved line and the blocking notes are unchanged.
+        ctx = added.load()
+        found = {name: (line, added.infinity_hints(line, ctx), added.notes(line, ctx)) for name, line, _ in added.find(
+            ['Life Stream Dragon', 'Lucky Punch', 'Ash Blossom & Joyous Spring'], ctx)}
+        self.assertTrue(all(line for line, _, _ in found.values()), found)
+        self.assertTrue(any(h.startswith('sets LP') for h in found['Life Stream Dragon'][1]), found)
+        self.assertTrue({'sets LP', 'works an amount out from LP'} <= {h.split(':')[0] for h in found['Lucky Punch'][1]}, found)
+        self.assertTrue(any('infinite_lp.rs' in h for h in found['Lucky Punch'][1]), found)
+        self.assertEqual(found['Ash Blossom & Joyous Spring'][1], [])
+        self.assertEqual([n for _, _, n in found.values()], [[], [], []])
+
     def test_add_writes_both_tables_and_rebuilds(self):
         # --add: the line with its note at the end of engine/added/cards.tsv, the anime table's line in id order, then the
         # three generators. A card that can't be added, or one with notes not yet read (--checked), writes nothing.

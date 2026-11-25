@@ -21,7 +21,8 @@
 mechanic the game never had (Xyz Materials or Monsters, Link, Pendulum Zones and Scales, the Extra Monster Zone; "cannot
 be used as Xyz/Link Material" is left alone), or a missing script: the client may show such a card, but the duel can't
 play it as written. Read the lines; drop the card, or add it with --checked when they are harmless (a filter that only
-skips Xyz Monsters).
+skips Xyz Monsters). It also points out, without holding the card back, a script that sets LP, works an amount out
+from LP or makes an ∞ of its own: give such a card a case at ∞ in crates/yo3-server/tests/infinite_lp.rs.
 
 Input (committed): engine/added/cards.tsv, one line per added card: its permanent `row` (4834 on, after the game's last;
 never reused or reordered: decks and saves store rows), its Konami id, its `stand_in` id (below), its `rarity` (below,
@@ -208,6 +209,41 @@ def mechanics(text):
         hits = [i for i, l in enumerate(lines, 1) if pattern.search(l) and not HARMLESS.search(l)]
         if hits:
             out.append((what, hits))
+    return out
+
+
+# What plays differently against ∞ (crates/yo3-engine/src/guards.lua: any LP, ATK or DEF of 9,999,999 or more is one ∞
+# value, which finite changes leave as it is). Not a reason to hold a card back, only one to give it a case in
+# crates/yo3-server/tests/infinite_lp.rs: it sets LP, works an amount out from LP, or gives or takes an ∞ of its own.
+INFINITY_SENSITIVE = [
+    ('sets LP', re.compile(r'Duel\.SetLP')),
+    ('works an amount out from LP', re.compile(r'Duel\.GetLP')),
+    ('an ∞ of its own (9,999,999)', re.compile(r'9999999|math\.huge')),
+]
+
+
+def infinity_hints(line, ctx):
+    """Non-blocking: what in the script of a card --find approved deserves a case at ∞ LP or ATK, and, for a card whose
+    database ATK is "?" with an ∞ in its script, whether its ∞ is printed (guards.lua's PRINTED_INFINITY)."""
+    if not line:
+        return []
+    parts = line.split('\t')
+    code = int(parts[4]) if parts[4] else ctx['passcode'].get(int(parts[1]))
+    d = (ctx['anime'] if parts[4] else ctx['data']).get(code)
+    text = script_text(code)
+    if text is None:
+        return []
+    lines = [l.split('--', 1)[0] for l in text.split('\n')]
+    rel = os.path.relpath(script_path(code), ROOT)
+    out = []
+    for what, pattern in INFINITY_SENSITIVE:
+        hits = [i for i, l in enumerate(lines, 1) if pattern.search(l)]
+        if hits:
+            out.append(f'{what}: {rel} lines {", ".join(map(str, hits))}')
+    if out:
+        out.append('give it a case at ∞ in crates/yo3-server/tests/infinite_lp.rs (docs/added-cards.md, "Infinite ATK and LP")')
+    if d is not None and d['atk'] == -2 and any(INFINITY_SENSITIVE[2][1].search(l) for l in lines):
+        out.append('its ATK is "?" and its script makes an ∞: if the card itself prints ∞, add it to PRINTED_INFINITY in guards.lua')
     return out
 
 
@@ -607,6 +643,8 @@ def report(results, ctx):
         print(f'{name}: ' + (('ok (anime-only: played with anime cards on)' if anime_only else 'ok') if line else 'cannot be added: ' + '; '.join(why)))
         for note in notes(line, ctx):
             print(f'  read first: {note}')
+        for hint in infinity_hints(line, ctx):
+            print(f'  at ∞: {hint}')
 
 
 def regenerate():
