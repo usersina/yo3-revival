@@ -210,6 +210,14 @@ impl Translator {
                         self.lp_change += change as i64;
                         self.stats.lowest_change = self.stats.lowest_change.min(self.lp_change);
                     }
+                    // LP beyond the counter's 99,999 that stays beyond ("∞"): nothing is shown, as for a hit by a
+                    // monster with 0 ATK: no number, sound, avatar reaction or damage line, and no change to count.
+                    let team = (c.player & 1) as usize;
+                    let (before, after) = (self.lp[team], (self.lp[team] + change as i64).max(0));
+                    if before > LP_SHOWN_MAX && after > LP_SHOWN_MAX {
+                        self.lp[team] = after;
+                        continue;
+                    }
                     // The client counts its LP display through the whole change (about 7,500 LP a second) and the duel
                     // waits for it, while its LP stays within 0..99999: a change beyond 99,999 is sent as 99,999 (an
                     // infinite ATK's +9,999,999 froze a duel for minutes). The LP itself follows as an LPUPDATE.
@@ -218,10 +226,8 @@ impl Translator {
                     out.push(command(cmd::SPEAK_DAMAGE, [p, shown as u32, damage, 0]));
                     // LP above the counter's 99,999 (Mystik Wok on an infinite ATK) is kept as LP_BEYOND, which the
                     // connection DLL shows as "∞" (and lets the change keep: it raises the clamp to LP_BEYOND). The
-                    // counter moves by what it shows, 0 while the LP stays beyond (the change still ends: the count's
-                    // end takes the shown number away), and is set to LP_BEYOND when the move falls short of it.
-                    let team = (c.player & 1) as usize;
-                    let (before, after) = (self.lp[team], (self.lp[team] + change as i64).max(0));
+                    // counter moves by what it shows between LP_BEYOND and the LP, and is set to LP_BEYOND when the
+                    // move falls short of it.
                     self.lp[team] = after;
                     if before <= LP_SHOWN_MAX && after <= LP_SHOWN_MAX {
                         out.push(command(cmd::CHANGE_LP, [p, shown as u32, damage << 8, 0]));
@@ -1206,6 +1212,14 @@ impl Translator {
         let attacker = self.side(card.loc.controller) as usize;
         damage[attacker] = to_attacker as u32;
         damage[1 - attacker] = to_target as u32;
+        // A player whose LP stays beyond 99,999 ("∞") through it shows no battle damage, as against 0 ATK (the LP
+        // change is left out too).
+        for (team, lp) in self.lp.iter().enumerate() {
+            let p = self.side(team as u64) as usize;
+            if *lp > LP_SHOWN_MAX && lp - damage[p] as i64 > LP_SHOWN_MAX {
+                damage[p] = 0;
+            }
+        }
         vec![Cmd::BattleRun { damage, flags: 0 }.message()]
     }
 

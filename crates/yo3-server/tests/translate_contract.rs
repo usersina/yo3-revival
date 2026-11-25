@@ -584,14 +584,16 @@ fn an_lp_change_beyond_99999_reaches_the_client_as_99999() {
 #[test]
 fn lp_beyond_99999_stays_infinite_until_it_falls_below() {
     // At 10,007,999 LP (Mystik Wok on an infinite ATK) the counter shows "∞" (set LP 100,000): a change that leaves the
-    // LP above 99,999 is shown (its number, sound and damage line) and applied as 0 (which ends the count, and so takes
-    // the shown number away; live, without it "-900" stayed on screen), and one that takes it below moves the counter
-    // from 100,000 to the LP. An LPUPDATE beyond 99,999 is sent as 100,000 too.
+    // LP above 99,999 shows nothing at all, as a hit by a monster with 0 ATK (no number, sound, avatar reaction or
+    // damage line; damage, a cost or a gain alike), and one that takes it below moves the counter from 100,000 to the
+    // LP. An LPUPDATE beyond 99,999 is sent as 100,000 too.
     let (mut t, opening) = { let (mut t, _) = translator(); let o = t.opening(8000); (t, o) };
     assert_eq!(opening.iter().map(cmd).collect::<Vec<_>>(), [(1, [0; 4]), (0xF, [0, 8000, 0, 0]), (0xF, [1, 8000, 0, 0])]);
     let out: Vec<_> = t.events(&[
         json!({ "type": 94, "player": 0, "lp": 10_007_999 }),
         json!({ "type": 91, "player": 0, "amount": 2000 }),
+        json!({ "type": 100, "player": 0, "amount": 800 }),
+        json!({ "type": 92, "player": 0, "amount": 500 }),
         json!({ "type": 94, "player": 0, "lp": 100_500 }),
         json!({ "type": 91, "player": 0, "amount": 5000 }),
         json!({ "type": 91, "player": 0, "amount": 1000 }),
@@ -600,9 +602,6 @@ fn lp_beyond_99999_stays_infinite_until_it_falls_below() {
         out,
         [
             (0xF, [0, 100_000, 0, 0]),
-            (0x10, [0, (-2000i32) as u32, 1, 0]),
-            (0x4D, [0, (-2000i32) as u32, 0, 0]),
-            (0x10, [0, 0, 0, 0]),
             (0xF, [0, 100_000, 0, 0]),
             (0x10, [0, (-5000i32) as u32, 1, 0]),
             (0x4D, [0, (-5000i32) as u32, 0, 0]),
@@ -1784,6 +1783,27 @@ fn an_attack_plays_on_the_field() {
         "card": { "controller": 1, "location": 4, "sequence": 1, "position": 1, "attack": 1400, "defense": 1200, "destroyed": true },
         "target": { "controller": 0, "location": 4, "sequence": 0, "position": 1, "attack": 1700, "defense": 1000, "destroyed": false } });
     assert_eq!(shows(&t.events(&[battle])), [(0xD, [0, 300, 0, 0])]);
+}
+
+#[test]
+fn battle_damage_to_an_infinite_lp_shows_as_against_0_atk() {
+    // A player whose LP stays beyond 99,999 ("∞") through a battle gets no damage figure (BattleRun 0xD), as against a
+    // monster with 0 ATK; one whose LP falls below it gets the figure.
+    let mut t = with_cards();
+    t.opening(200_000);
+    t.events(&[json!({ "type": 50, "cid": 4101,
+        "from": { "controller": 0, "location": 2, "sequence": 1, "position": 10 },
+        "to": { "controller": 0, "location": 4, "sequence": 0, "position": 1 } })]);
+    t.events(&[json!({ "type": 110, "card": loc(0, 4, 0, 1), "target": loc(1, 4, 1, 1) })]);
+    let battle = |atk: u64, target_atk: u64| json!({ "type": 111,
+        "card": { "controller": 0, "location": 4, "sequence": 0, "position": 1, "attack": atk, "defense": 1000, "destroyed": false },
+        "target": { "controller": 1, "location": 4, "sequence": 1, "position": 1, "attack": target_atk, "defense": 1200, "destroyed": true } });
+    assert_eq!(shows(&t.events(&[battle(1700, 1400)])), [(0xD, [0, 0, 0, 0])]);
+    assert_eq!(shows(&t.events(&[battle(1000, 1400)])), [(0xD, [0, 0, 0, 0])]);
+    // Team 1 at 100,400 LP: 300 leaves it beyond, 500 takes it below.
+    t.events(&[json!({ "type": 94, "player": 1, "lp": 100_400 })]);
+    assert_eq!(shows(&t.events(&[battle(1700, 1400)])), [(0xD, [0, 0, 0, 0])]);
+    assert_eq!(shows(&t.events(&[battle(1900, 1400)])), [(0xD, [0, 500, 0, 0])]);
 }
 
 #[test]

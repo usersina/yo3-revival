@@ -403,8 +403,8 @@ pub const SURRENDER_TURN: u32 = 5;
 pub const LP_SHOWN_MAX: i64 = 99_999;
 /// The LP sent for more than the counter shows (Mystik Wok on an infinite ATK): set LP `0xF` stores it as sent and
 /// hands it to the movie's `setLp`, where the connection DLL shows "∞" for anything above 99,999, and the DLL raises
-/// change LP's clamp to it, so a change of 0 keeps it (`tools/mod/duel-numbers.h`; without the DLL the counter shows
-/// 99999, as before).
+/// change LP's clamp to it, so a change that crosses into it lands there (`tools/mod/duel-numbers.h`; without the DLL
+/// the counter shows 99999, as before).
 pub const LP_BEYOND: i64 = 100_000;
 
 /// The LP the client is sent and keeps for an engine LP.

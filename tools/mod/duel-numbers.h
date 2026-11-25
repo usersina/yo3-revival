@@ -123,9 +123,9 @@ static int __attribute__((thiscall,force_align_arg_pointer)) numbers_invoke_hook
 }
 
 /* Change LP (DuelCockpit 0x502EB0, command 0x10) clamps the LP it adds a change to at 99,999: `cmp edi, 99999` at
- * 0x50301D, `mov edi, 99999` at 0x503025 (the binary's only 99999). Both become 100,000 (wire.rs LP_BEYOND), so an LP
- * beyond the counter keeps that value through a change of 0, which the server sends while it stays beyond (the count's
- * end takes the shown change away). 1 when patched. */
+ * 0x50301D, `mov edi, 99999` at 0x503025 (the binary's only 99999). Both become 100,000 (wire.rs LP_BEYOND), so a
+ * change that takes the LP beyond the counter lands on that value, "∞", not on 99999 (the server sends nothing for a
+ * change that leaves it beyond). 1 when patched. */
 static int lp_clamp_raise(void) {
     static const BYTE cmp[]={0x81,0xff,0x9f,0x86,0x01,0x00}, mov[]={0xbf,0x9f,0x86,0x01,0x00};
     BYTE *at_cmp=(BYTE *)game_address(0x50301d), *at_mov=(BYTE *)game_address(0x503025);
