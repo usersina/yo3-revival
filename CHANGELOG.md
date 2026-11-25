@@ -13,10 +13,12 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.1.25 (2026-11-25)
 
 - **The card panel shows ∞ too.** A card with an infinite ATK reads "ATK ∞" in the card panel beside the field instead of
   a long number.
+- **Hosted servers update again.** The server's container image failed to build for v0.1.23 and v0.1.24, so servers
+  run from it stayed on v0.1.22; this release brings them everything since.
 
 ## v0.1.24 (2026-11-25)
 
