@@ -244,7 +244,7 @@ pub fn replay_commands(world: &World, decks: [&Deck; 2], janken: [u32; 3], lp: u
     ];
     messages.extend(table);
     messages.extend(translator.extra_decks([&decks[0].extra, &decks[1].extra]));
-    messages.extend([command(cmd::DUEL_START, [0; 4]), command(cmd::SET_LP, [CLIENT, lp, 0, 0]), command(cmd::SET_LP, [CPU, lp, 0, 0])]);
+    messages.extend(translator.opening(lp));
     messages.extend(piles());
     messages.extend(translator.events(history));
     // The match's end for the leading player, which takes a watching client's DuelResult out of the duel.
@@ -644,6 +644,7 @@ impl DuelSession {
         translator.allow_surrender(!entry.no_surrender);
         translator.card_kinds(view.card_kinds.clone());
         table.extend(translator.extra_decks([&entry.deck.extra, &npc.extra]));
+        let opening = translator.opening(lp);
         self.engine = Some((engine, translator));
         self.first = Some(first);
         self.history.clear();
@@ -658,11 +659,7 @@ impl DuelSession {
         self.speak(greet);
         let mut out = vec![setup(first, &entry.deck, &npc)];
         out.extend(table);
-        out.extend([
-            command(cmd::DUEL_START, [0; 4]),
-            command(cmd::SET_LP, [CLIENT, lp, 0, 0]),
-            command(cmd::SET_LP, [CPU, lp, 0, 0]),
-        ]);
+        out.extend(opening);
         out.extend(piles());
         out.extend(self.advance(answer));
         Some(out)

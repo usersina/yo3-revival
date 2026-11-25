@@ -398,6 +398,20 @@ pub const SURRENDERED: u32 = 12;
 /// The turn Surrender opens from (DLG_Text 82: "starting from the 5th turn"; a turn is either player's).
 pub const SURRENDER_TURN: u32 = 5;
 
+/// The most LP the client's counter shows (five digits) and keeps: its LP changes are clamped to 0..99999 (DuelCockpit
+/// 0x502EB0).
+pub const LP_SHOWN_MAX: i64 = 99_999;
+/// The LP sent for more than the counter shows (Mystik Wok on an infinite ATK): set LP `0xF` stores it as sent and
+/// hands it to the movie's `setLp`, where the connection DLL shows "∞" for anything above 99,999, and the DLL raises
+/// change LP's clamp to it, so a change of 0 keeps it (`tools/mod/duel-numbers.h`; without the DLL the counter shows
+/// 99999, as before).
+pub const LP_BEYOND: i64 = 100_000;
+
+/// The LP the client is sent and keeps for an engine LP.
+pub fn shown_lp(lp: i64) -> i64 {
+    if lp > LP_SHOWN_MAX { LP_BEYOND } else { lp.max(0) }
+}
+
 /// Duel results for a client (DuelEnd's param1).
 pub mod result {
     named! { u32;

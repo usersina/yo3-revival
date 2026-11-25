@@ -255,10 +255,11 @@ impl Table {
             translator.allow_surrender(!self.seats[s].entry.no_surrender);
             translator.card_kinds(view.card_kinds.clone());
             table.extend(translator.extra_decks([&mine.extra, &theirs.extra]));
+            let opening = translator.opening(lp);
             self.translators.push(translator);
             part.push(setup(order, mine, theirs));
             part.extend(table);
-            part.extend([command(cmd::DUEL_START, [0; 4]), command(cmd::SET_LP, [CLIENT, lp, 0, 0]), command(cmd::SET_LP, [CPU, lp, 0, 0])]);
+            part.extend(opening);
             part.extend(piles());
         }
         for i in 0..self.spectators.len() {
@@ -301,7 +302,7 @@ impl Table {
             setup(order, mine, theirs),
         ];
         out.extend(table);
-        out.extend([command(cmd::DUEL_START, [0; 4]), command(cmd::SET_LP, [CLIENT, self.lp, 0, 0]), command(cmd::SET_LP, [CPU, self.lp, 0, 0])]);
+        out.extend(translator.opening(self.lp));
         out.extend(piles());
         (translator, out)
     }

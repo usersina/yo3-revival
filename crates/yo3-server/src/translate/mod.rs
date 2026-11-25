@@ -15,7 +15,7 @@ use crate::card_options::CARD_OPTION_LABELS;
 use crate::duel::{CLIENT, CPU, CardCommand, ClientRequest, TEXT_IDS, TEXT_SLOTS, command, command_data, text_message};
 use crate::ocg::message::{Announce, AnnounceCard, Ask, Attack, Battle, Chaining, Coded, Confirm, Counter, DeckTop, Event, Field, FieldDisabled, Link, Loc, Move, Shuffle, ShuffleSet, Swap, SwapGraveDeck, SelectCard, SelectChain, SelectOption, SelectPlace, SelectPosition, SelectSum};
 use crate::ocg::{Response, battle, hint, hintmsg, idle, loc, msg, pos, reason, resp};
-use crate::wire::{Cmd, OPEN, Place, SURRENDERED, SURRENDER_TURN, Target, cmd, dialog, entry, flag, list, menu, mode, move_place, result, table_place, text, zone};
+use crate::wire::{Cmd, OPEN, LP_BEYOND, LP_SHOWN_MAX, shown_lp, Place, SURRENDERED, SURRENDER_TURN, Target, cmd, dialog, entry, flag, list, menu, mode, move_place, result, table_place, text, zone};
 
 mod answers;
 mod cpu;
@@ -563,6 +563,9 @@ pub struct Translator {
     stats: crate::titles::DuelStats,
     card_kinds: HashMap<u16, u32>,
     lp_change: i64,
+    /// Each engine team's LP, from the opening (`Translator::opening`) and every change since: the client is sent
+    /// [`shown_lp`] of it, as its counter keeps at most 99,999.
+    lp: [i64; 2],
     /// How many card names the CPU has declared: each try names the next card of the duel's (the core asks again
     /// when a name doesn't fit).
     declared: usize,
@@ -601,6 +604,13 @@ impl Translator {
     /// 2 used placeholders).
     pub fn against_player(first: u32, decks: [&[u16]; 2], cards: HashMap<u16, CardStats>) -> (Translator, Vec<Message>) {
         Translator::build(first, decks, cards, [false, true])
+    }
+
+    /// The duel's start with both players at `lp`: start, then set LP for each side (the client's player first).
+    pub fn opening(&mut self, lp: u32) -> [Message; 3] {
+        self.lp = [lp as i64; 2];
+        let lp = shown_lp(lp as i64) as u32;
+        [command(cmd::DUEL_START, [0; 4]), command(cmd::SET_LP, [CLIENT, lp, 0, 0]), command(cmd::SET_LP, [CPU, lp, 0, 0])]
     }
 
     /// Adds each side's extra deck (CARD_Prop rows) to the card table at the extra deck zone, after the main decks:
@@ -723,6 +733,7 @@ impl Translator {
             stats: Default::default(),
             card_kinds: HashMap::new(),
             lp_change: 0,
+            lp: [0; 2],
             counters: HashMap::new(),
             declared: 0,
             revealing: vec![],

@@ -559,23 +559,57 @@ fn an_lp_change_beyond_99999_reaches_the_client_as_99999() {
     // The client counts its LP display through every change it is shown (DuelCockpit 0x502EB0), about 7,500 LP a
     // second, and the duel waits for it: Mystik Wok on an infinite ATK (+9,999,999) froze a live duel for about 20
     // minutes, Soul Energy Max at 8000 LP (-800,000) for nearly 2. Its LP stays within 0..99999 anyway, so a change is
-    // sent as at most 99,999 either way; the LP itself follows as an LPUPDATE (capped at 99,999 too).
+    // shown as at most 99,999 either way.
     let (mut t, _) = translator();
+    t.opening(8000);
     let out: Vec<_> = t.events(&[
         json!({ "type": 92, "player": 0, "amount": 9_999_999 }),
         json!({ "type": 91, "player": 1, "amount": 800_000 }),
-        json!({ "type": 94, "player": 0, "lp": 10_007_999 }),
     ]).iter().map(cmd).collect();
     assert_eq!(
         out,
         [
             (0x10, [0, 99_999, 4 << 8 | 1, 0]),
             (0x4D, [0, 99_999, 4, 0]),
-            (0x10, [0, 99_999, 4 << 8, 0]),
+            // LP beyond the counter's five digits: the counter moves up to 100,000, which the connection DLL keeps
+            // (it raises the client's clamp of 99,999 to it) and shows as "∞" (tools/mod/duel-numbers.h).
+            (0x10, [0, 92_000, 4 << 8, 0]),
             (0x10, [1, (-99_999i32) as u32, 1, 0]),
             (0x4D, [1, (-99_999i32) as u32, 0, 0]),
             (0x10, [1, (-99_999i32) as u32, 0, 0]),
-            (0xF, [0, 99_999, 0, 0])
+        ]
+    );
+}
+
+#[test]
+fn lp_beyond_99999_stays_infinite_until_it_falls_below() {
+    // At 10,007,999 LP (Mystik Wok on an infinite ATK) the counter shows "∞" (set LP 100,000): a change that leaves the
+    // LP above 99,999 is shown (its number, sound and damage line) and applied as 0 (which ends the count, and so takes
+    // the shown number away; live, without it "-900" stayed on screen), and one that takes it below moves the counter
+    // from 100,000 to the LP. An LPUPDATE beyond 99,999 is sent as 100,000 too.
+    let (mut t, opening) = { let (mut t, _) = translator(); let o = t.opening(8000); (t, o) };
+    assert_eq!(opening.iter().map(cmd).collect::<Vec<_>>(), [(1, [0; 4]), (0xF, [0, 8000, 0, 0]), (0xF, [1, 8000, 0, 0])]);
+    let out: Vec<_> = t.events(&[
+        json!({ "type": 94, "player": 0, "lp": 10_007_999 }),
+        json!({ "type": 91, "player": 0, "amount": 2000 }),
+        json!({ "type": 94, "player": 0, "lp": 100_500 }),
+        json!({ "type": 91, "player": 0, "amount": 5000 }),
+        json!({ "type": 91, "player": 0, "amount": 1000 }),
+    ]).iter().map(cmd).collect();
+    assert_eq!(
+        out,
+        [
+            (0xF, [0, 100_000, 0, 0]),
+            (0x10, [0, (-2000i32) as u32, 1, 0]),
+            (0x4D, [0, (-2000i32) as u32, 0, 0]),
+            (0x10, [0, 0, 0, 0]),
+            (0xF, [0, 100_000, 0, 0]),
+            (0x10, [0, (-5000i32) as u32, 1, 0]),
+            (0x4D, [0, (-5000i32) as u32, 0, 0]),
+            (0x10, [0, (-4500i32) as u32, 0, 0]),
+            (0x10, [0, (-1000i32) as u32, 1, 0]),
+            (0x4D, [0, (-1000i32) as u32, 0, 0]),
+            (0x10, [0, (-1000i32) as u32, 0, 0]),
         ]
     );
 }

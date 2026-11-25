@@ -213,15 +213,34 @@ impl Translator {
                     // The client counts its LP display through the whole change (about 7,500 LP a second) and the duel
                     // waits for it, while its LP stays within 0..99999: a change beyond 99,999 is sent as 99,999 (an
                     // infinite ATK's +9,999,999 froze a duel for minutes). The LP itself follows as an LPUPDATE.
-                    let change = change.clamp(-99_999, 99_999);
-                    out.push(command(cmd::CHANGE_LP, [p, change as u32, damage << 8 | 1, 0]));
-                    out.push(command(cmd::SPEAK_DAMAGE, [p, change as u32, damage, 0]));
-                    out.push(command(cmd::CHANGE_LP, [p, change as u32, damage << 8, 0]));
+                    let shown = change.clamp(-99_999, 99_999);
+                    out.push(command(cmd::CHANGE_LP, [p, shown as u32, damage << 8 | 1, 0]));
+                    out.push(command(cmd::SPEAK_DAMAGE, [p, shown as u32, damage, 0]));
+                    // LP above the counter's 99,999 (Mystik Wok on an infinite ATK) is kept as LP_BEYOND, which the
+                    // connection DLL shows as "∞" (and lets the change keep: it raises the clamp to LP_BEYOND). The
+                    // counter moves by what it shows, 0 while the LP stays beyond (the change still ends: the count's
+                    // end takes the shown number away), and is set to LP_BEYOND when the move falls short of it.
+                    let team = (c.player & 1) as usize;
+                    let (before, after) = (self.lp[team], (self.lp[team] + change as i64).max(0));
+                    self.lp[team] = after;
+                    if before <= LP_SHOWN_MAX && after <= LP_SHOWN_MAX {
+                        out.push(command(cmd::CHANGE_LP, [p, shown as u32, damage << 8, 0]));
+                    } else {
+                        let moved = (shown_lp(after) - shown_lp(before)).clamp(-99_999, 99_999);
+                        out.push(command(cmd::CHANGE_LP, [p, moved as i32 as u32, damage << 8, 0]));
+                        if after > LP_SHOWN_MAX && shown_lp(before) + moved != LP_BEYOND {
+                            out.push(command(cmd::SET_LP, [p, LP_BEYOND as u32, 0, 0]));
+                        }
+                    }
                 }
                 Event::AddCounter(c) => out.extend(self.counter(&c, true)),
                 Event::RemoveCounter(c) => out.extend(self.counter(&c, false)),
-                // The client shows and keeps LP up to 99,999 (its LP changes are clamped there, DuelCockpit 0x502EB0).
-                Event::LpUpdate(u) => out.push(command(cmd::SET_LP, [self.side(u.player), (u.lp as u32).min(99_999), 0, 0])),
+                // The client shows and keeps LP up to 99,999 (its LP changes are clamped there, DuelCockpit 0x502EB0);
+                // more is sent as LP_BEYOND, "∞".
+                Event::LpUpdate(u) => {
+                    self.lp[(u.player & 1) as usize] = u.lp as i64;
+                    out.push(command(cmd::SET_LP, [self.side(u.player), shown_lp(u.lp as i64) as u32, 0, 0]));
+                }
                 Event::Equip(l) => self.link(&l, msg::EQUIP),
                 Event::CardTarget(l) => self.link(&l, msg::CARD_TARGET),
                 Event::CancelTarget(l) => self.link(&l, msg::CANCEL_TARGET),

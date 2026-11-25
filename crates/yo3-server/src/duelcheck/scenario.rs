@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value as Json, json};
 
 use super::ClientModel;
-use crate::duel::{command, piles, setup};
+use crate::duel::{piles, setup};
 use crate::engine::{Answer, Engine, Revival};
 use crate::front::Deck;
 use crate::ocg::{Response, battle, idle, msg};
@@ -186,7 +186,7 @@ impl Scenario {
                 let deck = |(main, extra): (&[u16], &[u16])| Deck { id: 0, name: String::new(), main: main.to_vec(), extra: extra.to_vec(), side: vec![] };
                 let mut opening = vec![setup(seat as u32, &deck(mine), &deck(theirs))];
                 opening.extend(table);
-                opening.extend([command(cmd::DUEL_START, [0; 4]), command(cmd::SET_LP, [0, lp, 0, 0]), command(cmd::SET_LP, [1, lp, 0, 0])]);
+                opening.extend(translator.opening(lp));
                 opening.extend(piles());
                 model.apply_all(&opening);
                 (translator, model)

@@ -319,9 +319,10 @@ impl ClientModel {
             cmd::TURN => self.turn = ((p1 & 1) as usize, self.turn.1 + 1),
             cmd::SET_LP => self.lp[(p1 & 1) as usize] = Some(p2 as i64),
             cmd::DUEL_END if p2 == crate::wire::SURRENDERED => self.surrendered = Some(if p1 == crate::wire::result::LOST { 0 } else { 1 }),
-            // A change applies with param3's low byte 0; 1 only shows it (DuelCockpit 0x502EB0).
+            // A change applies with param3's low byte 0; 1 only shows it (DuelCockpit 0x502EB0). The client clamps the
+            // LP to 0..99999; the connection DLL raises that to LP_BEYOND (tools/mod/duel-numbers.h).
             cmd::CHANGE_LP if p3 & 0xFF == 0 => {
-                if let Some(lp) = &mut self.lp[(p1 & 1) as usize] { *lp = (*lp + p2 as i32 as i64).clamp(0, 99999); }
+                if let Some(lp) = &mut self.lp[(p1 & 1) as usize] { *lp = (*lp + p2 as i32 as i64).clamp(0, crate::wire::LP_BEYOND); }
             },
             cmd::CHANGE_LP => {},
             cmd::RECORD_BEGIN => { self.record[0] = p2; self.record[2] = p3; self.record[3] = p4; },
@@ -536,7 +537,7 @@ impl ClientModel {
     fn check_side(&self, p: usize, side: &Json) -> Vec<String> {
         let mut out = vec![];
         // The client keeps LP up to 99,999 (the server sends no more): a player above it shows 99,999.
-        if let Some(expected) = side["lp"].as_i64().map(|lp| lp.min(99_999)) && self.lp[p] != Some(expected) && self.surrendered != Some(p) {
+        if let Some(expected) = side["lp"].as_i64().map(crate::wire::shown_lp) && self.lp[p] != Some(expected) && self.surrendered != Some(p) {
             out.push(format!("player {p}'s LP: engine {expected}, client {:?}", self.lp[p]));
         }
         let list = |k: &str| side[k].as_array().cloned().unwrap_or_default();
@@ -671,7 +672,7 @@ pub mod selfplay {
     use serde_json::{Value as Json, json};
 
     use super::ClientModel;
-    use crate::duel::{CLIENT, CPU, command, next, piles, setup, shuffle};
+    use crate::duel::{CLIENT, CPU, next, piles, setup, shuffle};
     use crate::ocg::message::{Ask, Event};
     use crate::ocg::{Response, battle, hint, idle, loc, msg, pos};
     use crate::wire::{cmd, dialog, zone};
@@ -1298,7 +1299,7 @@ pub mod selfplay {
         opening.extend(table);
         // Every fourth duel starts low, so that duels reach their end too.
         let lp = if seed.is_multiple_of(4) { 2000 } else { 8000 };
-        opening.extend([command(cmd::DUEL_START, [0; 4]), command(cmd::SET_LP, [CLIENT, lp, 0, 0]), command(cmd::SET_LP, [CPU, lp, 0, 0])]);
+        opening.extend(t.opening(lp));
         opening.extend(piles());
         model.apply_all(&opening);
 
