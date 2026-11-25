@@ -8,14 +8,15 @@ beside it), so a change here needs a new Desktop release.
 Shown in the duel's LP disc, in place of the five LP digits, while a player's LP is above 99,999 (Mystik Wok on an
 infinite ATK). The final geometric sign is `lp-infinity.png`, rendered from the editable `lp-infinity.svg`.
 It is original project artwork, permitted for use, modification and distribution under the repository's MIT license.
-The 160 × 64 RGBA canvas contains a 120 × 48 white sign with 8 px strokes and a sharp 75% black shadow offset 4 px
-right and down. Its visible bounds, including the shadow, are centred. It was inspected at 40 × 16 pixels on slate grey,
-and in the game under Wine (2026-11-25, a duel at 200,000 LP: centred in both LP discs, crisp beside the "LP" label).
+The 160 × 64 RGBA canvas holds a bold white sign (12 px strokes along a 108 × 32 centre line) with a 4 px near-black
+outline and a sharp 75% black shadow offset 4 px right and down, as heavy as the "LP" label above it. Its visible
+bounds, including the shadow, are centred. Checked in the game under Wine (2026-11-25, a duel at 200,000 LP: centred
+in both LP discs; a first version with 8 px strokes and no outline looked thin there).
 
-To render the vector source again (CairoSVG 2.9.1):
+To render the vector source again (librsvg's `rsvg-convert`; CairoSVG or Inkscape give the same picture):
 
 ```sh
-uv run --with cairosvg==2.9.1 python -c 'import cairosvg; cairosvg.svg2png(url="tools/mod/art/lp-infinity.svg", write_to="tools/mod/art/lp-infinity.png")'
+rsvg-convert -w 160 -h 64 tools/mod/art/lp-infinity.svg -o tools/mod/art/lp-infinity.png
 python3 tools/mod/make-lp-infinity.py
 ```
 
