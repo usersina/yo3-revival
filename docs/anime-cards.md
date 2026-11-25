@@ -235,16 +235,22 @@ Ra's the Tributes' total; Dreadroot halves every other monster's ATK and DEF but
 other monster; Eraser is 1000 per card the opponent controls and takes every monster with it when it goes. The Wicked Gods' rows keep the
 game's Type and Attribute; the profile shows them as the manga cards' (DIVINE, Divine-Beast).
 
-Infinite ATK (Obelisk's Soul Energy Max, the anime Geh) is 9,999,999 to the engine, and the Hierarchy settles every meeting
+Infinite ATK (Obelisk's Soul Energy Max, the anime Geh) is one value to the engine: any ATK, DEF or LP of 9,999,999 or more
+is ∞, and finite changes leave it (below), and the Hierarchy settles every meeting
 (`tests/manga_gods.rs`): Avatar matches infinity rather than going 1 above it, a tie that Avatar survives and Obelisk
 does not; Ra can't be destroyed by Soul Energy Max, nor Obelisk by Geh, and their controllers take no damage from it; Geh,
 with no Hierarchy, is destroyed in a tie with Obelisk. Ring of Destruction can't destroy a God, so it deals no damage;
-the anime Geh it destroys deals its infinite ATK to both players at once, a draw. Mystik Wok gives Geh's infinite ATK as
-9,999,999 LP, shown as 99,999 (the most the game shows). Infinite damage is infinite (`crates/yo3-engine/src/guards.lua`,
-a rule of ours): the scripts' own "100 times the LP" (Soul Energy Max, Geh's attack), effect damage of 9,999,999 or more
-(Ring of Destruction on Geh) and battle damage from a monster with infinite ATK (Avatar risen to infinity) all take every
-LP a player has, however much Mystik Wok gave them; the core's 32 bits once wrapped the largest into a gain. Half of
-infinity is still infinite: Dreadroot halves every other monster but an infinite ATK or DEF (`engine/overrides/c513000137.lua`),
+the anime Geh it destroys deals its infinite ATK to both players at once, a draw. ∞ is one value (`crates/yo3-engine/src/guards.lua`,
+rules of ours, `tests/infinite_lp.rs`): any LP, ATK or DEF of 9,999,999 or more becomes exactly ∞, and a finite cost,
+damage, gain or ATK change leaves it as it is (Premature Burial's 800, Dian Keto's 1000, Axe of Despair, Shadow Spell,
+Megamorph's half); ∞ against ∞ is a tie. An amount that is itself ∞ moves as is: Mystik Wok on Geh gives ∞ LP, Solemn
+Judgment's or Riryoku's half of ∞ leaves ∞ (and Riryoku's monster gains ∞), Yu-Jo Friendship gives both players ∞, Ra
+revived pays all but 1 and has ∞ ATK, De-Fusion on it gives ∞ back, Granel's ATK is the ∞ LP. "LP becomes X" is X (Life
+Equalizer, the anime Rasca, Self-Destruct Button; Reversal Quiz swaps ∞). Infinite damage is infinite: the scripts' own
+"100 times the LP" (Soul Energy Max, Geh's attack), effect damage of 9,999,999 or more (Ring of Destruction on Geh) and
+battle damage from a monster with infinite ATK (Avatar risen to infinity), directly or through a monster with finite
+ATK, all take every LP a player has, ∞ LP too; the core's 32 bits once wrapped the largest into a gain. Half of infinity
+is still infinite: Dreadroot halves every other monster but an infinite ATK or DEF (`engine/overrides/c513000137.lua`),
 so Geh under it keeps its infinite damage and Avatar ties it at infinity.
 The anime Geh's infinity is printed (its card says "ATTACK ∞"): it is the card's ATK, not an effect, though the script can
 only give it as ATK "?" and an effect. So Skill Drain negates Geh's effects but leaves its infinite ATK, and other cards'
@@ -260,7 +266,7 @@ random decks of the Gods, Geh's Orichalcos line and these cards.
 
 One fix to the shared procedure (`engine/overrides/proc_unofficial.lua`): the upstream Hierarchy check compared a God with a monster
 without a Hierarchy as if that monster outranked it, so a stronger ordinary monster destroyed a God by battle. A monster without one is
-now Hierarchy 0. Infinite ATK shows on the field as ∞ (the connection DLL's `duel-numbers.h`); LP shows at most 99,999.
+now Hierarchy 0. Infinite ATK shows on the field as ∞ and ∞ LP in the LP disc (the connection DLL's `duel-numbers.h`).
 
 ### Upstream scripts with the game's "?"
 

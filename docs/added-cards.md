@@ -200,10 +200,13 @@ Konami id and no official data: its data and script are ProjectIgnis' anime ones
 
 ## Infinite ATK
 
-The engine has no ∞: ProjectIgnis' scripts give an infinite ATK as 9,999,999, and most of what the game does with it keys
-off that number, so a new card scripted that way has it with nothing more to do: ∞ on the field (the connection DLL),
-its battle damage and effect damage of 9,999,999 or more take every LP, Avatar matches it rather than going 1 above, and
-Dreadroot leaves it alone. Two kinds need a look:
+ProjectIgnis' scripts give an infinite ATK as 9,999,999. The engine makes ∞ one value (`crates/yo3-engine/src/guards.lua`):
+any LP, ATK or DEF of 9,999,999 or more becomes exactly 19,999,998, which finite changes leave as it is (+1000, -700,
+half, double), while an "ATK becomes X" or "LP becomes X" still applies. So a new card scripted that way has it with
+nothing more to do: ∞ on the field (the connection DLL), a tie with another ∞, its battle damage and effect damage of
+9,999,999 or more take every LP (∞ LP too), Avatar matches it rather than going 1 above, and Dreadroot leaves it alone.
+A card that takes or gives LP as ATK (Ra's "pay all but 1", Granel) turns ∞ LP into ∞ ATK the same way
+(`tests/infinite_lp.rs`). Two kinds need a look:
 
 - **A printed ∞** (the card itself says "ATTACK ∞", like the anime Divine Serpent Geh): its script can only give it as
   ATK "?" and an effect, which Skill Drain would negate and other cards would change. Add its passcode to
@@ -213,7 +216,7 @@ Dreadroot leaves it alone. Two kinds need a look:
   `tests/manga_gods.rs` tests Geh (`skill_drain_leaves_a_printed_infinity`, `other_cards_leave_a_printed_infinity`).
 - **An effect that makes an ATK ∞** (Obelisk's Soul Energy Max, a spell "its ATK becomes ∞"): read how the script sets
   it. A final value (`EFFECT_SET_ATTACK_FINAL`, as Soul Energy Max) is what the card keeps; an amount added
-  (`EFFECT_UPDATE_ATTACK`) can still be changed by other cards, and the 32-bit core caps what adds on top. Give it a
+  (`EFFECT_UPDATE_ATTACK`) is ∞ too while the total is 9,999,999 or more, and other cards' finite changes leave it. Give it a
   scenario test with Dreadroot, The Seal of Orichalcos and Avatar beside it, and add it to the Gods' self-play pool
   (`duel_check.rs` `duels_with_the_gods`) if it meets the Gods.
 

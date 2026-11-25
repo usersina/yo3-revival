@@ -203,9 +203,11 @@ Deck card.
   ATK/DEF. [The rules in detail](anime-cards.md).
 - **Infinite ATK and huge LP.** An infinite ATK shows as **∞** on the field: white when it is the card's own printed ATK
   (the anime Divine Serpent Geh), blue when an effect gave it (Soul Energy Max, Avatar matching it). Damage from an
-  infinite ATK takes all your LP, however many you have. LP above 99,999 (Mystik Wok on an infinite ATK) shows as **∞**,
-  the duel still counts the real amount. While it stays above 99,999, damage, costs and gains show nothing, as if hit by
-  a monster with 0 ATK; the number comes back once your LP falls below 99,999.
+  infinite ATK takes all your LP, however many you have. Mystik Wok on an infinite ATK gives **∞ LP**. ∞ is one value:
+  finite damage, costs and gains leave it as it is and show nothing, as if hit by a monster with 0 ATK, and so do half
+  or double of it; an ATK of ∞ stays ∞ through +1000 or -700, and ∞ against ∞ is a tie. A card that takes all your LP
+  takes ∞ (Ra's "pay all but 1": you keep 1 and Ra gets ∞; De-Fusion gives it back), and "your LP become X" makes it X.
+  A finite LP above 99,999 shows 99,999, the most the counter draws.
 - **Anime-only cards** (Orichalcos Gigas, Orichalcos Kyutora, Arduous Decision...) play only with anime cards on. With
   them off, a deck holding one can't duel: the chat names the card to take out.
 - **The Egyptian Gods and Skill Drain.** Skill Drain negates the Gods that are already on the field until the end of that turn

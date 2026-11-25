@@ -1944,16 +1944,19 @@ twice as Konami's server sent it: with `shown` 1 it shows the change's number an
 recover sound, 2 a cost: payment sound, else damage), with 0 it applies the change (clamped to 0–99999); the damage
 line `0x4D` goes between. Kinds from the original logs: 0 effect damage, 1 battle damage (after BattleRun), 2 a cost, 4
 a gain. Before the logs we sent the second only, so changes applied silently. `0xF` for LPUPDATE. The client's counter
-shows five digits and its changes are clamped to 0–99999 (`0x50301D`/`0x503025`, the binary's only 99999), so an LP
-above 99999 (Mystik Wok on an infinite ATK) is sent as **100000** (`wire.rs` `LP_BEYOND`, ours): `0xF` stores a value as
+shows five digits and its changes are clamped to 0–99999 (`0x50301D`/`0x503025`, the binary's only 99999). The engine
+makes ∞ LP one value (any LP of 9,999,999 or more is 19,999,998, which a finite amount leaves alone: `guards.lua`), and
+∞ LP is sent as **100000** (`wire.rs` `LP_BEYOND` and `shown_lp`, ours), a finite LP above 99999 as 99999: `0xF` stores a value as
 sent and hands it to the movie's `setLp`, where the connection DLL shows its own "∞" picture in place of the digits,
 and the DLL raises the change clamp to 100000 (`tools/mod/duel-numbers.h`; [client
 internals](client-internals.md#numbers-in-the-duel-lp-and-atk-investigated-2026-11-24)). The translator keeps each
-side's LP from the opening (`Translator::opening`) and every change: a change that leaves the LP beyond 99999 (damage,
-a cost or a gain) sends nothing, as a hit by a monster with 0 ATK: no shown change (its number, sound and the avatar's
-reaction, `0x502F8D`), no `0x4D`, no applied change, and BattleRun `0xD` carries 0 for that player
-(`battle_damage_to_an_infinite_lp_shows_as_against_0_atk`). One that crosses 99999 is shown and applied as the move
-between 100000 and the LP shown (`translate_contract.rs` `lp_beyond_99999_stays_infinite_until_it_falls_below`). A
+side's LP from the opening (`Translator::opening`) and every change. The engine sends no change for a finite amount
+to ∞ LP; one that is itself ∞ and leaves ∞ (Solemn Judgment's half of ∞) sends nothing either, as a hit by a monster
+with 0 ATK: no shown change (its number, sound and the avatar's reaction, `0x502F8D`), no `0x4D`, no applied change,
+and BattleRun `0xD` carries 0 for a player with ∞ LP unless the damage is ∞
+(`battle_damage_to_an_infinite_lp_shows_as_against_0_atk`). One that crosses into or out of ∞ (Ra's "pay all but 1",
+De-Fusion giving ∞ back), or changes a finite LP above 99999, is shown and applied as the move between what the counter
+shows before and after (`translate_contract.rs` `lp_beyond_99999_stays_infinite_until_it_falls_below`). A
 shown change needs its applied one: the end of an applied change's count is what takes the shown number away (live: a
 shown "-900" with no applied change stayed on screen). The engine
 program adds the core's LP as an LPUPDATE after a step's last change whenever a player's LP was or is above 99999
@@ -2155,8 +2158,10 @@ stepped number) and fails the duel when an answer the engine offers has none (`T
 Not exercised by a real card: no script the client's cards use calls `Duel.SelectPosition` with three positions, or
 `AnnounceRace` with a count above 1 (the attribute dialog already takes several picks: DNA Checkup, Earthshaker and Disciple of the Forbidden Spell declare two or more Attributes with it), and the engine cannot send
 the number steps a real option list: the core's `MSG_ANNOUNCE_NUMBER` counts its options in a byte (Wall of Revealing
-Light at 300,000 LP sent the first 44), the client shows at most 99,999 LP, and no card declares a minimum or step
-above 15 units. The windows are covered by `translate_contract.rs` (`three_or_four_positions_are_asked_in_steps`,
+Light at 300,000 LP sent the first 44, at ∞ LP the first 23), so `guards.lua` gives a longer list to the core as its
+first 200 options and 55 more spread up to its last, and gives the script back the index in its own list
+(`tests/infinite_lp.rs` `a_long_number_declaration_keeps_255_choices_and_the_largest`); no card declares a minimum or
+step above 15 units. The windows are covered by `translate_contract.rs` (`three_or_four_positions_are_asked_in_steps`,
 `several_types_are_declared_one_dialog_each`, `numbers_beyond_the_number_dialog_are_narrowed_in_steps`) and, for the
 number dialog through the real engine, `card_scenarios.rs` (Wall of Revealing Light). Not checked live: nothing in the
 client's card set asks for them, so the Select dialog's two-line message (text and card name) is untested on the
