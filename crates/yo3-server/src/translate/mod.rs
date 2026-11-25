@@ -211,6 +211,8 @@ const DAMAGE_GAIN: u32 = 4;
 /// moves, about 7,500 LP a second (DuelCockpit 0x5041D0; live under Wine, 1,400 held it a quarter of a second), so about
 /// a second here; a count the DLL's raised clamp keeps at LP_BEYOND doesn't move it, and the pop-up went at once.
 const INFINITE_COUNT: i64 = 7500;
+/// EDOPro's TYPE_TUNER: a monster's type bit in the field report.
+const TYPE_TUNER: u64 = 0x1000;
 const COINS_A_TOSS: usize = 3;
 /// EDOPro's SELECT_HEADS and SELECT_TAILS strings: a call's options (Time Wizard).
 const CALL_HEADS: u64 = 60;
@@ -554,6 +556,9 @@ pub struct Translator {
     reserved_token: Option<(u32, u16)>,
     /// The Tuners' Konami ids (a Synchro material's TuningRun says which levels are the Tuners').
     tuners: HashSet<u16>,
+    /// Each monster's type by its (player, zone), as the last field report gave it: a monster an effect made a Tuner
+    /// (Noble Knight's Spearholder) tunes as one.
+    field_types: HashMap<(u32, u32), u64>,
     /// A Tribute, Fusion or Synchro Summon whose materials are moving (see [`Summoning`]).
     summoning: Option<Summoning>,
     /// The player's DUEL OPTIONS auto card placing (`Translator::auto_place`): off, the player picks the zones.
@@ -740,6 +745,7 @@ impl Translator {
             next_token: FIRST_TOKEN_UID,
             reserved_token: None,
             tuners: HashSet::new(),
+            field_types: HashMap::new(),
             summoning: None,
             auto_place: true,
             surrender: true,

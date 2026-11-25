@@ -25,7 +25,7 @@ const POSITION_FACEDOWN_DEFENSE: u32 = 0x8;
 
 
 const MONSTER_STATS: u32 = decode::QUERY_POSITION | decode::QUERY_LEVEL | decode::QUERY_ATTACK | decode::QUERY_DEFENSE
-    | decode::QUERY_BASE_ATTACK | decode::QUERY_BASE_DEFENSE | decode::QUERY_ATTRIBUTE | decode::QUERY_RACE;
+    | decode::QUERY_BASE_ATTACK | decode::QUERY_BASE_DEFENSE | decode::QUERY_ATTRIBUTE | decode::QUERY_RACE | decode::QUERY_TYPE;
 
 /// What the core reports while a duel runs, besides its messages.
 #[derive(Default)]
@@ -441,7 +441,7 @@ impl Session {
                 monsters.push(json!({ "controller": controller, "sequence": sequence, "position": get(decode::QUERY_POSITION),
                     "level": get(decode::QUERY_LEVEL), "attack": get(decode::QUERY_ATTACK), "defense": get(decode::QUERY_DEFENSE),
                     "base_attack": get(decode::QUERY_BASE_ATTACK), "base_defense": get(decode::QUERY_BASE_DEFENSE),
-                    "attribute": get(decode::QUERY_ATTRIBUTE), "race": get(decode::QUERY_RACE) }));
+                    "attribute": get(decode::QUERY_ATTRIBUTE), "race": get(decode::QUERY_RACE), "type": get(decode::QUERY_TYPE) }));
             }
         }
         // What lasting effects of the field's cards apply to which monster, for the client's markers.

@@ -474,7 +474,9 @@ impl Translator {
                 let Some(from) = self.engine_place(&x.from) else { continue };
                 let taken: Vec<u32> = materials.iter().map(|&(_, _, uid, _)| uid).collect();
                 if let Some(uid) = self.uid_left(&from, cid, &taken) {
-                    materials.push((cid, from, uid, self.tuners.contains(&cid)));
+                    // A Tuner by its type on the field (an effect's Tuner too), else by its card.
+                    let tuner = self.field_types.get(&(from.player, from.zone)).map_or(self.tuners.contains(&cid), |t| t & TYPE_TUNER != 0);
+                    materials.push((cid, from, uid, tuner));
                 }
             }
             materials.sort_by_key(|&(.., tuner)| !(family == Family::Synchro && tuner));
@@ -1378,6 +1380,7 @@ impl Translator {
                 (r.to.sequence < 5).then(|| (self.side(r.from.controller) | source << 8, self.side(r.to.controller) | (r.to.sequence as u32) << 8, r.kind as u32))
             })
             .collect();
+        self.field_types = f.monsters.iter().filter(|s| s.sequence < 5).filter_map(|s| Some(((self.side(s.controller), s.sequence as u32), s.kind?))).collect();
         let mut out = vec![];
         for s in &f.monsters {
             let stat = |v: Option<i64>| v.unwrap_or(0).max(0) as u32;

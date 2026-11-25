@@ -438,6 +438,8 @@ pub fn messages(bytes: &[u8]) -> Result<Vec<Json>, Eof> {
 // The query flags the engine asks for (ocgapi_constants.h).
 pub const QUERY_CODE: u32 = 0x1;
 pub const QUERY_POSITION: u32 = 0x2;
+/// The card's type as effects leave it (a monster made a Tuner by Noble Knight's Spearholder).
+pub const QUERY_TYPE: u32 = 0x8;
 pub const QUERY_LEVEL: u32 = 0x10;
 pub const QUERY_ATTRIBUTE: u32 = 0x40;
 /// 64-bit in this core (card.cpp `CHECK_AND_INSERT_T(QUERY_RACE, get_race(), uint64_t)`); the low half is kept.

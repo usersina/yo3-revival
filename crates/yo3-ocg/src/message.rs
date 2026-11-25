@@ -606,6 +606,9 @@ pub struct Monster {
     pub attribute: Option<u64>,
     #[serde(default)]
     pub race: Option<u64>,
+    /// Its type as effects leave it (a Tuner by an effect); None from the old sidecar.
+    #[serde(default, rename = "type")]
+    pub kind: Option<u64>,
 }
 
 /// The session's field report.
