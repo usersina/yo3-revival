@@ -17,6 +17,8 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 - **∞ LP.** Mystik Wok on an infinite ATK gives **∞ LP**, shown as ∞ in the LP disc. Damage, costs and gains leave it
   as it is and show nothing, no number and no reaction, as a hit by a monster with 0 ATK.
+- **∞ damage shows as ∞.** The damage pop-up shows **-∞** (red) for infinite damage and **∞** (cyan) for an infinite
+  gain, instead of 99999.
 - **∞ is one value**, for LP and ATK alike. Half or double of ∞ is ∞ (Solemn Judgment, Riryoku, Megamorph), +1000 or
   -700 leave an ∞ ATK as it is, and ∞ against ∞ is a tie. A card that takes all your LP takes ∞: Ra's "pay all but 1"
   leaves you 1 and gives Ra ∞, De-Fusion gives it back; Yu-Jo Friendship gives both players ∞; "your LP become X" makes

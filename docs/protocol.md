@@ -1954,9 +1954,13 @@ side's LP from the opening (`Translator::opening`) and every change. The engine 
 to ∞ LP; one that is itself ∞ and leaves ∞ (Solemn Judgment's half of ∞) sends nothing either, as a hit by a monster
 with 0 ATK: no shown change (its number, sound and the avatar's reaction, `0x502F8D`), no `0x4D`, no applied change,
 and BattleRun `0xD` carries 0 for a player with ∞ LP unless the damage is ∞
-(`battle_damage_to_an_infinite_lp_shows_as_against_0_atk`). One that crosses into or out of ∞ (Ra's "pay all but 1",
-De-Fusion giving ∞ back), or changes a finite LP above 99999, is shown and applied as the move between what the counter
-shows before and after (`translate_contract.rs` `lp_beyond_99999_stays_infinite_until_it_falls_below`). A
+(`battle_damage_to_an_infinite_lp_shows_as_against_0_atk`). An ∞ amount (9,999,999 or
+more) is shown as ±100000, the connection DLL's "-∞" or "∞" in the pop-up ([client
+internals](client-internals.md#numbers-in-the-duel-lp-and-atk-investigated-2026-11-24)); a finite one as at most ±99999.
+Into ∞ (Mystik Wok on an ∞ ATK, De-Fusion giving ∞ back) the counter counts up 7,500 beside the pop-up, then is set to
+100000; out of ∞ (Ra's "pay all but 1") it is set 7,500 above the new LP and counts down to it (`INFINITE_COUNT`: the
+pop-up stays up while the counter moves, and a count that stays at 100000 doesn't move it). A change of a finite LP above
+99999 moves the counter by what it shows (`translate_contract.rs` `lp_beyond_99999_stays_infinite_until_it_falls_below`). A
 shown change needs its applied one: the end of an applied change's count is what takes the shown number away (live: a
 shown "-900" with no applied change stayed on screen). The engine
 program adds the core's LP as an LPUPDATE after a step's last change whenever a player's LP was or is above 99999

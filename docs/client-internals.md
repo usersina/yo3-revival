@@ -795,7 +795,7 @@ DEF show "∞" since 2026-11-24, and LP above 99999 since 2026-11-25 (`tools/mod
 
 So a text field can show "∞" given a string instead of a number (the invoke takes `char *` and `wchar_t *` values, as
 the connection DLL's Rental Card List Return button already passes), while the LP counter and the damage numbers would
-need a picture the game doesn't have (the LP's is the DLL's own, below; the damage numbers still show -99999).
+need a picture the game doesn't have (the LP's and the pop-up's are the DLL's own, below).
 
 The connection DLL does it (`tools/mod/duel-numbers.h`, logic and test in `duel-numbers-logic.h`/`duel-numbers-test.c`):
 it detours the invoke `0x5CB1B0` and, in `call("setProp", prop, value)`, sends an ATK or DEF (prop 6, 7) above the
@@ -812,8 +812,8 @@ in blue, the ∞ about the digits' height; Obelisk "4000 / 4000". Since a printe
 2026-11-25, Geh "∞ / 0" in white beside Avatar's "∞ / ∞" in blue, no duel check drift.
 
 **LP "∞" (2026-11-25).** The LP counter has no ∞ frame, so the DLL carries a picture of its own:
-`tools/mod/art/lp-infinity.png` (its spec: `tools/mod/art/README.md`), compiled in as `lp-infinity-png.h` by
-`tools/mod/make-lp-infinity.py`. The server sends an LP above 99999 as 100000 ([protocol](protocol.md), LP changes).
+`tools/mod/art/lp-infinity.png` (its spec: `tools/mod/art/README.md`), compiled in as `infinity-pictures.h` by
+`tools/mod/make-infinity-pictures.py`. The server sends ∞ LP as 100000 ([protocol](protocol.md), LP changes).
 The detour recognises `call("setLp", player, lp, colour)`: above 99999 it passes 99999 on, and after the call makes
 (once per cockpit) a clip `yo3Infinity` in `_root.cockpit<player>` (createEmptyMovieClip, depth 16000 + player), a child
 `pic` in it, and loads the picture into that with the movie's own `loadMovie`, from a copy the DLL writes to the
@@ -828,6 +828,22 @@ for a change that leaves the LP beyond: [protocol](protocol.md)). The cockpit's 
 (`duel_font_b_00` white, `b_01` red for low LP) need no second picture: an LP beyond 99999 is never low. Live under Wine,
 2026-11-25: both discs ∞ at 200,000 and 100,500 LP, kept through damage with nothing shown, back to "99800" after 700
 damage from 100,500.
+
+**Damage pop-up "∞" (2026-11-25).** The pop-up is the cockpit's `damage<player>`, a NumberAnimation of the animated
+fonts `duel_font_e_anim_00` (gain, cyan) and `_01` (loss, red), 26×32 digits that drop in one by one, with a minus and
+no ∞. DuelCockpit `0x503AD0` sends a shown change as `call("showDamage", player, change, x, y)` (also beside a card,
+for battle damage), each frame of the applied change's count as `call("setDamage", player, left)` beside `setLp`, and
+its end as `call("hideDamage", player)`: the pop-up stays up while the counter moves (live: about 7,500 LP a second).
+The server sends an ∞ amount as ±100000, more than any finite change it shows (99999 at most). From such a showDamage
+to the next showDamage or hideDamage the DLL passes ±99999 on, keeps one clip `yo3Infinity` (depth 16100) in the
+pop-up with `art/damage-infinity-loss.png` ("-∞") or `-gain.png` ("∞") loaded (loaded and placed again when the sign
+changes; a second clip made in the same call failed, `createEmptyMovieClip` false), placed at 25% on the digits' middle
+(`anchor` "center", `fontWidth` 26, digits 32 high), and makes the digits `num0`…`num7` transparent (`_alpha` 0: the
+pop-up shows them through `_visible`); otherwise the digits come back and the clip hides. A count the raised clamp keeps
+at 100000 doesn't move the counter and the pop-up went at once (live: about a quarter second), so into or out of ∞ the
+server counts 7,500 LP beside it (protocol). Live under Wine, 2026-11-25, anime cards on: the anime Geh destroying a
+Warwolf showed a red "-∞" beside it while the CPU's 8000 counted down to 0; Mystik Wok on Geh showed a cyan "∞" while
+the counter counted up from 8000, then the disc ∞; the game's digits hidden both times.
 
 ## Data formats
 
