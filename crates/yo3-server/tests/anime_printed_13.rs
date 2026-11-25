@@ -27,6 +27,7 @@ const SYNKRON_RESONATOR: u16 = 12062;
 const TG_BLADE_BLASTER: u16 = 9513;
 const TG_CATAPULT_DRAGON: u16 = 9490;
 const TG_CYBER_MAGICIAN: u16 = 9487;
+const CATASTOR: u16 = 7552; // Ally of Justice Catastor: Level 5, 1 Tuner + 1 or more non-Tuner monsters
 const TG_DRILL_FISH: u16 = 14560;
 const TG_GEAR_ZOMBIE: u16 = 14559;
 const TG_HALBERD_CANNON: u16 = 9514;
@@ -770,6 +771,24 @@ fn tg_cyber_magician_lets_a_tg_monster_in_the_hand_be_synchro_material() {
     assert_eq!(s.count(0, "mzone", TG_POWER_GLADIATOR), 1, "{}", s.context());
     assert_eq!(s.count(0, "grave", TG_RHINO), 1, "the hand's material: {}", s.context());
     assert_eq!(s.count(0, "grave", TG_CYBER_MAGICIAN), 1, "{}", s.context());
+}
+
+/// The anime T.G. Cyber Magician: "When using this card as a Synchro Material Monster, the other non-Tuner Synchro
+/// Material Monsters can be sent from your hand." Any monster, for any Synchro: Cyber Magician (Level 1 Tuner) and a
+/// Warwolf from the hand (Level 4) make Ally of Justice Catastor (Level 5); the printed card allows only T.G. monsters
+/// for a T.G. Synchro, so there it isn't on offer. (engine/overrides/proc_synchro.lua keeps this search fast: with the
+/// unchanged procedure a hand of eight monsters took 19 s.)
+#[test]
+fn anime_tg_cyber_magician_lets_any_monster_in_the_hand_be_synchro_material() {
+    let spawns = [at(0, Monster, TG_CYBER_MAGICIAN), at(0, Hand, WARWOLF)];
+    let Some(mut s) = start_extra(true, [&[KURIBOH; 40], &[KURIBOH; 40]], [&[CATASTOR], &[]], &spawns) else { return };
+    s.run(&[SpSummon(CATASTOR)]).unwrap();
+    clean(&s);
+    assert_eq!(s.count(0, "mzone", CATASTOR), 1, "{}", s.context());
+    assert_eq!(s.count(0, "grave", WARWOLF), 1, "the hand's material: {}", s.context());
+    let Some(mut s) = start_extra(false, [&[KURIBOH; 40], &[KURIBOH; 40]], [&[CATASTOR], &[]], &spawns) else { return };
+    let printed = s.run(&[SpSummon(CATASTOR)]);
+    assert!(printed.is_err_and(|e| e.contains("never became possible")), "the printed card: {}", s.context());
 }
 
 /// T.G. Drill Fish: "This card can attack directly." Our Drill Fish (100 ATK) attacks past their Warwolf: 100 damage.

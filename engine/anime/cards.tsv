@@ -4920,7 +4920,7 @@ cid	name	edopro_id	anime_id	status	note
 9484	Meklord Army of Skiel	75733063	511002528	Anime	added card (#75)
 9485	Meklord Army of Granel	2137678	511002529	Anime	added card (#75)
 9486	Meklord Astro Dragon Asterisk	38522377	511001644	Anime	added card (#75)
-9487	T.G. Cyber Magician	64910482		Kept	added card (#75); upstream 513000182: a Synchro Summon with it as material can stop the rules engine (self-play, seed 537): it plays as printed
+9487	T.G. Cyber Magician	64910482	513000182	Anime	added card (#75)
 9488	T.G. Striker	1315120			added card (#75)
 9489	T.G. Jet Falcon	37300735	513000036	Anime	added card (#75)
 9490	T.G. Catapult Dragon	64898834	513000035	Anime	added card (#75)

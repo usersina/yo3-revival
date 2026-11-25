@@ -2,7 +2,7 @@
 
 <!-- Made by tools/engine/anime-map.py from engine/anime/cards.tsv: do not edit by hand. -->
 
-With the `anime-cards` setting on (a host sets it; a single player turns on **Anime cards** in Desktop's Settings → Singleplayer: [playing](playing.md#anime-card-versions)), the 658 cards below play by their anime effects, ProjectIgnis' unofficial scripts (CardScripts `915c6ff`), in NPC and player duels, and the game shows them as their anime versions: the **card profile**. The other cards, and the 3 retained or held back below, play and show as they always did. The reviewed table is the issue [#60](https://github.com/usersina/yo3-revival/issues/60); an unofficial script loading without an error is not proof of anime accuracy, only that it plays.
+With the `anime-cards` setting on (a host sets it; a single player turns on **Anime cards** in Desktop's Settings → Singleplayer: [playing](playing.md#anime-card-versions)), the 659 cards below play by their anime effects, ProjectIgnis' unofficial scripts (CardScripts `915c6ff`), in NPC and player duels, and the game shows them as their anime versions: the **card profile**. The other cards, and the 3 retained or held back below, play and show as they always did. The reviewed table is the issue [#60](https://github.com/usersina/yo3-revival/issues/60); an unofficial script loading without an error is not proof of anime accuracy, only that it plays.
 
 ## The card profile
 
@@ -905,6 +905,7 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Synkron Resonator | 810000045 |  |
 | T.G. Blade Blaster | 513000015 |  |
 | T.G. Catapult Dragon | 513000035 | names other anime cards |
+| T.G. Cyber Magician | 513000182 |  |
 | T.G. Halberd Cannon | 513000014 |  |
 | T.G. Jet Falcon | 513000036 | names other anime cards |
 | T.G. Recipro Dragonfly | 511001973 |  |
@@ -1030,7 +1031,6 @@ Extra Deck), or when the research or the script is not settled. Each reason is k
 | Skull Stalker | upstream 511003064: the anime Normal Monster is equivalent |
 | Stone Armadiller | upstream 511003067: the anime Normal Monster is equivalent |
 | Super War-Lion | upstream 511002612 is a different card or a prize card |
-| T.G. Cyber Magician | added card (#75); upstream 513000182: a Synchro Summon with it as material can stop the rules engine (self-play, seed 537): it plays as printed |
 | Wolf | upstream 511003065: the anime Normal Monster is equivalent |
 | Zera the Mant | upstream 511002610 is a different card or a prize card |
 
