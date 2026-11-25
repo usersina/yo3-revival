@@ -91,6 +91,12 @@ pub struct Scenario {
     position: Option<u64>,
     /// The number the planned side declares when asked, through the client's windows (`declare_number`).
     number: Option<u64>,
+    /// The card a card-name declaration names (`declare_card`), by Konami id.
+    card_name: Option<u16>,
+    /// The options effect-option choices take, in turn (`choose_options`): their indexes, the first used first.
+    options: std::collections::VecDeque<usize>,
+    /// Card choices take as many of the preferred cards as they allow, not the fewest (`prefer_most`).
+    most: bool,
     /// The client's dialogs shown for the planned side's numbers, one per step.
     pub dialogs: usize,
     /// Every prompt answered so far as (team, engine message type), oldest first.
@@ -193,7 +199,7 @@ impl Scenario {
             })
             .collect();
         let answer = engine.new_duel_with(seed, lp, decks, &HashMap::new(), skills).map_err(|e| format!("engine: {e}"))?;
-        let mut s = Scenario { engine, views, answer, state: Json::Null, steps: 0, trail: vec![], attacking: false, prefer: vec![], position: None, number: None, dialogs: 0, prompts: vec![], problems: vec![] };
+        let mut s = Scenario { engine, views, answer, state: Json::Null, steps: 0, trail: vec![], attacking: false, prefer: vec![], position: None, number: None, card_name: None, options: Default::default(), most: false, dialogs: 0, prompts: vec![], problems: vec![] };
         s.observe()?;
         Ok(s)
     }
@@ -325,6 +331,24 @@ impl Scenario {
         self.number = number;
     }
 
+    /// Card-name declarations (Lullaby of Obedience, Goddess Urd's Verdict) name this card, by Konami id, when it is
+    /// among the names the declaration allows; `None`: the CPU's (the first allowed).
+    pub fn declare_card(&mut self, cid: Option<u16>) {
+        self.card_name = cid;
+    }
+
+    /// Effect-option choices ("Select effect to activate": Maiden in Love's counter or control, Eye of Illusion's three)
+    /// take these indexes in turn, one per choice, the first first; a choice past them gets the CPU's (the first option).
+    pub fn choose_options(&mut self, indexes: &[usize]) {
+        self.options = indexes.iter().copied().collect();
+    }
+
+    /// Card choices take as many of the preferred cards ([`prefer`](Self::prefer)) as they allow, up to their maximum,
+    /// not the fewest: "up to 2", "any number" (Assault Dog's Dogs, D Cubed's discards).
+    pub fn prefer_most(&mut self, most: bool) {
+        self.most = most;
+    }
+
     /// The pending prompt through the translator's windows for `seat`, as the client gets them: the messages (the client's
     /// model fed them and checked), or None when the translator answers by itself.
     pub fn windows(&mut self, seat: usize) -> Option<Vec<yo3_proto::Message>> {
@@ -395,11 +419,36 @@ impl Scenario {
     }
 
     /// The preferred cards among a card choice's options: as many as it needs, None when it offers too few of them.
-    fn preferred(&self, p: &Json) -> Option<Json> {
+    fn preferred(&mut self, p: &Json) -> Option<Json> {
         use crate::ocg::message::Ask;
+        match Ask::lenient(p) {
+            Ok(Some(Ask::CardName(a))) => {
+                let cid = self.card_name?;
+                return a.fits.contains(&(cid as u64)).then(|| Response::CardName(cid as u64).json());
+            }
+            Ok(Some(Ask::Option(o))) => {
+                let i = *self.options.front()?;
+                if i >= o.options.len() {
+                    return None;
+                }
+                self.options.pop_front();
+                return Some(Response::Option(i).json());
+            }
+            Ok(Some(Ask::UnselectCard(u))) if self.most => {
+                // One card at a time: the next preferred card on offer, then finish once nothing preferred is left.
+                let next = self.prefer.iter().find_map(|&(team, cid)| u.select_cards.iter().position(|s| s.controller == team && s.cid == Some(cid as u64)));
+                return match next {
+                    Some(i) => Some(Response::UnselectCard(Some(i)).json()),
+                    None if u.can_finish => Some(Response::UnselectCard(None).json()),
+                    None => None,
+                };
+            }
+            _ => {}
+        }
         let Ok(Some(Ask::Card(c) | Ask::Tribute(c))) = Ask::lenient(p) else { return None };
         let tribute = p["type"] == msg::SELECT_TRIBUTE;
-        let want = c.min.max(1) as usize;
+        let fewest = c.min.max(1) as usize;
+        let want = if self.most { (c.max as usize).max(fewest) } else { fewest };
         let mut picks: Vec<usize> = vec![];
         for &(team, cid) in &self.prefer {
             for (i, s) in c.selects.iter().enumerate() {
@@ -408,7 +457,7 @@ impl Scenario {
                 }
             }
         }
-        (picks.len() == want).then(|| Response::cards(if tribute { crate::ocg::resp::TRIBUTE } else { crate::ocg::resp::CARD }, Some(picks)).json())
+        (picks.len() >= fewest).then(|| Response::cards(if tribute { crate::ocg::resp::TRIBUTE } else { crate::ocg::resp::CARD }, Some(picks)).json())
     }
 
     /// The default answer: the opponent and the planned side between actions pass (end the turn from the Main Phase,
@@ -435,7 +484,8 @@ impl Scenario {
         } else if let (Some(number), Ok(Some(crate::ocg::message::Ask::Number(_)))) = (self.number, crate::ocg::message::Ask::lenient(p)) {
             self.number_through_windows(number)?
         } else {
-            self.preferred(p).unwrap_or_else(|| bot_answer(p))
+            let p = p.clone();
+            self.preferred(&p).unwrap_or_else(|| bot_answer(&p))
         };
         self.respond(response)
     }

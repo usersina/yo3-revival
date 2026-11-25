@@ -117,6 +117,11 @@ real rules engine and checks both players' views of the board after every step, 
   one of `Hand`, `Monster`, `MonsterDefense`, `MonsterSet`, `Spell`, `SpellSet`, `Grave`, `Banished`; a spawned
   card comes from that player's deck or Extra Deck, so put it there.
 
+Choices are steered as a player makes them: `s.prefer(&[(team, cid)])` for the cards picked (targets, discards,
+Tributes), `s.prefer_most(true)` to pick as many of them as the choice allows ("up to 2", "any number"),
+`s.choose_options(&[i])` for an effect's options ("Select effect to activate"), `s.declare_card(Some(cid))` for a
+declared card name, `s.declare_number(Some(n))` for a declared number and `s.prefer_position(..)` for a position.
+
 Each test names the card text it checks, and asserts the result, not only that nothing broke:
 `s.attack_of(team, cid)`, `s.count(team, place, cid)`, `s.lp(team)`, and `s.problems.is_empty()` after each step (a
 difference between the engine and the players' views).
