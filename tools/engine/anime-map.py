@@ -35,6 +35,7 @@ TYPE_NAMES = {0x10: "Normal", 0x20: "Effect", 0x40: "Fusion", 0x80: "Ritual", 0x
               0x1000: "Tuner", 0x2000: "Synchro", 0x4000: "Token", 0x10000: "Quick-Play", 0x20000: "Continuous", 0x40000: "Equip",
               0x80000: "Field", 0x100000: "Counter", 0x200000: "Flip", 0x400000: "Toon", 0x800000: "Xyz", 0x1000000: "Pendulum",
               0x2000000: "Special Summon only", 0x4000000: "Link"}
+NAMED_BITS = sum(TYPE_NAMES)
 SCRIPT_FOLDERS = ["official", "pre-errata", "pre-release"]
 # engine/anime/cards.tsv: its columns, and the statuses of a card with an anime version (an anime_id) or one under review.
 TABLE = os.path.join(ENGINE, "anime", "cards.tsv")
@@ -291,7 +292,9 @@ def differences(o, a):
         return out
     if (ot & EXTRA) != (at & EXTRA):
         out.append(("deck", "deck: Main/Extra Deck placement differs (%s -> %s)" % (" ".join(type_names(ot & EXTRA)) or "Main Deck", " ".join(type_names(at & EXTRA)) or "Main Deck")))
-    rest = (ot ^ at) & ~EXTRA & ~7
+    # Only the type bits the client has a name for: an anime-only mark (the anime Plus and Minus monsters' bits) is no
+    # difference the client could show.
+    rest = (ot ^ at) & ~EXTRA & ~7 & NAMED_BITS
     for category, bits in (("type", rest & ~SUBTYPE_BITS & ~FLAG_BITS), ("subtype", rest & SUBTYPE_BITS), ("flags", rest & FLAG_BITS)):
         if bits:
             out.append((category, "%s: %s" % ("type" if category == "type" else category, ", ".join(("-" if ot & b else "+") + TYPE_NAMES[b] for b in TYPE_NAMES if bits & b))))
