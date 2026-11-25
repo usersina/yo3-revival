@@ -48,8 +48,7 @@ Implementation plan agreed on 2026-11-16. For deployment and HTTPS, see [Docker 
   bytes are decimal strings; missing and unreadable backup storage are distinct states. Account lists project the
   same effective standing/mute badges as details, with filters and numeric account-detail links.
 - Staff sign in with password and an authenticator code (TOTP); see [Staff MFA and recovery](#staff-mfa-and-recovery).
-  The public HTTPS/password-only testing that the user approved before MFA ends with this change: an account with no
-  authenticator gets a session that can only enroll. Compose/nginx and HTTPS setup are implemented; the real VPS
+  An account with no authenticator gets a session that can only enroll. Compose/nginx and HTTPS setup are implemented; the real VPS
   deployment/soak remain. The old private HTML panel remains available on loopback, and asks for the code too.
 
 ## Staff interface
@@ -348,7 +347,8 @@ Use tagged serde enums for payload variants, `u32` (bounded in the schema) or st
 Zod validators check fixtures and actual browser-test responses; the mutator also validates error bodies, including
 unexpected proxy failures. The game protocol is not an HTTP/OpenAPI API.
 
-Connected routes in this slice:
+The first routes connected, below; every route the server has is in the generated spec, `dashboard/api/openapi.json`
+(settings, moderation, backups, events, championships, problem reports, gifts and account credentials and keys came later):
 
 | Method | Path | Result |
 | --- | --- | --- |
@@ -432,8 +432,8 @@ browser checks run the dev server's `optional` policy so their password-only sig
 
 ## Separate authority and listeners
 
-The public Compose option supersedes D7's tunnel-only product decision for the React dashboard. On 2026-11-17 the
-user explicitly approved public VPS testing before MFA; since #43 every staff account needs an authenticator.
+The public Compose option supersedes D7's tunnel-only product decision for the React dashboard. Since #43 every staff
+account needs an authenticator.
 Password authentication, the authenticator, exact origin, CSRF, live staff permissions and throttling all apply. The old
 HTML panel stays private.
 
@@ -541,7 +541,8 @@ password and enrolls again. A forgotten *password* is the usual `reset-code`.
 - Explicit allowed API prefixes and a default 404, plus normal static dashboard routes. No proxy catch-all. Verify
   forged Host and forwarding headers through the real nginx configuration, not only a Rust request fixture.
 - Implemented: public backup downloads are disabled by default (nginx answers 404, and the socket router refuses them
-  too). The host can enable them with `--dashboard-public-backups`; they then need an admin, an authenticator check in the
+  too). `--dashboard-public-backups` lets the socket router serve them to a proxy that forwards them (the shipped nginx
+  never does, and the backup list then says downloads are off); they then need an admin, an authenticator check in the
   last five minutes (even under the `optional` policy) and an audit row. Never expose offline restore or the host token.
   Review session, CSRF, proxy, brute-force and MFA recovery boundaries before publishing a port (still open: the real VPS).
 
@@ -549,7 +550,7 @@ password and enrolls again. A forgotten *password* is the usual `reset-code`.
 
 Separate server/engine and dashboard/nginx images in Compose. Persistent SQLite data, read-only user-supplied game
 assets, protected keys outside the dashboard, health checks and graceful shutdown. Rehearse backup and restore.
-The Compose tasks are build, start, stop, status and logs (`task --list` shows the rest). [Deployment guide](docker.md) covers certificate bootstrapping,
+The Compose tasks are build, start, stop, status and logs:compose (`task --list` shows the rest). [Deployment guide](docker.md) covers certificate bootstrapping,
 renewal/reload, monitoring and offline restore. The game identity and SQLite volume never reach nginx.
 
 Normalize domains gradually behind the API, with versioned migrations, constraints and tested restore. The first

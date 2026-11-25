@@ -12,7 +12,8 @@ code, and save the ten recovery codes it shows once. The authenticator seeds are
 recovery codes: `docker compose exec server /opt/yo3/yo3-server --config /etc/yo3/server.toml staff-mfa-reset USER`, run on the host (it is not reachable from
 the web), then enroll again. `YO3_STAFF_MFA=optional` is a transition setting for staff who have not enrolled yet; remove
 it afterwards. Backups are never downloadable through the public side unless the server is also started with
-`--dashboard-public-backups` (admin, a code checked in the last five minutes, audited).
+`--dashboard-public-backups` (admin, a code checked in the last five minutes, audited), and even then not through this
+stack: its nginx refuses them whatever the flag (404), so copy a backup on the host.
 
 Want one setup command instead? [Local Ansible setup](deployment.md) uses these same runtime files.
 
@@ -142,7 +143,7 @@ the dashboard or `invite --uses 5 --days 7`. The [account commands](guide.md#acc
 `docker compose exec server /opt/yo3/yo3-server --config /etc/yo3/server.toml` prefix.
 
 Task is optional. Its five Compose convenience tasks are: `task build`, `task start`, `task stop`, `task status` and
-`task logs`. The equivalent Compose commands are `build`, `up -d --wait`, `stop`, `ps` and `logs --tail=100 --follow`.
+`task logs:compose` (`task logs` reads log files, [logs](logs.md)). The equivalent Compose commands are `build`, `up -d --wait`, `stop`, `ps` and `logs --tail=100 --follow`.
 Other tasks cover local development and checks; see `task --list`.
 `stop` preserves volumes. Use Compose/Task to stop a deployment: the dashboard's process Stop can be restarted by
 Docker's `unless-stopped` policy. **Do not use `docker compose down --volumes` on a deployment.**

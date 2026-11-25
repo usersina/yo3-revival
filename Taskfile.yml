@@ -15,7 +15,7 @@ tasks:
   status:
     desc: Show containers and health
     cmds: [docker compose ps]
-  logs:
+  logs:compose:
     desc: Follow recent container logs
     cmds: [docker compose logs --tail=100 --follow]
 
