@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <wchar.h>
 
 /* A GFxValue (GFx 3): +4 type (3 number, 4 char *, 0x44 char ** ; 0x40 managed), +8 the value. */
 typedef struct { void *iface; uint32_t type; union { double number; const char *text; const char **ref; void *data; } v; } Yo3Gfx;
@@ -127,4 +128,48 @@ static int yo3_damage_infinity(int now, int kind, double change) {
     if (kind == 3) return 0;
     return now;
 }
+/* The card panel (data/gfx/infowin.swf): the game invokes `setDuelCardText(text, name, ..., atkdef, def text)` itself,
+ * the tenth argument the line it builds as "ATK 19999998/DEF 0" (HTML), which the panel shows as it is. Any number of
+ * 9,999,999 or more in it is the engine's one ∞ (guards.lua) and becomes "∞"; the rest of the text is left alone. Copies
+ * `in` into `out` (`cap` characters with its end) rewritten: 1 when something changed. Narrow (UTF-8) and wide (UTF-16)
+ * texts alike. */
+#define YO3_PANEL_ATKDEF 9
+/* Where the ATK/DEF line is in an invoke: FxDelegate's `call` ("setDuelCardText", ...) puts the method first (as the game
+ * sends it, live), a direct invoke of the method would not. -1 for any other invoke. */
+static int yo3_panel_call(const char *name, const Yo3Gfx *args, unsigned count) {
+    if (!name) return -1;
+    if (!strcmp(name, "setDuelCardText")) return count > YO3_PANEL_ATKDEF ? YO3_PANEL_ATKDEF : -1;
+    if (strcmp(name, "call") || count <= YO3_PANEL_ATKDEF + 1) return -1;
+    const char *method = yo3_gfx_string(&args[0]);
+    return method && !strcmp(method, "setDuelCardText") ? YO3_PANEL_ATKDEF + 1 : -1;
+}
+#define YO3_PANEL_INFINITY(type, name, infinity_units, n_units) \
+static __attribute__((unused)) int name(const type *in, type *out, size_t cap) { \
+    static const type sign[] = infinity_units; \
+    size_t o = 0; int changed = 0; \
+    for (size_t i = 0; in[i];) { \
+        if (in[i] >= '0' && in[i] <= '9') { \
+            size_t j = i; double v = 0; \
+            while (in[j] >= '0' && in[j] <= '9') v = v * 10 + (in[j++] - '0'); \
+            if (v >= YO3_INFINITE_ATK) { \
+                if (o + n_units >= cap) return 0; \
+                for (size_t k = 0; k < n_units; ++k) out[o++] = sign[k]; \
+                changed = 1; \
+            } else { \
+                if (o + (j - i) >= cap) return 0; \
+                while (i < j) out[o++] = in[i++]; \
+            } \
+            i = j; \
+        } else { \
+            if (o + 1 >= cap) return 0; \
+            out[o++] = in[i++]; \
+        } \
+    } \
+    out[o] = 0; \
+    return changed; \
+}
+#define YO3_UTF8_INFINITY { (char)0xe2, (char)0x88, (char)0x9e }
+#define YO3_UTF16_INFINITY { (wchar_t)0x221e }
+YO3_PANEL_INFINITY(char, yo3_panel_infinity, YO3_UTF8_INFINITY, 3)
+YO3_PANEL_INFINITY(wchar_t, yo3_panel_infinity_w, YO3_UTF16_INFINITY, 1)
 #endif

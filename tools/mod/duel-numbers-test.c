@@ -97,8 +97,21 @@ int main(void) {
     assert(yo3_damage_infinity(0, 1, -99999) == 0 && yo3_damage_infinity(1, 1, 500) == 0);
     assert(yo3_damage_infinity(-1, 2, 38682) == -1 && yo3_damage_infinity(0, 2, 38682) == 0);
     assert(yo3_damage_infinity(-1, 3, 0) == 0 && yo3_damage_infinity(1, 3, 0) == 0);
+    /* The card panel's ATK/DEF line: a number of 9,999,999 or more becomes ∞, the rest stays (the HTML too). */
+    char panel[64];
+    assert(yo3_panel_infinity("ATK 19999998/DEF 0", panel, sizeof panel) && !strcmp(panel, "ATK \xe2\x88\x9e/DEF 0"));
+    assert(yo3_panel_infinity("<font color=\"#20c820\">ATK 9999999</font>/DEF 19999998", panel, sizeof panel)
+        && !strcmp(panel, "<font color=\"#20c820\">ATK \xe2\x88\x9e</font>/DEF \xe2\x88\x9e"));
+    assert(!yo3_panel_infinity("ATK 2000/DEF 100", panel, sizeof panel) && !strcmp(panel, "ATK 2000/DEF 100"));
+    assert(!yo3_panel_infinity("ATK 9999998/DEF ?", panel, sizeof panel) && !strcmp(panel, "ATK 9999998/DEF ?"));
+    assert(!yo3_panel_infinity("ATK 19999998/DEF 0", panel, 6));
+    Yo3Gfx panel_call[11] = {text("setDuelCardText")}, panel_direct[10] = {text("text")};
+    assert(yo3_panel_call("call", panel_call, 11) == 10 && yo3_panel_call("setDuelCardText", panel_direct, 10) == 9);
+    assert(yo3_panel_call("call", set_lp, 4) == -1 && yo3_panel_call("call", panel_call, 10) == -1 && yo3_panel_call(NULL, panel_call, 11) == -1);
+    wchar_t wpanel[32];
+    assert(yo3_panel_infinity_w(L"ATK 19999998/DEF 0", wpanel, 32) && !wcscmp(wpanel, L"ATK \x221e/DEF 0"));
     /* 16 bytes each, as the game's values. */
     assert(sizeof(Yo3Gfx) == 16);
-    puts("PASS: an infinite field ATK or DEF reaches the movie as \xe2\x88\x9e, its originals as text; setLp and the damage pop-up are recognised");
+    puts("PASS: an infinite field ATK or DEF reaches the movie as \xe2\x88\x9e, its originals as text; setLp, the damage pop-up and the card panel are recognised");
     return 0;
 }

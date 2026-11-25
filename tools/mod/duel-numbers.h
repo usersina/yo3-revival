@@ -192,6 +192,22 @@ static int __attribute__((thiscall,force_align_arg_pointer)) numbers_invoke_hook
     else if(damage && change*change>=YO3_DAMAGE_INFINITE*YO3_DAMAGE_INFINITE && count<=12) {
         memcpy(out,args,count*sizeof *out); out[2].v.number=change<0?-YO3_SHOWN_MAX:YO3_SHOWN_MAX; args=out;
     }
+    else if(yo3_panel_call(name,(const Yo3Gfx *)args,count)>=0 && count<=12) {
+        /* The card panel's "ATK 19999998/DEF 0" (duel-numbers-logic.h, yo3_panel_infinity): narrow or wide text. */
+        static char panel[512]; static wchar_t wpanel[256];
+        unsigned at=(unsigned)yo3_panel_call(name,(const Yo3Gfx *)args,count);
+        const Yo3Gfx *line=&((const Yo3Gfx *)args)[at];
+        unsigned kind=line->type&0x8f;
+        const char *text=kind==4?yo3_gfx_string(line):NULL;
+        const wchar_t *wtext=kind==5?((line->type&0x40)?(line->v.data?*(const wchar_t **)line->v.data:NULL):(const wchar_t *)line->v.data):NULL;
+        if((text && yo3_panel_infinity(text,panel,sizeof panel)) || (wtext && yo3_panel_infinity_w(wtext,wpanel,256))) {
+            memcpy(out,args,count*sizeof *out);
+            out[at].iface=NULL;
+            out[at].type=text?4:5;
+            if(text) out[at].v.text=panel; else out[at].v.data=wpanel;
+            args=out;
+        }
+    }
     if(damage) {
         damage_infinity[popup]=yo3_damage_infinity(damage_infinity[popup],damage,change);
         if(damage!=2) damage_failed[popup]=0;
