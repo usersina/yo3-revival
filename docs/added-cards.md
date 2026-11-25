@@ -132,6 +132,16 @@ assert_eq!(s.attack_of(0, QUASAR), Some(4000), "Dark Hole was negated");
 The self-played duels play an added card by its scripts at random; a scenario is what proves each effect does what
 its text says.
 
+Pitfalls the 2026-11-25 batch's scenarios met (`tests/anime_printed_*.rs`):
+
+- **Only cards a player can hold.** An id the game lacks still runs in the engine; a newer added card goes by its
+  stand-in, not its Konami id. `python3 tools/engine/check-test-ids.py FILE...` lists any other.
+- **A spawned Fusion, Synchro or Ritual Monster was never properly summoned**, so nothing revives it from the Graveyard:
+  summon it in the test when an effect revives it.
+- **The anime Kuriboh** (anime cards on) negates an attack on itself and takes its ATK as damage, and offers to reduce
+  damage from the hand: a filler deck of Kuriboh changes battles with anime cards on.
+- **Check the helper card's own data** (`tools/engine/cardtext.py`): a "Rock" that is a Pyro tests nothing.
+
 **Live**, on the headless client ([which tool sees what](development.md#which-tool-sees-what)), never the player's own
 setup: a scratch server (`task dev:server`), then either
 

@@ -17,8 +17,13 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 - **358 more cards from the anime.** Cards the Duel Monsters, GX and 5D's anime showed that the game never had: the
   Advanced Crystal Beasts, Valkyries, Timelords, T.G. monsters, Fortune Fairies, Life Stream Dragon, the Legendary
-  Dragon Spells and many more. A host gives them with `give-cards`; with anime cards on, 239 of them play their anime
+  Dragon Spells and many more. A host gives them with `give-cards`; with anime cards on, 237 of them play their anime
   versions.
+- **Anime card fixes.** With anime cards on, Iron Cage sends the monster to its owner's Graveyard, Dark Element summons
+  Dark Guardian, Advanced Crystal Beast Emerald Tortoise can turn a monster that attacked to Defense Position, Spirit
+  Shield negates the attack even with its last Fiend, and Catapult Turtle no longer stops a duel when its target is gone.
+- **An Equip Spell left with no monster to equip** does nothing instead of ending the duel with an error.
+- **A monster made a Tuner by an effect** (Noble Knight's Spearholder) tunes as one in the Synchro Summon's animation.
 
 ## v0.1.25 (2026-11-25)
 
