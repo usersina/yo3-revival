@@ -688,6 +688,13 @@ pub mod selfplay {
     const MAX_TURNS: u32 = 24;
     /// Main phase or battle actions a player takes in one turn before moving on.
     const ACTIONS_PER_TURN: u32 = 12;
+    /// The longest an engine answer may take in a self-played duel (`YO3_SLOW_ANSWER_SECS` to change it): far below the
+    /// live server's 30 s limit (`engine::CALL_TIMEOUT`), so a search that grows with the board (the anime T.G. Cyber
+    /// Magician's hand Synchro Materials froze the engine) fails here before it can stop a player's duel.
+    fn slow_answer() -> std::time::Duration {
+        let secs = std::env::var("YO3_SLOW_ANSWER_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(5.0);
+        std::time::Duration::from_secs_f64(secs)
+    }
 
     /// The card pool (Konami ids) by theme. Searches and discards churn the hand, control changes and swaps move cards
     /// between sides, flips and hats turn and shuffle Set cards, tokens appear and vanish.
@@ -1348,6 +1355,8 @@ pub mod selfplay {
         } else {
             vec![]
         };
+        let slow = slow_answer();
+        let mut asked = std::time::Instant::now();
         let mut answer = engine.new_duel_with(seed, lp, [(&m0, &e0), (&m1, &e1)], &data.names, &skills);
         let mut played = Played::default();
         let mut effects = Effects::default();
@@ -1357,6 +1366,11 @@ pub mod selfplay {
         while played.steps < MAX_STEPS {
             played.steps += 1;
             let a = answer.map_err(|e| format!("seed {seed}: engine: {e}"))?;
+            let took = asked.elapsed();
+            if took > slow {
+                return Err(format!("seed {seed}, step {}: the engine took {:.1} s to answer (more than {:.1} s; the live limit is 30 s): {:?}",
+                    played.steps, took.as_secs_f64(), slow.as_secs_f64(), prompt.as_ref().map(|p| p.to_string().chars().take(300).collect::<String>())));
+            }
             if !a.errors.is_empty() {
                 return Err(format!("seed {seed}, step {}: the engine reported {:?}", played.steps, a.errors));
             }
@@ -1492,6 +1506,7 @@ pub mod selfplay {
                 random_answer(&last, &mut rng, actions > ACTIONS_PER_TURN)
             };
             t.answered(&last, &response);
+            asked = std::time::Instant::now();
             answer = engine.respond(response.json());
         }
         Ok(played)

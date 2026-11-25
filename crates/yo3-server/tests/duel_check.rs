@@ -152,15 +152,16 @@ fn the_seeds_reach_the_cases_that_drifted() {
 
 /// The same self-play with the anime card versions on (#60, the `anime-cards` setting): decks of the cards the reviewed
 /// map approves, so that their anime scripts run through every kind of prompt and the client's view must still follow the
-/// engine. `YO3_CHECK_DUELS=n` plays n duels instead of 30; `YO3_CHECK_ANIME_SEED=s` replays seed s alone.
+/// engine. `YO3_CHECK_DUELS=n` plays n duels instead of 60 (`task check:selfplay`: 300); `YO3_CHECK_ANIME_SEED=s`
+/// replays seed s alone.
 /// Self-play with decks full of the cards the game never had (#75, `engine/added-cards.json`): every added card the
 /// engine plays, topped up with the ordinary pool's, so random duels exercise their effects with the client's view checked
 /// after every step. The anime versions off (the printed added cards), then on (every added card, the anime-only ones
-/// too). `YO3_CHECK_DUELS=n` plays n duels each instead of 20.
+/// too). `YO3_CHECK_DUELS=n` plays n duels each instead of 40 (`task check:selfplay`: 300).
 #[test]
 fn duels_with_the_added_cards() {
     let Some(dir) = engine_dir() else { return };
-    let per: u64 = std::env::var("YO3_CHECK_DUELS").ok().and_then(|n| n.parse().ok()).unwrap_or(20);
+    let per: u64 = std::env::var("YO3_CHECK_DUELS").ok().and_then(|n| n.parse().ok()).unwrap_or(40);
     let mut failures = vec![];
     let added: std::collections::BTreeSet<u16> = yo3_data::added::Added::load(&dir).unwrap().cards.iter().map(|c| c.cid).collect();
     let mut activated: BTreeMap<u16, u32> = BTreeMap::new();
@@ -297,7 +298,7 @@ fn duels_with_the_anime_versions_on() {
     }
     let pool = selfplay::anime_pool(&dir).expect("the approved cards");
     assert!(pool.monsters.len() > 50 && pool.spells.len() > 30 && pool.traps.len() > 20 && !pool.extra.is_empty(), "{pool:?}");
-    let per: u64 = std::env::var("YO3_CHECK_DUELS").ok().and_then(|n| n.parse().ok()).unwrap_or(30);
+    let per: u64 = std::env::var("YO3_CHECK_DUELS").ok().and_then(|n| n.parse().ok()).unwrap_or(60);
     let mut failures = vec![];
     let mut activated = 0;
     let only: Option<u64> = std::env::var("YO3_CHECK_ANIME_SEED").ok().and_then(|n| n.parse().ok());

@@ -50,6 +50,13 @@ tasks:
       - cargo nextest run -p yo3-server --test duel_check
       - python3 tools/engine/coverage.py {{.CLI_ARGS}}
 
+  check:selfplay:
+    desc: "Long self-play: 300 duels each with the added cards and with the anime versions on (slow engine answers fail too)"
+    cmds:
+      - cargo nextest run --release -p yo3-server --test duel_check -E 'test(duels_with_the_added_cards) | test(duels_with_the_anime_versions_on)'
+    env:
+      YO3_CHECK_DUELS: "300"
+
   check:added:
     desc: "After adding cards: the generated card files, then every added card's tests (smoke, scenarios, self-played duels)"
     cmds:
@@ -57,7 +64,7 @@ tasks:
       - python3 tools/engine/anime-map.py --check
       - python3 tools/engine/anime-pictures.py --check
       - cargo build --release -p yo3-engine
-      - cargo nextest run --release -p yo3-server -E 'binary(added_cards_smoke) | binary(added_cards) | binary(added_batch) | test(duels_with_the_added_cards)'
+      - cargo nextest run --release -p yo3-server -E 'binary(added_cards_smoke) | binary(added_cards) | binary(added_batch) | binary(material_search) | test(duels_with_the_added_cards)'
 
   check:shipped:
     desc: "The server's and engine's tests against a built bundle's pruned engine (-- dist/.editions/linux-x86_64/desktop/yo3-revival-desktop --release)"
