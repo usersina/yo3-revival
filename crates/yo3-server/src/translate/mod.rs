@@ -207,6 +207,10 @@ const DAMAGE_EFFECT: u32 = 0;
 const DAMAGE_BATTLE: u32 = 1;
 const DAMAGE_COST: u32 = 2;
 const DAMAGE_GAIN: u32 = 4;
+/// How far the counter counts beside the pop-up of an ∞ amount into or out of ∞ LP: the pop-up stays up while the counter
+/// moves, about 7,500 LP a second (DuelCockpit 0x5041D0; live under Wine, 1,400 held it a quarter of a second), so about
+/// a second here; a count the DLL's raised clamp keeps at LP_BEYOND doesn't move it, and the pop-up went at once.
+const INFINITE_COUNT: i64 = 7500;
 const COINS_A_TOSS: usize = 3;
 /// EDOPro's SELECT_HEADS and SELECT_TAILS strings: a call's options (Time Wizard).
 const CALL_HEADS: u64 = 60;

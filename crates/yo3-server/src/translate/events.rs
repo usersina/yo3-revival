@@ -218,22 +218,31 @@ impl Translator {
                     // The client counts its LP display through the whole change (about 7,500 LP a second) and the duel
                     // waits for it, while its LP stays within 0..99999: a change beyond 99,999 is sent as 99,999 (an
                     // infinite ATK's +9,999,999 froze a duel for minutes). The LP itself follows as an LPUPDATE.
-                    let shown = change.clamp(-99_999, 99_999);
+                    let clamped = change.clamp(-99_999, 99_999);
+                    // An ∞ amount's change shows as ±LP_BEYOND, more than any finite one: the connection DLL shows its
+                    // own "-∞" or "∞" in the pop-up for it (tools/mod/duel-numbers.h).
+                    let shown = if change as i64 >= INFINITY_FROM { LP_BEYOND as i32 } else if -(change as i64) >= INFINITY_FROM { -LP_BEYOND as i32 } else { clamped };
                     out.push(command(cmd::CHANGE_LP, [p, shown as u32, damage << 8 | 1, 0]));
                     out.push(command(cmd::SPEAK_DAMAGE, [p, shown as u32, damage, 0]));
                     // ∞ LP is kept as LP_BEYOND, which the connection DLL shows as "∞" (and lets the change keep: it
-                    // raises the clamp to LP_BEYOND), a finite LP above 99,999 as 99,999. Past 99,999 the counter moves
-                    // by what it shows (0 between two LPs both shown 99,999: the count's end takes the shown change
-                    // away), and is set to LP_BEYOND when the move falls short of it.
+                    // raises the clamp to LP_BEYOND), a finite LP above 99,999 as 99,999. ∞ is no number to count
+                    // through: into ∞ the counter counts up INFINITE_COUNT beside the pop-up, then is set to ∞; out of
+                    // ∞ it is set INFINITE_COUNT above the new LP and counts down to it (the pop-up stays up while the
+                    // counter moves). Between finite LPs above 99,999 it moves by what it shows.
                     self.set_lp(team, after);
                     if before <= LP_SHOWN_MAX && after <= LP_SHOWN_MAX {
-                        out.push(command(cmd::CHANGE_LP, [p, shown as u32, damage << 8, 0]));
+                        out.push(command(cmd::CHANGE_LP, [p, clamped as u32, damage << 8, 0]));
+                    } else if after >= INFINITY_FROM {
+                        let up = INFINITE_COUNT.min(LP_SHOWN_MAX - shown_lp(before));
+                        out.push(command(cmd::CHANGE_LP, [p, up as u32, damage << 8, 0]));
+                        out.push(command(cmd::SET_LP, [p, LP_BEYOND as u32, 0, 0]));
+                    } else if before >= INFINITY_FROM {
+                        let from = (shown_lp(after) + INFINITE_COUNT).min(LP_SHOWN_MAX);
+                        out.push(command(cmd::SET_LP, [p, from as u32, 0, 0]));
+                        out.push(command(cmd::CHANGE_LP, [p, (shown_lp(after) - from) as i32 as u32, damage << 8, 0]));
                     } else {
                         let moved = (shown_lp(after) - shown_lp(before)).clamp(-99_999, 99_999);
                         out.push(command(cmd::CHANGE_LP, [p, moved as i32 as u32, damage << 8, 0]));
-                        if after >= INFINITY_FROM && shown_lp(before) + moved != LP_BEYOND {
-                            out.push(command(cmd::SET_LP, [p, LP_BEYOND as u32, 0, 0]));
-                        }
                     }
                 }
                 Event::AddCounter(c) => out.extend(self.counter(&c, true)),

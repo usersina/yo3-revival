@@ -558,8 +558,8 @@ fn damage_and_lp_changes_reach_the_lp_display() {
 fn an_lp_change_beyond_99999_reaches_the_client_as_99999() {
     // The client counts its LP display through every change it is shown (DuelCockpit 0x502EB0), about 7,500 LP a
     // second, and the duel waits for it: Mystik Wok on an infinite ATK (+9,999,999) froze a live duel for about 20
-    // minutes, Soul Energy Max at 8000 LP (-800,000) for nearly 2. Its LP stays within 0..99999 anyway, so a change is
-    // shown as at most 99,999 either way.
+    // minutes, Soul Energy Max at 8000 LP (-800,000) for nearly 2. Its LP stays within 0..99999 anyway, so a finite
+    // change is shown as at most 99,999 either way, and an ∞ one as 100,000.
     let (mut t, _) = translator();
     t.opening(8000);
     let out: Vec<_> = t.events(&[
@@ -569,11 +569,12 @@ fn an_lp_change_beyond_99999_reaches_the_client_as_99999() {
     assert_eq!(
         out,
         [
-            (0x10, [0, 99_999, 4 << 8 | 1, 0]),
-            (0x4D, [0, 99_999, 4, 0]),
-            // LP beyond the counter's five digits: the counter moves up to 100,000, which the connection DLL keeps
-            // (it raises the client's clamp of 99,999 to it) and shows as "∞" (tools/mod/duel-numbers.h).
-            (0x10, [0, 92_000, 4 << 8, 0]),
+            // An ∞ amount shows as 100,000 (the connection DLL's "∞" in the pop-up); the counter counts up 7500 beside
+            // it (the pop-up stays while the counter moves), then is set to 100,000, the DLL's "∞".
+            (0x10, [0, 100_000, 4 << 8 | 1, 0]),
+            (0x4D, [0, 100_000, 4, 0]),
+            (0x10, [0, 7500, 4 << 8, 0]),
+            (0xF, [0, 100_000, 0, 0]),
             (0x10, [1, (-99_999i32) as u32, 1, 0]),
             (0x4D, [1, (-99_999i32) as u32, 0, 0]),
             (0x10, [1, (-99_999i32) as u32, 0, 0]),
@@ -585,8 +586,9 @@ fn an_lp_change_beyond_99999_reaches_the_client_as_99999() {
 fn lp_beyond_99999_stays_infinite_until_it_falls_below() {
     // ∞ LP (the engine's one ∞ value, 19,999,998: guards.lua) shows "∞" (set LP 100,000). The engine leaves it alone for
     // a finite amount; an amount that is itself ∞ and leaves ∞ (Solemn Judgment's half of ∞) shows nothing, as a hit by
-    // a monster with 0 ATK. One that takes it below (Ra's "pay all but 1") moves the counter from 100,000 to the LP, and
-    // one that brings ∞ back (De-Fusion on that Ra) moves it up to 100,000. A finite LP above 99,999 shows 99,999: its
+    // a monster with 0 ATK. One that takes it below (Ra's "pay all but 1") or brings ∞ back (De-Fusion on that Ra) is
+    // an ∞ amount, shown as ∓100,000 (the DLL's "-∞" or "∞" pop-up): the counter counts 7500 beside it, down to the new
+    // LP from just above it, or up and then to ∞. A finite LP above 99,999 shows 99,999: its
     // changes show their number, and the counter moves by what it shows.
     let (mut t, opening) = { let (mut t, _) = translator(); let o = t.opening(8000); (t, o) };
     assert_eq!(opening.iter().map(cmd).collect::<Vec<_>>(), [(1, [0; 4]), (0xF, [0, 8000, 0, 0]), (0xF, [1, 8000, 0, 0])]);
@@ -606,12 +608,14 @@ fn lp_beyond_99999_stays_infinite_until_it_falls_below() {
         [
             (0xF, [0, 100_000, 0, 0]),
             (0xF, [0, 100_000, 0, 0]),
-            (0x10, [0, (-99_999i32) as u32, 2 << 8 | 1, 0]),
-            (0x4D, [0, (-99_999i32) as u32, 2, 0]),
-            (0x10, [0, (-99_999i32) as u32, 2 << 8, 0]),
-            (0x10, [0, 99_999, 4 << 8 | 1, 0]),
-            (0x4D, [0, 99_999, 4, 0]),
-            (0x10, [0, 99_999, 4 << 8, 0]),
+            (0x10, [0, (-100_000i32) as u32, 2 << 8 | 1, 0]),
+            (0x4D, [0, (-100_000i32) as u32, 2, 0]),
+            (0xF, [0, 7501, 0, 0]),
+            (0x10, [0, (-7500i32) as u32, 2 << 8, 0]),
+            (0x10, [0, 100_000, 4 << 8 | 1, 0]),
+            (0x4D, [0, 100_000, 4, 0]),
+            (0x10, [0, 7500, 4 << 8, 0]),
+            (0xF, [0, 100_000, 0, 0]),
             (0xF, [0, 99_999, 0, 0]),
             (0x10, [0, (-300i32) as u32, 1, 0]),
             (0x4D, [0, (-300i32) as u32, 0, 0]),
