@@ -576,6 +576,20 @@ fn assault_dog_brings_the_others_from_the_deck() {
     assert_eq!(s.count(0, "mzone", ASSAULT_DOG), 1, "one came from the Deck: {}", s.context());
 }
 
+/// Assault Dog: "... You can Special Summon any number of "Assault Dog" from your Deck." With the harness taking as many
+/// as the choice allows, both Dogs in the Deck come out.
+#[test]
+fn assault_dog_brings_more_than_one_from_the_deck() {
+    let deck: Vec<u16> = [ASSAULT_DOG; 2].into_iter().chain([KURIBOH; 38]).collect();
+    let Some(mut s) = start(false, [&deck, &[KURIBOH; 40]], &[at(0, Monster, ASSAULT_DOG), at(1, Monster, WARWOLF)]) else { return };
+    s.prefer(&[(0, ASSAULT_DOG)]);
+    s.prefer_most(true);
+    s.run_both([&[EndTurn, Chain(ASSAULT_DOG)], &[Attack(WARWOLF)]]).unwrap();
+    clean(&s);
+    assert_eq!(s.count(0, "grave", ASSAULT_DOG), 1, "{}", s.context());
+    assert_eq!(s.count(0, "mzone", ASSAULT_DOG), 2, "both Dogs came from the Deck: {}", s.context());
+}
+
 /// Attack Guidance Armor (printed): "When a monster declares an attack: Activate 1 of these effects; Destroy the attacking
 /// monster, or change the attack target ..." The Set trap meets Warwolf's attack; the attacker is destroyed or the attack
 /// is redirected: either way Warwolf does not hurt the player as an unanswered attack would (800 damage to Silver Fang).

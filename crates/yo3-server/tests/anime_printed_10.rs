@@ -130,6 +130,26 @@ fn asterisk_sends_the_meklords_and_takes_their_attack() {
     assert_eq!(s.attack_of(0, ASTERISK), Some(1800), "the original ATK of the monster sent: {}", s.context());
 }
 
+/// Asterisk: "target any number of "Meklord" monsters you control, except this card; send those targets to the GY, and
+/// if you do, this card's ATK becomes the combined original ATK of the monsters sent". All three Meklords are chosen
+/// (`prefer_most`): 1600 + 1800 + 1200 = 4600 ATK, none left on the field.
+#[test]
+fn asterisk_sends_all_three_meklords_and_takes_their_combined_attack() {
+    let mut spawns = meklords(0, Monster).to_vec();
+    spawns.push(sp(0, Hand, ASTERISK));
+    spawns.push(sp(0, Monster, ARMY_OF_GRANEL));
+    let Some(mut s) = duel(false, &spawns) else { return };
+    s.prefer(&[(0, ARMY_OF_GRANEL), (0, ARMY_OF_WISEL), (0, ARMY_OF_SKIEL)]);
+    s.prefer_most(true);
+    s.run(&[SpSummon(ASTERISK), Chain(ASTERISK)]).unwrap();
+    clean(&s);
+    assert_eq!(s.count(0, "mzone", ASTERISK), 1, "{}", s.context());
+    assert_eq!(s.count(0, "grave", ARMY_OF_WISEL), 1, "{}", s.context());
+    assert_eq!(s.count(0, "grave", ARMY_OF_SKIEL), 1, "{}", s.context());
+    assert_eq!(s.count(0, "grave", ARMY_OF_GRANEL), 2, "both Granels: {}", s.context());
+    assert_eq!(s.attack_of(0, ASTERISK), Some(1600 * 2 + 1800 + 1200), "{}", s.context());
+}
+
 /// Asterisk's Special Summon needs 3 "Meklord" monsters: with two it is not offered, whatever turn it is.
 #[test]
 fn asterisk_needs_three_meklords() {
@@ -605,6 +625,21 @@ fn impact_return_shuffles_their_spells_and_my_morphtronic() {
     assert_eq!(s.count(1, "szone", MST), 1, "the other card was not targeted: {}", s.context());
     assert_eq!(s.count(0, "hand", CELFON), 0, "{}", s.context());
     assert_eq!(s.count(1, "hand", DARK_HOLE), 0, "into the Deck, not the hand: {}", s.context());
+}
+
+/// Impact Return: "Target up to 2 Spells/Traps your opponent controls; shuffle 1 "Morphtronic" monster ... and if you do,
+/// shuffle the targeted card(s) into the Deck." Both Set cards are chosen (`prefer_most`).
+#[test]
+fn impact_return_takes_two_spells_and_traps() {
+    let spawns = [sp(0, SpellSet, IMPACT_RETURN), sp(0, Hand, CELFON), sp(1, SpellSet, DARK_HOLE), sp(1, SpellSet, MST)];
+    let Some(mut s) = duel(false, &spawns) else { return };
+    s.prefer(&[(1, DARK_HOLE), (1, MST)]);
+    s.prefer_most(true);
+    s.run(&[Activate(IMPACT_RETURN)]).unwrap();
+    clean(&s);
+    assert_eq!(s.count(1, "szone", DARK_HOLE) + s.count(1, "szone", MST), 0, "both shuffled into the Deck: {}", s.context());
+    assert_eq!(s.count(1, "hand", DARK_HOLE) + s.count(1, "hand", MST), 0, "{}", s.context());
+    assert_eq!(s.count(0, "hand", CELFON), 0, "{}", s.context());
 }
 
 /// Morphtronic Impact Return: "You can banish this card from your GY, then target 1 of your "Morphtronic" monsters that is

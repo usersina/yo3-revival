@@ -28,6 +28,8 @@ const REBIRTH_JUDGMENT: u16 = 4005;
 const RED_COCOON: u16 = 12066;
 const RED_DRAGON_VASE: u16 = 9517;
 const RED_NOVA: u16 = 12540;
+const RED_NOVA_DRAGON: u16 = 9119; // Level 12 Synchro: 2 Tuners + "Red Dragon Archfiend"
+const JUNK_SYNCHRON: u16 = 7687; // a Level 3 Tuner
 const RED_EYES_SWORD: u16 = 11891; // Red-Eyes Black Dragon Sword
 const RED_EYES_BURN: u16 = 11899;
 // Other added cards the scenarios use.
@@ -703,6 +705,20 @@ fn red_cocoon_anime_does_not_equip_stardust() {
     let Some(mut s) = duel(true, &[at(0, SpellSet, RED_COCOON), at(0, Monster, STARDUST)]) else { return };
     let err = s.run(&[Activate(RED_COCOON)]).unwrap_err();
     assert!(err.contains("never became possible") || err.contains("can't"), "{err}");
+}
+
+/// Red Cocoon (anime): "After activation, equip this card to a face-up "Red Nova Dragon" you control." Red Nova Dragon is
+/// Synchro Summoned from Red Dragon Archfiend and two Tuners (Level 8 + 1 + 3 = 12), then the Cocoon is activated: it
+/// stays on the field, equipped.
+#[test]
+fn red_cocoon_anime_equips_to_red_nova_dragon() {
+    let spawns = [at(0, SpellSet, RED_COCOON), at(0, Monster, RED_DRAGON_ARCHFIEND), at(0, Monster, TURBO_SYNCHRON), at(0, Monster, JUNK_SYNCHRON)];
+    let Some(mut s) = start(true, [(&[KURIBOH; 40], &[RED_NOVA_DRAGON][..]), (&[KURIBOH; 40], &[][..])], &spawns) else { return };
+    s.run(&[SpSummon(RED_NOVA_DRAGON), Activate(RED_COCOON)]).unwrap();
+    clean(&s);
+    assert_eq!(s.count(0, "mzone", RED_NOVA_DRAGON), 1, "Synchro Summoned: {}", s.context());
+    assert_eq!(s.count(0, "szone", RED_COCOON), 1, "equipped to it: {}", s.context());
+    assert_eq!(s.count(0, "grave", RED_COCOON), 0, "{}", s.context());
 }
 
 /// Red Dragon Vase: "If you control a "Red Dragon Archfiend": Draw 2 cards. You cannot Normal or Special Summon monsters

@@ -286,7 +286,8 @@ impl Scenario {
         self.monster(team, cid)?["attack"].as_i64()
     }
 
-    /// How many cards with this Konami id a team has in a place (`grave`, `hand`, `szone`, `removed`...).
+    /// How many cards with this Konami id a team has in a place (`grave`, `hand`, `szone`, `removed`...). Not the Deck:
+    /// the state gives only its size (`state()[team]["deck"]`), so a Deck count is always 0.
     pub fn count(&self, team: usize, place: &str, cid: u16) -> usize {
         self.state[team][place].as_array().map_or(0, |cards| cards.iter().filter(|c| c["cid"] == cid).count())
     }

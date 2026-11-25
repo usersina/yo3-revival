@@ -12,6 +12,8 @@ const DYNA_BASE: u16 = 6836;
 const DYNA_TANK: u16 = 6837;
 const EARTHBOUND_RELEASE: u16 = 5014;
 const EGYPTIAN_GOD_SLIME: u16 = 15332;
+const METAL_REFLECT_SLIME: u16 = 5686; // the game's own Trap Monster, a Fusion Material of the anime Slime
+const REVIVAL_JAM: u16 = 5063;
 const ELECTROMAGNETIC_TURTLE: u16 = 11120;
 const EMPTY_MACHINE: u16 = 13820;
 const EN_SHUFFLE: u16 = 4704;
@@ -250,6 +252,27 @@ fn egyptian_god_slime_draws_every_attack_and_survives_battle() {
     assert_eq!(s.lp(0), 8000, "{}", s.context());
 }
 
+/// The anime Egyptian God Slime (anime cards on): "Metal Reflect Slime" + "Revival Jam"; "Its ATK/DEF become equal to the
+/// DEF of the "Metal Reflect Slime" used for its Fusion Summon. When this card is destroyed by battle and sent to the
+/// Graveyard: Its previous controller can Special Summon it ... in face-up Defense Position." At 4000 LP a direct hit of
+/// Blue-Eyes (3000) lets the anime Metal Reflect Slime come out (DEF 3000 * 3/4 = 2250); Polymerization fuses it with
+/// Revival Jam into a 2250 ATK Slime, and the next attack of Blue-Eyes destroys it: it returns in Defense Position.
+#[test]
+fn anime_egyptian_god_slime_is_fused_and_revives_after_battle() {
+    let spawns = [put(0, SpellSet, METAL_REFLECT_SLIME), put(0, Hand, 4837), put(0, Hand, REVIVAL_JAM), put(1, Monster, BLUE_EYES)];
+    let Some(mut s) = start(true, 4000, [(&[KURIBOH; 40], &[EGYPTIAN_GOD_SLIME]), (&[KURIBOH; 40], &[])], &spawns) else { return };
+    s.prefer(&[(0, KURIBOH)]); // the end-of-turn discards are Kuriboh, not Polymerization or Revival Jam
+    s.run_both([&[EndTurn, Chain(METAL_REFLECT_SLIME), Activate(4837)], &[Attack(BLUE_EYES)]]).unwrap();
+    clean(&s);
+    assert_eq!(s.attack_of(0, EGYPTIAN_GOD_SLIME), Some(2250), "the Metal Reflect Slime's DEF: {}", s.context());
+    assert_eq!(s.count(0, "grave", REVIVAL_JAM), 1, "{}", s.context());
+    s.run_both([&[EndTurn, Chain(EGYPTIAN_GOD_SLIME)], &[EndTurn, Attack(BLUE_EYES)]]).unwrap();
+    clean(&s);
+    assert!(s.monster(1, BLUE_EYES).is_some(), "Blue-Eyes (3000) beat the Slime (2250): {}", s.context());
+    assert!(s.monster(0, EGYPTIAN_GOD_SLIME).is_some(), "the Slime came back: {}", s.context());
+    assert_eq!(s.position_of(0, EGYPTIAN_GOD_SLIME), Some(4), "in face-up Defense Position: {}", s.context());
+}
+
 /// "This card can be treated as 1 or 3 Tributes for the Tribute Summon of a monster." The Slime alone is enough for
 /// Obelisk the Tormentor (three Tributes).
 #[test]
@@ -385,6 +408,39 @@ fn eye_of_illusion_protects_a_spellcaster_in_battle() {
     clean(&s);
     assert!(s.monster(0, DARK_MAGICIAN_GIRL).is_some(), "{}", s.context());
     assert_eq!(s.lp(0), 7000, "the battle damage is still taken: {}", s.context());
+}
+
+/// "● During your opponent's turn: Target 1 face-up monster your opponent controls; take control of it until the End
+/// Phase." Warwolf declares an attack; the trap answers with the second effect (option 1) and Warwolf, taken in the
+/// Battle Phase, is ours until the turn ends (the run stops before the End Phase), so its attack does not happen.
+#[test]
+fn eye_of_illusion_takes_control_of_a_monster() {
+    let spawns = [put(0, SpellSet, EYE_OF_ILLUSION), put(0, Monster, DARK_MAGICIAN_GIRL), put(1, Monster, WARWOLF)];
+    let Some(mut s) = duel(false, &[], &spawns) else { return };
+    s.choose_options(&[1]);
+    s.run_both([&[EndTurn, ChainOnAttack(EYE_OF_ILLUSION)], &[Attack(WARWOLF)]]).unwrap();
+    clean(&s);
+    assert_eq!(s.count(0, "grave", EYE_OF_ILLUSION), 1, "the trap was used: {}", s.context());
+    assert!(s.monster(0, WARWOLF).is_some() && s.monster(1, WARWOLF).is_none(), "Warwolf changed sides: {}", s.context());
+    assert_eq!(s.lp(0), 8000, "its attack was gone with it: {}", s.context());
+}
+
+/// "● When an opponent's monster declares an attack: Target 1 face-up monster your opponent controls, except the
+/// attacking monster; change the attack target to it and perform damage calculation." Warwolf attacks Dark Magician
+/// Girl; the third effect (option 2) points it at the opponent's own Blue-Eyes: Warwolf (2000) is destroyed and its
+/// controller loses 1000, our monster is untouched.
+#[test]
+fn eye_of_illusion_redirects_an_attack_to_the_attackers_own_monster() {
+    let spawns = [put(0, SpellSet, EYE_OF_ILLUSION), put(0, Monster, DARK_MAGICIAN_GIRL), put(1, Monster, WARWOLF), put(1, Monster, BLUE_EYES)];
+    let Some(mut s) = duel(false, &[], &spawns) else { return };
+    s.prefer(&[(1, BLUE_EYES)]);
+    s.choose_options(&[2]);
+    s.run_both([&[EndTurn, ChainOnAttack(EYE_OF_ILLUSION)], &[Attack(WARWOLF)]]).unwrap();
+    clean(&s);
+    assert_eq!(s.count(1, "grave", WARWOLF), 1, "Warwolf met Blue-Eyes: {}", s.context());
+    assert!(s.monster(1, BLUE_EYES).is_some() && s.monster(0, DARK_MAGICIAN_GIRL).is_some(), "{}", s.context());
+    assert_eq!(s.lp(1), 7000, "{}", s.context());
+    assert_eq!(s.lp(0), 8000, "{}", s.context());
 }
 
 /// "Your opponent cannot target ... in your Monster Zones with card effects, also those monsters cannot be destroyed by

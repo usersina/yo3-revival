@@ -25,6 +25,7 @@ const WATER_OF_LIFE: u16 = 14547;
 const WEATHERING_SOLDIER: u16 = 15365;
 const WHITE_KNIGHT_LORD: u16 = 6829;
 const WHITE_VEIL: u16 = 12905;
+const WHITE_NIGHT_DRAGON: u16 = 7343; // Level 8 Dragon
 const WING_REQUITAL: u16 = 4661;
 const WIRETAP: u16 = 11180;
 const YOWIE: u16 = 4000;
@@ -741,6 +742,24 @@ fn white_knight_lord_banishes_three_and_adds_white_veil() {
     assert_eq!(count_all(&s, 0, "grave"), 0, "{}", s.context());
     assert_eq!(pile(&s, 0), deck_before - 1, "White Veil: {}", s.context());
     assert_eq!(hand(&s, 0), hand_before, "-1 for the Summon, +1 for the Veil: {}", s.context());
+}
+
+/// White Knight Lord, first branch: "Special Summon 1 "White Knight" or "White Night" monster from your hand or Deck."
+/// White Night Dragon comes from the Deck (the first option is chosen).
+#[test]
+fn white_knight_lord_special_summons_white_night_dragon() {
+    let deck = deck_with(&[WHITE_NIGHT_DRAGON], 20);
+    let spawns = [at(0, Hand, WHITE_KNIGHT_LORD), at(0, Grave, KURIBOH), at(0, Grave, KURIBOH), at(0, Grave, WARWOLF)];
+    let Some(mut s) = field(false, 8000, [(&deck, &[]), (&PLAIN, &[])], &spawns) else { return };
+    let before = s.count(0, "mzone", WHITE_NIGHT_DRAGON) + pile(&s, 0) as usize;
+    s.choose_options(&[0]);
+    s.run(&[Activate(WHITE_KNIGHT_LORD)]).unwrap();
+    clean(&s);
+    assert_eq!(s.count(0, "mzone", WHITE_KNIGHT_LORD), 1, "{}", s.context());
+    assert_eq!(s.count(0, "mzone", WHITE_NIGHT_DRAGON), 1, "{}", s.context());
+    assert_eq!(count_all(&s, 0, "removed"), 3, "{}", s.context());
+    assert_eq!(s.count(0, "hand", WHITE_VEIL), 0, "the other branch was not taken: {}", s.context());
+    assert!(before > 0, "{}", s.context());
 }
 
 /// "When an attack is declared involving this card and an opponent's monster: Change that opponent's monster's ATK to 0."

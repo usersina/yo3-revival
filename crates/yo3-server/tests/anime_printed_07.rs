@@ -40,6 +40,7 @@ const KURIBOH: u16 = 4064;
 const WARWOLF: u16 = 6960; // Gene-Warped Warwolf: Level 4, 2000/100, no effect
 const BLUE_EYES: u16 = 4007;
 const DARK_HOLE: u16 = 4342;
+const MIRROR_FORCE: u16 = 4887;
 const JELLYFISH: u16 = 4077; // Level 4 WATER Aqua, 1200/1500, no effect
 const MONSTURTLE: u16 = 4183; // Level 3 WATER Aqua, 800/1000, no effect
 const AVIAN: u16 = 6310; // Elemental HERO Avian
@@ -816,6 +817,40 @@ fn verdande_gives_the_opponent_the_card_when_the_type_was_wrong() {
     assert_eq!(hand(&s, 1), before + 1, "{}", s.context());
 }
 
+/// Goddess Verdande's Guidance: declaring Spell (option 1) with a Spell on top of the opponent's Deck: "if it was the
+/// declared type, they Set it to their field." Dark Hole is Set face-down in their Spell & Trap Zone, not added to hand.
+#[test]
+fn verdande_sets_the_spell_it_revealed_when_spell_was_declared() {
+    let deck = deck_topped_by(DARK_HOLE);
+    let Some(mut s) = field_decks(false, [&[KURIBOH; 40], &deck], &[spell(0, VERDANDE)]) else { return };
+    let before = hand(&s, 1);
+    s.choose_options(&[1]);
+    s.run(&[Activate(VERDANDE)]).unwrap();
+    clean(&s);
+    assert_eq!(s.count(1, "szone", DARK_HOLE), 1, "the top card was Set: {}", s.context());
+    assert_eq!(hand(&s, 1), before, "{}", s.context());
+}
+
+/// Goddess Verdande's Guidance: declaring Trap (option 2) with a Trap on top: Mirror Force is Set; with a Spell on top
+/// the same declaration is wrong, so the card goes to their hand.
+#[test]
+fn verdande_sets_the_trap_it_revealed_when_trap_was_declared() {
+    let deck = deck_topped_by(MIRROR_FORCE);
+    let Some(mut s) = field_decks(false, [&[KURIBOH; 40], &deck], &[spell(0, VERDANDE)]) else { return };
+    s.choose_options(&[2]);
+    s.run(&[Activate(VERDANDE)]).unwrap();
+    clean(&s);
+    assert_eq!(s.count(1, "szone", MIRROR_FORCE), 1, "the top card was Set: {}", s.context());
+
+    let deck = deck_topped_by(DARK_HOLE);
+    let Some(mut s) = field_decks(false, [&[KURIBOH; 40], &deck], &[spell(0, VERDANDE)]) else { return };
+    s.choose_options(&[2]);
+    s.run(&[Activate(VERDANDE)]).unwrap();
+    clean(&s);
+    assert_eq!(s.count(1, "hand", DARK_HOLE), 1, "a wrong declaration gives it to them: {}", s.context());
+    assert_eq!(s.count(1, "szone", DARK_HOLE), 0, "{}", s.context());
+}
+
 /// Goddess Urd's Verdict: "Your opponent cannot target "Valkyrie" monsters you control with card effects, also they cannot
 /// be destroyed by your opponent's card effects." Dark Hole leaves the Valkyrie, Mystical Space Typhoon has nothing to hit.
 #[test]
@@ -840,4 +875,18 @@ fn urds_verdict_banishes_a_card_of_ours_after_a_wrong_guess() {
     clean(&s);
     assert_eq!(s.count(1, "szone", DARK_HOLE), 1, "their Set card stays: {}", s.context());
     assert_eq!(s.count(0, "removed", WARWOLF), 1, "ours is banished: {}", s.context());
+}
+
+/// Goddess Urd's Verdict: "... You can declare 1 card name, then target 1 Set card your opponent controls; reveal the Set
+/// card, and if it was the declared card, banish it." Dark Hole is named (`declare_card`) and is the Set card: it is
+/// banished, and none of our cards is.
+#[test]
+fn urds_verdict_banishes_the_set_card_after_a_right_guess() {
+    let Some(mut s) = field(false, &[spell(0, VERDICT), set(1, DARK_HOLE), mon(0, WARWOLF)]) else { return };
+    s.declare_card(Some(DARK_HOLE));
+    s.prefer(&[(1, DARK_HOLE)]);
+    s.run(&[Activate(VERDICT)]).unwrap();
+    clean(&s);
+    assert_eq!(s.count(1, "removed", DARK_HOLE), 1, "their Set card is banished: {}", s.context());
+    assert_eq!(s.count(0, "mzone", WARWOLF), 1, "ours stays: {}", s.context());
 }

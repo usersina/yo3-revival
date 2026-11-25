@@ -508,6 +508,63 @@ fn lullaby_of_obedience_anime_costs_1000_lp() {
     assert_eq!(s.lp(0), 7000, "{}", s.context());
 }
 
+/// A duel where team 1's deck holds `cid` at the bottom, among Kuriboh (the opening hand draws from the top).
+fn field_opp_deck(anime: bool, cid: u16, spawns: &[Spawn]) -> Option<Scenario> {
+    let dir = engine_dir()?;
+    let opp: Vec<u16> = [cid].into_iter().chain([KURIBOH; 39]).collect();
+    let decks = [(&[KURIBOH; 40][..], &[][..]), (&opp[..], &[][..])];
+    Some(
+        if anime { Scenario::start_anime_field(&dir, 7, 8000, decks, spawns) } else { Scenario::start_field(&dir, 7, 8000, decks, spawns) }
+            .unwrap(),
+    )
+}
+
+/// Lullaby of Obedience: "Pay 2000 LP and declare 1 Monster Card name; your opponent looks at their Deck, reveals 1 of the
+/// declared monsters if there is any, and chooses 1 of these effects to be applied. The declared monster is added to the
+/// hand of the player who activated this card / ... Special Summons the declared monster to their field in Attack
+/// Position". Blue-Eyes is declared; whichever effect the opponent takes, the activator ends with Blue-Eyes (hand or field).
+#[test]
+fn lullaby_of_obedience_declared_monster_goes_to_the_activator() {
+    for option in [0usize, 1] {
+        let Some(mut s) = field_opp_deck(false, BLUE_EYES, &[hand(0, LULLABY)]) else { return };
+        let deck = s.state()[1]["deck"].as_i64().unwrap();
+        s.declare_card(Some(BLUE_EYES));
+        s.choose_options(&[option]);
+        s.run(&[Activate(LULLABY)]).unwrap();
+        clean(&s);
+        assert_eq!(s.lp(0), 6000, "{}", s.context());
+        let mine = s.count(0, "hand", BLUE_EYES) + s.count(0, "mzone", BLUE_EYES);
+        assert_eq!(mine, 1, "option {option}: Blue-Eyes went to the activator: {}", s.context());
+        assert_eq!(s.state()[1]["deck"], deck - 1, "option {option}: out of their Deck: {}", s.context());
+    }
+}
+
+/// Lullaby of Obedience (anime): "Pay 1000 LP, then declare 1 card name; if the declared card is in your opponent's Deck
+/// and is a Level 8 or higher monster, add that card from their Deck to your hand." Blue-Eyes (Level 8) is fetched.
+#[test]
+fn lullaby_of_obedience_anime_fetches_a_level_8_monster() {
+    let Some(mut s) = field_opp_deck(true, BLUE_EYES, &[hand(0, LULLABY)]) else { return };
+    let deck = s.state()[1]["deck"].as_i64().unwrap();
+    s.declare_card(Some(BLUE_EYES));
+    s.run(&[Activate(LULLABY)]).unwrap();
+    clean(&s);
+    assert_eq!(s.lp(0), 7000, "{}", s.context());
+    assert_eq!(s.count(0, "hand", BLUE_EYES), 1, "Blue-Eyes added from their Deck: {}", s.context());
+    assert_eq!(s.state()[1]["deck"], deck - 1, "{}", s.context());
+}
+
+/// Lullaby of Obedience (anime): a monster below Level 8 (Dark Magician is Level 7) is not taken.
+#[test]
+fn lullaby_of_obedience_anime_leaves_a_level_7_monster() {
+    let Some(mut s) = field_opp_deck(true, DARK_MAGICIAN, &[hand(0, LULLABY)]) else { return };
+    let deck = s.state()[1]["deck"].as_i64().unwrap();
+    s.declare_card(Some(DARK_MAGICIAN));
+    s.run(&[Activate(LULLABY)]).unwrap();
+    clean(&s);
+    assert_eq!(s.count(0, "hand", DARK_MAGICIAN), 0, "{}", s.context());
+    assert_eq!(s.state()[1]["deck"], deck, "their Deck is untouched: {}", s.context());
+}
+
 /// Magical Trick Mirror: "When an opponent's monster declares an attack: Target 1 Spell in your opponent's GY; Set it to
 /// your field." Pot of Greed from the opponent's Graveyard is Set on the mirror's side.
 #[test]
@@ -683,6 +740,21 @@ fn maiden_in_love_places_a_maiden_counter() {
     clean(&s);
     assert_eq!(s.monster(1, BLUE_EYES).unwrap()["counters"]["4240"], 1, "a Maiden Counter: {}", s.context());
     assert!(s.monster(0, MAIDEN_IN_LOVE).is_some(), "{}", s.context());
+}
+
+/// "... / Take control of 1 monster your opponent controls with a Maiden Counter." Blue-Eyes attacks into Maiden twice:
+/// the first battle places the counter, the second takes the option to take control (the harness's `choose_options`).
+#[test]
+fn maiden_in_love_takes_control_of_a_monster_with_a_maiden_counter() {
+    let spawns = [mon(0, MAIDEN_IN_LOVE), mon(1, BLUE_EYES)];
+    let Some(mut s) = field(false, 8000, &[], &[], &spawns) else { return };
+    s.run_both([&[EndTurn, Chain(MAIDEN_IN_LOVE)], &[Attack(BLUE_EYES)]]).unwrap();
+    clean(&s);
+    assert_eq!(s.monster(1, BLUE_EYES).unwrap()["counters"]["4240"], 1, "a Maiden Counter: {}", s.context());
+    s.choose_options(&[1]);
+    s.run_both([&[EndTurn, Chain(MAIDEN_IN_LOVE)], &[EndTurn, Attack(BLUE_EYES)]]).unwrap();
+    clean(&s);
+    assert!(s.monster(0, BLUE_EYES).is_some() && s.monster(1, BLUE_EYES).is_none(), "Blue-Eyes is Maiden's controller's: {}", s.context());
 }
 
 /// Masked Beast Des Gardius: "Cannot be Normal Summoned/Set. Must first be Special Summoned (from your hand) by Tributing 2

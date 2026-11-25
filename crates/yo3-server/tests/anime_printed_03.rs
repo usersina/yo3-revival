@@ -677,6 +677,20 @@ fn d_cubed_calls_copies_for_each_discard() {
     assert_eq!(s.count(0, "grave", KURIBOH), 1, "{}", s.context());
 }
 
+/// D Cubed: "... discard up to 2 cards; Special Summon "D Cubed" ... equal to the number discarded." With two discarded
+/// (the harness takes as many as allowed) and two more D Cubed in the Deck, three stand on the field.
+#[test]
+fn d_cubed_discarding_two_calls_two_copies() {
+    let spawns = [spawn(0, Monster, D_CUBED)];
+    let Some(mut s) = duel(false, [&[D_CUBED, D_CUBED], &[]], [&[], &[]], &spawns) else { return };
+    s.prefer(&[(0, KURIBOH)]);
+    s.prefer_most(true);
+    s.run(&[Activate(D_CUBED)]).unwrap();
+    clean(&s);
+    assert_eq!(s.count(0, "grave", KURIBOH), 2, "two discarded: {}", s.context());
+    assert_eq!(s.count(0, "mzone", D_CUBED), 3, "two more came: {}", s.context());
+}
+
 /// D Cubed: "If this card is destroyed by battle or card effect: You can send 1 "Destiny HERO" monster from your Deck to
 /// the GY." Dark Hole destroys it; Fear Monger goes.
 #[test]

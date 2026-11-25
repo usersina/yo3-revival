@@ -695,6 +695,22 @@ fn anime_ties_of_the_brethren_pays_1000_and_summons_two() {
     assert!(monsters(&s, 0) >= 2, "up to two came (the CPU takes one): {}", s.context());
 }
 
+/// Anime Ties of the Brethren: "Special Summon up to 2 Level 4 monsters of the same Type". With `prefer_most` both
+/// preferred Beasts are taken: Gazelle plus two, three monsters, none of them left in the Deck for the third.
+#[test]
+fn anime_ties_of_the_brethren_summons_two_when_both_are_chosen() {
+    let spawns = [at(0, Hand, TIES), at(0, Monster, GAZELLE)];
+    let mains = [&deck_with(&[PREVENT_RAT, MON_LARVAS, SOUL_TIGER])[..], &[KURIBOH; 40][..]];
+    let Some(dir) = engine_dir() else { return };
+    let mut s = Scenario::start_anime_field(&dir, 7, 8000, [(mains[0], &[]), (mains[1], &[])], &spawns).unwrap();
+    s.prefer(&[(0, PREVENT_RAT), (0, MON_LARVAS), (0, SOUL_TIGER)]);
+    s.prefer_most(true);
+    s.run(&[Activate(TIES)]).unwrap();
+    clean(&s);
+    assert_eq!(s.lp(0), 7000, "{}", s.context());
+    assert_eq!(monsters(&s, 0), 3, "Gazelle and two more: {}", s.context());
+}
+
 /// Timaeus the Knight of Destiny: "Must be Special Summoned (from your Extra Deck) by sending the above cards you control
 /// to the GY." The three Legendary Knights on the field go; "Unaffected by other cards' effects": Dark Hole spares it.
 #[test]
