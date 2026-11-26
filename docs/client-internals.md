@@ -875,7 +875,12 @@ the counter counted up from 8000, then the disc ∞; the game's digits hidden bo
   row needs: no count is fixed in the game. The connection DLL serves the launcher's extended copies through the file
   system's `createAndOpenFile` (`0x5505E0`, `data/bin#/CARD_...`, `tools/mod/added-cards-logic.h`). Edit Deck lists trunk
   rows `1 .. len - 1` (`0x4125D8`) and reads a count at `row - 1` (`0x410DB0`): the trunk's arrays hold one byte more than
-  the highest row (before, the game's last card, Blue Rose Dragon, was never listed).
+  the highest row (before, the game's last card, Blue Rose Dragon, was never listed). With anime cards off the same
+  folder holds the banlists with the anime-only cards Forbidden: `0x52DB30` opens `data/regulation/<id>.y3r` (the id
+  as text, `0x7B442C` + `0x7B4424`) through the same `createAndOpenFile`, which the DLL sends to `regulation/<id>.y3r`.
+  Edit Deck's marks (`kinsi`, `0x446990` → `0x41A510`) read a table `0x419F30` builds from the four lists, keeping a
+  card only when its picture `data/card/%4d_1.png` exists (the resource manager's `+0x98`, called at `0x41A058`): the DLL
+  answers that check for the added cards' pictures too (`card_exists_hook`), or an added card would never be marked.
 - **`DLG_Text_<lang>`**: 597 duel-engine prompt strings, indexed by `DLG_Indx_<lang>`.
 - **`data/text/txttbl_<lang>.bin`**: the UI text table (the `$NNNNN` ids and every `name_id`/`discription_id`):
   `u32 count`, then `count` pairs `{u32 id, u32 byte offset}`, then 4 bytes, then UTF-16LE NUL-terminated strings

@@ -305,7 +305,7 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
                         }
                         // The added cards (#75): the launcher extends the game's card files with them before releasing the game.
                         if path.split('?').next() == Some(ADDED_CARDS_PATH) {
-                            let body = world.added.render();
+                            let body = world.added.render_for(world.settings.now().anime_cards);
                             tracing::info!(peer = %peer, user = identity.user_id, "[tls] read the added cards ({})", world.added.cards.len());
                             let head = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
                             tls.write_all(head.as_bytes()).await?;

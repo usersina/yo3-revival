@@ -40,6 +40,8 @@ Older entries describe their release at the time. For current setup, use the [RE
   banishment brings back a monster that was never properly Summoned (a discarded Ritual Monster, a Synchro Monster sent
   from the Extra Deck). A host who wants the official ruling sets `revival-rule` to `official` (Desktop: Settings →
   Singleplayer → Revival → Official rules); a server that already chose a rule keeps it.
+- **With anime cards off, anime-only cards are Forbidden in every banlist** (Unlimited too): Edit Deck shows them with
+  the Forbidden mark, and the game refuses a deck with one before you queue, instead of at Select Deck.
 - **Unlock all cards happens once.** Desktop shows how many cards you have out of all of them (1,214 / 5,030); after the
   unlock the button reads All cards unlocked, and comes back as Unlock N new only when an update adds cards. Players
   made later start with the unlocked cards, and cards you traded away stay gone.

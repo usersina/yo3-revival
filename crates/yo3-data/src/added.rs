@@ -77,6 +77,11 @@ impl AddedCard {
 pub struct Added {
     pub first_row: u16,
     pub cards: Vec<AddedCard>,
+    /// The server has anime cards off: its anime-only cards are Forbidden in every banlist the launcher writes
+    /// ([`extend_files`]), so Edit Deck marks them and the game's own deck check refuses a deck with one. Not in the
+    /// engine's file; the server sets it in what it serves ([`Added::render_for`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub anime_only_banned: bool,
 }
 
 #[derive(Deserialize)]
@@ -124,6 +129,15 @@ impl Added {
         let text = serde_json::to_string(self).unwrap_or_default();
         let hash = text.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x100_0000_01b3));
         format!("{hash:016x}")
+    }
+
+    /// The file the server serves the launcher with anime cards on or off (`anime`): off, its anime-only cards are banned.
+    pub fn render_for(&self, anime: bool) -> String {
+        let banned = !anime && self.cards.iter().any(|c| c.anime_only && !c.token);
+        if banned == self.anime_only_banned {
+            return self.render();
+        }
+        Added { anime_only_banned: banned, ..self.clone() }.render()
     }
 
     /// The file the server serves the launcher (and the launcher reads back).
@@ -276,6 +290,38 @@ pub fn extend_files(read: impl Fn(&str) -> Option<Vec<u8>>, added: &Added) -> Re
             out.push((path(&format!("CARD_Sort2_{lang}")), bytes16(&sort)));
         }
     }
+    out.extend(banlists(&read, added)?);
+    Ok(out)
+}
+
+/// The game's banlists (`data/regulation/<id>.y3r`, 1 to 20) with the anime-only cards Forbidden, when the server has
+/// anime cards off ([`Added::anime_only_banned`]): each card's Konami id joins `card0`, the Forbidden list, which Edit Deck
+/// marks and the game's deck check (0x51A9A0) refuses. A banlist whose unlisted cards are allowed none
+/// (`addition_card` 0, the formats) already refuses them and is left alone.
+fn banlists(read: &impl Fn(&str) -> Option<Vec<u8>>, added: &Added) -> Result<Vec<(String, Vec<u8>)>, String> {
+    let banned: Vec<u16> = added.cards.iter().filter(|c| c.anime_only && !c.token).map(|c| c.cid).collect();
+    if !added.anime_only_banned || banned.is_empty() {
+        return Ok(vec![]);
+    }
+    let mut out = vec![];
+    for id in 1..=255u32 {
+        let name = format!("data/regulation/{id}.y3r");
+        let Some(blob) = read(&name) else { continue };
+        let mut rule = yo3_proto::decode_file(&blob).map_err(|e| format!("{name}: {e}"))?;
+        if rule.get("addition_card").and_then(yo3_proto::Value::as_u32).unwrap_or(3) == 0 {
+            continue;
+        }
+        let mut forbidden: Vec<u8> = rule.get("card0").and_then(yo3_proto::Value::as_bytes).map(<[u8]>::to_vec).unwrap_or_default();
+        let listed: Vec<u16> = forbidden.as_chunks::<2>().0.iter().map(|c| u16::from_be_bytes(*c)).collect();
+        for cid in banned.iter().filter(|c| !listed.contains(c)) {
+            forbidden.extend(cid.to_be_bytes());
+        }
+        match rule.fields.iter_mut().find(|(k, _)| k == "card0") {
+            Some((_, v)) => *v = yo3_proto::Value::Bin(forbidden),
+            None => rule.fields.push(("card0".into(), yo3_proto::Value::Bin(forbidden))),
+        }
+        out.push((name, yo3_proto::frame(&rule.encode())));
+    }
     Ok(out)
 }
 
@@ -313,7 +359,7 @@ mod tests {
     #[test]
     fn the_files_gain_the_row_in_every_table() {
         let files = game();
-        let added = Added { first_row: 3, cards: vec![quasar(3)] };
+        let added = Added { first_row: 3, cards: vec![quasar(3)], ..Default::default() };
         let out: HashMap<String, Vec<u8>> = extend_files(|n| files.get(n).cloned(), &added).unwrap().into_iter().collect();
         let file = |n: &str| out[&format!("data/bin#/{n}.bin")].clone();
         assert_eq!(u32s(&file("CARD_Prop"))[6..], [added.cards[0].a, added.cards[0].b]);
@@ -342,10 +388,10 @@ mod tests {
     #[test]
     fn a_list_must_follow_the_game_and_parse_its_own_rendering() {
         let files = game();
-        let wrong = Added { first_row: 5, cards: vec![quasar(5)] };
+        let wrong = Added { first_row: 5, cards: vec![quasar(5)], ..Default::default() };
         assert!(extend_files(|n| files.get(n).cloned(), &wrong).is_err(), "a gap after the game's rows");
         assert!(extend_files(|n| files.get(n).cloned(), &Added::default()).unwrap().is_empty());
-        let added = Added { first_row: 3, cards: vec![quasar(3)] };
+        let added = Added { first_row: 3, cards: vec![quasar(3)], ..Default::default() };
         assert_eq!(Added::parse(&added.render()).unwrap(), added);
         assert_eq!(added.hash(), Added::parse(&added.render()).unwrap().hash());
         let mut skipped = added.clone();

@@ -63,3 +63,41 @@ fn the_added_cards_extend_the_games_files_and_leave_its_cards_alone() {
 }
 
 fn file_orig(ypk: &Ypk, n: &str) -> Vec<u8> { ypk.read(&format!("data/bin#/{n}.bin")).unwrap().unwrap() }
+
+/// A banlist file as the game reads it (0x52DB30, 0x51A930): its four lists and the copies of an unlisted card.
+fn banlist(blob: &[u8]) -> yo3_data::Regulation {
+    let rule = yo3_proto::decode_file(blob).unwrap();
+    let list = |k: &str| rule.get(k).and_then(yo3_proto::Value::as_bytes).map(|b| b.as_chunks::<2>().0.iter().map(|c| u16::from_be_bytes(*c)).collect()).unwrap_or_default();
+    yo3_data::Regulation { id: 0, kind: 0, status: 0, name_id: 0, lists: ["card0", "card1", "card2", "card3"].map(list),
+        default_limit: rule.get("addition_card").and_then(yo3_proto::Value::as_u32).unwrap_or(3), record: rule }
+}
+
+#[test]
+fn with_anime_cards_off_every_banlist_forbids_the_anime_only_cards() {
+    // The server serves the added cards with `anime_only_banned` while anime cards are off: the launcher then writes each
+    // of the game's 20 banlists (Unlimited too) with the anime-only cards allowed no copy, so Edit Deck marks them and the
+    // game's own deck check refuses them. The printed added cards and the game's own keep their limits. On, nothing.
+    let Some(ypk) = game() else { return };
+    let added = added();
+    let read = |n: &str| ypk.read(n).unwrap();
+    let anime_only: Vec<u16> = added.cards.iter().filter(|c| c.anime_only && !c.token).map(|c| c.cid).collect();
+    let printed: Vec<u16> = added.cards.iter().filter(|c| !c.anime_only && !c.token).map(|c| c.cid).collect();
+    assert!(!anime_only.is_empty() && !printed.is_empty());
+    let on = Added::parse(&added.render_for(true)).unwrap();
+    assert!(!on.anime_only_banned && extend_files(read, &on).unwrap().iter().all(|(n, _)| !n.starts_with("data/regulation/")));
+    let off = Added::parse(&added.render_for(false)).unwrap();
+    assert!(off.anime_only_banned && off.hash() != on.hash(), "another folder of files for the launcher");
+    let out: HashMap<String, Vec<u8>> = extend_files(read, &off).unwrap().into_iter().collect();
+    for id in 1..=20 {
+        let name = format!("data/regulation/{id}.y3r");
+        let game = banlist(&ypk.read(&name).unwrap().expect("the game's banlist"));
+        let ours = out.get(&name).map_or_else(|| game.clone(), |b| banlist(b));
+        for &cid in &anime_only {
+            assert_eq!(ours.limit(cid), 0, "banlist {id}: anime-only card {cid}");
+        }
+        for &cid in printed.iter().chain(&[4007, 4342, 4966]) {
+            assert_eq!(ours.limit(cid), game.limit(cid), "banlist {id}: card {cid} keeps its limit");
+        }
+    }
+    assert!(out.contains_key("data/regulation/3.y3r"), "Unlimited, which forbids nothing of its own, is written too");
+}

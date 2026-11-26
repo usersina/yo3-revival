@@ -58,10 +58,12 @@ pub fn prepare(base: &Path, game_dir: &Path, added: &yo3_data::added::Added, pic
     let staging = base.join(format!("{}.part", added.hash()));
     let _ = std::fs::remove_dir_all(&staging);
     for (name, bytes) in &files {
-        // `data/bin#/CARD_Prop.bin` -> `CARD_Prop.bin`: the DLL looks a file up by its last part.
+        // `data/bin#/CARD_Prop.bin` -> `CARD_Prop.bin`, `data/regulation/20.y3r` (a banlist with the anime-only cards
+        // Forbidden) -> `regulation/20.y3r`: the DLL looks a file up by its last part (tools/mod/added-cards-logic.h).
         let leaf = name.rsplit('/').next().unwrap_or(name);
-        std::fs::create_dir_all(&staging)?;
-        std::fs::write(staging.join(leaf), bytes)?;
+        let at = if name.starts_with("data/regulation/") { staging.join("regulation") } else { staging.clone() };
+        std::fs::create_dir_all(&at)?;
+        std::fs::write(at.join(leaf), bytes)?;
     }
     std::fs::write(staging.join("complete"), format!("{} file(s)\n", files.len()))?;
     let _ = std::fs::remove_dir_all(&folder);

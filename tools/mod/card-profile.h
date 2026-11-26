@@ -154,6 +154,11 @@ static void *__attribute__((thiscall, force_align_arg_pointer)) card_open_hook(v
             return card_open_original(self, file);
         }
     }
+    /* A banlist with the anime-only cards Forbidden (anime cards off), read after the card files like the pictures. */
+    if (card_added_folder[0] && yo3_added_regulation_path(card_added_folder, path, file, sizeof file) && GetFileAttributesA(file) != INVALID_FILE_ATTRIBUTES) {
+        card_profile_log("[YO3 MOD] added cards: %s -> %s", path, file);
+        return card_open_original(self, file);
+    }
     /* An added card's picture (the folder holds only theirs); read after the card files, so the folder is known. */
     if (card_added_folder[0] && yo3_added_art_path(card_added_folder, path, file, sizeof file) && GetFileAttributesA(file) != INVALID_FILE_ATTRIBUTES)
         return card_open_original(self, file);
@@ -165,6 +170,28 @@ static void *__attribute__((thiscall, force_align_arg_pointer)) card_open_hook(v
         }
     }
     return card_open_original(self, path);
+}
+/* Edit Deck's banlist table (0x419F30, which `kinsi` reads through 0x41A510) keeps a card of a banlist only when its
+ * picture exists: `data/card/%4d_1.png` asked of the resource manager's +0x98 (`mov edx,[edx+0x98]` at 0x41A058, then
+ * `call edx`, thiscall, one argument). An added card's picture is in the launcher's folder, which only the open hook knew
+ * about, so the anime-only cards a banlist forbids (anime cards off) lost their Forbidden mark. The load becomes
+ * `mov edx, card_exists_hook`: the game's answer first, then the added folder's. */
+static char __attribute__((thiscall, force_align_arg_pointer)) card_exists_hook(void *self, const char *path) {
+    char (__attribute__((thiscall)) *exists)(void *, const char *) = (char (__attribute__((thiscall)) *)(void *, const char *))(*(void ***)self)[0x98 / 4];
+    if (exists(self, path)) return 1;
+    char file[MAX_PATH * 2 + 32];
+    card_added_learn();
+    return card_added_folder[0] && yo3_added_art_path(card_added_folder, path, file, sizeof file) && GetFileAttributesA(file) != INVALID_FILE_ATTRIBUTES;
+}
+static int card_exists_install(void) {
+    static const unsigned char load[] = { 0x8b, 0x92, 0x98, 0x00, 0x00, 0x00 };       /* mov edx,[edx+0x98] */
+    unsigned char *site = (unsigned char *)game_address(0x41A058);
+    if (memcmp(site, load, sizeof load)) { card_profile_log("[YO3 MOD] added cards: Edit Deck's picture check is not the expected code, left alone"); return 1; }
+    DWORD previous, ignored; uint32_t to = (uint32_t)(uintptr_t)card_exists_hook;
+    if (!VirtualProtect(site, sizeof load, PAGE_EXECUTE_READWRITE, &previous)) return 1;
+    site[0] = 0xBA; memcpy(site + 1, &to, 4); site[5] = 0x90;                          /* mov edx, imm32; nop */
+    FlushInstructionCache(GetCurrentProcess(), site, sizeof load); VirtualProtect(site, sizeof load, previous, &ignored);
+    return 1;
 }
 static int card_art_install(void) {
     if (!card_profile.narts) return 1;
@@ -306,6 +333,7 @@ static int card_profile_install(void) {
     static const unsigned char open_prologue[] = { 0x55, 0x8b, 0xec, 0x83, 0xe4, 0xf8, 0x83, 0xec, 0x24 }; /* push ebp; mov ebp,esp; and esp,-8; sub esp,0x24 */
     void *open_tramp = card_detour(0x5505E0, sizeof open_prologue, open_prologue, -1, (void *)card_open_hook);
     if (!open_tramp) return 0;
+    card_exists_install();
     card_open_original = (void *(__attribute__((thiscall)) *)(void *, const char *))open_tramp;
     return 1;
 }

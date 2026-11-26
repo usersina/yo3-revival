@@ -24,6 +24,13 @@ int main(void) {
     assert(!yo3_added_art_path("C:/x", "data/card/../9709_1.png", out, sizeof out));
     assert(!yo3_added_art_path("C:/x", "data/back/9709_1.png", out, sizeof out));
     assert(!yo3_added_art_path("", "data/card/9709_1.png", out, sizeof out));
+    assert(yo3_added_regulation_path("C:/x", "data/regulation/20.y3r", out, sizeof out) && !strcmp(out, "C:/x/regulation/20.y3r"));
+    assert(yo3_added_regulation_path("C:/x", "data/regulation/3.y3r", out, sizeof out) && !strcmp(out, "C:/x/regulation/3.y3r"));
+    assert(!yo3_added_regulation_path("C:/x", "data/regulation/../20.y3r", out, sizeof out));
+    assert(!yo3_added_regulation_path("C:/x", "data/regulation/20.y3d", out, sizeof out));
+    assert(!yo3_added_regulation_path("C:/x", "data/recipe/20.y3r", out, sizeof out));
+    assert(!yo3_added_regulation_path("", "data/regulation/20.y3r", out, sizeof out));      /* no folder: the game's own */
+    assert(!yo3_added_regulation_path("C:/x", "data/regulation/20.y3r", out, 16));          /* too long for the buffer */
     puts("added cards: ok");
     return 0;
 }

@@ -240,7 +240,12 @@ Konami id and no official data: its data and script are ProjectIgnis' anime ones
   empty Konami id, a stand-in id and the passcode in the `anime` column.
 - **Its text** starts with the `[Anime]` line, like every anime card. Its genre bits come from its script's effects and
   its type (the unofficial database numbers its categories its own way).
-- **With anime cards off** it stays in trunks and decks, and every duel with a deck holding it is refused at Select Deck
+- **With anime cards off** it is Forbidden in every banlist the game has, Unlimited too: the server tells the launcher
+  (`anime_only_banned` in `/web/added-cards`), the launcher writes the game's 20 banlists with the anime-only cards in
+  their Forbidden list (`yo3_data::added::extend_files`, beside the card files), and the connection DLL hands the game
+  those (`tools/mod/added-cards-logic.h`). Edit Deck shows them with the Forbidden mark and the game's own deck check
+  refuses a deck with one, before any matchmaking. A change of the setting reaches the banlists at the next PLAY, like
+  the card profile. It stays in trunks and decks, and every duel with a deck holding it is still refused at Select Deck
   (Auto Duel, NPC duels, hosted duels, events), whatever the banlist, with a chat line: "Orichalcos Gigas is an anime
   card: this server has anime cards off, so a deck with it can't duel." `give-cards` gives it, and says so. The rules
   engine loads it only with the setting on.

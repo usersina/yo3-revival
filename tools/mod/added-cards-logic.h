@@ -36,6 +36,19 @@ static int yo3_added_path(const char *folder, const char *path, char *out, size_
     memcpy(out, folder, a); out[a] = '/'; memcpy(out + a + 1, leaf, b + 1);
     return 1;
 }
+/* A banlist with the anime-only cards Forbidden (the server has anime cards off): the game's open of
+ * `data/regulation/<id>.y3r` (0x52DB30 builds the name) becomes `folder/regulation/<id>.y3r` when the launcher wrote one. */
+#define YO3_REGULATION_PREFIX "data/regulation/"
+static int yo3_added_regulation_path(const char *folder, const char *path, char *out, size_t size) {
+    if (!folder || !folder[0] || !path || strncmp(path, YO3_REGULATION_PREFIX, sizeof YO3_REGULATION_PREFIX - 1)) return 0;
+    const char *leaf = path + sizeof YO3_REGULATION_PREFIX - 1, *p = leaf;
+    while (*p >= '0' && *p <= '9') ++p;
+    if (p == leaf || p - leaf > 5 || strcmp(p, ".y3r")) return 0;
+    size_t a = strlen(folder), b = strlen(leaf);
+    if (a + 12 + b + 1 > size) return 0;
+    memcpy(out, folder, a); memcpy(out + a, "/regulation/", 12); memcpy(out + a + 12, leaf, b + 1);
+    return 1;
+}
 /* An added card's picture: the game's open of `data/card/<id>_<art>.png` (the face) or `data/mini/<id>_<art>.png` (the
  * thumbnail) becomes `folder/card/<id>.png` or `folder/mini/<id>.png`. The launcher puts only added cards' pictures in
  * its folder, so a game card's picture is never replaced here (the anime pictures go through the card profile). */
