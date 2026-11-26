@@ -490,3 +490,12 @@ row	konami_id	stand_in	rarity	anime	token	name	note
 5322		6011		511000438		Seven Kid Goats	anime-only batch 3: Yugi Muto, Weevil Underwood, Leon von Schroeder
 5323		6012		511001420		Spinning Wheel Spindle	anime-only batch 3: Yugi Muto, Weevil Underwood, Leon von Schroeder
 5324		6013		511000268		Thorn Princess	anime-only batch 3: Yugi Muto, Weevil Underwood, Leon von Schroeder
+5325		6014			71939276	Doppelganger Token	copy Tokens: the cards that waited for a Token with no Type or Attribute of its own
+5326		6015			511001892	Doppelganger Token	copy Tokens: the cards that waited for a Token with no Type or Attribute of its own
+5327		6016			511000371	Selection Token	copy Tokens: the cards that waited for a Token with no Type or Attribute of its own
+5328		6017			511000891	Cell Division Token	copy Tokens: the cards that waited for a Token with no Type or Attribute of its own
+5329		6074			511004345	Parasite Token	copy Tokens: the cards that waited for a Token with no Type or Attribute of its own
+5330	20390	6077				Spirit Illusion	copy Tokens: the cards that waited for a Token with no Type or Attribute of its own
+5331		6080		511000370		Natural Selection	copy Tokens: the cards that waited for a Token with no Type or Attribute of its own
+5332		6081		511000890		Cell Division	copy Tokens: the cards that waited for a Token with no Type or Attribute of its own
+5333		6091		511001310		Reckless Parasite	copy Tokens: the cards that waited for a Token with no Type or Attribute of its own

@@ -5631,6 +5631,118 @@
    "genre": 2097664,
    "note": "anime-only batch 3: Yugi Muto, Weevil Underwood, Leon von Schroeder",
    "anime_only": true
+  },
+  {
+   "row": 5325,
+   "cid": 6014,
+   "passcode": 71939276,
+   "name": "Doppelganger Token",
+   "desc": "This card can be used as a \"Doppelganger Token\".\r\r* If used for another Token, apply that Token's Type/Attribute/Level/ATK/DEF.",
+   "a": 8378238,
+   "b": 135811664,
+   "genre": 0,
+   "note": "copy Tokens: the cards that waited for a Token with no Type or Attribute of its own",
+   "token": true
+  },
+  {
+   "row": 5326,
+   "cid": 6015,
+   "passcode": 511001892,
+   "name": "Doppelganger Token",
+   "desc": "Summoned with \"Spirit Illusion\". The ATK, DEF, Level, Attribute, and Type of this Token are the same as the monster equipped with \"Spirit Illusion\". This Token gains the original effects of the equipped monster and cannot be Tributed. There can only be 1 \"Doppelganger Token\" on the field.",
+   "a": 4294956927,
+   "b": 135795280,
+   "genre": 0,
+   "note": "copy Tokens: the cards that waited for a Token with no Type or Attribute of its own",
+   "token": true,
+   "anime_only": true
+  },
+  {
+   "row": 5327,
+   "cid": 6016,
+   "passcode": 511000371,
+   "name": "Selection Token",
+   "desc": "Summoned by the effect of \"Natural Selection\".",
+   "a": 4294956928,
+   "b": 135795280,
+   "genre": 0,
+   "note": "copy Tokens: the cards that waited for a Token with no Type or Attribute of its own",
+   "token": true,
+   "anime_only": true
+  },
+  {
+   "row": 5328,
+   "cid": 6017,
+   "passcode": 511000891,
+   "name": "Cell Division Token",
+   "desc": "Summoned with \"Cell Division\". It has the same original Level, Type, Attribute, ATK and DEF as the selected monster of \"Cell Division\".",
+   "a": 4294956929,
+   "b": 135795280,
+   "genre": 0,
+   "note": "copy Tokens: the cards that waited for a Token with no Type or Attribute of its own",
+   "token": true,
+   "anime_only": true
+  },
+  {
+   "row": 5329,
+   "cid": 6074,
+   "passcode": 511004345,
+   "name": "Parasite Token",
+   "desc": "Equipped by \"Reckless Parasite\".",
+   "a": 6074,
+   "b": 135795280,
+   "genre": 0,
+   "note": "copy Tokens: the cards that waited for a Token with no Type or Attribute of its own",
+   "token": true,
+   "anime_only": true
+  },
+  {
+   "row": 5330,
+   "cid": 6077,
+   "passcode": 71939275,
+   "name": "Spirit Illusion",
+   "desc": "Equip only to a Level 5 or higher Fiend or Zombie monster. When an attack is declared involving the equipped monster and an opponent's monster: You can make that opponent's monster lose ATK equal to the equipped monster's ATK. You can activate 1 of these effects;\r● Fusion Summon 1 Fusion Monster from your Extra Deck, using monsters from your hand or field.\r● Special Summon 1 \"Doppelganger Token\" (Level 5/ATK ?/DEF 0) with the equipped monster's Type, Attribute, and ATK.\rYou can only use this effect of \"Spirit Illusion\" once per turn.",
+   "a": 6077,
+   "b": 146475112,
+   "genre": 2684354696,
+   "note": "copy Tokens: the cards that waited for a Token with no Type or Attribute of its own",
+   "konami_id": 20390
+  },
+  {
+   "row": 5331,
+   "cid": 6080,
+   "passcode": 511000370,
+   "name": "Natural Selection",
+   "desc": "[Anime]\rDuring your opponent's turn: Destroy 1 face-up monster your opponent controls, and Special Summon 1 \"Selection Token\" with the same Level, Type, Attribute, ATK, and DEF as the destroyed monster, but it is destroyed during the End Phase.",
+   "a": 6080,
+   "b": 146803056,
+   "genre": 2147483784,
+   "note": "copy Tokens: the cards that waited for a Token with no Type or Attribute of its own",
+   "anime_only": true
+  },
+  {
+   "row": 5332,
+   "cid": 6081,
+   "passcode": 511000890,
+   "name": "Cell Division",
+   "desc": "[Anime]\rTarget 1 Level 3 or lower Insect-Type monster you control; Special Summon 1 \"Cell Division Token\" that has the same original Level, Type, Attribute, ATK and DEF as that monster.",
+   "a": 6081,
+   "b": 146278504,
+   "genre": 2147483784,
+   "note": "copy Tokens: the cards that waited for a Token with no Type or Attribute of its own",
+   "anime_only": true
+  },
+  {
+   "row": 5333,
+   "cid": 6091,
+   "passcode": 511001310,
+   "name": "Reckless Parasite",
+   "desc": "[Anime]\rIf this card is activated: Special Summon 1 \"Parasite Paracide\" from your opponent's Deck to their side of the field in Attack Position. Monsters currently on the field, and monsters those Summoned while this card is on the field are equipped with a \"Parasite Token\". While a \"Parasite Paracide\" and \"Reckless Parasite\" are on the field, monsters equipped with a \"Parasite Token\" are treated as Insect-Type and cannot be Tributed.",
+   "a": 6091,
+   "b": 146540648,
+   "genre": 8,
+   "note": "copy Tokens: the cards that waited for a Token with no Type or Attribute of its own",
+   "anime_only": true
   }
  ]
 }

@@ -162,6 +162,8 @@ def learn(rows, data, passcode):
 
 GENRE_PRECISION = 0.85
 TYPE_TOKEN = 0x4000
+# A copy Token's stand-in Type and Attribute (`encode`): Fiend, DARK.
+COPY_TOKEN_RACE, COPY_TOKEN_ATTRIBUTE = 0x8, 0x20
 RARITY = {'': 0, 'common': 0, 'rare': 4, 'super': 3, 'ultra': 2}
 
 
@@ -371,6 +373,12 @@ def encode(d, cid, learned):
             return None, None, why
         kind, attribute, race, subtype = st
         return cid & 0x3FFF, kind << 3 | attribute << 8 | subtype << 16 | race << 19 | learned['art'] << 27, why
+    if d['type'] & TYPE_TOKEN:
+        # A Token whose Type, Attribute or Level its card's effect gives (Spirit Illusion's Doppelganger Token copies the
+        # equipped monster's; Natural Selection's and Cell Division's copy a monster's) has none of its own in the database.
+        # Its row stands in with Fiend, DARK, Level 1: the engine's field report brings the real ones as it is summoned, and
+        # the server sends a Type or Attribute other than the row's in the monster's record (translate's `field`).
+        d = dict(d, attribute=d['attribute'] or COPY_TOKEN_ATTRIBUTE, race=d['race'] or COPY_TOKEN_RACE, level=d['level'] or 1)
     kind, attribute, race = (learned['kind'].get(d['type']), learned['attribute'].get(d['attribute']), learned['race'].get(d['race']))
     for what, value, given in (('type', d['type'], kind), ('attribute', d['attribute'], attribute), ('race', d['race'], race)):
         if given is None:

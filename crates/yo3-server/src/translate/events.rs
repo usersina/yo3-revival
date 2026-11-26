@@ -1003,8 +1003,21 @@ impl Translator {
             tracing::warn!("a token the client has no card for: {:?} {:?}", mv.cid, mv.name);
             return vec![];
         };
-        if to.zone >= 5 {
+        if to.zone > zone::FIELD_SPELL {
             return vec![];
+        }
+        if to.zone >= 5 {
+            // A Token made straight into a Spell & Trap Zone as an equip card (Reckless Parasite's Parasite Token,
+            // `Duel.Equip` on a Token never summoned): it appears there face-up like a card played there, a Token still (it
+            // shatters off the field); the engine's MSG_EQUIP then draws its line to the monster.
+            let (uid, row) = self.next_token_card(&rows);
+            self.tokens.push(uid);
+            let zone = self.sides[to.player as usize].zone(to.zone);
+            zone.clear();
+            zone.push(Card { uid, row });
+            self.positions.insert((to.player, to.zone), (to.face_up, to.defense));
+            return vec![Cmd::Card { uid, open: false, row: row as u32, place: table_place(to.player, to.zone, 0) }.message(),
+                Cmd::Move { uid, kind: MOVE_PLAIN, from: to, to }.message()];
         }
         // The uid and card its position dialog showed, so the dialog's card is the one that appears.
         let (uid, row) = match reserved {

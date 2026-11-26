@@ -27,9 +27,11 @@ Older entries describe their release at the time. For current setup, use the [RE
 - **Anime-only cards, third batch: Yugi Muto's, Weevil Underwood's and Leon von Schroeder's.** 28 more (Mirage Ruler,
   Turn Jump, Spell Textbook, Weevil's Parasite cards and Infestation, Leon's Little Red Riding Hood, Thorn Princess,
   Seven Kid Goats and more).
-- **Tokens the game never had.** Blackwing - Steam the Cloak, Ecole de Zone, Gadget Box, Demiurge Ema and Black Wing
-  Revenge join the new cards, with their Tokens (Steam, Mask, Gadget Box, Homunculus and Black Crest Tokens, and the
-  anime Gadget Box's Gadget Token), shown on the field like the game's own.
+- **Tokens the game never had.** Blackwing - Steam the Cloak, Ecole de Zone, Gadget Box, Demiurge Ema, Black Wing
+  Revenge and Spirit Illusion join the new cards (and, with anime cards on, Natural Selection, Cell Division and
+  Reckless Parasite), with their Tokens (Steam, Mask, Gadget Box, Homunculus, Black Crest, Doppelganger, Selection,
+  Cell Division and Parasite Tokens, and the anime Gadget Box's Gadget Token), shown on the field like the game's own;
+  a Token that copies a monster shows that monster's Level, Type and Attribute.
 - **Anime card fixes.** With anime cards on, Bounce Spell no longer stops when its target is gone, Limit Tribute also
   stops Summons that need two Tributes, Call of the Haunted brings a monster destroyed in battle back with 10% more than its own ATK, growing with each revival (an Equip Spell's boost isn't counted, and applies on top), Take One Chance leaves a card that can't be activated in the Graveyard, Seven Kid Goats destroys the Beast it picks, Iron Cage sends the monster to its owner's Graveyard, Dark Element summons
   Dark Guardian, Advanced Crystal Beast Emerald Tortoise can turn a monster that attacked to Defense Position, Spirit

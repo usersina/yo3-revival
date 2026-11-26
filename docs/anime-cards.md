@@ -2,7 +2,7 @@
 
 <!-- Made by tools/engine/anime-map.py from engine/anime/cards.tsv: do not edit by hand. -->
 
-With the `anime-cards` setting on (a host sets it; a single player turns on **Anime cards** in Desktop's Settings → Singleplayer: [playing](playing.md#anime-card-versions)), the 663 cards below play by their anime effects, ProjectIgnis' unofficial scripts (CardScripts `915c6ff`), in NPC and player duels, and the game shows them as their anime versions: the **card profile**. The other cards, and the 3 retained or held back below, play and show as they always did. The reviewed table is the issue [#60](https://github.com/usersina/yo3-revival/issues/60); an unofficial script loading without an error is not proof of anime accuracy, only that it plays.
+With the `anime-cards` setting on (a host sets it; a single player turns on **Anime cards** in Desktop's Settings → Singleplayer: [playing](playing.md#anime-card-versions)), the 664 cards below play by their anime effects, ProjectIgnis' unofficial scripts (CardScripts `915c6ff`), in NPC and player duels, and the game shows them as their anime versions: the **card profile**. The other cards, and the 3 retained or held back below, play and show as they always did. The reviewed table is the issue [#60](https://github.com/usersina/yo3-revival/issues/60); an unofficial script loading without an error is not proof of anime accuracy, only that it plays.
 
 ## The card profile
 
@@ -21,7 +21,7 @@ The server picks the profile (the `anime-cards` setting, later an event) and pin
 ### When the profile changes
 
 - **A server restart activates the profile the saved setting selects**; a live change (`yo3 set anime-cards on|off`) applies to the next request for it. The rules engine reads the same setting at each duel, so it plays the anime scripts exactly while the pinned profile is the anime one.
-- **The server remembers what each signed-in game fetched** (the profile's name and hash, by launcher session) and **an open game that loaded another profile than the pinned one is refused every duel**, not just warned: it would play with the card data it started with. It is refused at every way in with a reply the client shows (Auto Duel and the official events' Participate `0x179A`, NPC duels and Create Duel `0x17AE`, a challenge `0x17B8` 201, creating or joining a user event `0x33F5`/`0x33FB`, and watching a duel `0x183A`), each with a line from "Server" in the player's chat: close the game and press Play again. Select Deck (`0x22CB`, back to the map; the opponent is released as for any refused deck) is the last gate, so a game that went stale while queued, matched or hosting cannot start either, and a host's Accept from such a game is a decline ([protocol](protocol.md), under "A game with stale card data cannot duel").
+- **The server remembers what each signed-in game fetched** (the profile's name and hash, by launcher session) and **an open game that loaded another profile than the pinned one is refused every duel**, not just warned: it would play with the card data it started with. It is refused at every way in with a reply the client shows (Auto Duel and the official events' Participate `0x179A`, NPC duels and Create Duel `0x17AE`, a challenge `0x17B8` 201, creating or joining a user event `0x33F5`/`0x33FB`), each with a line from "Server" in the player's chat: close the game and press Play again. Select Deck (`0x22CB`, back to the map; the opponent is released as for any refused deck) is the last gate, so a game that went stale while queued, matched or hosting cannot start either, and a host's Accept from such a game is a decline ([protocol](protocol.md), under "A game with stale card data cannot duel").
 - **A game that loaded nothing counts as stale while a profile is pinned**: one that started before the host turned the setting on, or without the connection DLL's profile support (it never fetches), cannot be shown to display the pinned cards. The launcher's own read of the profile, to place the local decks (`?for=decks`), is not the game's fetch and proves nothing. **With the game's own cards pinned (the setting off, or no anime data on the server) every client duels as before**, except one that loaded a profile.
 - **A relaunch matches**: Play again fetches the pinned profile (and the launcher places the local decks by it first), so client and engine agree. Desktop's helper polls the pinned profile every 20 seconds and turns the Play button into RESTART THE GAME while it differs from what the helper saw the game load; that is a convenience, the server's refusal is the rule.
 - **Switching off and on again keeps every deck's cards and quantities**, in the server's decks and in the local deck files (each pass only moves a card between the Main and Extra lists; nothing is lost, a deck is never deleted, the first version of a changed file is kept once).
@@ -885,6 +885,7 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Spellbinding Circle | 511001016 |  |
 | Sphinx Teleia | 513000029 |  |
 | Spider Web | 511002589 |  |
+| Spirit Illusion | 511001891 |  |
 | Spirit Shield | 511000116 |  |
 | Stardust Flash | 810000057 |  |
 | Stardust Phantom | 511002883 |  |
@@ -1038,7 +1039,7 @@ Extra Deck), or when the research or the script is not settled. Each reason is k
 | Wolf | upstream 511003065: the anime Normal Monster is equivalent |
 | Zera the Mant | upstream 511002610 is a different card or a prize card |
 
-Every other card of the game (4,453 of 5,141 in `engine/anime/cards.tsv`) has no anime_id: no anime version, or none we use, and keeps its current behaviour.
+Every other card of the game (4,453 of 5,142 in `engine/anime/cards.tsv`) has no anime_id: no anime version, or none we use, and keeps its current behaviour.
 
 | Card | Note |
 | --- | --- |

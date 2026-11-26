@@ -197,17 +197,20 @@ class AddedCards(unittest.TestCase):
         self.assertEqual(found['Ash Blossom & Joyous Spring'][1], [])
         self.assertEqual([n for _, _, n in found.values()], [[], [], []])
 
-    def test_a_token_is_a_row_and_a_card_that_makes_a_missing_one_waits(self):
+    def test_a_token_is_a_row_and_a_copy_token_stands_in_with_fiend_dark_level_1(self):
         # A Token has no Konami id: --find takes its name or token:PASSCODE and gives it a stand-in; the build marks it a
         # Token (kind 10, the game's Tokens' kind) and, when only the anime database has it, anime-only.
         ctx = added.load()
         self.assertEqual(added.made_tokens(9047460, ctx), [9047461], "Steam the Cloak's Steam Token (its passcode + 1)")
-        (name, line, why), = added.find(['Doppelganger Token'], ctx)
-        self.assertTrue(any('attribute' in w for w in why), why)  # it copies a monster: no Type or Attribute of its own
-        # Spirit Illusion makes that Doppelganger Token, which no card of the client is: it waits.
+        # A Token that copies a monster (Spirit Illusion's Doppelganger Token) has no Type, Attribute or Level of its own:
+        # its row is a Fiend, DARK, Level 1 one, which the engine's field report replaces as it is summoned.
+        copy = {'type': added.TYPE_TOKEN | 0x11, 'attribute': 0, 'race': 0, 'level': 0, 'atk': -2, 'def': -2}
+        plain = dict(copy, attribute=0x20, race=0x8, level=1)
+        self.assertEqual(added.encode(copy, 6014, ctx['learned']), added.encode(plain, 6014, ctx['learned']))
+        self.assertEqual(added.encode(copy, 6014, ctx['learned'])[2], [])
+        # Spirit Illusion's Doppelganger Token is a row now: the card is found.
         (name, line, why), = added.find(['Spirit Illusion'], ctx)
-        self.assertIsNone(line)
-        self.assertTrue(any('Doppelganger Token' in w and 'token:71939276' in w for w in why), why)
+        self.assertFalse(any('Doppelganger Token' in w for w in why), why)
         built = {c['name']: c for c in added.build()['cards']}
         steam, gadget = built['Steam Token'], built['Gadget Token']
         self.assertEqual((steam.get('token'), steam.get('anime_only'), steam['b'] >> 3 & 0x1F), (True, None, 10))

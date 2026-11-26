@@ -45,8 +45,11 @@ So a card can be added when:
   (Blackwing - Steam the Cloak with "Steam Token"). A Token is a row like any added card, under a stand-in, with its
   passcode in the table's `token` column; the build marks it `"token": true` (kind 10, the game's Tokens' kind), and
   `"anime_only"` when only the anime database has it (the anime Gadget Box's Gadget Token). The server finds a Token's
-  card by its id or name, shatters it when it leaves the field, and never gives or deals one. A Token with no Type or
-  Attribute of its own (Spirit Illusion's Doppelganger Token, a copy) can't be shown: its card waits.
+  card by its id or name, shatters it when it leaves the field, and never gives or deals one. A Token whose card's effect
+  gives its Type, Attribute or Level (a copy: Spirit Illusion's Doppelganger Token, Natural Selection's, Cell Division's)
+  has none of its own in the database: its row stands in with Fiend, DARK, Level 1, and the engine's field report brings
+  the real ones as it is summoned (the monster's record carries a Type or Attribute other than the row's). A Token made
+  straight into a Spell & Trap Zone as an equip card (Reckless Parasite's) appears there like a card played there.
 - **The pinned data knows it.** A card newer than the pins needs `engine/fetch.sh --update`
   ([development](development.md#the-rules-engine)).
 

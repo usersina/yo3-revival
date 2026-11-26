@@ -36,11 +36,10 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
       cards' effects on Windows (an NPC duel with Geh, Obelisk, Avatar and Skill Drain passed on Windows 11, 2026-11-25).
 - [ ] The anime's missing cards (#75; inventory of 2026-11-25 in the ignored `logs/anime-missing-20261125/`): 358 printed
       ones are added (rows 4848-5205), with scenario tests (`tests/anime_printed_*.rs`). Five that make Tokens the game never had came with their
-      Tokens (rows 5206-5216). Open: Spirit Illusion, whose Doppelganger Token copies a monster and has no Type or Attribute
-      of its own for the client's row; the anime-only ones, 944 in 29 deck batches (`engine/added/anime-batches.tsv`,
-      `tools/engine/anime-batches.py`): batch 1 added (rows 5217-5258, 42 cards; Natural Selection waits for its Selection
-      Token), batch 2 (rows 5259-5296, 38 with 3 Tokens), batch 3 (rows 5297-5324,
-      28; Cell Division and Reckless Parasite wait, their Tokens having no Type or Attribute either), batches 4-29 to come, each tested in tiers (the per-card fuzz, then scenarios for the flagged cards, those
+      Tokens (rows 5206-5216), and the four whose Tokens copy a monster (Spirit Illusion, Natural Selection, Cell Division,
+      Reckless Parasite) with theirs (rows 5325-5333, `tests/added_copy_tokens.rs`). Open: the anime-only ones, 944 in 29 deck batches (`engine/added/anime-batches.tsv`,
+      `tools/engine/anime-batches.py`): batch 1 added (rows 5217-5258, 42 cards), batch 2 (rows 5259-5296, 38 with 3 Tokens), batch 3 (rows 5297-5324,
+      28), batches 4-29 to come, each tested in tiers (the per-card fuzz, then scenarios for the flagged cards, those
       the checks point at, signature cards and a random 30% of the rest: batch 1's sample found a bug the fuzz can't,
       Limit Tribute doing only part of its text); the rule goes into docs/added-cards.md after a few batches; the anime Michion and Hailon
       deal ∞ damage to ∞ LP (half of ∞, and ∞ minus a number, are ∞): confirm that reading.
