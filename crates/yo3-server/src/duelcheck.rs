@@ -53,6 +53,7 @@ pub mod coverage;
 pub mod summon;
 pub mod shown;
 pub mod scenario;
+pub mod promises;
 
 const SERVER_DUEL: u32 = crate::duel::SERVER_DUEL;
 /// The uids a mixed card list puts in the table for the time it is open (`translate.rs` STAGED_UID), and the first
@@ -875,6 +876,9 @@ pub mod selfplay {
         pub kinds: BTreeMap<u64, u32>,
         pub materials: u32,
         pub activated: BTreeMap<u16, u32>,
+        /// Each effect's chain links, by (Konami id, effect description): activations, resolutions and what they showed
+        /// (`promises`, the per-card fuzz).
+        pub effects: BTreeMap<(u16, u64), super::promises::Tally>,
         pub summoned: BTreeMap<u16, u32>,
         /// The client's prompts the server answered itself although the player had a choice (see [`choices`]), by
         /// engine message type: windows the client lacks (a zone, a sum, a sort...).
@@ -1004,6 +1008,9 @@ pub mod selfplay {
         pub expect: HashMap<u16, crate::profile::Expect>,
         /// Both players' start LP; None: 8000, and 2000 every fourth duel so that duels reach their end too.
         pub lp: Option<u32>,
+        /// The card under test (the per-card fuzz, [`play_card`]): the random player takes an action with it, when one is
+        /// on offer, three times in four.
+        pub focus: Option<u16>,
     }
 
     /// The cards the reviewed anime map approves, by what a deck keeps them in (Konami ids), for self-play with the
@@ -1138,6 +1145,7 @@ pub mod selfplay {
             revival: crate::engine::Revival::Official,
             expect: HashMap::new(),
             lp: None,
+            focus: None,
         };
         play_with(dir, seed, decks, &data, [&[], &[]], client_team, hidden)
     }
@@ -1155,6 +1163,7 @@ pub mod selfplay {
             revival,
             expect: HashMap::new(),
             lp: None,
+            focus: None,
         };
         play_with(dir, seed, decks, &data, [&[], &[]], client_team, hidden)
     }
@@ -1237,25 +1246,47 @@ pub mod selfplay {
         tweak: impl FnOnce(&mut HashMap<u16, crate::profile::Expect>),
         lp: Option<u32>,
     ) -> Result<Played, String> {
+        let data = anime_data(dir, &decks, tweak, lp)?;
+        play_with(dir, seed, decks, &data, [&[], &[]], client_team, hidden)
+    }
+
+    /// The card data of a self-played duel with the anime versions on: the decks' cards, every token card the client
+    /// has, and the profile's expectations (`tweak` run over them first).
+    fn anime_data(dir: &Path, decks: &[(&[u16], &[u16]); 2], tweak: impl FnOnce(&mut HashMap<u16, crate::profile::Expect>), lp: Option<u32>)
+        -> Result<CardData, String> {
         let (token_cards, tokens) = client_tokens(dir)?;
-        let mut cards = card_data(&decks);
+        let mut cards = card_data(decks);
         cards.extend(token_cards);
-        let data = CardData {
+        Ok(CardData {
             cards,
             tokens,
             names: HashMap::new(),
-            tuners: tuners(dir, &decks, true)?,
+            tuners: tuners(dir, decks, true)?,
             anime: true,
             revival: crate::engine::Revival::Official,
             expect: {
-                let mut expect = anime_expectations(dir, &decks)?;
-                anime_card_problems(dir, &decks, &expect)?;
+                let mut expect = anime_expectations(dir, decks)?;
+                anime_card_problems(dir, decks, &expect)?;
                 tweak(&mut expect);
                 expect
             },
             lp,
+            focus: None,
+        })
+    }
+
+    /// A self-played duel for one card (the per-card fuzz, `tests/card_fuzz.rs`): `card` on top of team 0's Deck, so it
+    /// is in team 0's opening hand (a Main Deck card), anime versions off or on; team 0 is the client in even seeds.
+    pub fn play_card(dir: &Path, seed: u64, decks: [(&[u16], &[u16]); 2], anime: bool, card: u16) -> Result<Played, String> {
+        let mut data = if anime {
+            anime_data(dir, &decks, |_| {}, None)?
+        } else {
+            let (cards, tokens) = plain_cards(dir, &decks);
+            CardData { cards, tokens, names: HashMap::new(), tuners: tuners(dir, &decks, false)?, anime: false,
+                revival: crate::engine::Revival::Official, expect: HashMap::new(), lp: None, focus: None }
         };
-        play_with(dir, seed, decks, &data, [&[], &[]], client_team, hidden)
+        data.focus = Some(card);
+        play_with(dir, seed, decks, &data, [&[card], &[]], (seed % 2) as usize, false)
     }
 
     /// The decks' cards as the rules engine plays them with the anime versions on: its card data (Level, race, attribute...),
@@ -1389,6 +1420,7 @@ pub mod selfplay {
         let mut asked = std::time::Instant::now();
         let mut answer = engine.new_duel_with(seed, lp, [(&m0, &e0), (&m1, &e1)], &data.names, &skills);
         let mut played = Played::default();
+        let mut links = super::promises::Links::default();
         let mut effects = Effects::default();
         let mut prompt: Option<Json> = None;
         let mut retries = 0;
@@ -1420,6 +1452,7 @@ pub mod selfplay {
                 }
             }
             for e in &events {
+                links.observe(e, &mut played.effects);
                 match e {
                     Event::Chaining(c) => *played.activated.entry(c.loc.cid.unwrap_or(0) as u16).or_default() += 1,
                     Event::Summoning(s) | Event::SpSummoning(s) | Event::FlipSummoning(s) => *played.summoned.entry(s.loc.cid.unwrap_or(0) as u16).or_default() += 1,
@@ -1533,7 +1566,7 @@ pub mod selfplay {
                 }
                 prompt = Some(last.clone());
                 actions += 1;
-                random_answer(&last, &mut rng, actions > ACTIONS_PER_TURN)
+                data.focus.and_then(|card| focused_answer(&last, &mut rng, card)).unwrap_or_else(|| random_answer(&last, &mut rng, actions > ACTIONS_PER_TURN))
             };
             t.answered(&last, &response);
             asked = std::time::Instant::now();
@@ -1554,6 +1587,31 @@ pub mod selfplay {
 
     /// A random legal answer: any summon, Set, activation, attack or position change offered (moving on once `tired`),
     /// random picks within the bounds asked, random yes/no and options. Prompts it doesn't know get the placeholder AI's.
+    /// The per-card fuzz's answer: an action with `card` (by Konami id) when the prompt offers one, three times in four;
+    /// None leaves the prompt to [`random_answer`].
+    fn focused_answer(m: &Json, rng: &mut u64, card: u16) -> Option<Response> {
+        if next(rng).is_multiple_of(4) {
+            return None;
+        }
+        let ask = Ask::lenient(m).ok().flatten()?;
+        let is = |l: &crate::ocg::message::Loc| l.cid == Some(card as u64);
+        match &ask {
+            Ask::IdleCmd(p) => {
+                let lists = [(&p.special_summons, idle::SPSUMMON), (&p.summons, idle::SUMMON), (&p.monster_sets, idle::MONSTER_SET),
+                    (&p.spell_sets, idle::SPELL_SET)];
+                if let Some(i) = p.activates.iter().position(|e| is(&e.loc)) {
+                    return Some(Response::IdleCmd { action: idle::ACTIVATE, index: Some(i) });
+                }
+                lists.iter().find_map(|(list, action)| list.iter().position(is).map(|i| Response::IdleCmd { action: *action, index: Some(i) }))
+            }
+            Ask::BattleCmd(p) => p.chains.iter().position(|e| is(&e.loc)).map(|i| Response::BattleCmd { action: battle::CHAIN, index: Some(i) })
+                .or_else(|| p.attacks.iter().position(|a| is(&a.loc)).map(|i| Response::BattleCmd { action: battle::ATTACK, index: Some(i) })),
+            Ask::Chain(c) => c.selects.iter().position(|e| is(&e.loc)).map(|i| Response::Chain(Some(i))),
+            Ask::EffectYn(e) if is(&e.effect.loc) => Some(Response::EffectYn(true)),
+            _ => None,
+        }
+    }
+
     pub fn random_answer(m: &Json, rng: &mut u64, tired: bool) -> Response {
         let mut pick = |n: usize| (next(rng) as usize) % n.max(1);
         let Ok(Some(ask)) = Ask::lenient(m) else { return bot_response(m) };
