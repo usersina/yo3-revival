@@ -49,6 +49,14 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
 - [ ] EDOPro banlists (`lflist.conf`, by passcode) as banlists a host can pick: the launcher writes them as game banlist
       files (the path the anime-only Forbidden banlists take, `yo3_data::added::extend_files`) and the server's deck check
       uses the same list. Planned after v0.1.26.
+- [ ] Card tags (the client has none: no tag control in Edit Deck's screens, no request carrying one), in this order:
+      1. An "Anime" search word: Edit Deck's text search (`0x416C10`) finds the anime-only cards through a marker in
+         their text, written by the card profile.
+      2. Tags kept per account on the server, set with a chat command (`tag CARD`, like `where`): "Destiny" on any card,
+         "Anime" put by the server on the anime-only cards and never removed; neither tag can be deleted. Destiny Draw
+         (`YO3Skill.DestinyDraw`, skills.lua) then draws 1 random Destiny-tagged card from the Deck instead of a pick,
+         and a server setting allows it between players (today `destiny_draw_applies` keeps it to NPC duels).
+      3. Only then, if still wanted, a tag button in Edit Deck (a change to the game's Flash screen, never done yet).
 - [ ] Later, if needed: Tokens sharing one stand-in id, or skipping the id lookup, if the stand-in budget gets tight
       (1,002 free on 2026-11-26 against about 860 for the anime-only batches; it needs proof the client never looks a Token
       up by id). After `engine/fetch.sh --update`, re-test only the added and anime cards whose scripts changed between
