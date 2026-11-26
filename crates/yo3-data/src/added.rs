@@ -82,6 +82,67 @@ pub struct Added {
     /// engine's file; the server sets it in what it serves ([`Added::render_for`]).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub anime_only_banned: bool,
+    /// Characters the game never had as NPCs (`engine/added/npcs.json`), in the Kaiba Corporation slots past its 25.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub npcs: Vec<AddedNpc>,
+}
+
+/// A custom NPC: slot 25 on (ids `120 + 3 * slot` to `+ 2`, one per level), on a body the game has (`body`, one of its
+/// 25 NPCs: the launcher copies that NPC's model, portrait and faces until the character has its own pictures).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AddedNpc {
+    pub slot: u32,
+    pub name: String,
+    /// The Kaiba Corporation screen's text about them.
+    pub help: String,
+    /// The tab: 0 Yu-Gi-Oh!, 1 GX, 2 5D's.
+    pub series: u32,
+    pub body: u32,
+    /// Three, the easiest first: each a deck by card names (the anime deck plays while the server has anime cards on).
+    pub levels: Vec<AddedNpcLevel>,
+    /// What they say, by line number in their block of the UI texts (`62000 + 300 * slot + n`): per level a hundred,
+    /// as the game's own NPCs (0 the duel's opening, 1-24 the duel's moments, 24 the ace monster with `@@m`, 25-36
+    /// Kaiba Corporation's talk, 37-86 the win, loss and draw; `@@s` the player's name). The talk needs them: without,
+    /// the scene shows no body.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    /// Keyed by the line number as text: the added cards are read flattened, where serde can't read number keys.
+    pub lines: std::collections::BTreeMap<String, String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AddedNpcLevel {
+    pub title: String,
+    pub deck: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extra: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub anime_deck: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub anime_extra: Vec<String>,
+}
+
+/// The first NPC id (0x4BFE34): NPC k's levels are `FIRST_NPC_ID + 3k` to `+ 2`.
+pub const FIRST_NPC_ID: u32 = 120;
+/// Text ids: NPC k's name `0x5208 + 2k` and help `+ 1` (0x4BFE34); NPC id i's deck title `0x5FB4 + 2i` (0x4BFE05).
+pub const NPC_NAME_TEXT: u32 = 0x5208;
+pub const NPC_DECK_TITLE_TEXT: u32 = 0x5FB4;
+/// NPC k's lines: texts `62000 + 300k` on (Pegasus's "My turn now!" is 63501).
+pub const NPC_LINES_TEXT: u32 = 62000;
+
+impl AddedNpc {
+    /// Its three NPC ids, one per level.
+    pub fn ids(&self) -> [u32; 3] {
+        let first = FIRST_NPC_ID + 3 * self.slot;
+        [first, first + 1, first + 2]
+    }
+
+    /// Its UI texts: name, help and each level's deck title.
+    pub fn texts(&self) -> Vec<(u32, String)> {
+        let mut out = vec![(NPC_NAME_TEXT + 2 * self.slot, self.name.clone()), (NPC_NAME_TEXT + 2 * self.slot + 1, self.help.clone())];
+        out.extend(self.ids().iter().zip(&self.levels).map(|(id, level)| (NPC_DECK_TITLE_TEXT + 2 * id, level.title.clone())));
+        out.extend(self.lines.iter().filter_map(|(n, text)| Some((NPC_LINES_TEXT + 300 * self.slot + n.parse::<u32>().ok().filter(|&n| n < 300)?, text.clone()))));
+        out
+    }
 }
 
 #[derive(Deserialize)]
@@ -293,6 +354,8 @@ pub fn extend_files(read: impl Fn(&str) -> Option<Vec<u8>>, added: &Added) -> Re
     }
     out.extend(banlists(&read, added)?);
     out.extend(anime_pack_files(&read, added)?);
+    out.extend(text_files(&read, added)?);
+    out.extend(npc_files(&read, added)?);
     Ok(out)
 }
 
@@ -341,11 +404,72 @@ pub fn anime_pack_files(read: &impl Fn(&str) -> Option<Vec<u8>>, added: &Added) 
             None => pack.fields.push((key.into(), value)),
         }
     }
-    let mut out = vec![(format!("data/pack/{ANIME_PACK}.y3a"), yo3_proto::frame(&pack.encode()))];
+    Ok(vec![(format!("data/pack/{ANIME_PACK}.y3a"), yo3_proto::frame(&pack.encode()))])
+}
+
+/// The UI text tables with the server's own texts (the Anime Collection's, the custom NPCs'), all seven languages.
+pub fn text_files(read: &impl Fn(&str) -> Option<Vec<u8>>, added: &Added) -> Result<Vec<(String, Vec<u8>)>, String> {
+    let mut texts: Vec<(u32, String)> = vec![];
+    if !anime_pack_tiers(added).is_empty() {
+        texts.extend(ANIME_PACK_TEXTS.iter().map(|(id, t)| (*id, t.to_string())));
+    }
+    for npc in &added.npcs {
+        texts.extend(npc.texts());
+    }
+    if texts.is_empty() {
+        return Ok(vec![]);
+    }
+    let texts: Vec<(u32, &str)> = texts.iter().map(|(id, t)| (*id, t.as_str())).collect();
+    let mut out = vec![];
     for lang in LANGUAGES {
         let name = format!("data/text/txttbl_{lang}.bin");
         let Some(table) = read(&name) else { continue };
-        out.push((name.clone(), with_texts(&table, &ANIME_PACK_TEXTS).map_err(|e| format!("{name}: {e}"))?));
+        out.push((name.clone(), with_texts(&table, &texts).map_err(|e| format!("{name}: {e}"))?));
+    }
+    Ok(out)
+}
+
+/// The textures a model names (`.\\np0050.png`), by their file name.
+fn skins(mesh: &[u8]) -> Vec<String> {
+    let mut out: Vec<String> = vec![];
+    for at in mesh.windows(4).enumerate().filter(|(_, w)| w.eq_ignore_ascii_case(b".png")).map(|(i, _)| i) {
+        let start = mesh[..at].iter().rposition(|&b| !(b.is_ascii_alphanumeric() || b == b'_' || b == b'-')).map_or(0, |i| i + 1);
+        let name = String::from_utf8_lossy(&mesh[start..at + 4]).to_string();
+        if start < at && !out.contains(&name) {
+            out.push(name);
+        }
+    }
+    out
+}
+
+/// Each custom NPC's body, portrait and faces, copied from the game NPC it borrows them from (`data/model/np005.mdl` ->
+/// `data/model/np025.mdl`, `data/npc/npcsel025.png`, `data/face/np025f0.png`...): the model names its skins relatively,
+/// so it wears the borrowed NPC's.
+pub fn npc_files(read: &impl Fn(&str) -> Option<Vec<u8>>, added: &Added) -> Result<Vec<(String, Vec<u8>)>, String> {
+    let mut out = vec![];
+    for npc in &added.npcs {
+        if !(25..30).contains(&npc.slot) || npc.body >= 25 {
+            return Err(format!("{}: slot {} (25-29) on body {} (0-24)", npc.name, npc.slot, npc.body));
+        }
+        let (from, to) = (npc.body, npc.slot);
+        let model = format!("data/model/np{from:03}.mdl");
+        let mesh = read(&model).ok_or_else(|| format!("the game has no {model}"))?;
+        // Its own folder, `data/model/np025/`: the model finds its skins by name beside it, so the borrowed body's
+        // textures go there too (a character's own skins later replace them under the same names: the "doll").
+        for skin in skins(&mesh) {
+            if let Some(png) = read(&format!("data/model/{skin}")) {
+                out.push((format!("data/model/np{to:03}/{skin}"), png));
+            }
+        }
+        out.push((format!("data/model/np{to:03}/np{to:03}.mdl"), mesh));
+        if let Some(portrait) = read(&format!("data/npc/npcsel{from:03}.png")) {
+            out.push((format!("data/npc/npcsel{to:03}.png"), portrait));
+        }
+        for k in 0..5 {
+            if let Some(face) = read(&format!("data/face/np{from:03}f{k}.png")) {
+                out.push((format!("data/face/np{to:03}f{k}.png"), face));
+            }
+        }
     }
     Ok(out)
 }

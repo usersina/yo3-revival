@@ -436,6 +436,39 @@ pub fn player_card_sources(data: &yo3_data::GameData, prizes: &prizes::Prizes) -
     all
 }
 
+/// The custom NPCs (`engine/added/npcs.json`, in the added cards): their levels' ids in the roster, names, bot styles,
+/// tabs and decks, each card by its English name (its first artwork's row). A name the server has no card for is
+/// left out, with a warning.
+pub fn add_custom_npcs(world: &mut World, data: &yo3_data::GameData) {
+    let mut row_of: std::collections::HashMap<String, u16> = std::collections::HashMap::new();
+    for c in data.cards.iter().filter(|c| c.kind != 10) {
+        let row = row_of.entry(c.name.clone()).or_insert(c.row);
+        *row = (*row).min(c.row);
+    }
+    let npcs = world.added.npcs.clone();
+    for npc in &npcs {
+        let rows = |names: &[String]| -> Vec<u16> {
+            names.iter().filter_map(|n| {
+                let row = row_of.get(n).copied();
+                if row.is_none() { tracing::warn!("custom NPC {}: no card named {n:?}; left out of the deck", npc.name) }
+                row
+            }).collect()
+        };
+        for (id, level) in npc.ids().into_iter().zip(&npc.levels) {
+            if world.npcs.contains(&id) { continue }
+            world.npcs.push(id);
+            world.npc_names.insert(id, npc.name.clone());
+            world.npc_styles.insert(id, npc::style(&npc.name));
+            world.npc_series.insert(id, npc.series);
+            let deck = |main: &[String], extra: &[String]| Deck { id: id * 100, name: String::new(), main: rows(main), extra: rows(extra), side: vec![] };
+            world.npc_decks.insert(id, deck(&level.deck, &level.extra));
+            if !level.anime_deck.is_empty() {
+                world.npc_anime_decks.insert(id, deck(&level.anime_deck, &level.anime_extra));
+            }
+        }
+    }
+}
+
 /// The Anime Collection (`shop::ANIME_PACK`) for `/where`: the anime-only cards, sold while anime cards are on.
 fn anime_pack_source(data: &yo3_data::GameData, added: &yo3_data::added::Added) -> Option<sources::CardSource> {
     let cards: std::collections::HashSet<u16> = yo3_data::added::anime_pack_tiers(added).iter().flatten()
@@ -577,6 +610,8 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
                     Some((id, Deck { id: d.id, name: String::new(), main: d.main.clone(), extra: d.extra.clone(), side: d.side.clone() }))
                 })
                 .collect(),
+            npc_anime_decks: std::collections::HashMap::new(),
+            npc_series: std::collections::HashMap::new(),
             duel_server,
             http_port,
             // Booster packs (pack_type 1), their cards read as rarity tiers.
@@ -622,6 +657,7 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
             let base = profile::CardView { cards: world.cards.clone(), card_kinds: world.card_kinds.clone(),
                 extra_deck_rows: world.extra_deck_rows.clone(), tuners: world.tuners.clone(), ..Default::default() };
             world.profiles = profile::Profiles::load(&base, data.cards.iter(), world.engine_dir.as_deref());
+            add_custom_npcs(&mut world, &data);
             world
         }
         Err(e) => {

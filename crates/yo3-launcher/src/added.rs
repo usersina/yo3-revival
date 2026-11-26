@@ -61,11 +61,17 @@ pub fn prepare(base: &Path, game_dir: &Path, added: &yo3_data::added::Added, pic
         // `data/bin#/CARD_Prop.bin` -> `CARD_Prop.bin`, `data/regulation/20.y3r` (a banlist with the anime-only cards
         // Forbidden) -> `regulation/20.y3r`: the DLL looks a file up by its last part (tools/mod/added-cards-logic.h).
         // The Anime Collection pack's file and the UI text tables likewise: `pack/300.y3a`, `text/txttbl_E.bin`.
-        let leaf = name.rsplit('/').next().unwrap_or(name);
-        let at = match ["regulation", "pack", "text"].into_iter().find(|kind| name.starts_with(&format!("data/{kind}/"))) {
+        // A custom NPC's body keeps its own folder: `data/model/np025/np0050.png` -> `model/np025/np0050.png`.
+        // Its portrait and faces likewise: `npc/npcsel025.png`, `face/np025f0.png`.
+        let (sub, leaf) = match name.strip_prefix("data/model/").and_then(|rest| rest.split_once('/')) {
+            Some((folder, leaf)) => (folder, leaf),
+            None => ("", name.rsplit('/').next().unwrap_or(name)),
+        };
+        let at = match ["regulation", "pack", "text", "model", "npc", "face"].into_iter().find(|kind| name.starts_with(&format!("data/{kind}/"))) {
             Some(kind) => staging.join(kind),
             None => staging.clone(),
         };
+        let at = if sub.is_empty() { at } else { at.join(sub) };
         std::fs::create_dir_all(&at)?;
         std::fs::write(at.join(leaf), bytes)?;
     }

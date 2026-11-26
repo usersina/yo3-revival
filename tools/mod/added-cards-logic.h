@@ -84,6 +84,27 @@ static int yo3_added_pack_path(const char *folder, const char *path, char *out, 
     }
     return 0;
 }
+/* A custom NPC's files (slots 25 on, beyond the game's 25): the game's open of `data/model/npNNN...` (its body and the
+ * skins it names), `data/npc/npcselNNN.png` (the Kaiba Corporation portrait) or `data/face/npNNNf<k>.png` (the duel's
+ * faces) with NNN 025 or more becomes `folder/model/...`, `folder/npc/...` or `folder/face/...`; the caller redirects
+ * only when the launcher wrote that file. The game's own 25 NPCs (000-024) are never touched. */
+static int yo3_added_npc_path(const char *folder, const char *path, char *out, size_t size) {
+    if (!folder || !folder[0] || !path) return 0;
+    static const struct { const char *prefix, *kind, *stem; } kinds[] = {
+        { "data/model/", "model", "np" }, { "data/npc/", "npc", "npcsel" }, { "data/face/", "face", "np" } };
+    for (size_t i = 0; i < sizeof kinds / sizeof kinds[0]; ++i) {
+        size_t n = strlen(kinds[i].prefix), s = strlen(kinds[i].stem);
+        if (strncmp(path, kinds[i].prefix, n)) continue;
+        const char *leaf = path + n;
+        if (strncmp(leaf, kinds[i].stem, s)) return 0;
+        const char *d = leaf + s;
+        if (d[0] < '0' || d[0] > '9' || d[1] < '0' || d[1] > '9' || d[2] < '0' || d[2] > '9') return 0;
+        int slot = (d[0] - '0') * 100 + (d[1] - '0') * 10 + (d[2] - '0');
+        if (slot < 25) return 0;
+        return yo3_added_join(folder, kinds[i].kind, leaf, out, size);
+    }
+    return 0;
+}
 /* An added card's picture: the game's open of `data/card/<id>_<art>.png` (the face) or `data/mini/<id>_<art>.png` (the
  * thumbnail) becomes `folder/card/<id>.png` or `folder/mini/<id>.png`. The launcher puts only added cards' pictures in
  * its folder, so a game card's picture is never replaced here (the anime pictures go through the card profile). */

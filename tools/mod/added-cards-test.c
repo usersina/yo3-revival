@@ -24,6 +24,15 @@ int main(void) {
     assert(!yo3_added_art_path("C:/x", "data/card/../9709_1.png", out, sizeof out));
     assert(!yo3_added_art_path("C:/x", "data/back/9709_1.png", out, sizeof out));
     assert(!yo3_added_art_path("", "data/card/9709_1.png", out, sizeof out));
+    /* A custom NPC (slot 25 on): its body and skins, portrait and faces; the game's own 25 never. */
+    assert(yo3_added_npc_path("C:/x", "data/model/np025.mdl", out, sizeof out) && !strcmp(out, "C:/x/model/np025.mdl"));
+    assert(yo3_added_npc_path("C:/x", "data/model/np0250.png", out, sizeof out) && !strcmp(out, "C:/x/model/np0250.png"));
+    assert(yo3_added_npc_path("C:/x", "data/npc/npcsel025.png", out, sizeof out) && !strcmp(out, "C:/x/npc/npcsel025.png"));
+    assert(yo3_added_npc_path("C:/x", "data/face/np025f3.png", out, sizeof out) && !strcmp(out, "C:/x/face/np025f3.png"));
+    assert(!yo3_added_npc_path("C:/x", "data/model/np005.mdl", out, sizeof out));
+    assert(!yo3_added_npc_path("C:/x", "data/npc/npcsel024.png", out, sizeof out));
+    assert(!yo3_added_npc_path("C:/x", "data/model/np02.mdl", out, sizeof out));
+    assert(!yo3_added_npc_path("C:/x", "data/model/../np025.mdl", out, sizeof out));
     /* The Anime Collection pack: its file, the text tables and its picture, however Flash names the folder. */
     assert(yo3_added_pack_path("C:/x", "data/pack/300.y3a", out, sizeof out) && !strcmp(out, "C:/x/pack/300.y3a"));
     assert(!yo3_added_pack_path("C:/x", "data/pack/300.y3d", out, sizeof out));

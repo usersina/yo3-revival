@@ -37,6 +37,8 @@ pub(crate) const CHARACTERS: &[(&str, f64, f64, bool)] = &[
     ("Crow Hogan", 0.6, 0.1, false),
     ("Carly Carmine", 0.0, 0.2, false),
     ("Kalin Kessler", 0.5, 0.2, false),
+    // Custom NPCs (engine/added/npcs.json). Dartz: patient behind his walls until the Seal is down.
+    ("Dartz", 0.3, 0.4, false),
 ];
 
 /// The Millennium Eye a player can wear: Bakura's Accessories (male 84, female 342 in the item catalogue), a golden

@@ -589,6 +589,10 @@ pub struct World {
     pub npcs: Vec<u32>,
     /// Each NPC's deck (from its preset), by npc_id.
     pub npc_decks: HashMap<u32, Deck>,
+    /// A custom NPC's anime deck (`engine/added/npcs.json`), played instead while the server has anime cards on.
+    pub npc_anime_decks: HashMap<u32, Deck>,
+    /// The Kaiba Corporation tab of a custom NPC (0 Yu-Gi-Oh!, 1 GX, 2 5D's); the game's own follow their slot.
+    pub npc_series: HashMap<u32, u32>,
     /// Each NPC's duel bot style (npc.rs), by npc_id.
     pub npc_styles: HashMap<u32, serde_json::Value>,
     /// Each NPC's name (the same for its three levels), by npc_id.
@@ -707,6 +711,11 @@ pub const DUELS_UNAVAILABLE: (&str, &str) = (
 );
 
 impl World {
+    /// The deck NPC level `id` plays now: a custom NPC's anime deck while the server has anime cards on, else its deck.
+    pub fn npc_deck(&self, id: u32) -> Option<&Deck> {
+        self.settings.now().anime_cards.then(|| self.npc_anime_decks.get(&id)).flatten().or_else(|| self.npc_decks.get(&id))
+    }
+
     /// A Konami id's first CARD_Prop row (its lowest artwork's), for a testing aid that names cards by id.
     pub fn row_of(&self, cid: u16) -> Option<u16> {
         self.cards.iter().filter(|(_, c)| c.cid == cid).map(|(row, _)| *row).min()
@@ -763,6 +772,8 @@ impl World {
             free_items: vec![],
             npcs: vec![],
             npc_decks: HashMap::new(),
+            npc_anime_decks: HashMap::new(),
+            npc_series: HashMap::new(),
             npc_styles: HashMap::new(),
             npc_names: HashMap::new(),
             cards: HashMap::new(),
@@ -3843,11 +3854,11 @@ impl FrontSession {
             // summed). npc_type is the series tab: NPCs 0-8 Yu-Gi-Oh!, 9-16 GX, 17-25 5D's. need_ex 100/200/300 and
             // the tabs are guesses.
             0x2710 => self.world.npcs.iter().fold(Message::reply(0x2711), |m, &id| {
-                let tab = match id.saturating_sub(120) / 3 {
+                let tab = self.world.npc_series.get(&id).copied().unwrap_or(match id.saturating_sub(120) / 3 {
                     0..=8 => 0,
                     9..=16 => 1,
                     _ => 2,
-                };
+                });
                 m.item(
                     Message::record()
                         .with("npc_type", Value::U32(tab))

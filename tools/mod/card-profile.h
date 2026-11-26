@@ -131,6 +131,21 @@ static char card_art_folder[MAX_PATH * 2];
  * suspended until then). */
 static char card_added_folder[MAX_PATH * 2];
 static int card_added_read;
+/* The NPC bodies' table (npc_models_install): the game's 25 paths, then slots 25-29. A custom NPC's body is a file the
+ * launcher wrote, which the resource manager's load (vtable +0x58, which looks in the archives before any open) can
+ * only find by its full path on disk: once the folder is known, each slot whose model is there gets that path. */
+static const char *npc_model_paths[30];
+static char npc_model_names[5][MAX_PATH * 2 + 32];
+static void npc_models_point(const char *folder) {
+    for (int i = 0; i < 5; ++i) {
+        char file[MAX_PATH * 2 + 32];
+        snprintf(file, sizeof file, "%s/model/np%03d/np%03d.mdl", folder, 25 + i, 25 + i);
+        if (GetFileAttributesA(file) == INVALID_FILE_ATTRIBUTES) continue;
+        memcpy(npc_model_names[i], file, sizeof file);
+        npc_model_paths[25 + i] = npc_model_names[i];
+        card_profile_log("[YO3 MOD] custom NPC: slot %d's body %s", 25 + i, file);
+    }
+}
 static void card_added_learn(void) {
     if (card_added_read) return;
     card_added_read = 1;
@@ -142,6 +157,7 @@ static void card_added_learn(void) {
     BOOL ok = ReadFile(f, text, sizeof text - 1, &n, NULL); CloseHandle(f);
     if (!ok || !yo3_added_folder(text, n, card_added_folder, sizeof card_added_folder)) { card_added_folder[0] = 0; return; }
     card_profile_log("[YO3 MOD] added cards: files from %s", card_added_folder);
+    npc_models_point(card_added_folder);
 }
 static void *(__attribute__((thiscall)) *card_open_original)(void *, const char *) __attribute__((used));
 static unsigned card_art_hits, card_art_asked;
@@ -172,6 +188,13 @@ static void *__attribute__((thiscall, force_align_arg_pointer)) card_open_hook(v
             if (pack_logs++ < 16) card_profile_log("[YO3 MOD] added cards: %s -> %s", path, file);
             return card_open_original(self, file);
         }
+    }
+    if (path && strstr(path, "model/np02")) { static unsigned seen; if (seen++ < 8) card_profile_log("[YO3 MOD] custom NPC asked: %s", path); }
+    /* A custom NPC's body, skins, portrait and faces (slots 25 on). */
+    if (card_added_folder[0] && yo3_added_npc_path(card_added_folder, path, file, sizeof file) && GetFileAttributesA(file) != INVALID_FILE_ATTRIBUTES) {
+        static unsigned npc_logs;
+        if (npc_logs++ < 16) card_profile_log("[YO3 MOD] custom NPC: %s -> %s", path, file);
+        return card_open_original(self, file);
     }
     /* An added card's picture (the folder holds only theirs); read after the card files, so the folder is known. */
     if (card_added_folder[0] && yo3_added_art_path(card_added_folder, path, file, sizeof file) && GetFileAttributesA(file) != INVALID_FILE_ATTRIBUTES)
@@ -205,6 +228,28 @@ static int card_exists_install(void) {
     if (!VirtualProtect(site, sizeof load, PAGE_EXECUTE_READWRITE, &previous)) return 1;
     site[0] = 0xBA; memcpy(site + 1, &to, 4); site[5] = 0x90;                          /* mov edx, imm32; nop */
     FlushInstructionCache(GetCurrentProcess(), site, sizeof load); VirtualProtect(site, sizeof load, previous, &ignored);
+    return 1;
+}
+/* The NPC bodies: FUN_004E4180 reads the k-th NPC's model path from a 25-entry table (`mov ecx,[eax*4+0x7F5B48]` at
+ * 0x4E430F, its only reader), past which sit unrelated pointers ("bad allocation"). The read takes a table of our own:
+ * the game's 25 paths, then `data/model/np025.mdl` to np029 for custom NPCs (the duel cut-in table at 0x788C40 has 30
+ * entries). A slot with no body in the launcher's folder loads nothing, as slot 25 always did. */
+static int npc_models_install(void) {
+    static const unsigned char read[] = { 0x8b, 0x0c, 0x85 };                     /* mov ecx,[eax*4+disp32] */
+    unsigned char *site = (unsigned char *)game_address(0x4E430F);
+    uint32_t table = (uint32_t)(uintptr_t)game_address(0x7F5B48);
+    if (memcmp(site, read, sizeof read) || memcmp(site + 3, &table, 4)) { card_profile_log("[YO3 MOD] custom NPC: the model read is not the expected code, left alone"); return 1; }
+    memcpy(npc_model_paths, (const void *)(uintptr_t)table, 25 * sizeof npc_model_paths[0]);
+    for (int i = 0; i < 5; ++i) if (!npc_model_paths[25 + i]) {
+        snprintf(npc_model_names[i], sizeof npc_model_names[i], "data/model/np%03d.mdl", 25 + i);
+        npc_model_paths[25 + i] = npc_model_names[i];
+    }
+    if (card_added_folder[0]) npc_models_point(card_added_folder);
+    DWORD previous, ignored; uint32_t to = (uint32_t)(uintptr_t)npc_model_paths;
+    if (!VirtualProtect(site + 3, 4, PAGE_EXECUTE_READWRITE, &previous)) return 1;
+    memcpy(site + 3, &to, 4);
+    FlushInstructionCache(GetCurrentProcess(), site, 7); VirtualProtect(site + 3, 4, previous, &ignored);
+    card_profile_log("[YO3 MOD] custom NPC: room for 30 NPC bodies");
     return 1;
 }
 static int card_art_install(void) {
@@ -348,6 +393,7 @@ static int card_profile_install(void) {
     void *open_tramp = card_detour(0x5505E0, sizeof open_prologue, open_prologue, -1, (void *)card_open_hook);
     if (!open_tramp) return 0;
     card_exists_install();
+    npc_models_install();
     card_open_original = (void *(__attribute__((thiscall)) *)(void *, const char *))open_tramp;
     return 1;
 }

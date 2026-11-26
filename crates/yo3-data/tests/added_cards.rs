@@ -112,7 +112,9 @@ fn the_anime_collection_pack_holds_the_anime_only_cards_and_names_itself_in_ever
         desc: String::new(), a: 0, b: rarity << 24, genre: 0, anime_only, token };
     added.cards = vec![card(5, 0, true, false), card(6, 4, true, false), card(7, 0, true, false), card(8, 0, false, false), card(9, 0, true, true)];
     assert_eq!(yo3_data::added::anime_pack_tiers(&added), vec![vec![5, 7], vec![6]], "Commons, then Rares; the printed card and the Token left out");
-    let files = yo3_data::added::anime_pack_files(&|n: &str| ypk.read(n).ok().flatten(), &added).unwrap();
+    let read = |n: &str| ypk.read(n).ok().flatten();
+    let mut files = yo3_data::added::anime_pack_files(&read, &added).unwrap();
+    files.extend(yo3_data::added::text_files(&read, &added).unwrap());
     let pack = files.iter().find(|(n, _)| n == "data/pack/300.y3a").expect("the pack file");
     let record = yo3_proto::decode_file(&pack.1).unwrap();
     assert_eq!(record.get("pack_image").and_then(yo3_proto::Value::as_str).as_deref(), Some("YO3_ANIME_1.png"));

@@ -570,7 +570,7 @@ impl DuelSession {
     /// engine does up to the client's first choice (its draws, turns and phases). None if the engine won't start.
     fn engine_opening(&mut self, first: u32, dir: &std::path::Path) -> Option<Vec<Message>> {
         let mut entry = self.entry.clone()?;
-        let mut npc = entry.npc_id.and_then(|id| self.world.npc_decks.get(&id)).map(|d| self.world.place_deck(d))?;
+        let mut npc = entry.npc_id.and_then(|id| self.world.npc_deck(id)).map(|d| self.world.place_deck(d))?;
         // A testing aid (--duel-field), as in duels between players: team 0 is the player, team 1 the computer. Each card
         // joins its side's deck (so the game's card table has it) and the engine moves it to its place as the duel starts.
         let player_team = if first == CLIENT { 0 } else { 1 };
@@ -820,7 +820,7 @@ impl DuelSession {
     fn replay(&self, hub: &Hub) -> Option<crate::duellog::Replay> {
         let (entry, first, player_id) = (self.entry.as_ref()?, self.first?, self.player_id?);
         let npc_id = entry.npc_id?;
-        let npc = self.world.npc_decks.get(&npc_id)?;
+        let npc = self.world.npc_deck(npc_id)?;
         if self.history.is_empty() {
             return None;
         }
@@ -840,7 +840,7 @@ impl DuelSession {
     /// without the player's deck and an NPC to play.
     fn opening(&mut self, first: u32) -> Vec<Message> {
         let Some(entry) = self.entry.clone() else { return vec![] };
-        let Some(npc) = entry.npc_id.and_then(|id| self.world.npc_decks.get(&id)).map(|d| self.world.place_deck(d)) else { return vec![] };
+        let Some(npc) = entry.npc_id.and_then(|id| self.world.npc_deck(id)).map(|d| self.world.place_deck(d)) else { return vec![] };
         let mut out = vec![setup(first, &entry.deck, &npc)];
         // uids 1.. in table order: the client's deck, then the CPU's.
         let mut decks = [entry.deck.main.clone(), npc.main.clone()];

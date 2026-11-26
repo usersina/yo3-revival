@@ -81,6 +81,7 @@ ENGINE = os.path.join(ROOT, 'engine')
 TABLE = os.path.join(ENGINE, 'added', 'cards.tsv')
 ANIME_TABLE = os.path.join(ENGINE, 'anime', 'cards.tsv')
 OUT = os.path.join(ENGINE, 'added-cards.json')
+NPCS = os.path.join(ENGINE, 'added', 'npcs.json')
 FORMAT = 'yo3-added-cards'
 STAT_MAX = 0x1FE * 10  # nine bits of tens; 0x1FF is the client's "?"
 FIRST_ROW = 4834
@@ -573,7 +574,14 @@ def build():
         out.append(card)
     if problems:
         raise SystemExit('engine/added/cards.tsv:\n  ' + '\n  '.join(problems))
-    return {'format': FORMAT, 'version': 1, 'first_row': len(rows), 'cards': out}
+    doc = {'format': FORMAT, 'version': 1, 'first_row': len(rows), 'cards': out}
+    # Characters the game never had as NPCs (engine/added/npcs.json), carried as they are: the server and the launcher read them.
+    if os.path.isfile(NPCS):
+        with open(NPCS, encoding='utf-8') as f:
+            npcs = json.load(f)['npcs']
+        if npcs:
+            doc['npcs'] = npcs
+    return doc
 
 
 def made_tokens(code, ctx):
