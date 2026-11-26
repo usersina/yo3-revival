@@ -3,6 +3,7 @@
 and the table's rules hold. Needs engine/fetch.sh's data and the game (skipped without them)."""
 import importlib.util
 import os
+import re
 import contextlib
 import io
 import tempfile
@@ -158,7 +159,7 @@ class AddedCards(unittest.TestCase):
             with open(added.TABLE) as f:
                 text = f.read()
             with open(table, 'w') as f:
-                f.write(text.replace('\t\t3968\t\t170000171', '\t4007\t3968\t\t170000171'))
+                f.write(re.sub(r'\t\t3968\t(\w*)\t170000171', r'\t4007\t3968\t\1\t170000171', text))
             with mock.patch.object(added, 'TABLE', table), self.assertRaises(SystemExit) as e:
                 added.build()
             self.assertIn('has no Konami id', str(e.exception))

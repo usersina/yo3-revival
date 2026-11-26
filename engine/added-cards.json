@@ -21,7 +21,7 @@
    "name": "Orichalcos Gigas",
    "desc": "[Anime]\rWhile this card is face-up on the field, you cannot draw a card(s). When this card is destroyed, you can Special Summon it, but it cannot attack this turn. This card gains 500 ATK x the number of times it was Special Summoned by its own effect during this Duel.",
    "a": 1258950528,
-   "b": 137380360,
+   "b": 187712008,
    "genre": 136,
    "note": "first anime-only card: played with anime cards on",
    "anime_only": true
@@ -90,7 +90,7 @@
    "name": "Arduous Decision",
    "desc": "[Anime]\rDraw 2 cards from the top of your Deck, then have your opponent select one of those cards. If the selected card is a monster, Special Summon it, ignoring its Summoning conditions, and send the other card to the Graveyard. Otherwise, send both cards to the Graveyard.",
    "a": 3980,
-   "b": 146278504,
+   "b": 179832936,
    "genre": 12,
    "note": "anime-only: Yugi's draw gamble",
    "anime_only": true
@@ -102,7 +102,7 @@
    "name": "Orichalcos Deuteros",
    "desc": "[Anime]\rActivate only if \"The Seal of Orichalcos\" is in your Field Zone. This card gains the effects of \"The Seal of Orichalcos\". Once per turn: You can gain 500 LP for each monster you control. When an opponent's monster declares a direct attack: You can Tribute 1 monster; destroy the attacking monster.",
    "a": 3981,
-   "b": 146409576,
+   "b": 196741224,
    "genre": 1,
    "note": "anime-only: the Seal's second level",
    "anime_only": true
@@ -114,7 +114,7 @@
    "name": "Orichalcos Tritos",
    "desc": "[Anime]\rActivate only if \"Orichalcos Deuteros\" is in your Field Zone. This card gains the effects of \"Orichalcos Deuteros\". When your opponent activates a Spell/Trap Card or effect that targets a monster you control (Quick Effect): You can negate the activation.",
    "a": 3982,
-   "b": 146409576,
+   "b": 179964008,
    "genre": 16,
    "note": "anime-only: the Seal's third level (anime text partly unknown; the script's reading)",
    "anime_only": true
@@ -126,7 +126,7 @@
    "name": "Orichalcos Kyutora",
    "desc": "[Anime]\rCannot be Normal Summoned/Set. Must first be Special Summoned (from your hand) by paying 500 LP. While this card is face-up on the field, all battle damage you would take from battles involving monsters you control becomes 0. When this card is destroyed: You can Special Summon 1 \"Orichalcos Shunoros\" from your hand or Deck.",
    "a": 420253584,
-   "b": 137376008,
+   "b": 170930440,
    "genre": 2097288,
    "note": "anime-only: summons Shunoros when destroyed",
    "anime_only": true
@@ -138,7 +138,7 @@
    "name": "Orichalcos Dexia",
    "desc": "[Anime]\rCannot be Normal Summoned/Set. Must be Special Summoned with \"Orichalcos Shunoros\", and cannot be Special Summoned by other ways. Cannot be destroyed while you control a \"Orichalcos Shunoros\". If this card battles with your opponent's monster: This card's ATK becomes equal to either that Attack Position monster's ATK or that Defense Position monster's DEF, + 300 until the end of the Damage Step. After damage calculation, 1 \"Orichalcos Shunoros\" you control loses ATK equal to the ATK this card had during the Damage Step. If \"Orichalcos Shunoros\" leaves the field: Destroy this card.",
    "a": 4294954897,
-   "b": 137904648,
+   "b": 188236296,
    "genre": 2113664,
    "note": "anime-only: Shunoros' right arm",
    "anime_only": true
@@ -150,7 +150,7 @@
    "name": "Orichalcos Aristeros",
    "desc": "[Anime]\rCannot be Normal Summoned/Set. Must be Special Summoned with \"Orichalcos Shunoros\", and cannot be Special Summoned by other ways. Cannot be destroyed while you control a \"Orichalcos Shunoros\". If an opponent's monster declares an attack: Change the attack target to this card and the DEF of this card becomes equal to the ATK of the attacking monster + 300 during the Damage Step only. After damage calculation, 1 \"Orichalcos Shunoros\" you control loses ATK equal to the DEF this card had during the Damage Step. If \"Orichalcos Shunoros\" leaves the field: Destroy this card.",
    "a": 4294954898,
-   "b": 137904648,
+   "b": 188236296,
    "genre": 2113664,
    "note": "anime-only: Shunoros' left arm",
    "anime_only": true
@@ -4364,7 +4364,7 @@
    "name": "Altar of Restoration",
    "desc": "[Anime]\rBanish the top 2 cards of your Deck; add 1 card from your Graveyard to your hand.",
    "a": 5185,
-   "b": 146278504,
+   "b": 213387368,
    "genre": 0,
    "note": "anime-only batch 1: Yami Yugi, Yami Bakura, Rafael",
    "anime_only": true
@@ -4376,7 +4376,7 @@
    "name": "Awakening from Beyond",
    "desc": "[Anime]\rYour opponent draws 2 cards; add 1 monster from your Graveyard to your hand.",
    "a": 5186,
-   "b": 146278504,
+   "b": 213387368,
    "genre": 4,
    "note": "anime-only batch 1: Yami Yugi, Yami Bakura, Rafael",
    "anime_only": true
@@ -4388,7 +4388,7 @@
    "name": "Bounce Spell",
    "desc": "[Anime]\rTarget 1 face-up Spell your opponent controls; take control it and activate the effect of it.",
    "a": 5187,
-   "b": 146606184,
+   "b": 213715048,
    "genre": 512,
    "note": "anime-only batch 1: Yami Yugi, Yami Bakura, Rafael",
    "anime_only": true
@@ -4400,7 +4400,7 @@
    "name": "Dark Magic Retribution",
    "desc": "[Anime]\rWhen an opponent's monster declares an attack: Target 1 Spellcaster-Type monster in your Graveyard that was destroyed the previous turn; Special Summon it, and battle with that opponent's monster, also destroy it at the end of the Battle Phase.",
    "a": 5188,
-   "b": 146803056,
+   "b": 180357488,
    "genre": 8,
    "note": "anime-only batch 1: Yami Yugi, Yami Bakura, Rafael",
    "anime_only": true
@@ -4412,7 +4412,7 @@
    "name": "Dark Spear",
    "desc": "[Anime]\rEquip only to \"Dark Magician\". If it attacks a Defense Position monster, inflict piercing battle damage to your opponent.",
    "a": 5189,
-   "b": 146475112,
+   "b": 213583976,
    "genre": 65536,
    "note": "anime-only batch 1: Yami Yugi, Yami Bakura, Rafael",
    "anime_only": true
@@ -4424,7 +4424,7 @@
    "name": "Divine Wind",
    "desc": "[Anime]\rWhen your opponent activates a monster effect that would inflict damage: Negate that effect and inflict damage to your opponent equal to the damage you would have taken +500.",
    "a": 5190,
-   "b": 146868592,
+   "b": 197200240,
    "genre": 19,
    "note": "anime-only batch 1: Yami Yugi, Yami Bakura, Rafael",
    "anime_only": true
@@ -4436,7 +4436,7 @@
    "name": "Excalibur",
    "desc": "[Anime]\rDouble the equipped monster's original ATK. You can skip your Draw Phase each turn. If you draw a card(s), destroy this card.",
    "a": 5191,
-   "b": 146475112,
+   "b": 180029544,
    "genre": 128,
    "note": "anime-only batch 1: Yami Yugi, Yami Bakura, Rafael",
    "anime_only": true
@@ -4460,7 +4460,7 @@
    "name": "Magical Pigeon",
    "desc": "[Anime]\rReturn 1 \"Dark Magician Girl\" you control to your hand; Special Summon 2 \"Pigeon Tokens\" (WIND/Winged Beast-Type/Level 1/ATK 0/DEF 0) in Defense Position, also, during the End Phase of this turn, you can destroy all \"Pigeon Tokens\" you control and Special Summon 1 \"Dark Magician Girl\" from your hand.",
    "a": 5215,
-   "b": 146606184,
+   "b": 213715048,
    "genre": 2147483656,
    "note": "anime-only batch 1: Yami Yugi, Yami Bakura, Rafael",
    "anime_only": true
@@ -4472,7 +4472,7 @@
    "name": "Necromancy",
    "desc": "[Anime]\rSpecial Summon 4 random monsters from your opponent's Graveyard in face-up Defense Position to your opponent's side of the field. Each time a monster(s) Special Summoned by this effect is destroyed, 1 monster on the field loses 600 ATK for each of these monsters.",
    "a": 5228,
-   "b": 146278504,
+   "b": 179832936,
    "genre": 136,
    "note": "anime-only batch 1: Yami Yugi, Yami Bakura, Rafael",
    "anime_only": true
@@ -4496,7 +4496,7 @@
    "name": "Reduction Barrier",
    "desc": "[Anime]\rWhen you would take battle damage: The Damage you take becomes 10% of the damage you would have taken.",
    "a": 5235,
-   "b": 146803056,
+   "b": 213911920,
    "genre": 0,
    "note": "anime-only batch 1: Yami Yugi, Yami Bakura, Rafael",
    "anime_only": true
@@ -4508,7 +4508,7 @@
    "name": "Summoning Clock",
    "desc": "[Anime]\rActivate only when your opponent activates a Spell/Trap Card. Once per turn, during your Standby Phase, place 1 Turn Counter on this card. You can Tribute this card and 1 monster; Special Summon monsters from your hand equal to the number of Turn Counters that were on this card.",
    "a": 5240,
-   "b": 147065200,
+   "b": 214174064,
    "genre": 8,
    "note": "anime-only batch 1: Yami Yugi, Yami Bakura, Rafael",
    "anime_only": true
@@ -4520,7 +4520,7 @@
    "name": "Time Travel",
    "desc": "[Anime]\rTarget 1 monster you control; banish it until your opponent's next Standby Phase. While it is banished, its Monster Zone cannot be used.",
    "a": 5241,
-   "b": 146278504,
+   "b": 179832936,
    "genre": 16384,
    "note": "anime-only batch 1: Yami Yugi, Yami Bakura, Rafael",
    "anime_only": true
@@ -4556,7 +4556,7 @@
    "name": "Crystal Seal",
    "desc": "[Anime]\rActivate this card by targeting 1 face-up monster your opponent controls. It cannot attack, be Tributed, change its battle position, activate its effect(s), also it cannot be targeted for attacks, but does not prevent you from attacking directly. If it gains ATK, destroy this card. Cannot be destroyed by other card effects.",
    "a": 5288,
-   "b": 147065200,
+   "b": 214174064,
    "genre": 1048848,
    "note": "anime-only batch 1: Yami Yugi, Yami Bakura, Rafael",
    "anime_only": true
@@ -4568,7 +4568,7 @@
    "name": "Guardian Force",
    "desc": "[Anime]\rWhen your opponent activates a Spell Card, while there are no \"Guardian\" monsters in your Graveyard: Negate its activation, and if you do, destroy it.",
    "a": 5293,
-   "b": 146868592,
+   "b": 197200240,
    "genre": 16,
    "note": "anime-only batch 1: Yami Yugi, Yami Bakura, Rafael",
    "anime_only": true
@@ -4604,7 +4604,7 @@
    "name": "Limit Tribute",
    "desc": "[Anime]\rBoth players can only Tribute 1 monster per turn.",
    "a": 5364,
-   "b": 147065200,
+   "b": 214174064,
    "genre": 0,
    "note": "anime-only batch 1: Yami Yugi, Yami Bakura, Rafael",
    "anime_only": true
@@ -4652,7 +4652,7 @@
    "name": "Rescuer from the Grave",
    "desc": "[Anime]\rWhen an opponent's monster declares an attack, while this card is in your Graveyard: you can banish 5 cards from your Graveyard; negate the attack and end the Battle Phase.",
    "a": 5407,
-   "b": 146278504,
+   "b": 213387368,
    "genre": 0,
    "note": "anime-only batch 1: Yami Yugi, Yami Bakura, Rafael",
    "anime_only": true
@@ -4700,7 +4700,7 @@
    "name": "Disgraced Mage",
    "desc": "[Anime]\rIf this card destroys an opponent's monster by battle: Shuffle that monster into the Deck instead of sending it to the Graveyard. When this card is attacked: You take no battle damage. If this card would be destroyed by battle, you can shuffle this card and all the cards in your hand into the Deck instead.",
    "a": 1177195857,
-   "b": 135283208,
+   "b": 185614856,
    "genre": 524288,
    "note": "anime-only batch 1: Yami Yugi, Yami Bakura, Rafael",
    "anime_only": true
@@ -4712,7 +4712,7 @@
    "name": "Fearful Earthbound",
    "desc": "[Anime]\rActivate only when an opponent's monster declares an attack. At the end of the Damage Step, if an opponent's monster attacked: Inflict 500 damage to your opponent.",
    "a": 5458,
-   "b": 147065200,
+   "b": 214174064,
    "genre": 2,
    "note": "anime-only batch 1: Yami Yugi, Yami Bakura, Rafael",
    "anime_only": true
@@ -4724,7 +4724,7 @@
    "name": "Mirror Tablet",
    "desc": "[Anime]\rWhen a monster you control is destroyed by battle with an opponent's monster: You can make 1 face-up Attack Position monster you control gain ATK equal to half of that opponent's monster's ATK until the end of the Damage Step and battle that opponent's monster.",
    "a": 5459,
-   "b": 146803056,
+   "b": 197134704,
    "genre": 128,
    "note": "anime-only batch 1: Yami Yugi, Yami Bakura, Rafael",
    "anime_only": true
@@ -4748,7 +4748,7 @@
    "name": "Necro Cycle",
    "desc": "[Anime]\rActivate this card only while you control a \"Necro Mannequin\". Once per turn (Quick Effect): You can Special Summon 1 \"Necro Mannequin\" from your hand or Deck. If you do not control \"Necro Mannequin\", destroy this card.",
    "a": 5461,
-   "b": 147065200,
+   "b": 197396848,
    "genre": 8,
    "note": "anime-only batch 1: Yami Yugi, Yami Bakura, Rafael",
    "anime_only": true
@@ -4808,7 +4808,7 @@
    "name": "Rebirth Tablet",
    "desc": "[Anime]\rWhen a monster(s) is destroyed: Special Summon 1 monster from your Graveyard.",
    "a": 5466,
-   "b": 146803056,
+   "b": 213911920,
    "genre": 8,
    "note": "anime-only batch 1: Yami Yugi, Yami Bakura, Rafael",
    "anime_only": true
@@ -4820,7 +4820,7 @@
    "name": "Spirit Sword of Sealing",
    "desc": "[Anime]\rTarget 1 monster on the field; banish it with its effects negated. This card remains face-up on the field. The banished monster cannot be Special Summoned by card effects. Cannot be destroyed, except by its own effect. If a monster(s) that is owned by the banished monster's controller is destroyed and sent to the Graveyard: Return the banished monster to its owner's side of the field and destroy this card.",
    "a": 5467,
-   "b": 146278504,
+   "b": 179832936,
    "genre": 16400,
    "note": "anime-only batch 1: Yami Yugi, Yami Bakura, Rafael",
    "anime_only": true
@@ -4907,7 +4907,7 @@
    "name": "Burning Soul Sword",
    "desc": "[Anime]\rYou can Tribute 1 monster; the equipped monster gains ATK equal to the Tributed monster's ATK, until the end of this turn (even if this card leaves the field).",
    "a": 5500,
-   "b": 146475112,
+   "b": 213583976,
    "genre": 128,
    "note": "anime-only batch 2: Seto Kaiba, Joey Wheeler, Alister",
    "anime_only": true
@@ -4919,7 +4919,7 @@
    "name": "Celebration of Creation",
    "desc": "[Anime]\rDuring your opponent's turn, when a monster(s) is Special Summoned by card effect, even during the Damage Step: It becomes the End Phase of this turn.",
    "a": 5563,
-   "b": 146803056,
+   "b": 197134704,
    "genre": 0,
    "note": "anime-only batch 2: Seto Kaiba, Joey Wheeler, Alister",
    "anime_only": true
@@ -4991,7 +4991,7 @@
    "name": "Star Blaster",
    "desc": "[Anime]\rTarget 1 face-up monster you control; Roll a six-sided die. Increase its Level by that result. Then, you can Tribute it and Special Summon 1 monster from your hand with the same Level.",
    "a": 5570,
-   "b": 146278504,
+   "b": 213387368,
    "genre": 8589934592,
    "note": "anime-only batch 2: Seto Kaiba, Joey Wheeler, Alister",
    "anime_only": true
@@ -5003,7 +5003,7 @@
    "name": "Take One Chance",
    "desc": "[Anime]\rChoose 1 random card in your Graveyard, and activate that card immediately, if able.",
    "a": 5571,
-   "b": 146803056,
+   "b": 213911920,
    "genre": 64,
    "note": "anime-only batch 2: Seto Kaiba, Joey Wheeler, Alister",
    "anime_only": true
@@ -5051,7 +5051,7 @@
    "name": "Clone Dragon",
    "desc": "[Anime]\rWhen you Normal Summoned exactly 1 monster: You can Special Summon this card from your hand, and if you do, its name, original ATK, and DEF become the same as the Summoned monster's. This card cannot declare an attack unless you pay 1000 LP.",
    "a": 4294956546,
-   "b": 134758664,
+   "b": 168313096,
    "genre": 136,
    "note": "anime-only batch 2: Seto Kaiba, Joey Wheeler, Alister",
    "anime_only": true
@@ -5063,7 +5063,7 @@
    "name": "Command Silencer",
    "desc": "[Anime]\rWhen an opponent's monster declares an attack: Negate the attack, then end the Battle Phase. Also, draw 1 card.",
    "a": 5635,
-   "b": 146606184,
+   "b": 213715048,
    "genre": 4,
    "note": "anime-only batch 2: Seto Kaiba, Joey Wheeler, Alister",
    "anime_only": true
@@ -5099,7 +5099,7 @@
    "name": "Power Balance",
    "desc": "[Anime]\rWhile you have no cards in your hand: Your opponent discards half the cards in their hand, then, draw cards equal to the number of cards your opponent discarded.",
    "a": 5689,
-   "b": 146803056,
+   "b": 213911920,
    "genre": 4,
    "note": "anime-only batch 2: Seto Kaiba, Joey Wheeler, Alister",
    "anime_only": true
@@ -5159,7 +5159,7 @@
    "name": "Wish of Final Effort",
    "desc": "[Anime]\rWhen a monster you control is destroyed: Gain LP equal to the destroyed monster's ATK.",
    "a": 5694,
-   "b": 146803056,
+   "b": 213911920,
    "genre": 1,
    "note": "anime-only batch 2: Seto Kaiba, Joey Wheeler, Alister",
    "anime_only": true
@@ -5171,7 +5171,7 @@
    "name": "Aetonyx Flame",
    "desc": "[Anime]\rDestroy all monsters on the field other than FIRE Fiend-Type monsters. Then, you can Special Summon 1 FIRE Fiend-Type monster from your Graveyard. You cannot declare an attack during the turn you activate this card.",
    "a": 5712,
-   "b": 146278504,
+   "b": 213387368,
    "genre": 8,
    "note": "anime-only batch 2: Seto Kaiba, Joey Wheeler, Alister",
    "anime_only": true
@@ -5183,7 +5183,7 @@
    "name": "Air Fortress Ziggurat",
    "desc": "[Anime]\rCannot be Normal Summoned/Set. Must be Special Summoned with \"Sky Union\", and cannot be Special Summoned by other ways. Unaffected by the effects of your opponent's Spells/Traps. Once per turn, during your End Phase: Special Summon 1 \"Robot Token\" (Machine-Type/WIND/Level 1/ATK 0/DEF 0) in Defense Position, but it cannot declare an attack. While you control a \"Robot Token\", your opponent cannot target monsters you control for an attack, except \"Robot Tokens\".",
    "a": 675190382,
-   "b": 137922056,
+   "b": 171476488,
    "genre": 2150629384,
    "note": "anime-only batch 2: Seto Kaiba, Joey Wheeler, Alister",
    "anime_only": true
@@ -5243,7 +5243,7 @@
    "name": "KC-1 Crayton",
    "desc": "[Anime]\rThis card gains 500 ATK for each \"Tank Token\" you control.",
    "a": 1009096308,
-   "b": 137905416,
+   "b": 205014280,
    "genre": 128,
    "note": "anime-only batch 2: Seto Kaiba, Joey Wheeler, Alister",
    "anime_only": true
@@ -5375,7 +5375,7 @@
    "name": "Magician's Selection",
    "desc": "[Anime]\rWhen an opponent's monster declares an attack while you control a Spellcaster-Type monster: Negate the attack, and if you do, destroy the 1 face-up monster your opponent controls that has the lowest ATK (your choice, if tied).",
    "a": 5863,
-   "b": 146803056,
+   "b": 213911920,
    "genre": 0,
    "note": "anime-only batch 3: Yugi Muto, Weevil Underwood, Leon von Schroeder",
    "anime_only": true
@@ -5387,7 +5387,7 @@
    "name": "Mirage Ruler",
    "desc": "[Anime]\rActivate only when an opponent's monster declares an attack. During your opponent's Battle Phase, if all monsters you control are destroyed: You can Tribute this card; return all monsters you controlled during this turn's Battle Phase to the field, also, your LP become the amount you had at the start of this Battle Phase, then pay 1000 LP.",
    "a": 5864,
-   "b": 147065200,
+   "b": 180619632,
    "genre": 72,
    "note": "anime-only batch 3: Yugi Muto, Weevil Underwood, Leon von Schroeder",
    "anime_only": true
@@ -5411,7 +5411,7 @@
    "name": "Spell Textbook",
    "desc": "[Anime]\rDiscard all cards in your hand (if any); Shuffle your Deck, then draw 1 card and reveal it. If it is a Spell, activate it.",
    "a": 5866,
-   "b": 146606184,
+   "b": 213715048,
    "genre": 4,
    "note": "anime-only batch 3: Yugi Muto, Weevil Underwood, Leon von Schroeder",
    "anime_only": true
@@ -5435,7 +5435,7 @@
    "name": "Armored Centipede",
    "desc": "[Anime]\rIf this card destroys an Insect-Type monster by battle, it gains 500 ATK.",
    "a": 1344804590,
-   "b": 139482376,
+   "b": 189814024,
    "genre": 128,
    "note": "anime-only batch 3: Yugi Muto, Weevil Underwood, Leon von Schroeder",
    "anime_only": true
@@ -5519,7 +5519,7 @@
    "name": "Poison Butterfly",
    "desc": "[Anime]\rOnce per turn, during your End Phase: Take 500 damage.",
    "a": 1514379062,
-   "b": 139490824,
+   "b": 173045256,
    "genre": 2,
    "note": "anime-only batch 3: Yugi Muto, Weevil Underwood, Leon von Schroeder",
    "anime_only": true
@@ -5531,7 +5531,7 @@
    "name": "100-Year Awakening",
    "desc": "[Anime]\rTribute \"Curse of Thorns\" on the field; Special Summon 1 \"Thorn Princess\" from your Deck.",
    "a": 5997,
-   "b": 146278504,
+   "b": 196610152,
    "genre": 8,
    "note": "anime-only batch 3: Yugi Muto, Weevil Underwood, Leon von Schroeder",
    "anime_only": true
@@ -5603,7 +5603,7 @@
    "name": "Seven Kid Goats",
    "desc": "[Anime]\rWhen this card is Normal or Flip Summoned: Destroy 1 face-up Beast-Type monster your opponent controls, and if you do, inflict damage to your opponent equal to the ATK of the destroyed monster.",
    "a": 588355451,
-   "b": 139998472,
+   "b": 207107336,
    "genre": 2,
    "note": "anime-only batch 3: Yugi Muto, Weevil Underwood, Leon von Schroeder",
    "anime_only": true
@@ -5715,7 +5715,7 @@
    "name": "Natural Selection",
    "desc": "[Anime]\rDuring your opponent's turn: Destroy 1 face-up monster your opponent controls, and Special Summon 1 \"Selection Token\" with the same Level, Type, Attribute, ATK, and DEF as the destroyed monster, but it is destroyed during the End Phase.",
    "a": 6080,
-   "b": 146803056,
+   "b": 213911920,
    "genre": 2147483784,
    "note": "copy Tokens: the cards that waited for a Token with no Type or Attribute of its own",
    "anime_only": true
@@ -5727,7 +5727,7 @@
    "name": "Cell Division",
    "desc": "[Anime]\rTarget 1 Level 3 or lower Insect-Type monster you control; Special Summon 1 \"Cell Division Token\" that has the same original Level, Type, Attribute, ATK and DEF as that monster.",
    "a": 6081,
-   "b": 146278504,
+   "b": 213387368,
    "genre": 2147483784,
    "note": "copy Tokens: the cards that waited for a Token with no Type or Attribute of its own",
    "anime_only": true
@@ -5739,7 +5739,7 @@
    "name": "Reckless Parasite",
    "desc": "[Anime]\rIf this card is activated: Special Summon 1 \"Parasite Paracide\" from your opponent's Deck to their side of the field in Attack Position. Monsters currently on the field, and monsters those Summoned while this card is on the field are equipped with a \"Parasite Token\". While a \"Parasite Paracide\" and \"Reckless Parasite\" are on the field, monsters equipped with a \"Parasite Token\" are treated as Insect-Type and cannot be Tributed.",
    "a": 6091,
-   "b": 146540648,
+   "b": 196872296,
    "genre": 8,
    "note": "copy Tokens: the cards that waited for a Token with no Type or Attribute of its own",
    "anime_only": true
