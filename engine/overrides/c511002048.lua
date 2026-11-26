@@ -89,16 +89,38 @@ function s.initial_effect(c)
 		e2:SetValue(0)
 		e2:SetReset(RESET_EVENT+RESETS_STANDARD)
 		tc:RegisterEffect(e2)
-		--yo3-revival: 10% more than the ATK it had on the field when it was destroyed (boosts included), so each revival
-		--grows from the last; upstream read its ATK in the Graveyard (the printed one) and never reset the effect
-		local atk=tc:GetPreviousAttackOnField()
+		--yo3-revival: the 10% grows the monster's own ATK: its printed ATK, or the one an earlier revival by this effect gave
+		--it (the mark below, kept into the Graveyard), never a boost of another card's (an Equip Spell), which falls off
+		--with that card; it is set as the monster's own ATK, so a boost given afterwards applies on top. Upstream read its
+		--ATK in the Graveyard and never reset the effect.
+		local own=tc:GetTextAttack()
+		local mark=tc:GetFlagEffect(id)>0 and tc:GetFlagEffectLabel(id) or 0
+		if mark>0 and mark%100000==Duel.GetTurnCount() then own=mark//100000 end
+		local atk=own+own//10
 		local e3=Effect.CreateEffect(e:GetHandler())
 		e3:SetType(EFFECT_TYPE_SINGLE)
 		e3:SetProperty(EFFECT_FLAG_CANNOT_DISABLE)
-		e3:SetCode(EFFECT_SET_ATTACK)
-		e3:SetValue(atk+atk//10)
+		e3:SetCode(EFFECT_SET_BASE_ATTACK)
+		e3:SetValue(atk)
 		e3:SetReset(RESET_EVENT+RESETS_STANDARD)
 		tc:RegisterEffect(e3)
+		--The mark, written as the monster leaves the field by battle (its own ATK then, the Equip Spells' boosts not
+		--counted, and the turn): kept into the Graveyard and read by the revival that follows at once, on that turn only;
+		--any other way off the field clears it. (The core's reset for arriving on the field reaches a mark written in the
+		--destruction itself, so the turn, not that reset, keeps an old mark from counting.)
+		local e4=Effect.CreateEffect(e:GetHandler())
+		e4:SetType(EFFECT_TYPE_SINGLE+EFFECT_TYPE_CONTINUOUS)
+		e4:SetCode(EVENT_LEAVE_FIELD_P)
+		e4:SetProperty(EFFECT_FLAG_CANNOT_DISABLE+EFFECT_FLAG_UNCOPYABLE)
+		e4:SetOperation(function(ef)
+			local h=ef:GetHandler()
+			h:ResetFlagEffect(id)
+			if h:IsReason(REASON_BATTLE) then
+				h:RegisterFlagEffect(id,RESET_EVENT|(RESETS_STANDARD_EXC_GRAVE&~RESET_TOFIELD),0,1,h:GetBaseAttack()*100000+Duel.GetTurnCount())
+			end
+		end)
+		e4:SetReset(RESET_EVENT|(RESETS_STANDARD&~RESET_TOFIELD))
+		tc:RegisterEffect(e4)
 		Duel.SpecialSummonComplete()
 	end
  end
