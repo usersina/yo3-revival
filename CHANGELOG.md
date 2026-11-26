@@ -13,6 +13,14 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- **EDOPro decks.** Desktop imports an EDOPro deck file (`.ydk`) into your decks, and exports yours for EDOPro: Settings →
+  Singleplayer → Your data → EDOPro decks on your own server, and **Decks…** under your User ID on a friend's server.
+  The deck is in Load Deck the next time the game lists your decks. Cards the server doesn't have are left out and
+  listed; cards you don't hold are named. Hosts: `decks`, `import-deck` (a `.ydk` file or a `ydke://` link) and
+  `export-deck`.
+
 ## v0.1.26 (2026-11-26)
 
 - **358 more cards from the anime.** Cards the Duel Monsters, GX and 5D's anime showed that the game never had: the

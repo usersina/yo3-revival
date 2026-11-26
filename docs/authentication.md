@@ -173,6 +173,7 @@ Every connection starts with TLS, an 8-byte opener and one operation byte:
 | 5 | Discovery | — | a length and JSON: build, protocol, readiness, and for the server list its name, players online, registration mode and minimum launcher |
 | 6 | Account request | a length (at most 4096) and a JSON object | a length and a JSON object ([Account requests](#account-requests)) |
 | 7 | Problem report | a session token, a u32 length (at most 256 KiB) and deflated JSON (`kind`: network, relay, server-lost, game-error or report; `summary`, `launcher`, `logs`; at most 1 MiB inflated) | 0, a u8 length and the report ID (`R-XXXX-XXXX`); or 1 the session ended, 2 the account's 20 a day are sent, 3 the host turned them off, 4 not taken |
+| 8 | EDOPro decks | a session token, a u32 length (at most 64 KiB) and deflated JSON (`op`: `decks`, `import` with `name` and `ydk` (a `.ydk` file's text or a `ydke://` link), or `export` with `deck`; `player` names one of the account's players, the first when none; at most 256 KiB inflated) | a u32 length and deflated JSON: the result with `ok: true`, or `ok: false` and `error`: `session` (ended), `player` (no player yet, or not the account's), `bad_request`, `unavailable` (no card data), `refused` with the server's `message` (`deck_ops.rs`) |
 
 1. Rustls verifies the pinned identity (or the certificate and name of a certificate profile). TLS key-possession
    signatures are always verified. A credential-free compatibility check comes before a key login; the server refuses

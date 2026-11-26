@@ -345,6 +345,9 @@ accounts for the Scripts edition on your own PC. Keep each key profile private (
 ./yo3-server give-cards Alice "Shooting Quasar Dragon"   # an added card (#75) too: no pack holds one yet (added-cards.md)
 ./yo3-server give-recipe Alice "E-HERO EVOLUTION DECK" --cards
 ./yo3-server unlock-cards                    # three of every card, every artwork, for every player (or: unlock-cards Alice)
+./yo3-server decks Alice                     # Alice's decks: name and main + Extra + side sizes
+./yo3-server import-deck Dragons.ydk --player Alice      # an EDOPro deck (.ydk file or ydke:// link) into her Load Deck
+./yo3-server export-deck "Dragons" --player Alice --out Dragons.ydk   # one of her decks as a .ydk file (and its ydke:// link)
 ./yo3-server add-code ABCD1234EFGH5678 2500
 ./yo3-server add-code "" 500 --uses 10       # generate a code; keep the printed request ID
 ./yo3-server remove-code ABCD1234EFGH5678

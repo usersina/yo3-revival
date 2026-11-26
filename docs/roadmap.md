@@ -43,9 +43,6 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
       the checks point at, signature cards and a random 30% of the rest: batch 1's sample found a bug the fuzz can't,
       Limit Tribute doing only part of its text); the rule goes into docs/added-cards.md after a few batches; the anime Michion and Hailon
       deal ∞ damage to ∞ LP (half of ∞, and ∞ minus a number, are ∞): confirm that reading.
-- [ ] Import and export EDOPro decks (`.ydk`, passcode lists): passcodes map to the ids the client knows through the
-      pinned Konami ids (`engine/card-ids.json`) and the added cards' stand-ins; the deck lands in Load Deck with a note
-      listing the cards the player doesn't own. Planned after v0.1.26.
 - [ ] EDOPro banlists (`lflist.conf`, by passcode) as banlists a host can pick: the launcher writes them as game banlist
       files (the path the anime-only Forbidden banlists take, `yo3_data::added::extend_files`) and the server's deck check
       uses the same list. Planned after v0.1.26.

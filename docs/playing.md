@@ -76,6 +76,11 @@ limits (Heavy Storm, Premature Burial...), so either edit them or choose `unlimi
 them) and log in again; your starter deck is fine. Auto Duel only matches players on the same banlist, so nobody
 brings a deck the other's list forbids.
 
+**EDOPro decks.** Desktop imports an EDOPro deck file (`.ydk`) into your decks and exports yours for EDOPro: Settings →
+Singleplayer → Your data → EDOPro decks for your own server, **Decks…** under your User ID on a Multiplayer server
+([launcher](launcher.md#several-games-at-once)). The deck is in Load Deck the next time the game lists your decks; cards
+the server doesn't have are left out, and cards you don't hold are named.
+
 **Two accounts on one PC.** Your launcher can run a second game as another account
 ([Play as another account](launcher.md#several-games-at-once)), for example to duel a friend who plays on the same computer.
 Accounts seen on the same PC or network are *linked*: a duel between them is played, but **pays no BP and counts no record,

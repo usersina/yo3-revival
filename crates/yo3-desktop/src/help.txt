@@ -25,7 +25,7 @@ Save your recovery code when you make an account (Copy, or Save as a text file):
 Stay signed in keeps a sign-in token in your system's password store, never your password.
 The ⋯ beside the server list adds a server (by its address, or an invite link a host sent you), hosts one, or removes one.
 Settings, Accounts signs you out, signs you out everywhere, or changes your password.
-Signed in, Play as another account starts a second game signed in to a different account, for example to duel a friend on the same PC. The list Games running shows each game with a Close. Duels between accounts that play from the same PC or network pay no BP and count no record.
+Signed in, Decks… imports an EDOPro deck (.ydk) into your decks on that server, or exports one of them. Play as another account starts a second game signed in to a different account, for example to duel a friend on the same PC. The list Games running shows each game with a Close. Duels between accounts that play from the same PC or network pay no BP and count no record.
 
 # host | Host for friends
 Host for friends (Multiplayer, the ⋯ beside the server list) runs a server on this computer that your friends can join.
@@ -48,7 +48,7 @@ Check reachability tests the port from this computer's side.
 Settings, at the bottom right, opens Settings; press it again or Back to return. Every change applies at the next PLAY, without restarting YO3 Revival.
 - Game: the game folder, Verify and repair, the screen size, opening the game without the launcher (ticking it may ask Windows for permission once), a desktop shortcut, and Card pictures (the anime cards' and the new cards' pictures, downloaded automatically or on a click).
 - Accounts: your sign-ins on each server.
-- Singleplayer: Anime cards (some cards play as they did in the anime), Destiny Draw (once per duel against the computer, at 1000 LP or less, you pick the card you draw), Revival (how far Fusion, Synchro and Ritual monsters never properly summoned can come back from the Graveyard, from the official rules to any revival as in the anime), the banlist, backups, Unlock all cards (three of every card for every player, once; beside it, how many cards you have out of all) and a reset.
+- Singleplayer: Anime cards (some cards play as they did in the anime), Destiny Draw (once per duel against the computer, at 1000 LP or less, you pick the card you draw), Revival (how far Fusion, Synchro and Ritual monsters never properly summoned can come back from the Graveyard, from the official rules to any revival as in the anime), the banlist, backups, EDOPro decks (Import… an EDOPro .ydk deck into Load Deck, Export… one of your decks for EDOPro), Unlock all cards (three of every card for every player, once; beside it, how many cards you have out of all) and a reset.
 - Advanced: Wine on Linux, detailed logs, exporting logs, and resetting the game's local data.
 - About: the version, updates, licences and links.
 
