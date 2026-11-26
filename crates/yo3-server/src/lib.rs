@@ -436,6 +436,14 @@ pub fn player_card_sources(data: &yo3_data::GameData, prizes: &prizes::Prizes) -
     all
 }
 
+/// The Anime Collection (`shop::ANIME_PACK`) for `/where`: the anime-only cards, sold while anime cards are on.
+fn anime_pack_source(data: &yo3_data::GameData, added: &yo3_data::added::Added) -> Option<sources::CardSource> {
+    let cards: std::collections::HashSet<u16> = yo3_data::added::anime_pack_tiers(added).iter().flatten()
+        .filter_map(|row| data.cards.by_row(*row).map(|c| c.cid)).collect();
+    (!cards.is_empty()).then(|| sources::CardSource { kind: sources::Kind::Pack,
+        name: "the Anime Collection pack (Blister's, while the server plays the anime cards)".into(), cards })
+}
+
 /// The names of the cards a player can keep through this server's routes besides the Special Pack (the booster packs,
 /// structure decks, Trade Card pools, the decks the recipes command sells and the free decks), for the tests.
 pub fn keepable_card_names(data: &yo3_data::GameData) -> std::collections::HashSet<String> {
@@ -605,7 +613,7 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
             banlists: data.regulations.iter().map(|r| (r.id, data.text(r.name_id).unwrap_or_default().to_string())).collect(),
             countries: yo3_data::countries(&cfg.game_dir).unwrap_or_default(),
             regulations: data.regulations.iter().map(|r| (r.id, r.clone())).collect(),
-            card_sources: player_card_sources(&data, &prizes(&data, &official_items)),
+            card_sources: player_card_sources(&data, &prizes(&data, &official_items)).into_iter().chain(anime_pack_source(&data, &added)).collect(),
             prizes: Arc::new(prizes(&data, &official_items)),
             added: Arc::new(added),
             ..World::new(data.regulations.iter().map(|r| r.id as u16).collect())

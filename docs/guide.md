@@ -119,6 +119,7 @@ while the server runs or stopped, and each applies at its own moment:
 | `revival-rule` | `graveyard-is-graveyard` | At the next duel | How far revival reaches past "must first be properly Summoned" (Fusion, Synchro, Ritual monsters, "must first be Special Summoned by..."): `official`, the official ruling; `ignoring-means-all`, a card that Special Summons "ignoring its Summoning conditions" (Illusion Gate, Arduous Decision...) ignores that too; `graveyard-is-graveyard`, any revival from the Graveyard or banishment (Monster Reborn...) does. A card's own written conditions still stop ordinary revival ([house rules](rules-privacy.md#house-rules)) |
 | `turn-seconds`, `total-seconds` | 180, 600 | At the next duel | The clocks of duels between players that set none (0: off) |
 | `pack-cost`, `deck-cost` | 100, 500 | At the game's next request | BP a booster pack and a structure deck cost in Blister's shop |
+| `anime-pack-cost` | 300 | At the game's next request | BP the Anime Collection pack costs (the anime-only cards; on sale while `anime-cards` is on) |
 | `trade-cards` | 10 | At the game's next request | Cards of their own a player gives for one card in Blister's Trade Card |
 | `rental-cards`, `rental-bp`, `rental-days` | 5, 100, 7 | At the game's next request | The shop Rental's offer: how many cards, for how many BP, for how many days |
 | `report-limit` | 5 | At the game's next request | Reports (`/report` in the chat) one player may send in an hour; 0 turns them off |

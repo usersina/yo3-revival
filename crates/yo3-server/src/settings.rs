@@ -101,6 +101,8 @@ pub const REGISTRY: &[Setting] = &[
         kind: Kind::Choice(&["off", "on"]), applies: Applies::NextDuel, default: || json!("off") },
     Setting { name: "pack-cost", help: "BP a booster pack costs in Blister's shop (the game shows it when you pick the pack)",
         kind: Kind::Number { min: 1, max: 100_000 }, applies: Applies::NextRequest, default: || json!(crate::shop::PACK_COST) },
+    Setting { name: "anime-pack-cost", help: "BP the Anime Collection pack costs in Blister's shop (the anime-only cards; on sale while anime-cards is on)",
+        kind: Kind::Number { min: 1, max: 100_000 }, applies: Applies::NextRequest, default: || json!(crate::shop::ANIME_PACK_COST) },
     Setting { name: "deck-cost", help: "BP a structure deck costs in Blister's shop",
         kind: Kind::Number { min: 1, max: 100_000 }, applies: Applies::NextRequest, default: || json!(crate::shop::DECK_COST) },
     Setting { name: "trade-cards", help: "Cards of their own a player gives for one card in Blister's Trade Card",
@@ -178,6 +180,8 @@ pub fn find(name: &str) -> Option<&'static Setting> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Shop {
     pub pack_cost: u32,
+    /// The Anime Collection's (`anime-pack-cost`).
+    pub anime_pack_cost: u32,
     pub deck_cost: u32,
     pub trade_cards: u32,
     pub rental_cards: u32,
@@ -275,7 +279,7 @@ impl Settings {
             handshakes_per_second: number("handshakes-per-second"),
             audit_keep_days: number("audit-keep-days"),
             recording_days: number("recording-days"),
-            shop: Shop { pack_cost: number("pack-cost"), deck_cost: number("deck-cost"), trade_cards: number("trade-cards"),
+            shop: Shop { pack_cost: number("pack-cost"), anime_pack_cost: number("anime-pack-cost"), deck_cost: number("deck-cost"), trade_cards: number("trade-cards"),
                 rental_cards: number("rental-cards"), rental_bp: number("rental-bp"), rental_days: number("rental-days") },
             report_limit: number("report-limit"),
             games_per_device: number("games-per-device"),

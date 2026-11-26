@@ -21,6 +21,13 @@ Older entries describe their release at the time. For current setup, use the [RE
   listed; cards you don't hold are named. Hosts: `decks`, `import-deck` (a `.ydk` file or a `ydke://` link) and
   `export-deck`.
 
+- **The Anime Collection pack.** Blister's sells a new pack while the server plays the anime cards: the anime-only
+  cards (never printed), five a pack with a rarer card among them, for 300 BP. It is the only way to get them: they
+  aren't in the shop's Rental or Trade Card. With anime cards off the pack isn't on the shelf. `where` names it. Hosts:
+  `anime-pack-cost` sets its price.
+- **Rarities for the anime-only cards**: 12 Ultra Rare, 13 Super Rare and 25 Rare, picked by their place in the anime; the
+  rest are Common. The reveal shows each in its frame.
+
 ## v0.1.26 (2026-11-26)
 
 - **358 more cards from the anime.** Cards the Duel Monsters, GX and 5D's anime showed that the game never had: the

@@ -394,7 +394,9 @@ you've lent out can't be given. Rental lends you 5 cards of your choice for 100 
 and confirm. They count as borrowed, like a rental from a friend, and a new rental from the shop returns the last one.
 The shelf of Blister's list has one more pool (the game's own card list) that holds cards no booster pack gives; 10 cards
 buy one of them, like the others. Packs rarely (about one pull in twenty) give another artwork of a card than the usual one.
-Purchase Special Packs stays greyed out: those packs were event prizes whose contents are lost; the Stadium's Special Packs
+While the server plays the anime cards, the shelf has one more pack: the **Anime Collection** (300 BP), the only way to
+the anime-only cards (cards from the anime never printed; five a pack, one of them rarer). With anime cards off it isn't
+on the shelf. Purchase Special Packs stays greyed out: those packs were event prizes whose contents are lost; the Stadium's Special Packs
 (above) are ours.
 
 **More decks:** the 22 theme decks (E-HERO EVOLUTION DECK, DRAGON'S DOMINION, STARDUST RISING, DRAGUNITY STORM and the

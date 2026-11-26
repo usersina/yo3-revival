@@ -725,7 +725,11 @@ fn the_anime_collection_is_on_sale_only_while_the_server_plays_anime_cards() {
     assert_eq!(one(c.send(buy.clone())).request(), Some(0x1C25), "off: not sold");
     settings.set("anime-cards", "on").unwrap();
     assert_eq!(listed(&mut c), [1, 300]);
-    assert_eq!(one(c.send(buy)).get("dpoint"), Some(&Value::U32(900)));
+    // Three booster packs' price by default (`anime-pack-cost`), on the shelf and at the till.
+    let shelf = one(c.send(req(0x1B67)));
+    let cost = |id| shelf.items.iter().find(|i| i.get("item_id").and_then(Value::as_u32) == Some(id)).and_then(|i| i.get("item_cost").and_then(Value::as_u32));
+    assert_eq!((cost(1), cost(300)), (Some(100), Some(300)));
+    assert_eq!(one(c.send(buy)).get("dpoint"), Some(&Value::U32(700)));
     let p = one(c.send(req(0x2775)));
     assert_eq!(p.get("pack_id").and_then(Value::as_u32), Some(300));
     assert!(rows(&p).iter().all(|r| (45..=49).contains(r)), "{:?}", rows(&p));

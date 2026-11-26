@@ -718,6 +718,18 @@ only the offer (`0x2D75`) and checks the picks (`0x2C41`): exactly `rental_cardn
 BP. The cards are lent like a rental between players (`rental.rs`): the records give them to the borrower until the
 term ends, they count in the borrower's decks, and they can't be traded or exchanged away.
 
+**The Anime Collection (ours).** Pack 300 is no pack the game had. The launcher's added-cards folder holds its pack file
+(`pack/300.y3a`: pack 1's record with `pack_id` 300, `name_id` 23120, `discription_id` 23121, `pack_image`
+`YO3_ANIME_1.png` and the anime-only cards' rows by rarity), its picture (`img/pack/YO3_ANIME_1.png`, 145x290) and the
+UI text tables with its name and description (`text/txttbl_<lang>.bin`, all seven; 23120-23199 is free in each, the
+packs' texts being 23000-23119; the table becomes a map at load, `0x51E6C0`, so the pair is appended). The DLL
+redirects the game's opens of those three (`yo3_added_pack_path`): the pack file loader `0x52DCF0` checks no id and is
+the only reader of a pack file (the shop `0x48C790`, Trade Card, rental, the Card Album's pack selector `0x413800`, the
+present window `0x476DE0`), and the shop's Flash loads the picture itself (`loadClip("../img/pack/" + image)`, no
+existence check). The server lists the pack in `0x1C22` (and sells it) only while `anime-cards` is on: the shop has no
+sold-out state (`item_max` only caps the purchase's count). Price `anime-pack-cost` (300 BP). Status: shape (the
+redirect and the texts not yet seen live).
+
 **Special Packs.** The client's texts make them event prizes: a present ("Right to purchase Special Pack", 15125) that
 unlocks a pack at Blister's for BP until a date, earned by event wins, streaks and stars. The client has art for about
 100 of them (`data/img/pack/EV_*`, `EX_*`, `PST-*`, `PTM-*`, `PBS-*`, `sppack_num_g*`) but no pack file with their

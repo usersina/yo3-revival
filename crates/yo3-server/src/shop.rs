@@ -148,6 +148,15 @@ pub struct ExchangePool {
 /// The Anime Collection: the anime-only cards, on the shelf only while the server has anime cards on.
 pub const ANIME_PACK: u32 = yo3_data::added::ANIME_PACK;
 
+/// The Anime Collection's price by default (`anime-pack-cost`): three booster packs', as it is the only way to the
+/// anime-only cards (no shop rental, no Trade Card).
+pub const ANIME_PACK_COST: u32 = 300;
+
+/// A pack's price: the Anime Collection's own, every other booster pack's `pack-cost`.
+pub fn pack_price(pack: &ShopPack, shop: &crate::settings::Shop) -> u32 {
+    if pack.id == ANIME_PACK { shop.anime_pack_cost } else { shop.pack_cost }
+}
+
 /// Whether `pack` is on sale now: every booster pack, the Anime Collection only with anime cards on.
 pub fn on_sale(pack: &ShopPack, anime_cards: bool) -> bool {
     pack.id != ANIME_PACK || anime_cards
@@ -180,7 +189,7 @@ impl<'a> Goods<'a> {
     /// Its price in BP (a pack's and a deck's are the host's settings) and the most one purchase may take.
     pub fn price(&self, shop: &crate::settings::Shop) -> (u32, u32) {
         match self {
-            Goods::Pack(_) => (shop.pack_cost, PACK_MAX),
+            Goods::Pack(pack) => (pack_price(pack, shop), PACK_MAX),
             Goods::Deck(_) => (shop.deck_cost, DECK_MAX),
             Goods::Protector(_) => (PROTECTOR_COST, 1),
             Goods::AvatarItem(..) => (AVATAR_ITEM_COST, 1),

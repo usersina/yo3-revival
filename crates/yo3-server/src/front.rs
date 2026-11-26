@@ -3609,7 +3609,7 @@ impl FrontSession {
             0x1B67 => {
                 let settings = self.world.settings.now();
                 let shop = settings.shop;
-                let packs = self.world.packs.iter().filter(|p| crate::shop::on_sale(p, settings.anime_cards)).map(|p| crate::shop::shelf_item(p, shop.pack_cost));
+                let packs = self.world.packs.iter().filter(|p| crate::shop::on_sale(p, settings.anime_cards)).map(|p| crate::shop::shelf_item(p, crate::shop::pack_price(p, &shop)));
                 let decks = self.world.structure_decks.iter().map(|d| crate::shop::shelf_deck(d, shop.deck_cost));
                 packs.chain(decks).fold(Message::reply(0x1C22), Message::item)
             }

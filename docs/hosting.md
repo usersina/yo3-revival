@@ -307,7 +307,7 @@ time to be running at the start (a Championship the server missed by more than a
   default, at the next duel) chooses how far revival reaches past "must first be properly Summoned": the official
   ruling, cards that say "ignoring its Summoning conditions" too, or every revival from the Graveyard
   (`graveyard-is-graveyard`). [House rules](rules-privacy.md#house-rules).
-- **Prices.** `pack-cost`, `deck-cost`, `trade-cards` and the Rental's `rental-cards`, `rental-bp` and `rental-days`
+- **Prices.** `pack-cost`, `anime-pack-cost` (the Anime Collection, 300 BP), `deck-cost`, `trade-cards` and the Rental's `rental-cards`, `rental-bp` and `rental-days`
   are [live settings](guide.md#live-settings), like `yo3 set pack-cost 150`.
 
 A deleted account still sits in the backups until they are replaced: the newest 24 on the server (a day), and the
