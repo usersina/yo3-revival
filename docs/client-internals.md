@@ -890,6 +890,40 @@ the counter counted up from 8000, then the disc ∞; the game's digits hidden bo
 - **`data/bin#/s_cardnum.inc`**: a header left over from Konami's duel-engine source.
 - The card pool ends around Storm of Ragnarok (early 2011): no Xyz.
 
+### 3D models (`.mdl`)
+
+NPC bodies (`data/model/np000.mdl`–`np024.mdl`), avatar parts (`data/avatar/*.mdl`) and duel disks are `.mdl`: Irrlicht's
+DirectX `.X` loader made binary, `irr::scene::CYO3FileLoader` (`isALoadableFileExtension` `0x594BE0`: `.mdl`;
+`createMesh` `0x594C00`; chunk dispatcher `0x595670`; frame `0x595B80`, mesh `0x595DD0`, skin weights `0x596180`,
+material `0x596FA0`, animation set `0x597180`; named in the Ghidra project), giving a `CSkinnedMesh`.
+`tools/re/yo3mdl.py` reads and writes it: all 25 NPC bodies and 285 avatar parts parse with no byte left over and
+re-encode identical (2026-11-26).
+
+- Little-endian; a string is a u8 length and its bytes (no NUL); a matrix 16 floats, translation in the last row.
+- Header `89 'YO3' 0D 0A 1A 0A`, then tagged items; the file ends with `FF`.
+- Top level: `01 u16` fps (30); `02 name material` a named material meshes refer to; `0A` a frame; `28` an animation set.
+- Material: RGBA face colour (4 bytes), float power, RGB specular, RGB emissive, `03 string` per texture, `00`. A
+  texture keeps only its name after the last slash and loads from the model's own folder. Names pick the game's
+  material type by prefix (`flesh` 1, `hair` 2, `eye` 3, `body` 4, `ddisk` 6, `accessory` 7, `glass` 8, `card_omote` 9,
+  `card_ura` 10, `card_side` 11); `ALPHA_` and `ADD_` prefixes blend.
+- Frame `0A`: name, then `0B` matrix | `0C` identity | `0A` child frame | `14` mesh, until `00`.
+- Mesh `14`: name; u16 corner count and that many vec3 (corners unshared: each face owns the next k); u16 face count and
+  run bytes (low 3 bits the face's corner count 3–7, upper bits the run length − 1) until that many faces; then `16`
+  UVs (u16 n, n × (u, v), v from the top), `1A`/`18` material list (u16 materials, u16 faces, `18` with a byte per face;
+  `19 name` a reference or `02 name material` inline; `00`), `3C` three u16 (the weight entries' count), `46` per joint
+  (name, u16 n, (u16 start, u8 length) runs of corner ids, the n weights run-coded (a byte: bit 7 every value stored,
+  low 7 bits the run), the 64-byte inverse bind matrix), `00`. `15` normals and `17` colours are read but unused.
+- Animation set `28`: name; a camera `32` with `33 type u16 n` tracks (0 position, 1 target: u16 frame + vec3; 2 FOV:
+  frame + float); per joint `29 name` with `2A type u16 n` tracks (0 rotation frame + w x y z, 1 scale and 2 position
+  frame + vec3, 9 visibility frame + u8); frames from 1.
+- The duel cut-ins (`CutinForNPC`) play animations by index: `0x4E2800` maps the table at `0x78A088` (23 motions × 3
+  variants) to indices 0–52, which every NPC body holds in the same order (draw, summon, attack, invokes, set, damage,
+  shock, the posture and turn-call loops; loops flagged at `0x78A438`).
+- A new body keeps a game body's skeleton and its 53 animations and swaps the meshes, bound to its joints with their
+  inverse bind matrices: a wooden doll of boxes on Pegasus's skeleton (np005) loaded and stood animated in Kaiba
+  Corporation's talk (live, 2026-11-26). Such a body is built on the player's machine from their own game's donor, so
+  no Konami data ships.
+
 ## Behaviours worth knowing
 
 - Every field zone, empty or not, is a click target (pick areas `0x509CD0`; the hover place `0x50B510`); a click sends the

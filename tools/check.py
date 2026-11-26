@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # Hermetic Python tests: no images, game files, display or network. .github/workflows/release.yml runs them through
 # `tools/check.py py`.
 PY = [
+    'tools/re/test_yo3mdl.py',
     'tools/mod/test_fixture_layout.py',
     'tools/mod/test_winmm_exports.py',
     'tools/mod/test_infinity_pictures.py',
