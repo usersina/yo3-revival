@@ -523,8 +523,9 @@ pub struct Translator {
     /// rows: the opponent's against a player or an NPC (`duel::npc_translator`), both for a spectator, none for a
     /// translator that shows everything (`new`: duel log replays, the duel check's view of what the client isn't told).
     hidden: [bool; 2],
-    /// The Field Spells the client has a field picture for (`GameData::field_pictures`): another one (a card the game
-    /// never had) changes the field to the plain board rather than white. Empty: every Field Spell's id is sent.
+    /// The Field Spells the client has a field picture for (`GameData::field_pictures`, and the added Field Spells, whose
+    /// picture the launcher puts in its folder: EDOPro's, else a clear one): another one changes the field to the plain
+    /// board rather than white. Empty: every Field Spell's id is sent.
     pub field_pictures: std::sync::Arc<std::collections::HashSet<u16>>,
     /// The values each monster zone's record last went with (level, ATK, DEF, base ATK, base DEF), by player and zone.
     records: HashMap<(u32, u32), [u32; 5]>,
@@ -885,6 +886,30 @@ mod tests {
         // The FieldChange command (duel command 7) and its first parameter.
         let sent = |cid| field(cid).iter().find(|m| m.get("id").and_then(Value::as_u32) == Some(cmd::FIELD_CHANGE)).and_then(|m| m.get("param1").and_then(Value::as_u32));
         assert_eq!((sent(4336), sent(10327)), (Some(4336), Some(0)));
+    }
+
+    #[test]
+    fn a_set_field_spell_is_activated_from_the_field_zone_and_shows_its_field() {
+        // Live (2026-11-26, Sogen Set then activated): keyed as Spell & Trap zone 5, the activation had no menu, and
+        // turned face up the card left the plain board. The client keys and sends the Field Zone as (zone 10, index 0).
+        let sogen = CardStats { cid: 4339, atk: 0, def: 0, level: 0, attribute: 0, race: 0 };
+        let (mut t, _) = Translator::new(CLIENT, [&[], &[]], HashMap::from([(1u16, sogen)]));
+        t.field_pictures = std::sync::Arc::new([4339u16].into_iter().collect());
+        t.sides[CLIENT as usize].zone(zone::FIELD_SPELL).push(Card { uid: 1, row: 1 });
+        t.positions.insert((CLIENT, zone::FIELD_SPELL), (false, false));
+        let mut idle = idle_with_activations(1);
+        idle["activates"][0] = json!({ "controller": 0, "location": loc::SZONE, "sequence": 5, "cid": 4339, "description": 0 });
+        assert!(matches!(t.prompt(&idle), Prompt::Client(_)));
+        let key = table_place(CLIENT, zone::FIELD_SPELL, 0);
+        assert!(t.command_map(&Ask::lenient(&idle).unwrap().unwrap()).iter().any(|&(place, bits)| place == key && bits & 1 << 3 != 0));
+        assert_eq!(t.unreachable_answers(), Vec::<String>::new());
+        let activate = CardCommand { command: 3, player: CLIENT, zone: zone::FIELD_SPELL, index: 0 };
+        assert_eq!(t.command(activate), Some(Prompt::Answer(json!({ "type": resp::IDLECMD, "action": 5, "index": 0 }))));
+        // The flip: the field's background with it.
+        let at = Loc { controller: 0, location: loc::SZONE, sequence: 5, ..Loc::default() };
+        let field = t.turn(&at, pos::FACEUP_ATTACK);
+        let changed = field.iter().find(|m| m.get("id").and_then(Value::as_u32) == Some(cmd::FIELD_CHANGE));
+        assert_eq!(changed.and_then(|m| m.get("param1").and_then(Value::as_u32)), Some(4339));
     }
 
     #[test]

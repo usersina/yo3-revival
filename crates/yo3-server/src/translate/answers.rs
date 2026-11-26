@@ -312,11 +312,11 @@ impl Translator {
         let (lists, kind) = command_lists(&ask);
         // The client looks a card's commands up at (zone 0, index slot) for monsters and (zone 5, index slot) for
         // Spells/Traps (0x50A690), but sends the one picked with the card's own place, (zone slot, index 0) (live: an
-        // attack from the second monster slot came as zone 1, index 0).
+        // attack from the second monster slot came as zone 1, index 0). The Field Zone is looked up and sent alike, as
+        // (zone 10, index 0) (live: a Set Field Spell's menu opened only once its commands were keyed so).
         let (zone, index) = match (cmd.zone, cmd.index) {
             (z @ 1..=4, 0) => (0, z as usize),
             (z @ 6..=9, 0) => (5, z as usize - 5),
-            (zone::FIELD_SPELL, 0) => (5, 5),
             (z, i) => (z, i as usize),
         };
         let place = table_place(cmd.player, zone, index);

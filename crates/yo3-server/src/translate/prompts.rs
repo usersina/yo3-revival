@@ -898,6 +898,12 @@ impl Translator {
     pub(super) fn place(&self, loc: &Loc) -> Option<u32> {
         let p = self.side(loc.controller);
         let seq = loc.sequence as usize;
+        // The Field Zone is the engine's Spell & Trap sequence 5 but the client's own slot, zone 10 at index 0: keyed
+        // as Spell & Trap zone 5, a Set Field Spell's activation was offered where the client never looks (live: no
+        // menu on it, 2026-11-26).
+        if loc.location == loc::SZONE && seq == 5 {
+            return Some(table_place(p, zone::FIELD_SPELL, 0));
+        }
         let zone = match loc.location {
             loc::HAND => zone::HAND,
             loc::MZONE => 0,

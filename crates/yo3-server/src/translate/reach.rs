@@ -42,7 +42,6 @@ impl Translator {
             // As the client sends it: a field card from its own slot, index 0 (see `answer`).
             let (zone, index) = match (zone, index) {
                 (0, i @ 1..=4) => (i, 0),
-                (5, 5) => (zone::FIELD_SPELL, 0),
                 (5, i @ 0..=4) => (5 + i, 0),
                 other => other,
             };

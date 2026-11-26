@@ -1083,8 +1083,7 @@ impl Translator {
             out.push(command(cmd::CARD_SET, [to.player, to.zone, (to.zone < 5) as u32, 0]));
         }
         if to.zone == zone::FIELD_SPELL && to.face_up {
-            let pictured = self.field_pictures.is_empty() || self.field_pictures.contains(&cid);
-            out.push(command(cmd::FIELD_CHANGE, [if pictured { cid as u32 } else { 0 }, 0, 0, 0]));
+            out.push(self.field_change(cid));
         } else if from.zone == zone::FIELD_SPELL && from.face_up && to.zone != zone::FIELD_SPELL {
             out.push(command(cmd::FIELD_CHANGE, [0; 4]));
         }
@@ -1258,6 +1257,13 @@ impl Translator {
 
     /// A field card turns in place to `position`: 0x1C with its new face and position, after its table entry and record
     /// when it shows a row it didn't before (the opponent's face-down card turning face-up when hiding).
+    /// FieldChange to a Field Spell's background: its id when the client has a field picture for it, else 0, the plain
+    /// board (a card the game never had: its id drew a white field).
+    fn field_change(&self, cid: u16) -> Message {
+        let pictured = self.field_pictures.is_empty() || self.field_pictures.contains(&cid);
+        command(cmd::FIELD_CHANGE, [if pictured { cid as u32 } else { 0 }, 0, 0, 0])
+    }
+
     pub(super) fn turn(&mut self, loc: &Loc, position: u64) -> Vec<Message> {
         let Some(place) = self.engine_place(loc) else { return vec![] };
         if place.zone > zone::FIELD_SPELL {
@@ -1268,10 +1274,17 @@ impl Translator {
         let before = (place.zone < 5).then(|| self.positions.insert((place.player, place.zone), (place.face_up, place.defense)));
         let mut out = vec![];
         let card = self.sides[place.player as usize].zones.get(&place.zone).and_then(|z| z.first()).copied();
+        let mut field_change = None;
         if place.zone >= 5 {
             // A Set Spell/Trap turning face up is activated: its avatar's reveal line first (Konami's logs: 0x46 before the
             // flip; the activation line after it stays silent, DuelCutin +0x68).
             let was_down = self.positions.insert((place.player, place.zone), (place.face_up, false)).is_some_and(|(f, _)| !f);
+            // A Set Field Spell activated only turns over in its zone: the client changes the field's background on a
+            // move into the Field Zone alone (live: Sogen flipped face up left the plain board), so it comes here too.
+            if place.zone == zone::FIELD_SPELL && was_down && place.face_up {
+                let cid = card.and_then(|c| self.cards.get(&c.row)).map_or(0, |c| c.cid);
+                field_change = Some(self.field_change(cid));
+            }
             if let Some(card) = card
                 && was_down
                 && place.face_up
@@ -1298,6 +1311,7 @@ impl Translator {
                 // record to carry its id: it moves onto its own slot with its row, face up.
                 let down = Place { face_up: false, ..place };
                 out.push(Cmd::Move { uid: card.uid, kind: 0, from: down, to: place }.message());
+                out.extend(field_change);
                 return out;
             }
         }
@@ -1310,6 +1324,7 @@ impl Translator {
             out.push(Cmd::Move { uid: card.uid, kind: 0, from, to: place }.message());
         }
         out.push(command(cmd::FLIP_TURN, [place.packed(), 0, 0, 0]));
+        out.extend(field_change);
         out
     }
 
