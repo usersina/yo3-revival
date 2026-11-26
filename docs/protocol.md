@@ -727,8 +727,12 @@ redirects the game's opens of those three (`yo3_added_pack_path`): the pack file
 the only reader of a pack file (the shop `0x48C790`, Trade Card, rental, the Card Album's pack selector `0x413800`, the
 present window `0x476DE0`), and the shop's Flash loads the picture itself (`loadClip("../img/pack/" + image)`, no
 existence check). The server lists the pack in `0x1C22` (and sells it) only while `anime-cards` is on: the shop has no
-sold-out state (`item_max` only caps the purchase's count). Price `anime-pack-cost` (300 BP). Status: shape (the
-redirect and the texts not yet seen live).
+sold-out state (`item_max` only caps the purchase's count). Price `anime-pack-cost` (300 BP). The text tables load at
+boot, before any card file, so the DLL learns the folder at their open too. Live (2026-11-26, Wine, a scratch server):
+Flash asks `data/img/pack/<name>` (the game's own `CL_001.png` the same way); the pack first on the shelf with its
+picture, the big one on selection, "Anime Collection", its description and 300 BP; a purchase revealed anime-only cards
+(present `pack_id` 300) and the collection rate read 4.4%; with `anime-cards` off it left the shelf at the next shop
+visit (the game asks for the list on entering the shop). Status: confirmed.
 
 **Special Packs.** The client's texts make them event prizes: a present ("Right to purchase Special Pack", 15125) that
 unlocks a pack at Blister's for BP until a date, earned by event wins, streaks and stars. The client has art for about

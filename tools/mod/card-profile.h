@@ -162,6 +162,10 @@ static void *__attribute__((thiscall, force_align_arg_pointer)) card_open_hook(v
     /* The Anime Collection pack: its file, the UI text tables with its name, and its picture (only when written). */
     /* How Flash names a pack picture (seen live: the shop's first few). */
     if (path && strstr(path, "img/pack/")) { static unsigned seen; if (seen++ < 4) card_profile_log("[YO3 MOD] pack picture asked: %s", path); }
+    /* The UI text tables load at boot, before any card file: learn the folder here too (the launcher filled the pointer
+     * before it released the game). */
+    if (!card_added_folder[0] && path && (!strncmp(path, "data/text/txttbl_", 17) || !strncmp(path, "data/pack/", 10) || strstr(path, "img/pack/")))
+        card_added_learn();
     if (card_added_folder[0] && yo3_added_pack_path(card_added_folder, path, file, sizeof file)) {
         static unsigned pack_logs;
         if (GetFileAttributesA(file) != INVALID_FILE_ATTRIBUTES) {
