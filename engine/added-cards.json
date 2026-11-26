@@ -4199,6 +4199,137 @@
    "genre": 0,
    "note": "printed DM/GX/5D's anime cards (anime-missing report 2026-11-25)",
    "konami_id": 23150
+  },
+  {
+   "row": 5206,
+   "cid": 5174,
+   "passcode": 9047461,
+   "name": "Steam Token",
+   "desc": "Special Summoned with the effect of \"Blackwing - Steam the Cloak\".",
+   "a": 84055094,
+   "b": 141563472,
+   "genre": 0,
+   "note": "Tokens and the cards that make them (Token rows)",
+   "token": true
+  },
+  {
+   "row": 5207,
+   "cid": 5175,
+   "passcode": 60514626,
+   "name": "Mask Token",
+   "desc": "This card can be used as a \"Mask Token\".\r\r* If used for another Token, apply that Token's Type/Attribute/Level/ATK/DEF.",
+   "a": 4294956087,
+   "b": 143659600,
+   "genre": 0,
+   "note": "Tokens and the cards that make them (Token rows)",
+   "token": true
+  },
+  {
+   "row": 5208,
+   "cid": 5176,
+   "passcode": 8025951,
+   "name": "Gadget Box Token",
+   "desc": "This card can be used as a \"Gadget Box Token\".\r\r* If used for another Token, apply that Token's Type/Attribute/ Level/ATK/DEF.",
+   "a": 5176,
+   "b": 137893200,
+   "genre": 0,
+   "note": "Tokens and the cards that make them (Token rows)",
+   "token": true
+  },
+  {
+   "row": 5209,
+   "cid": 5177,
+   "passcode": 511001302,
+   "name": "Gadget Token",
+   "desc": "Summoned with the effect of \"Gadget Box\". This token cannot be Tributed for a Tribute Summon.",
+   "a": 5177,
+   "b": 137893200,
+   "genre": 0,
+   "note": "Tokens and the cards that make them (Token rows)",
+   "token": true,
+   "anime_only": true
+  },
+  {
+   "row": 5210,
+   "cid": 5178,
+   "passcode": 26364382,
+   "name": "Homunculus Token",
+   "desc": "Special Summoned with the effect of \"Demiurge Ema\".",
+   "a": 672404538,
+   "b": 143139152,
+   "genre": 0,
+   "note": "Tokens and the cards that make them (Token rows)",
+   "token": true
+  },
+  {
+   "row": 5211,
+   "cid": 5179,
+   "passcode": 9925983,
+   "name": "Blackwing - Black Crest Token",
+   "desc": "Special Summoned with the effect of \"Black Wing Revenge\".",
+   "a": 671093819,
+   "b": 142615120,
+   "genre": 0,
+   "note": "Tokens and the cards that make them (Token rows)",
+   "token": true
+  },
+  {
+   "row": 5212,
+   "cid": 11173,
+   "passcode": 9047460,
+   "name": "Blackwing - Steam the Cloak",
+   "desc": "If this face-up card leaves the field: Special Summon 1 \"Steam Token\" (Aqua/WIND/Level 1/ATK 100/DEF 100). If this card is in your GY: You can Tribute 1 monster; Special Summon this card from the GY. You can only use this effect of \"Blackwing - Steam the Cloak\" once per Duel. If this card Summoned this way is used as Synchro Material, all other Synchro Materials must be \"Blackwing\" monsters.",
+   "a": 1007954853,
+   "b": 142619264,
+   "genre": 70866960392,
+   "note": "Tokens and the cards that make them (Token rows)"
+  },
+  {
+   "row": 5213,
+   "cid": 5180,
+   "passcode": 60514625,
+   "name": "Ecole de Zone",
+   "desc": "If the turn player Summons exactly 1 monster: Destroy it, and if you do, the controller of that monster Special Summons 1 \"Mask Token\" (Spellcaster/DARK/Level 1/ATK ?/DEF ?) to their field, which cannot attack directly, with ATK/DEF equal to what the destroyed monster had on the field. You can only use this effect of \"Ecole de Zone\" once per turn. If this face-up card leaves the field, destroy all \"Mask Tokens\" on the field.",
+   "a": 5180,
+   "b": 146409576,
+   "genre": 2147485832,
+   "note": "Tokens and the cards that make them (Token rows)",
+   "konami_id": 16415
+  },
+  {
+   "row": 5214,
+   "cid": 5181,
+   "passcode": 8025950,
+   "name": "Gadget Box",
+   "desc": "(This card is always treated as a \"Morphtronic\" card.)\rWhen this card is activated: Place 3 Morph Counters on it. Once per turn, during your Main Phase: You can remove 1 Morph Counter from your field, and if you do, Special Summon 1 \"Gadget Box Token\" (Machine/EARTH/Level 1/ATK 0/DEF 0). While that Token is in the Monster Zone, the player who Summoned it cannot Special Summon monsters from the Extra Deck, except Synchro Monsters. You can only activate 1 \"Gadget Box\" per turn.",
+   "a": 5181,
+   "b": 146540648,
+   "genre": 143881404424,
+   "note": "Tokens and the cards that make them (Token rows)",
+   "konami_id": 17635
+  },
+  {
+   "row": 5215,
+   "cid": 5182,
+   "passcode": 26364381,
+   "name": "Demiurge Ema",
+   "desc": "You can send 4 monsters with 2400 or more ATK and 1000 DEF from your hand, Deck, and/or face-up field to the GY; Special Summon this card from your hand. You can target 1 Spell/Trap on each field; destroy them, then Special Summon 1 \"Homunculus Token\" (Fairy/LIGHT/Level 2/ATK 800/DEF 800) to both players' fields in Defense Position, and if you do, this card gains 1600 ATK. You can only use each effect of \"Demiurge Ema\" once per turn.",
+   "a": 1683133502,
+   "b": 143163656,
+   "genre": 2147483648,
+   "note": "Tokens and the cards that make them (Token rows)",
+   "konami_id": 22734
+  },
+  {
+   "row": 5216,
+   "cid": 11176,
+   "passcode": 9925982,
+   "name": "Black Wing Revenge",
+   "desc": "When a Winged Beast monster you control is destroyed by battle and sent to the GY: Special Summon 2 \"Blackwing - Black Crest Tokens\" (Winged Beast/DARK/Level 2/ATK 0/DEF 800).",
+   "a": 11176,
+   "b": 146803056,
+   "genre": 2147483656,
+   "note": "Tokens and the cards that make them (Token rows)"
   }
  ]
 }

@@ -2,7 +2,7 @@
 
 <!-- Made by tools/engine/anime-map.py from engine/anime/cards.tsv: do not edit by hand. -->
 
-With the `anime-cards` setting on (a host sets it; a single player turns on **Anime cards** in Desktop's Settings → Singleplayer: [playing](playing.md#anime-card-versions)), the 659 cards below play by their anime effects, ProjectIgnis' unofficial scripts (CardScripts `915c6ff`), in NPC and player duels, and the game shows them as their anime versions: the **card profile**. The other cards, and the 3 retained or held back below, play and show as they always did. The reviewed table is the issue [#60](https://github.com/usersina/yo3-revival/issues/60); an unofficial script loading without an error is not proof of anime accuracy, only that it plays.
+With the `anime-cards` setting on (a host sets it; a single player turns on **Anime cards** in Desktop's Settings → Singleplayer: [playing](playing.md#anime-card-versions)), the 663 cards below play by their anime effects, ProjectIgnis' unofficial scripts (CardScripts `915c6ff`), in NPC and player duels, and the game shows them as their anime versions: the **card profile**. The other cards, and the 3 retained or held back below, play and show as they always did. The reviewed table is the issue [#60](https://github.com/usersina/yo3-revival/issues/60); an unofficial script loading without an error is not proof of anime accuracy, only that it plays.
 
 ## The card profile
 
@@ -376,6 +376,7 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Blackwing - Calima the Haze | 511002623 |  |
 | Blackwing - Hurricane the Tornado | 511013029 |  |
 | Blackwing - Silverwind the Ascendant | 511001954 |  |
+| Blackwing - Steam the Cloak | 511002726 | makes Steam Token; names other anime cards |
 | Blackwing - Vayu the Emblem of Honor | 511002219 |  |
 | Blackwing - Zephyrus the Elite | 511001961 |  |
 | Blast Held by a Tribute | 511005091 |  |
@@ -479,6 +480,7 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Darkness Neosphere | 511310113 | names other anime cards |
 | Darksea Rescue | 511002818 |  |
 | Deep Diver | 511021001 |  |
+| Demiurge Ema | 511000609 | names other anime cards |
 | Des Feral Imp | 511002513 |  |
 | Destiny End Dragoon | 511002195 |  |
 | Destiny Hero - Blade Master | 511027000 |  |
@@ -530,6 +532,7 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Earthbound Immortal Wiraqocha Rasca | 511000252 |  |
 | Earthbound Release | 100000430 |  |
 | Earthbound Wave | 511013025 |  |
+| Ecole de Zone | 513000084 | makes Mask Token; names other anime cards |
 | Ectoplasmer | 511003218 |  |
 | Egyptian God Slime | 511000285 |  |
 | Electromagnetic Turtle | 511002957 |  |
@@ -586,6 +589,7 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Full Moon Mirror | 511000919 | names other anime cards |
 | Future Fusion | 513000094 |  |
 | Gabrion, the Timelord | 513000043 | names other anime cards |
+| Gadget Box | 511001301 |  |
 | Gate Blocker | 100100090 | names other anime cards |
 | Gernia | 511027032 |  |
 | Giant Rex | 100000315 |  |
@@ -1034,7 +1038,7 @@ Extra Deck), or when the research or the script is not settled. Each reason is k
 | Wolf | upstream 511003065: the anime Normal Monster is equivalent |
 | Zera the Mant | upstream 511002610 is a different card or a prize card |
 
-Every other card of the game (4,452 of 5,136 in `engine/anime/cards.tsv`) has no anime_id: no anime version, or none we use, and keeps its current behaviour.
+Every other card of the game (4,453 of 5,141 in `engine/anime/cards.tsv`) has no anime_id: no anime version, or none we use, and keeps its current behaviour.
 
 | Card | Note |
 | --- | --- |
@@ -1047,6 +1051,7 @@ Every other card of the game (4,452 of 5,136 in `engine/anime/cards.tsv`) has no
 | Assault Dog | added card (#75) |
 | Ayers Rock Sunrise | added card (#75) |
 | Black Sonic | added card (#75) |
+| Black Wing Revenge | added card (#75) |
 | Blackwing - Kogarashi the Wanderer | added card (#75) |
 | Blackwing - Oroshi the Squall | added card (#75) |
 | Break the Seal | added card (#75) |
