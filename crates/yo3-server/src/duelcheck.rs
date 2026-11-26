@@ -1433,9 +1433,12 @@ pub mod selfplay {
             played.steps += 1;
             let a = answer.map_err(|e| format!("seed {seed}: engine: {e}"))?;
             let took = asked.elapsed();
-            if took > slow {
+            // The first answer is the engine starting the duel (its databases, the decks' scripts): a debug build under
+            // a full test run's load took 10 s there, so it gets the live limit; the rest is the duel's own play.
+            let limit = if played.steps == 1 { slow.max(std::time::Duration::from_secs(30)) } else { slow };
+            if took > limit {
                 return Err(format!("seed {seed}, step {}: the engine took {:.1} s to answer (more than {:.1} s; the live limit is 30 s): {:?}",
-                    played.steps, took.as_secs_f64(), slow.as_secs_f64(), prompt.as_ref().map(|p| p.to_string().chars().take(300).collect::<String>())));
+                    played.steps, took.as_secs_f64(), limit.as_secs_f64(), prompt.as_ref().map(|p| p.to_string().chars().take(300).collect::<String>())));
             }
             if !a.errors.is_empty() {
                 return Err(format!("seed {seed}, step {}: the engine reported {:?}", played.steps, a.errors));
