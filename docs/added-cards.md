@@ -121,6 +121,17 @@ real rules engine and checks both players' views of the board after every step, 
   one of `Hand`, `Monster`, `MonsterDefense`, `MonsterSet`, `Spell`, `SpellSet`, `Grave`, `Banished`; a spawned
   card comes from that player's deck or Extra Deck, so put it there.
 
+**The per-card fuzz** (`tests/card_fuzz.rs`, `task check:fuzz`): each chosen card plays self-played duels from its
+player's opening hand (an Extra Deck card from the Extra Deck), anime versions off and, when it has one, on, with the
+cards its text names in quotes in the same Deck ("Toon World", "Destiny HERO"), so its conditions can come up. The card's
+player takes an action with it whenever one is on offer, three times in four. A failing duel fails the test (the
+client's view leaving the engine's, a script error, an answer slower than 5 s); the report (`target/tmp/card-fuzz.json`,
+and the flagged cards on stderr) lists each effect a player activates, read from its script, that never activated, and
+each that resolved and never once did something its script declares (a Special Summon that never came:
+`duelcheck/promises.rs`). Those are the cards a scenario test should look at. Choose the cards with
+`YO3_FUZZ_ROWS=5206-5300` (rows) or `YO3_FUZZ_CARDS=11173,5180`, and `YO3_FUZZ_DUELS=8` for a batch (3 by default; the
+default run takes every 15th added card).
+
 Choices are steered as a player makes them: `s.prefer(&[(team, cid)])` for the cards picked (targets, discards,
 Tributes), `s.prefer_most(true)` to pick as many of them as the choice allows ("up to 2", "any number"),
 `s.choose_options(&[i])` for an effect's options ("Select effect to activate"), `s.declare_card(Some(cid))` for a

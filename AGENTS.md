@@ -109,6 +109,7 @@ task check                      # everything CI's release job runs (tools/check.
 task check:mod                  # local only: the connection DLL's Wine tests (tools/check.py mod)
 task check:cards                # the duel check, then which card effects it exercised (tools/engine/coverage.py)
 task check:selfplay             # 300 self-played duels each with the added cards and the anime versions (slow answers fail)
+task check:fuzz                 # the per-card fuzz (YO3_FUZZ_ROWS=a-b, YO3_FUZZ_DUELS=8): cards to give scenario tests
 task check:added                # after adding cards (docs/added-cards.md): generated files, smoke, scenarios, self-play
 task logs -- PATH [--level warn] [--user N]   # any logs (sessions, server, packets, a report ZIP) as one timeline (docs/logs.md)
 task dev:server                 # a scratch server on free ports with two key accounts; prints the client exports

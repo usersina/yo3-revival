@@ -387,7 +387,8 @@ engine state after every step. A failure reports the seed, step and preceding en
 fails when the engine reports a script error, or takes more than 5 s to answer (`YO3_SLOW_ANSWER_SECS`; the live server
 stops the engine at 30 s): a search that grows with the board (the anime T.G. Cyber Magician) shows up there before it
 can freeze a player's duel. `task check:selfplay` plays 300 duels each with the added cards and with the anime versions
-on (40 and 60 by default); `tests/material_search.rs` puts every card whose script widens a summon's materials on a
+on (40 and 60 by default); `task check:fuzz` plays chosen added cards one by one from the opening hand and reports
+their effects that never activated or never did what their scripts declare ([adding cards](added-cards.md#test-it)); `tests/material_search.rs` puts every card whose script widens a summon's materials on a
 crowded board, and `tools/engine/script-risks.py` lists the script lines that match a pattern which broke duels. It also checks the
 summon commands against rules learnt from client crashes (`duelcheck/summon.rs`: each material's effect right before
 its own move, a Synchro's Tuner first, an animation's material list); `tests/summon_order.rs` replays Konami's own duel
