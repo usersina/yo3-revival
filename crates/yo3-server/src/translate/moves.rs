@@ -50,6 +50,15 @@ impl Family {
         }
     }
 
+    /// [`Family::of`] for a move: a material goes to a pile, never onto the field. A card Duel.MoveToField puts on the
+    /// field keeps its last reason (Compensation Mediation placing a former Synchro material from the Graveyard).
+    pub(super) fn of_move(mv: &crate::ocg::message::Move) -> Option<Family> {
+        if matches!(mv.to.location, crate::ocg::loc::MZONE | crate::ocg::loc::SZONE) {
+            return None;
+        }
+        Family::of(mv.reason)
+    }
+
     /// The DuelSummon commands that mark a material and play its effect (none for a Contact Fusion's).
     pub(super) fn set_and_run(self) -> Option<(u32, u32)> {
         match self {

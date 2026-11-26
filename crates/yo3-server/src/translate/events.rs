@@ -447,7 +447,7 @@ impl Translator {
         // This batch's moves from this one on.
         let moves: Vec<Move> = rest.iter().filter_map(|x| match Event::lenient(x) { Ok(Some(Event::Move(m))) => Some(m), _ => None }).collect();
         let mut out = vec![];
-        if let Some(family) = Family::of(reason) {
+        if let Some(family) = Family::of_move(mv) {
             let mut s = match self.summoning.take() {
                 Some(s) if s.family == family && !s.arrived => s,
                 _ => Summoning { family, count: 0, tuned: 0, arrived: false, cid: 0, played: vec![], uids: vec![] },
@@ -467,7 +467,7 @@ impl Translator {
             // among the cards the earlier ones left.
             let mut materials: Vec<(u16, Place, u32, bool)> = vec![];
             for x in &moves {
-                if Family::of(x.reason) != Some(family) {
+                if Family::of_move(x) != Some(family) {
                     continue;
                 }
                 let cid = x.cid.unwrap_or(0) as u16;
@@ -614,7 +614,11 @@ impl Translator {
         match (self.engine_place(&mv.from), self.engine_place(&mv.to)) {
             (Some(from), Some(to)) => {
                 let reason = mv.reason;
-                let dropped = if to.zone > zone::FIELD_SPELL { self.drop_counters(&from) } else { vec![] };
+                // Off the field a card loses its counters; so does a Spell or Trap moved onto the other player's field
+                // (Bounce Spell's Duel.MoveToField: the engine clears them without a message, Full Moon Mirror's in
+                // self-play). A monster that changes control keeps them (RESET_CONTROL clears none).
+                let crossed = from.player != to.player && (5..=zone::FIELD_SPELL).contains(&from.zone);
+                let dropped = if to.zone > zone::FIELD_SPELL || crossed { self.drop_counters(&from) } else { vec![] };
                 let kind = move_kind(reason, from, to);
                 let mut moved = self.relocate_as(cid, from, to, kind);
                 if !moved.is_empty() {
