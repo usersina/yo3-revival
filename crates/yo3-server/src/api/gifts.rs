@@ -202,8 +202,17 @@ impl Api {
             None => d.entries().flat_map(|(_, _, a)| a.players.iter().map(|p| (p.player_id, p.name.clone()))).collect(),
         };
         if players.is_empty() { return Err(invalid("There are no players yet: unlock the cards after the first sign-in.")) }
-        let rows: Vec<u16> = self.gifts().map_err(unavailable)?.cards.iter().map(|c| c.row).collect();
+        let every: Vec<u16> = self.gifts().map_err(unavailable)?.cards.iter().map(|c| c.row).collect();
+        // For every player, once: a second unlock gives only the cards an update added since (a card a player traded or
+        // sold away stays gone), and players made later start with them (`Directory::new_player`).
+        let rows: Vec<u16> = match player {
+            Some(_) => every.clone(),
+            None => every.iter().copied().filter(|r| d.unlocked_cards().binary_search(r).is_err()).collect(),
+        };
         let mut next = (*d).clone();
+        if player.is_none() {
+            next.add_unlocked(&every);
+        }
         let mut mail = if let Some(h) = &hub { h.bp_mail() } else { match &self.data_dir { Some(dir) => Mailbox::try_load(&dir.join("mail.json")).map_err(MutationError::persistence)?, None => Mailbox::default() } };
         let (mut changed, mut added) = (vec![], 0u64);
         for (player_id, name) in &players {
@@ -247,4 +256,4 @@ impl Api {
 }
 
 /// Unlock all cards gives at least this many copies of each artwork: the most a deck may hold.
-pub const UNLOCK_COPIES: u32 = 3;
+pub use crate::accounts::UNLOCK_COPIES;

@@ -94,7 +94,13 @@ pub struct Directory {
     saved: HashMap<u32, Saved>,
     /// What each account was seen on (devices, addresses), for linked accounts (#64); kept in the accounts' document.
     links: HashMap<u32, crate::links::Seen>,
+    /// The cards (CARD_Prop rows) Unlock all cards gave every player, sorted: a player made later starts with them, and
+    /// a second unlock gives only the cards an update added since.
+    unlocked: Vec<u16>,
 }
+
+/// The copies of each card Unlock all cards gives: the most a deck may hold.
+pub const UNLOCK_COPIES: u32 = 3;
 
 /// An account as last saved: compared by pointer, so an unchanged account costs nothing to check.
 #[derive(Clone)]
@@ -385,7 +391,7 @@ impl Directory {
 
     /// `player_names`: the players every new account starts with (at most four are used).
     pub fn new(player_names: Vec<String>) -> Directory {
-        Directory { player_names, accounts: Vec::new(), next_user: 1001, next_player: 1001, file: None, codes: vec![], invites: vec![], saved: HashMap::new(), links: HashMap::new() }
+        Directory { player_names, accounts: Vec::new(), next_user: 1001, next_player: 1001, file: None, codes: vec![], invites: vec![], saved: HashMap::new(), links: HashMap::new(), unlocked: vec![] }
     }
 
     /// The accounts kept in `file` (none yet if it doesn't exist); changes are written back to it.
@@ -400,6 +406,9 @@ impl Directory {
         // friends, mail and rentals of the old one would else belong to the new).
         d.next_player = d.next_player.max(saved["next_player"].as_u64().unwrap_or(0) as u32);
         d.next_user = d.next_user.max(saved["next_user"].as_u64().unwrap_or(0) as u32);
+        d.unlocked = saved["unlocked_cards"].as_array().into_iter().flatten().filter_map(|r| r.as_u64().map(|r| r as u16)).collect();
+        d.unlocked.sort_unstable();
+        d.unlocked.dedup();
         for a in saved["accounts"].as_array().into_iter().flatten() {
             let bad = || io::Error::new(io::ErrorKind::InvalidData, format!("{}: invalid account record (check its ids and identity)", file.display()));
             let key = a["key"].as_str().filter(|k| !k.is_empty()).map(str::to_string);
@@ -618,7 +627,7 @@ impl Directory {
         let mut next = self.clone();
         let a = next.account_mut_where(|a| a.user_id == user_id).ok_or("No such account.")?;
         let slot = free_slot(&a.players).filter(|_| a.players.len() < MAX_PLAYERS).ok_or("This account already has four players.")?;
-        let mut player = Player::new(id, &name);
+        let mut player = self.new_player(id, &name);
         player.index = slot;
         player.country.clone_from(&a.country);
         a.players.push(player);
@@ -637,12 +646,31 @@ impl Directory {
         self.next_user += 1;
         let mut players = Vec::new();
         for (slot, name) in names.iter().enumerate() {
-            let mut p = Player::new(self.next_player, name);
+            let mut p = self.new_player(self.next_player, name);
             p.index = slot as u32;
             self.next_player += 1;
             players.push(p);
         }
         Directory::account(user_id, players)
+    }
+
+    /// A new player: with the unlocked cards when Unlock all cards was used.
+    fn new_player(&self, id: u32, name: &str) -> Player {
+        let mut p = Player::new(id, name);
+        p.cards.extend(self.unlocked.iter().map(|&row| (row, UNLOCK_COPIES)));
+        p
+    }
+
+    /// The cards Unlock all cards gave every player (CARD_Prop rows, sorted); empty before the first unlock.
+    pub fn unlocked_cards(&self) -> &[u16] {
+        &self.unlocked
+    }
+
+    /// Records `rows` as unlocked for every player (with those already).
+    pub(crate) fn add_unlocked(&mut self, rows: &[u16]) {
+        self.unlocked.extend_from_slice(rows);
+        self.unlocked.sort_unstable();
+        self.unlocked.dedup();
     }
 
     fn taken(&self, name: &str) -> bool {
@@ -720,11 +748,11 @@ impl Directory {
         }
         self.atomic(|d| {
             let id = d.next_player;
+            let mut p = d.new_player(id, name);
             let Some(a) = d.account_mut_where(|a| a.user_id == user_id) else { return Err(format!("no account {user_id}")) };
             if a.players.len() >= MAX_PLAYERS || index >= MAX_PLAYERS as u32 || a.players.iter().any(|p| p.index == index) {
                 return Err(format!("slot {index} of account {user_id} is not free"));
             }
-            let mut p = Player::new(id, name);
             p.index = index;
             p.country.clone_from(&a.country);
             a.players.push(p);
@@ -1085,6 +1113,9 @@ impl Directory {
         let links: serde_json::Map<String, Json> = self.links.iter().filter(|(_, s)| !s.is_empty())
             .filter_map(|(id, seen)| Some((id.to_string(), serde_json::to_value(seen).ok()?))).collect();
         let mut whole = json!({ "next_user": self.next_user, "next_player": self.next_player, "bp_codes": codes, "invites": self.invites, "links": links });
+        if !self.unlocked.is_empty() {
+            whole["unlocked_cards"] = json!(self.unlocked);
+        }
         if store::in_database(&file) {
             let changed: Vec<(String, Json)> = self.accounts.iter()
                 .filter(|e| !self.saved.get(&e.account.user_id).is_some_and(|s| s.same(e)))

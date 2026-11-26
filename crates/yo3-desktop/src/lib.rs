@@ -269,6 +269,11 @@ impl Runtime {
     }
 }
 
+/// Unlock all cards' numbers (`Backend::collection`): your player's cards out of every card (each artwork counted), how
+/// many an unlock would give now, and whether every player's cards were unlocked before.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Collection { pub owned: u64, pub total: u64, pub new: u64, pub unlocked: bool }
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Readiness { Ready, GameProblem(String), ComponentProblem(String), ValidationProblem(String) }
 pub struct Backend { pub root: PathBuf, pub runtime: Runtime, pub diagnostics: yo3_tunnel::diagnostics::Session,
@@ -360,7 +365,7 @@ impl Backend {
         let live = self.live(settings).context("Start your server first.")?;
         api::call(&live, &op).map_err(anyhow::Error::msg)
     }
-    /// Unlock all cards on your own server (Settings → Singleplayer → Your data): every artwork of every card, topped up to
+    /// Unlock all cards on your own server, once for every card (Settings → Singleplayer → Your data): every artwork of every card, topped up to
     /// three copies, for every player. Asked of the running server, else done in its stopped data folder under its lock
     /// (the account it would make at its first start made first, so a new player gets them too). The server's sentence.
     pub fn unlock_cards(&self, settings: &Settings) -> anyhow::Result<String> {
@@ -384,6 +389,24 @@ impl Backend {
             0 => "Every card was already unlocked.".to_owned(),
             added => format!("Every card is unlocked: {added} cards added."),
         })
+    }
+    /// What Unlock all cards shows (Settings → Singleplayer → Your data): how many cards (each artwork) your player holds,
+    /// starting cards included, out of every card, and how many an unlock would give now (all of them before the first
+    /// unlock, then only those an update added). Asked of the running server, else read from its stopped data folder.
+    pub fn collection(&self, settings: &Settings) -> anyhow::Result<Collection> {
+        let op = Op::Collection { player: Some(settings.player_name.clone()) };
+        let read = match self.live(settings) {
+            Some(live) => api::call(&live, &op).map_err(anyhow::Error::msg)?,
+            None => {
+                let data = self.data_dir(settings);
+                let directory = yo3_server::accounts::Directory::open(vec![], &data.join("accounts.json"))?;
+                let live = yo3_server::settings::Live::open(Some(&data.join("settings.json")), vec![])?;
+                let offline = api::Api::new(Arc::new(Mutex::new(directory)), Arc::new(live), None, PathBuf::from(&settings.game_dir), "offline");
+                offline.apply(&op, "Desktop").map_err(anyhow::Error::msg)?
+            }
+        };
+        let n = |k: &str| read[k].as_u64().unwrap_or(0);
+        Ok(Collection { owned: n("owned"), total: n("total"), new: n("new"), unlocked: read["unlocked"].as_bool().unwrap_or(false) })
     }
     pub fn start_server(&self, settings: &Settings) -> anyhow::Result<Value> {
         let mut owned = self.server.lock().unwrap();

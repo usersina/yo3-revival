@@ -411,7 +411,9 @@ accounts for the Scripts edition on your own PC. Keep each key profile private (
   a player who is online at their next login.
 - `unlock-cards [PLAYER]` unlocks every card: each artwork of every card topped up to three copies beyond the starting
   cards, for PLAYER or, without one, every player; each player who got cards gets a D-Mail. It is Desktop's **Unlock all
-  cards** for your own server. Accepts `--request-id ID` like the gifts.
+  cards** for your own server. For every player it happens once: the server keeps which cards it unlocked, a player made
+  later starts with them, and running it again gives only the cards an update added since (a card a player traded or
+  sold away stays gone). Accepts `--request-id ID` like the gifts.
 - `give-cards PLAYER CARD` gives a player cards that no pack or deck hands out, or another artwork of a card (#19).
   CARD is its English name or Konami id; a name two cards share (Dark Magician) needs the id. `--art N` picks the
   artwork (the card's first when omitted; Blue-Eyes White Dragon has five) and `--count N` how many copies (1 when

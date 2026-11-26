@@ -139,6 +139,8 @@ pub enum Message {
     UnlockAsk(bool),
     UnlockCards,
     Unlocked(Result<String, String>),
+    /// Unlock all cards' numbers, read from your own server.
+    CollectionRead(Result<yo3_desktop::Collection, String>),
     /// Handled by the window: open a web page or a folder.
     Open(String),
     ToggleDetails,
@@ -206,6 +208,8 @@ pub struct State {
     confirm_game_reset: bool,
     /// Unlock all cards is waiting for its confirmation.
     confirm_unlock: bool,
+    /// Your player's cards out of every card, and what an unlock would give (`None` until read, or when it can't be).
+    collection: Option<yo3_desktop::Collection>,
     licences: bool,
     update: Option<String>,
     /// The desktop shortcut is already there: its row offers to make it again (after an update moved the launcher).
@@ -253,7 +257,7 @@ The full licences come with YO3 Revival, in its notices folder.";
 impl State {
     pub fn new(ctx: &Ctx, section: Section) -> Self {
         Self { section, note: None, busy: None, direct: Direct::Unknown, prefix: ctx.settings.wine_prefix.clone(), wine: ctx.settings.wine_binary.clone(),
-            confirm_reset: false, confirm_game_reset: false, confirm_unlock: false, licences: false, update: None, shortcut: yo3_desktop::shortcut::exists(),
+            confirm_reset: false, confirm_game_reset: false, confirm_unlock: false, collection: None, licences: false, update: None, shortcut: yo3_desktop::shortcut::exists(),
             moved: yo3_desktop::foreign::moved_aside(std::path::Path::new(&ctx.settings.game_dir)), pictures: None, getting: None, art_problem: None, art_busy: None, anime: None, destiny: None, revival: None, dialog: None, offer_when_counted: false }
     }
 
@@ -268,7 +272,29 @@ impl State {
     pub fn has_dialog(&self) -> bool { self.dialog.is_some() }
 
     /// The first tasks: what direct start is like now, and how many anime pictures there are.
-    pub fn start(&self, ctx: &Ctx) -> Task<Message> { Task::batch([self.check_direct(ctx), self.count_pictures(ctx), self.read_anime(ctx), self.read_destiny(ctx), self.read_revival(ctx)]) }
+    pub fn start(&self, ctx: &Ctx) -> Task<Message> { Task::batch([self.check_direct(ctx), self.count_pictures(ctx), self.read_anime(ctx), self.read_destiny(ctx), self.read_revival(ctx), self.read_collection(ctx)]) }
+
+    /// Unlock all cards' count (your cards out of all) and its button: Unlock… until every card was unlocked once, then
+    /// All cards unlocked (greyed out) until an update adds cards, which Unlock N new gives.
+    fn unlock_control(&self) -> Element<'_, Message> {
+        let ask = (self.busy.is_none() && !self.confirm_unlock).then_some(Message::UnlockAsk(true));
+        let button = match self.collection {
+            Some(c) if c.unlocked && c.new == 0 => pill("All cards unlocked", None, Kind::Secondary, 190, 32),
+            Some(c) if c.unlocked => pill(format!("Unlock {} new", grouped(c.new)), ask, Kind::Secondary, 190, 32),
+            _ => pill("Unlock…", ask, Kind::Secondary, 120, 32),
+        };
+        match self.collection {
+            Some(c) => row![text(format!("{} / {}", grouped(c.owned), grouped(c.total))).size(15).font(BODY_BOLD).color(color::INK), button]
+                .spacing(12).align_y(Center).into(),
+            None => button,
+        }
+    }
+
+    fn read_collection(&self, ctx: &Ctx) -> Task<Message> {
+        let Some(backend) = ctx.backend.clone() else { return Task::none() };
+        let settings = ctx.settings.clone();
+        Task::perform(async move { tokio::task::spawn_blocking(move || backend.collection(&settings).map_err(|e| format!("{e:#}"))).await.unwrap_or_else(|e| Err(e.to_string())) }, Message::CollectionRead)
+    }
 
     fn read_revival(&self, ctx: &Ctx) -> Task<Message> {
         let Some(backend) = ctx.backend.clone() else { return Task::none() };
@@ -417,8 +443,11 @@ impl State {
                     (true, true) => format!("{sentence} In the open game, go back to the map to see them."),
                     (true, false) => format!("{sentence} They're in your collection from the next PLAY."),
                     (false, _) => sentence,
-                })
+                });
+                return self.read_collection(ctx);
             }
+            Message::CollectionRead(Ok(seen)) => self.collection = Some(seen),
+            Message::CollectionRead(Err(_)) => self.collection = None,
             Message::Unlocked(Err(error)) => { self.busy = None; self.fail(ctx, &format!("Couldn't unlock the cards.\n{error}")) } // → Details
             Message::ResetData(false) => self.confirm_reset = !self.confirm_reset,
             Message::ResetData(true) => {
@@ -842,8 +871,12 @@ impl State {
         let reset_below: Option<Element<'_, Message>> = self.confirm_reset.then(|| row![
             text("Reset your singleplayer data? The old data is kept beside it.").size(14).font(BODY_BOLD).color(color::BAD).width(Fill),
             pill("Reset", Some(Message::ResetData(true)), Kind::Danger, 100, 32), yo3_skin::link("Cancel", Message::ResetData(false), false)].spacing(10).align_y(Center).into());
+        let unlock_ask = match self.collection {
+            Some(c) if c.unlocked => format!("Give every player of your server three of each of the {} new cards? Backups keep your collection as it was.", grouped(c.new)),
+            _ => "Give every player of your server three of every card, in every artwork? This happens once. Backups keep your collection as it was.".to_owned(),
+        };
         let unlock_below: Option<Element<'_, Message>> = self.confirm_unlock.then(|| row![
-            text("Give every player of your server three of every card, in every artwork? Backups keep your collection as it was.").size(14).font(BODY_BOLD).color(color::INK).width(Fill),
+            text(unlock_ask).size(14).font(BODY_BOLD).color(color::INK).width(Fill),
             pill("Unlock", self.busy.is_none().then_some(Message::UnlockCards), Kind::Primary, 110, 32), yo3_skin::link("Cancel", Message::UnlockAsk(false), false)].spacing(10).align_y(Center).into());
         column![
             yo3_skin::setting_group("Cards", vec![
@@ -857,8 +890,8 @@ impl State {
                 yo3_skin::setting("Backups", "Your server keeps a backup from each of its last starts.", Some(pill("Back up now", self.busy.is_none().then_some(Message::BackUp), Kind::Secondary, 150, 32)),
                     Some(row![pill("Restore…", (!playing).then_some(Message::Restore), Kind::Secondary, 130, 32),
                         pill("Open data folder", Some(Message::OpenData), Kind::Secondary, 170, 32)].spacing(10).into())),
-                yo3_skin::setting("Unlock all cards", "Three of every card, in every artwork, for every player of your own server.",
-                    Some(pill("Unlock…", (self.busy.is_none() && !self.confirm_unlock).then_some(Message::UnlockAsk(true)), Kind::Secondary, 120, 32)), unlock_below),
+                yo3_skin::setting("Unlock all cards", "Three of every card, in every artwork, for every player of your own server: once, and again only for cards an update adds.",
+                    Some(self.unlock_control()), unlock_below),
                 yo3_skin::setting("Reset", "Starts your singleplayer collection, decks and duel record again.",
                     Some(pill("Reset…", (self.busy.is_none() && !playing).then_some(Message::ResetData(false)), Kind::Secondary, 120, 32)), reset_below),
             ]),
@@ -925,6 +958,11 @@ impl State {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn counts_are_grouped_by_thousands() {
+        assert_eq!([0, 999, 1_000, 5_030, 1_234_567].map(super::grouped), ["0", "999", "1,000", "5,030", "1,234,567"]);
+    }
+
     use super::*;
 
     fn ctx() -> Ctx { Ctx { root: std::env::temp_dir(), backend: None, store: None, settings: Default::default() } }
@@ -1208,4 +1246,17 @@ mod tests {
         assert!(note.details.unwrap().contains("cards.cdb"));
         assert!(yo3_desktop::words::technical(&note.sentence).is_none());
     }
+}
+
+/// A count with thousands separated by commas (5,030), as the game writes them.
+fn grouped(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, d) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(d);
+    }
+    out
 }

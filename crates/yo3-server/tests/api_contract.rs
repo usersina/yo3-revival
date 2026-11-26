@@ -113,6 +113,50 @@ fn unlock_cards_tops_every_artwork_up_to_three_for_every_player_once() {
 }
 
 #[test]
+fn unlock_cards_for_every_player_happens_once_and_then_only_for_new_cards() {
+    // Desktop's Unlock all cards, once: the server keeps which cards it unlocked (in the accounts' document), a player
+    // made later starts with them, a second unlock gives nothing, and after an update adds a card only that one. `collection`
+    // says what Desktop shows: the player's cards (starting cards included) out of all, and how many an unlock would give.
+    use yo3_server::gifts::{Card, Gifts};
+    let dir = std::env::temp_dir().join(format!("yo3-unlock-once-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    yo3_server::store::initialize(&dir).unwrap();
+    let open = || yo3_server::accounts::Directory::open(vec![], &dir.join("accounts.json")).unwrap();
+    let mut d = open();
+    d.add_account(&["Yugi".into()]).unwrap();
+    let accounts = std::sync::Arc::new(std::sync::Mutex::new(d));
+    let settings = std::sync::Arc::new(yo3_server::settings::Live::open(None, vec![]).unwrap());
+    let card = |row, cid, art, name: &str| Card { row, cid, art, name: name.into(), description: String::new() };
+    let three = vec![card(816, 4007, 1, "Blue-Eyes White Dragon"), card(817, 4007, 2, "Blue-Eyes White Dragon"), card(1199, 5017, 1, "Command Knight")];
+    let api_with = |cards: Vec<Card>| api::Api::new(accounts.clone(), settings.clone(), Some(dir.clone()), std::path::PathBuf::new(), "server")
+        .with_gifts(Gifts { cards, recipes: vec![] });
+    let a = api_with(three.clone());
+    let seen = |a: &api::Api| { let v = a.apply(&Op::Collection { player: None }, "host").unwrap(); (v["owned"].as_u64(), v["total"].as_u64(), v["new"].as_u64()) };
+    assert_eq!(seen(&a), (Some(0), Some(3), Some(3)), "nothing held (no game data: no starting cards), everything to unlock");
+    a.apply(&Op::GiveCards { player: "Yugi".into(), card: "5017".into(), art: None, count: Some(1) }, "host").unwrap();
+    assert_eq!(seen(&a), (Some(1), Some(3), Some(3)), "a card given counts");
+    assert_eq!(a.apply(&Op::UnlockCards { player: None }, "host").unwrap()["added"], 8);
+    assert_eq!(seen(&a), (Some(3), Some(3), Some(0)));
+    assert_eq!(open().unlocked_cards(), [816, 817, 1199], "kept with the accounts");
+    assert_eq!(a.apply(&Op::UnlockCards { player: None }, "host").unwrap()["message"], "Every card was already unlocked.");
+    // A player made after the unlock starts with every unlocked card.
+    let user = accounts.lock().unwrap().entries().next().map(|(_, _, acc)| acc.user_id).unwrap();
+    accounts.lock().unwrap().create_player(user, 1, "Joey").unwrap();
+    let cards = |name: &str| { let d = accounts.lock().unwrap(); d.player(d.player_id_named(name).unwrap()).unwrap().cards.clone() };
+    assert_eq!(cards("Joey").into_iter().collect::<Vec<_>>(), [(816, 3), (817, 3), (1199, 3)]);
+    // An update adds a card: only it is new, and the next unlock gives only it.
+    let mut four = three.clone();
+    four.push(card(5217, 5183, 1, "Necro Wall"));
+    let b = api_with(four);
+    assert_eq!(seen(&b), (Some(3), Some(4), Some(1)));
+    let more = b.apply(&Op::UnlockCards { player: None }, "host").unwrap();
+    assert_eq!((more["players"].as_u64(), more["added"].as_u64()), (Some(2), Some(6)), "three Necro Walls for each of the two players");
+    assert_eq!(seen(&b), (Some(4), Some(4), Some(0)));
+    assert!(!Op::Collection { player: None }.changes());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn an_admin_gives_cards_artworks_and_recipes_and_a_moderator_cannot() {
     use yo3_server::gifts::{Card, Gifts, Recipe};
     let settings = std::sync::Arc::new(yo3_server::settings::Live::open(None, vec![]).unwrap());

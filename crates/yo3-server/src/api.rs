@@ -79,6 +79,10 @@ pub enum Op {
     /// Every artwork of every card, topped up to three copies beyond the starting cards, for `player` or, with none, for
     /// every player: Desktop's Unlock all cards on your own server. Each player who got cards gets a letter.
     UnlockCards { #[serde(default)] player: Option<String> },
+    /// How many of every card (each artwork) `player` holds, starting cards included (the first player when none or not
+    /// found), out of how many there are, and how many an unlock for every player would give now (Desktop's Unlock all
+    /// cards: `new` is every card before the first unlock, then those an update added since).
+    Collection { #[serde(default)] player: Option<String> },
     /// A deck recipe for Load Deck's Official tab (#19), by its title or preset id; `cards` gives the recipe's cards too.
     /// The game shows it at the player's next login or after their next duel.
     GiveRecipe { player: String, deck: String, #[serde(default)] cards: bool },
@@ -180,7 +184,7 @@ impl Op {
 
     /// Whether it changes anything (and so writes an audit row).
     pub fn changes(&self) -> bool {
-        !matches!(self, Op::Status | Op::Accounts | Op::Countries | Op::Titles | Op::Recipes | Op::Codes | Op::Invites | Op::Settings | Op::Audit { .. }
+        !matches!(self, Op::Status | Op::Accounts | Op::Countries | Op::Titles | Op::Recipes | Op::Collection { .. } | Op::Codes | Op::Invites | Op::Settings | Op::Audit { .. }
             | Op::Account { .. } | Op::Backups | Op::Logs { .. } | Op::Reports { .. } | Op::Banlists | Op::Events | Op::ProblemReports { .. } | Op::ProblemReport { .. })
     }
 
@@ -534,6 +538,18 @@ impl Api {
         Ok(self.gifts.get_or_init(|| Arc::new(crate::gifts::Gifts::from_game(&data))).clone())
     }
 
+    /// The cards every player starts with (CARD_Prop rows, a row once per copy): the starter deck and the official
+    /// decks, as `trade::collection` counts them. Without the game's data, none.
+    fn starting_rows(&self) -> Vec<u16> {
+        if let Some(w) = &self.world {
+            return w.starter_deck.iter().chain(&w.official_decks).flat_map(crate::front::Deck::cards).collect();
+        }
+        let Ok((data, _)) = crate::game_data(&self.game_dir) else { return vec![] };
+        data.starter_deck(crate::front::STARTER_REGULATION).into_iter()
+            .chain(crate::OFFICIAL_DECKS.iter().filter_map(|&(npc, _)| data.npc_deck(npc)))
+            .flat_map(|d| d.cards().collect::<Vec<_>>()).collect()
+    }
+
     fn titles(&self) -> Result<Arc<crate::titles::TitleData>, String> {
         if let Some(t) = &self.titles { return Ok(t.clone()) }
         let data = yo3_data::GameData::load(&self.game_dir).map_err(|e| format!("the game's titles: {e}"))?;
@@ -629,6 +645,26 @@ impl Api {
                 Ok((json!({ "titles": names, "message": names.join("\n") }), None, None))
             }
             Op::GrantTitle { .. } | Op::GiveCards { .. } | Op::GiveRecipe { .. } | Op::UnlockCards { .. } => Err("gifts require the typed mutation boundary".into()),
+            Op::Collection { player } => {
+                let gifts = self.gifts()?;
+                let starting = self.starting_rows();
+                let d = self.accounts.locked();
+                let named = player.as_deref().and_then(|n| d.player_id_named(n));
+                let first = || d.entries().flat_map(|(_, _, a)| a.players.iter().map(|p| p.player_id)).min();
+                let held = named.or_else(first).and_then(|id| d.player(id));
+                let mut have: std::collections::HashMap<u16, i64> = std::collections::HashMap::new();
+                if let Some(p) = held {
+                    for &row in &starting { *have.entry(row).or_default() += 1 }
+                    for (&row, &n) in &p.cards { *have.entry(row).or_default() += i64::from(n) }
+                    for (&row, &n) in &p.given { *have.entry(row).or_default() -= i64::from(n) }
+                }
+                let owned = gifts.cards.iter().filter(|c| have.get(&c.row).is_some_and(|&n| n > 0)).count();
+                let unlocked = d.unlocked_cards();
+                let new = gifts.cards.iter().filter(|c| unlocked.binary_search(&c.row).is_err()).count();
+                let total = gifts.cards.len();
+                Ok((json!({ "player": held.map(|p| p.name.clone()), "owned": owned, "total": total, "new": new, "unlocked": !unlocked.is_empty(),
+                    "message": format!("{owned} / {total} cards; {new} to unlock") }), None, None))
+            }
             Op::Recipes => {
                 let gifts = self.gifts()?;
                 let rows: Vec<Value> = gifts.recipes.iter().map(|r| json!({ "id": r.id, "title": r.title, "item": r.item, "cards": r.cards.len() })).collect();

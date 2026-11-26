@@ -40,6 +40,9 @@ Older entries describe their release at the time. For current setup, use the [RE
   banishment brings back a monster that was never properly Summoned (a discarded Ritual Monster, a Synchro Monster sent
   from the Extra Deck). A host who wants the official ruling sets `revival-rule` to `official` (Desktop: Settings →
   Singleplayer → Revival → Official rules); a server that already chose a rule keeps it.
+- **Unlock all cards happens once.** Desktop shows how many cards you have out of all of them (1,214 / 5,030); after the
+  unlock the button reads All cards unlocked, and comes back as Unlock N new only when an update adds cards. Players
+  made later start with the unlocked cards, and cards you traded away stay gone.
 - **An Equip Spell left with no monster to equip** does nothing instead of failing with a script error.
 - **A Spell or Trap moved to the other player's field** (Bounce Spell) shows without the counters it lost, and **a card
   put back on the field from the Graveyard** (Compensation Mediation) no longer shows a Synchro Summon if it was once a
