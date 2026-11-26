@@ -31,7 +31,7 @@ Older entries describe their release at the time. For current setup, use the [RE
   Revenge join the new cards, with their Tokens (Steam, Mask, Gadget Box, Homunculus and Black Crest Tokens, and the
   anime Gadget Box's Gadget Token), shown on the field like the game's own.
 - **Anime card fixes.** With anime cards on, Bounce Spell no longer stops when its target is gone, Limit Tribute also
-  stops Summons that need two Tributes, Take One Chance leaves a card that can't be activated in the Graveyard, Seven Kid Goats destroys the Beast it picks, Iron Cage sends the monster to its owner's Graveyard, Dark Element summons
+  stops Summons that need two Tributes, Call of the Haunted brings a monster destroyed in battle back with 10% more than the ATK it had (not its printed ATK), growing each time, Take One Chance leaves a card that can't be activated in the Graveyard, Seven Kid Goats destroys the Beast it picks, Iron Cage sends the monster to its owner's Graveyard, Dark Element summons
   Dark Guardian, Advanced Crystal Beast Emerald Tortoise can turn a monster that attacked to Defense Position, Spirit
   Shield negates the attack even with its last Fiend, and Catapult Turtle's effect no longer fails when its target is gone.
 - **Synchro Summons with many possible materials** are worked out quickly: with the anime T.G. Cyber Magician (any
