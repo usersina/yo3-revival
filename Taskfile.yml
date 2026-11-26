@@ -50,6 +50,11 @@ tasks:
       - cargo nextest run -p yo3-server --test duel_check
       - python3 tools/engine/coverage.py {{.CLI_ARGS}}
 
+  check:fuzz:
+    desc: "The per-card fuzz: chosen added cards in self-played duels, a report of effects never activated or never doing what they declare (YO3_FUZZ_ROWS=a-b or YO3_FUZZ_CARDS=id,id; YO3_FUZZ_DUELS)"
+    cmds:
+      - cargo nextest run --release -p yo3-server --test card_fuzz --no-capture
+
   check:selfplay:
     desc: "Long self-play: 300 duels each with the added cards and with the anime versions on (slow engine answers fail too)"
     cmds:
