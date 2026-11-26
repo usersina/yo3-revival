@@ -93,6 +93,7 @@ def steps(group):
         # The debug run plays a tenth of the added cards a day (tests/added_cards_smoke.rs); every card plays in the release
         # build, minutes instead of the better part of an hour.
         return [('nextest', ['cargo', 'nextest', 'run', '--workspace'], ROOT),
+                ('release engine', ['cargo', 'build', '--release', '-p', 'yo3-engine'], ROOT),
                 ('added cards smoke', ['env', 'YO3_SMOKE=all', 'cargo', 'nextest', 'run', '--release', '-p', 'yo3-server', '--test', 'added_cards_smoke'], ROOT)]
     if group == 'dashboard':
         d = ROOT / 'dashboard'

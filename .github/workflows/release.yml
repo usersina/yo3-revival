@@ -120,7 +120,10 @@ jobs:
       - name: Tests
         run: cargo nextest run --workspace
       - name: Every added card's smoke test, in the release build (the debug run plays a tenth a day)
-        run: YO3_SMOKE=all cargo nextest run --release -p yo3-server --test added_cards_smoke
+        # The release engine program first: nextest builds only the server's tests, and a fresh runner has none.
+        run: |
+          cargo build --release -p yo3-engine
+          YO3_SMOKE=all cargo nextest run --release -p yo3-server --test added_cards_smoke
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
