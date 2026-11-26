@@ -473,11 +473,15 @@ pub fn npc_files(read: &impl Fn(&str) -> Option<Vec<u8>>, added: &Added) -> Resu
             }
         }
         out.push((format!("data/model/np{to:03}/np{to:03}.mdl"), mesh));
-        if let Some(portrait) = read(&format!("data/npc/npcsel{from:03}.png")) {
+        // Its portrait and duel faces: the mannequin's own pictures, else the borrowed NPC's.
+        let mannequin = npc.figure.as_deref() == Some("mannequin");
+        let portrait = if mannequin { Some(crate::doll::portrait_png()) } else { read(&format!("data/npc/npcsel{from:03}.png")) };
+        if let Some(portrait) = portrait {
             out.push((format!("data/npc/npcsel{to:03}.png"), portrait));
         }
         for k in 0..5 {
-            if let Some(face) = read(&format!("data/face/np{from:03}f{k}.png")) {
+            let face = if mannequin { Some(crate::doll::face_png()) } else { read(&format!("data/face/np{from:03}f{k}.png")) };
+            if let Some(face) = face {
                 out.push((format!("data/face/np{to:03}f{k}.png"), face));
             }
         }

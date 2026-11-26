@@ -209,33 +209,84 @@ pub fn mannequin(donor: &[u8]) -> Result<Vec<u8>, String> {
     Ok(model.encode())
 }
 
+/// The colour of the mannequin's surface facing `n` (a unit normal seen from the front): its matcap's shading.
+fn ivory(n: V3) -> [f64; 3] {
+    let light = unit([-0.45, 0.55, 0.70]);
+    let half = unit(add(light, [0.0, 0.0, 1.0]));
+    let diffuse = dot(n, light).clamp(0.0, 1.0);
+    let spec = dot(n, half).clamp(0.0, 1.0).powi(40);
+    let shade = 0.42 + 0.50 * diffuse + 0.10 * n[2].max(0.0);
+    [240.0, 231.0, 214.0].map(|base| (base * shade + 255.0 * 0.35 * spec).clamp(0.0, 255.0))
+}
+
+/// A bust of the mannequin in a `size` square (an egg head over a neck and shoulders, shaded as its body), on `background`
+/// (RGBA per pixel from its position, 0-1 each way): the picture its faces and portrait show until it has its own.
+fn bust(size: usize, scale: f64, top: f64, background: impl Fn(f64, f64) -> [u8; 4]) -> Vec<u8> {
+    // Ellipsoids in the picture's units (x right, y down, 0-1): head, neck, shoulders.
+    let shapes = [([0.5, top + 0.22 * scale, 0.0], [0.15 * scale, 0.21 * scale, 0.17 * scale]),
+        ([0.5, top + 0.46 * scale, 0.0], [0.075 * scale, 0.12 * scale, 0.075 * scale]),
+        ([0.5, top + 0.86 * scale, 0.0], [0.38 * scale, 0.30 * scale, 0.20 * scale]),
+        ([0.5, top + 1.10 * scale, 0.0], [0.30 * scale, 0.30 * scale, 0.18 * scale])];
+    let mut rgba = Vec::with_capacity(size * size * 4);
+    for py in 0..size {
+        for px in 0..size {
+            let (x, y) = ((px as f64 + 0.5) / size as f64, (py as f64 + 0.5) / size as f64);
+            // The nearest surface towards the viewer at this pixel, its normal (y up for the light).
+            let mut best: Option<(f64, V3)> = None;
+            for (c, r) in shapes {
+                let (dx, dy) = ((x - c[0]) / r[0], (y - c[1]) / r[1]);
+                let d = 1.0 - dx * dx - dy * dy;
+                if d <= 0.0 { continue }
+                let dz = d.sqrt();
+                let front = dz * r[2];
+                if best.is_none_or(|(f, _)| front > f) { best = Some((front, unit([dx / r[0], -dy / r[1], dz / r[2]]))) }
+            }
+            match best {
+                Some((_, n)) => { let c = ivory(n); rgba.extend([c[0] as u8, c[1] as u8, c[2] as u8, 255]) }
+                None => rgba.extend(background(x, y)),
+            }
+        }
+    }
+    png_rgba(size, &rgba)
+}
+
+/// A duel face (128x128, `data/face/np025f<k>.png`): the bust on a dusk gradient. Faceless, so the five expressions are
+/// the same picture.
+pub fn face_png() -> Vec<u8> {
+    bust(128, 1.3, -0.08, |_, y| [(70.0 + 60.0 * y) as u8, (60.0 + 30.0 * y) as u8, (110.0 - 30.0 * y) as u8, 255])
+}
+
+/// Kaiba Corporation's portrait (512x512, `data/npc/npcsel025.png`): the bust on transparency, as the game's are.
+pub fn portrait_png() -> Vec<u8> {
+    bust(512, 0.95, 0.12, |_, _| [0, 0, 0, 0])
+}
+
+fn png_rgba(size: usize, rgba: &[u8]) -> Vec<u8> {
+    let mut out = vec![];
+    {
+        let mut encoder = png::Encoder::new(&mut out, size as u32, size as u32);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().expect("a PNG header in memory");
+        writer.write_image_data(rgba).expect("a PNG in memory");
+    }
+    out
+}
+
 /// The mannequin's shading: an ivory sphere lit from the upper left front, a soft highlight and a darker rim, 256x256.
 pub fn shading_png() -> Vec<u8> {
     const SIZE: usize = 256;
-    let light = unit([-0.45, 0.55, 0.70]);
-    let half = unit(add(light, [0.0, 0.0, 1.0]));
-    let mut rgb = Vec::with_capacity(SIZE * SIZE * 3);
+    let mut rgba = Vec::with_capacity(SIZE * SIZE * 4);
     for y in 0..SIZE {
         for x in 0..SIZE {
             let nx = (x as f64 + 0.5) / SIZE as f64 * 2.0 - 1.0;
             let ny = 1.0 - (y as f64 + 0.5) / SIZE as f64 * 2.0;
             let nz = (1.0 - nx * nx - ny * ny).clamp(0.0, 1.0).sqrt();
-            let n = [nx, ny, nz];
-            let diffuse = dot(n, light).clamp(0.0, 1.0);
-            let spec = dot(n, half).clamp(0.0, 1.0).powi(40);
-            let shade = 0.42 + 0.50 * diffuse + 0.10 * nz;
-            for base in [240.0, 231.0, 214.0] { rgb.push((base * shade + 255.0 * 0.35 * spec).clamp(0.0, 255.0) as u8) }
+            let c = ivory([nx, ny, nz]);
+            rgba.extend([c[0] as u8, c[1] as u8, c[2] as u8, 255]);
         }
     }
-    let mut out = vec![];
-    {
-        let mut encoder = png::Encoder::new(&mut out, SIZE as u32, SIZE as u32);
-        encoder.set_color(png::ColorType::Rgb);
-        encoder.set_depth(png::BitDepth::Eight);
-        let mut writer = encoder.write_header().expect("a PNG header in memory");
-        writer.write_image_data(&rgb).expect("a PNG in memory");
-    }
-    out
+    png_rgba(SIZE, &rgba)
 }
 
 #[cfg(test)]
@@ -247,7 +298,13 @@ mod tests {
         let p = parts();
         assert_eq!(p.iter().filter(|(j, _)| j.starts_with("L_")).count(), p.iter().filter(|(j, _)| j.starts_with("R_")).count());
         assert!(p.iter().all(|(_, faces)| faces.iter().all(|f| (3..=4).contains(&f.len()))));
-        let png = shading_png();
-        assert!(png.starts_with(b"\x89PNG"));
+        for png in [shading_png(), face_png(), portrait_png()] { assert!(png.starts_with(b"\x89PNG")) }
+        // YO3_DOLL_PREVIEW=DIR writes the pictures there to look at.
+        if let Some(dir) = std::env::var_os("YO3_DOLL_PREVIEW") {
+            let dir = std::path::PathBuf::from(dir);
+            for (name, png) in [("shading.png", shading_png()), ("face.png", face_png()), ("portrait.png", portrait_png())] {
+                std::fs::write(dir.join(name), png).unwrap();
+            }
+        }
     }
 }
