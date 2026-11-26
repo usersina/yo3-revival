@@ -390,6 +390,38 @@ impl Backend {
             added => format!("Every card is unlocked: {added} cards added."),
         })
     }
+    /// An operation on your own server: asked of the running server, else done in its stopped data folder (under its lock
+    /// when it changes something).
+    fn own_server(&self, settings: &Settings, op: &Op) -> anyhow::Result<Value> {
+        if let Some(live) = self.live(settings) { return api::call(&live, op).map_err(anyhow::Error::msg) }
+        let data = self.data_dir(settings);
+        let game = PathBuf::from(&settings.game_dir);
+        let _lock = if op.changes() { Some(yo3_server::store::lock(&data)?) } else { None };
+        if op.changes() { yo3_server::store::initialize(&data)?; yo3_server::store::interrupt_effects(&data)?; }
+        let directory = yo3_server::accounts::Directory::open(vec![], &data.join("accounts.json"))?;
+        let live = yo3_server::settings::Live::open(Some(&data.join("settings.json")), banlists(&game))?;
+        let offline = api::Api::new(Arc::new(Mutex::new(directory)), Arc::new(live), op.changes().then(|| data.clone()), game, "offline");
+        if op.changes() { offline.apply_request(op, "Desktop", "offline", None, &yo3_server::logins::new_token()) } else { offline.apply(op, "Desktop") }
+            .map_err(anyhow::Error::msg)
+    }
+    /// Your player's decks on your own server (Settings → Singleplayer → Your data → EDOPro decks), by name.
+    pub fn decks(&self, settings: &Settings) -> anyhow::Result<Vec<String>> {
+        let read = self.own_server(settings, &Op::Decks { player: Some(settings.player_name.clone()) })?;
+        Ok(read["decks"].as_array().into_iter().flatten().filter_map(|d| d["name"].as_str().map(str::to_owned)).collect())
+    }
+    /// An EDOPro deck file (`.ydk`) kept as one of your player's decks on your own server: the server's sentence.
+    pub fn import_deck(&self, settings: &Settings, file: &Path) -> anyhow::Result<String> {
+        let text = std::fs::read_to_string(file).with_context(|| format!("{}", file.display()))?;
+        let name = file.file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let done = self.own_server(settings, &Op::ImportDeck { player: Some(settings.player_name.clone()), name, ydk: text })?;
+        Ok(done["message"].as_str().unwrap_or("Imported.").to_owned())
+    }
+    /// One of your player's decks on your own server written as an EDOPro deck file (`.ydk`): the server's sentence.
+    pub fn export_deck(&self, settings: &Settings, deck: &str, file: &Path) -> anyhow::Result<String> {
+        let done = self.own_server(settings, &Op::ExportDeck { player: Some(settings.player_name.clone()), deck: deck.to_owned() })?;
+        std::fs::write(file, done["ydk"].as_str().unwrap_or_default()).with_context(|| format!("{}", file.display()))?;
+        Ok(done["message"].as_str().unwrap_or("Exported.").to_owned())
+    }
     /// What Unlock all cards shows (Settings → Singleplayer → Your data): how many cards (each artwork) your player holds,
     /// starting cards included, out of every card, and how many an unlock would give now (all of them before the first
     /// unlock, then only those an update added). Asked of the running server, else read from its stopped data folder.
