@@ -100,9 +100,11 @@ fn the_summons_a_wider_material_card_allows_are_listed_in_time() {
             spawns.push(Spawn { team: 0, place, cid: card });
         }
         let decks = [(&[WARWOLF; 40][..], &EXTRA[..]), (&[KURIBOH; 40][..], &[][..])];
-        let started = Instant::now();
         let s = if *anime { Scenario::start_anime_field(&dir, 3, 8000, decks, &spawns) } else { Scenario::start_field(&dir, 3, 8000, decks, &spawns) };
         let mut s = s.unwrap_or_else(|e| panic!("{name} ({cid}): the duel didn't start: {e}"));
+        // Timed from the duel's start, not the engine's (its databases and scripts): a debug build under a full test
+        // run's load took up to 9 s for that alone.
+        let started = Instant::now();
         s.run_to(&[], |p| p["type"] == msg::SELECT_IDLECMD && p["player"] == 0).unwrap_or_else(|e| panic!("{name} ({cid}): {e}"));
         let took = started.elapsed();
         if took > limit {
