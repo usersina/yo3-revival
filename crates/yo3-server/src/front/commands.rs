@@ -14,7 +14,7 @@ use crate::lock::Locked;
 pub const SERVER: &str = "Server";
 
 /// The commands, by the word that starts them.
-const COMMANDS: [&str; 12] = ["help", "banlist", "draw", "draw5", "where", "pack", "report", "bug", "recipes", "flag", "country", "h"];
+const COMMANDS: [&str; 14] = ["help", "banlist", "draw", "draw5", "where", "pack", "report", "bug", "recipes", "flag", "country", "deck", "decks", "h"];
 
 /// The longest reason a command's help line and answers may run: the game's chat window wraps longer lines.
 const LINE: usize = 110;
@@ -102,6 +102,7 @@ impl FrontSession {
             "report" => self.report_command(&rest),
             "bug" => self.bug_command(&rest),
             "recipes" => self.recipes_command(&rest),
+            "deck" | "decks" => self.deck_command(&rest),
             "flag" | "country" => self.flag_command(&rest),
             _ => help(),
         })
@@ -224,6 +225,28 @@ impl FrontSession {
     /// `recipes` lists the deck recipes the shop's shelf can't show (the 22 theme decks and the two other starter decks, #19)
     /// with their price; `recipes NAME` buys one for the host's deck price: the recipe (Load Deck's Official tab) and its
     /// cards, as a present like a structure deck's.
+    /// `deck` checks each of the player's decks (the starter while they have it, then the saved ones) against the banlist
+    /// they duel under and the cards they hold, as Select Deck does: one line for a deck that can duel, its first problem
+    /// for one that can't. `deck NAME` lists every problem of that deck (`deckcheck::explain`).
+    fn deck_command(&mut self, arg: &str) -> Vec<String> {
+        let decks: Vec<super::Deck> = self.starter().cloned().into_iter().chain(self.uploaded_decks()).collect();
+        if decks.is_empty() { return vec!["You have no deck yet: save one in Edit Deck first.".into()] }
+        let wanted = arg.trim().to_lowercase();
+        if !wanted.is_empty() {
+            let Some(deck) = decks.iter().find(|d| d.name.to_lowercase() == wanted).or_else(|| decks.iter().find(|d| d.name.to_lowercase().contains(&wanted))) else {
+                return vec![format!("You have no deck named like \"{}\".", wanted.chars().take(40).collect::<String>())];
+            };
+            let problems = self.explain_deck(None, deck);
+            if problems.is_empty() { return vec![format!("\"{}\" can duel.", deck.name)] }
+            return std::iter::once(format!("\"{}\" can't duel:", deck.name)).chain(problems).collect();
+        }
+        decks.iter().take(10).map(|deck| match self.explain_deck(None, deck).as_slice() {
+            [] => format!("\"{}\": can duel.", deck.name),
+            [one] => format!("\"{}\": {one}", deck.name),
+            [first, rest @ ..] => format!("\"{}\": {first} (and {} more: deck {})", deck.name, rest.len(), deck.name),
+        }).collect()
+    }
+
     fn recipes_command(&mut self, arg: &str) -> Vec<String> {
         let world = self.world.clone();
         let cost = world.settings.now().shop.deck_cost;
@@ -378,6 +401,7 @@ fn help() -> Vec<String> {
         "where CARD: where a card comes from (packs, decks, Trade Card, rental)".into(),
         "pack NAME: every card a booster pack can give, rarest first (pack alone lists the packs)".into(),
         "recipes [NAME]: the theme deck recipes for sale, or buy one with BP".into(),
+        "deck [NAME]: why a deck can't duel (deck alone checks them all)".into(),
         "flag CODE: the country flag others see (flag BR for Brazil; flag auto for your game's language)".into(),
         "report PLAYER reason: tell the staff about a player".into(),
         "bug what happened: tell the staff a duel went wrong (your duel is sent with it)".into(),

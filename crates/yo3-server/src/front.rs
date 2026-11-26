@@ -3155,6 +3155,18 @@ impl FrontSession {
     /// Whether the selected player may bring `deck` to the duel: sizes, cards owned (with the ones they borrowed) and
     /// the duel's regulation, as the client checks them itself.
     fn check_deck(&self, duel_id: Option<u32>, deck: &Deck) -> Result<(), crate::deckcheck::Refusal> {
+        let (regulation, owned) = self.deck_terms(duel_id);
+        crate::deckcheck::check(&self.world, regulation, &owned, deck)
+    }
+
+    /// What is wrong with `deck` for the duel (`deckcheck::explain`), in the player's words: empty when it passes.
+    fn explain_deck(&self, duel_id: Option<u32>, deck: &Deck) -> Vec<String> {
+        let (regulation, owned) = self.deck_terms(duel_id);
+        crate::deckcheck::explain(&self.world, regulation, &owned, deck)
+    }
+
+    /// The banlist a deck is checked against for the duel, and the cards the selected player may use.
+    fn deck_terms(&self, duel_id: Option<u32>) -> (u32, std::collections::BTreeMap<u16, u32>) {
         let me = self.player();
         let saved = self.directory.as_ref().and_then(|d| d.locked().player(me.player_id).cloned());
         // Lent cards are the borrower's to play until the rental ends, not the lender's too (#39).
@@ -3163,7 +3175,7 @@ impl FrontSession {
         // A duel that names no banlist, or one the client doesn't have, uses the one this player logged in with.
         let login = self.login_regulation.unwrap_or_else(|| self.chosen_regulation());
         let regulation = Some(self.duel_regulation(duel_id)).filter(|id| self.world.regulations.contains_key(id)).unwrap_or(login);
-        crate::deckcheck::check(&self.world, regulation, &owned, deck)
+        (regulation, owned)
     }
 
     /// The decks the selected player's clients uploaded, as the accounts keep them now.
@@ -3717,7 +3729,15 @@ impl FrontSession {
                 // and no timer waits for a reply to 0x1F4F.
                 if duel_id.is_none() && msg.get("update_type").and_then(Value::as_u32) == Some(1) {
                     if let Some(item) = msg.items.first() {
-                        self.keep_deck(self.world.place_deck(&Deck::from_record(item)));
+                        let deck = self.world.place_deck(&Deck::from_record(item));
+                        // The game marks a deck its banlist refuses with ⊘ and never says why: the chat does, card by
+                        // card, against the banlist the player duels under. Nothing while the deck can duel.
+                        let problems = if deck.main.is_empty() { vec![] } else { self.explain_deck(None, &deck) };
+                        if !problems.is_empty() {
+                            let _ = self.outbox.send(chat_note("Server", &format!("\"{}\" is saved, but it can't duel yet:", deck.name)));
+                            for line in problems { let _ = self.outbox.send(chat_note("Server", &line)); }
+                        }
+                        self.keep_deck(deck);
                     }
                     return vec![];
                 }
@@ -3760,9 +3780,12 @@ impl FrontSession {
                     && let Err(why) = self.check_deck(duel_id, &self.world.place_deck(&Deck::from_record(item)))
                 {
                     tracing::info!("player {player_id}'s deck refused for duel {duel_id:?}: {why:?}");
-                    if let crate::deckcheck::Refusal::AnimeOnly(row) = why {
-                        let name = self.world.added.cards.iter().find(|c| c.row == row).map_or_else(|| format!("card {row}"), |c| c.name.clone());
-                        let _ = self.outbox.send(chat_note("Server", &format!("{name} {ANIME_ONLY_OFF}")));
+                    // The game shows only "You have been disconnected from the Duel Server." (0x2919): the chat says why,
+                    // card by card, before it.
+                    let deck = self.world.place_deck(&Deck::from_record(item));
+                    let _ = self.outbox.send(chat_note("Server", &format!("Your deck \"{}\" can't be used for this duel:", deck.name)));
+                    for line in self.explain_deck(duel_id, &deck) {
+                        let _ = self.outbox.send(chat_note("Server", &line));
                     }
                     if let Some(id) = duel_id {
                         self.hub().refuse_deck(id, player_id);

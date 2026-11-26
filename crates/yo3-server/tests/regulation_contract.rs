@@ -434,3 +434,73 @@ fn the_default_banlist_still_lets_a_new_player_duel() {
     let characters = yo3_server::OFFICIAL_DECKS.iter().filter_map(|&(npc, _)| data.npc_deck(npc));
     assert!(characters.clone().count() == 9 && characters.into_iter().all(|d| !default.allows(cids(d))), "the docs say the character decks break it");
 }
+
+/// The chat lines the server sent (a 0x2455 chat note's `chat_str`), in order.
+fn chat(c: &mut Client) -> Vec<String> {
+    c.pushed().iter().filter(|m| m.request() == Some(0x2455)).flat_map(|m| m.items.iter()).filter_map(|i| i.get("chat_str").and_then(Value::as_str)).collect()
+}
+
+#[test]
+fn a_refused_duel_deck_is_explained_card_by_card_in_the_chat() {
+    // The game shows only "You have been disconnected from the Duel Server." (0x2919) for 0x22CB: the chat says why
+    // first. Banlist 5 forbids row 3 (Konami id 1003) and limits row 2 (1002) to one.
+    let mut w = world(5);
+    w.banlists = vec![(5, "Season 16".into())];
+    w.card_names = (1..=100u16).map(|row| (1000 + row, format!("Card {row}"))).collect();
+    let server = Server::with_world(w);
+    let mut c = server.join(1001, "Yugi");
+    let id = npc_duel(&mut c, 0);
+    c.pushed();
+    assert_eq!(pick(&mut c, id, &starter(), &[], &[]), 0x22CB, "the starter holds two of row 2 and row 3");
+    assert_eq!(chat(&mut c), ["Your deck \"Mine\" can't be used for this duel:", "Card 2: 2 copies, but Season 16 allows 1.",
+        "Card 3 is Forbidden in Season 16."]);
+    let few: Vec<u16> = (4..=20).chain(4..=20).collect();
+    assert_eq!(pick(&mut c, id, &few, &[], &[]), 0x22CB);
+    assert_eq!(chat(&mut c)[1], "The Main Deck has 34 cards: it needs 40 to 60.");
+}
+
+#[test]
+fn an_editor_save_that_cannot_duel_is_explained_and_a_good_one_is_not() {
+    // Edit Deck's save (0x1F4F update_type 1, no duel, through the connection DLL) is kept either way; when the login
+    // banlist or the collection would refuse it, the chat says why (the game only marks it ⊘).
+    let mut w = world(5);
+    w.banlists = vec![(5, "Season 16".into())];
+    w.card_names = (1..=100u16).map(|row| (1000 + row, format!("Card {row}"))).collect();
+    let mut player = yo3_server::front::Player::new(1001, "Yugi");
+    player.cards.extend([(21, 1), (22, 1), (23, 1)]);
+    let mut c = Server::with_world(w).join_as(player);
+    c.pushed();
+    let save = |c: &mut Client, main: &[u16]| {
+        let deck = Message::deck().with("deck_name", Value::text("Edited")).with("main", Value::u16_be_array(main))
+            .with("extra", Value::u16_be_array(&[])).with("side", Value::u16_be_array(&[]));
+        let Packet::Message(m) = req_with(0x1F4F, &[("update_type", Value::U32(1))]) else { unreachable!() };
+        assert!(c.send(Packet::Message(m.item(deck))).is_empty(), "a save is unanswered");
+    };
+    save(&mut c, &starter());
+    assert_eq!(chat(&mut c), ["\"Edited\" is saved, but it can't duel yet:", "Card 2: 2 copies, but Season 16 allows 1.", "Card 3 is Forbidden in Season 16."]);
+    let fine: Vec<u16> = (4..=20).chain(4..=20).chain([1, 1, 2, 21, 22, 23]).collect();
+    save(&mut c, &fine);
+    assert!(chat(&mut c).is_empty(), "a deck that can duel says nothing");
+}
+
+#[test]
+fn the_deck_command_says_which_decks_can_duel_and_why_not() {
+    // `deck` checks every deck (the starter, then the saved ones) against the banlist the player duels under; `deck NAME`
+    // lists every problem of one.
+    let mut w = world(5);
+    w.banlists = vec![(5, "Season 16".into())];
+    w.card_names = (1..=100u16).map(|row| (1000 + row, format!("Card {row}"))).collect();
+    let mut c = Server::with_world(w).join(1001, "Yugi");
+    let whisper = |text: &str| {
+        let body = Message { tag: 10, fields: vec![("chat_str".into(), Value::text(text)), ("chat_type".into(), Value::U32(0)),
+            ("to_name".into(), Value::text("Server"))], items: vec![] };
+        Packet::Message(Message::reply(0x2134).item(body))
+    };
+    let said = |c: &mut Client, text: &str| -> Vec<String> {
+        c.send(whisper(text)).iter().filter(|m| m.request() == Some(0x2455)).flat_map(|m| m.items.iter())
+            .filter_map(|i| i.get("chat_str").and_then(Value::as_str)).collect()
+    };
+    assert_eq!(said(&mut c, "!deck"), ["\"Starter Deck\": Card 2: 2 copies, but Season 16 allows 1. (and 1 more: deck Starter Deck)"]);
+    assert_eq!(said(&mut c, "!deck starter"), ["\"Starter Deck\" can't duel:", "Card 2: 2 copies, but Season 16 allows 1.", "Card 3 is Forbidden in Season 16."]);
+    assert_eq!(said(&mut c, "!deck nope"), ["You have no deck named like \"nope\"."]);
+}

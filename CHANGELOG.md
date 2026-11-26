@@ -28,6 +28,12 @@ Older entries describe their release at the time. For current setup, use the [RE
 - **Rarities for the anime-only cards**: 12 Ultra Rare, 13 Super Rare and 25 Rare, picked by their place in the anime; the
   rest are Common. The reveal shows each in its frame.
 
+- **Why a deck can't duel.** The game only says "Invalid Deck" or "There are no valid Decks available."; now the
+  server says why in the chat, card by card: "Pot of Greed is Forbidden in Season 16.", "Mirror Force: 2 copies, but
+  Season 16 allows 1.", "The Main Deck has 38 cards: it needs 40 to 60.", "You hold 1 Blue-Eyes White Dragon but the
+  deck has 3.". It says so when you save such a deck in Edit Deck, when a duel refuses one, and for the new `deck` chat
+  command (`deck` checks all your decks, `deck NAME` one).
+
 ## v0.1.26 (2026-11-26)
 
 - **358 more cards from the anime.** Cards the Duel Monsters, GX and 5D's anime showed that the game never had: the

@@ -1072,6 +1072,10 @@ deemed a non-Result.") and, at OK, leaves for the map; the match ends, won by th
 duel-connection command 2 {1, 14} is ignored before the janken; a janken command first doesn't make it work either.)
 Live with the asymmetric check (only Yugi's deck refused): Kaiba, at the pre-janken screen, got that dialog and went
 back to the map. Card Swaps (`update_type` 2) that fail the deck check are ignored, with `0x22CA`.
+Since the game says nothing about why, the server does, in the chat (`0x2455` notes from "Server",
+`deckcheck::explain`: every reason, card by card, at most six lines): before `0x22CB` ("Your deck "X" can't be used
+for this duel:" then the reasons), after an Edit Deck save the login banlist or the collection would refuse ("\"X\" is
+saved, but it can't duel yet:"; the save stays unanswered and kept), and for the `deck` chat command.
 
 **A game with stale card data cannot duel (#60).** The connection DLL fetches the card profile once at start
 (`GET /web/card-profile`, tools/mod/card-profile.h) and rewrites the client's card table in memory; it reads it once. The
