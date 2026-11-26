@@ -3609,7 +3609,10 @@ impl FrontSession {
             0x1B67 => {
                 let settings = self.world.settings.now();
                 let shop = settings.shop;
-                let packs = self.world.packs.iter().filter(|p| crate::shop::on_sale(p, settings.anime_cards)).map(|p| crate::shop::shelf_item(p, crate::shop::pack_price(p, &shop)));
+                // The Anime Collection first: the shelf pages by ten, and the game's 75 packs would bury it on the last page.
+                let mut shelf: Vec<&crate::shop::ShopPack> = self.world.packs.iter().filter(|p| crate::shop::on_sale(p, settings.anime_cards)).collect();
+                shelf.sort_by_key(|p| p.id != crate::shop::ANIME_PACK);
+                let packs = shelf.into_iter().map(|p| crate::shop::shelf_item(p, crate::shop::pack_price(p, &shop)));
                 let decks = self.world.structure_decks.iter().map(|d| crate::shop::shelf_deck(d, shop.deck_cost));
                 packs.chain(decks).fold(Message::reply(0x1C22), Message::item)
             }
