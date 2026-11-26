@@ -24,6 +24,8 @@ pub enum Form {
     Code(String),
     /// Another game signed in to a different account on this server (#64).
     PlayAs,
+    /// The signed-in account's decks on this server: Import… an EDOPro deck, Export… one (TLS operation 8).
+    Decks,
 }
 
 /// The address typed under Add a server, as checked so far.
@@ -154,6 +156,12 @@ pub enum Message {
     /// Play as…: sign in to the other account the form names (#64), and the game it opens, handled by the main screen.
     PlayAsGo,
     PlayAsSignedIn(String, Result<SignedIn, Problem>),
+    /// The Decks form: the account's decks read, Import… (a .ydk file), Export… (a deck by name), and their answers.
+    DecksRead(Result<Vec<String>, String>),
+    DeckImport,
+    DeckImported(Result<Option<String>, String>),
+    DeckExport(String),
+    DeckExported(Result<Option<String>, String>),
     PlayAsStart(Box<Server>, SignedIn),
     /// The extra game's start finished (it runs, or said why it didn't): "Starting a game as…" goes.
     StartDone,
@@ -230,6 +238,8 @@ pub struct State {
     check: u64,
     /// Where the recovery code went: copied, or saved in a file.
     code_note: Option<String>,
+    /// The Decks form's decks (None while reading).
+    decks: Option<Vec<String>>,
     account: Option<(String, AccountForm)>,
     account_password: String,
     account_new: String,
@@ -282,6 +292,15 @@ impl State {
         let server = self.selected()?.clone();
         let signed = self.signed_in.get(server.key())?.clone();
         Some((server, signed))
+    }
+
+    /// The Decks form's list: the signed-in account's decks on the selected server.
+    fn read_decks(&self) -> Task<Message> {
+        let Some((server, signed)) = self.session() else { return Task::none() };
+        Task::perform(async move {
+            let answer = mp::decks(&server, &signed.session, &serde_json::json!({ "op": "decks" })).await?;
+            Ok(answer["decks"].as_array().into_iter().flatten().filter_map(|d| d["name"].as_str().map(str::to_owned)).collect())
+        }, Message::DecksRead)
     }
 
     fn probe(&self, server: &Server) -> Task<Message> {
@@ -395,6 +414,7 @@ impl State {
                 let form_was_sign_in = form == Form::SignIn;
                 self.form = form; self.problem = None; self.note = None; self.code_note = None; self.password.clear(); self.again.clear();
                 if form_was_sign_in { return self.focus_sign_in() }
+                if self.form == Form::Decks { self.decks = None; return self.read_decks() }
                 if let Some(field) = first { return iced::widget::operation::focus(field_id(field)) }
             }
             Message::SignIn => {
@@ -431,6 +451,44 @@ impl State {
                         self.problem = Some(problem);
                     }
                 }
+            }
+            Message::DecksRead(result) => match result {
+                Ok(decks) => self.decks = Some(decks),
+                Err(why) => { self.decks = Some(vec![]); self.note = Some(why) }
+            },
+            Message::DeckImport => {
+                let Some((server, signed)) = self.session() else { return Task::none() };
+                if self.busy { return Task::none() }
+                self.busy = true;
+                self.note = None;
+                return Task::perform(async move {
+                    let Some(file) = rfd::AsyncFileDialog::new().set_title("Import an EDOPro deck").add_filter("EDOPro deck", &["ydk"]).pick_file().await else { return Ok(None) };
+                    let text = std::fs::read_to_string(file.path()).map_err(|_| "That file couldn't be read.".to_owned())?;
+                    let name = file.path().file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                    let answer = mp::decks(&server, &signed.session, &serde_json::json!({ "op": "import", "name": name, "ydk": text })).await?;
+                    Ok(Some(answer["message"].as_str().unwrap_or("Imported.").to_owned()))
+                }, Message::DeckImported);
+            }
+            Message::DeckImported(result) => {
+                self.busy = false;
+                match result { Ok(Some(sentence)) => { self.note = Some(sentence); return self.read_decks() } Ok(None) => {} Err(why) => self.note = Some(why) }
+            }
+            Message::DeckExport(deck) => {
+                let Some((server, signed)) = self.session() else { return Task::none() };
+                if self.busy { return Task::none() }
+                self.busy = true;
+                self.note = None;
+                return Task::perform(async move {
+                    let name = format!("{}.ydk", deck.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_"));
+                    let Some(file) = rfd::AsyncFileDialog::new().set_title("Export as an EDOPro deck").set_file_name(&name).add_filter("EDOPro deck", &["ydk"]).save_file().await else { return Ok(None) };
+                    let answer = mp::decks(&server, &signed.session, &serde_json::json!({ "op": "export", "deck": deck })).await?;
+                    std::fs::write(file.path(), answer["ydk"].as_str().unwrap_or_default()).map_err(|_| "That file couldn't be saved.".to_owned())?;
+                    Ok(Some(answer["message"].as_str().unwrap_or("Exported.").to_owned()))
+                }, Message::DeckExported);
+            }
+            Message::DeckExported(result) => {
+                self.busy = false;
+                match result { Ok(Some(sentence)) => self.note = Some(sentence), Ok(None) => {} Err(why) => self.note = Some(why) }
             }
             Message::PlayAsGo => {
                 let Some((server, signed)) = self.session() else { return Task::none() };
@@ -881,7 +939,8 @@ impl State {
                 pill("Sign out", Some(Message::SignOut), Kind::Danger, 96, 30),
             ].spacing(10).align_y(Center)).padding([8, 10]).width(Fill).style(|_| container::Style { background: Some(color::ROW.into()),
                 border: iced::Border { color: color::CHROME_DARK, width: 1.0, radius: 4.0.into() }, ..container::Style::default() }),
-                row![Space::new().width(Fill), yo3_skin::link("Play as another account…", Message::Show(Form::PlayAs), false)]].spacing(6).into(),
+                row![Space::new().width(Fill), yo3_skin::link("Decks…", Message::Show(Form::Decks), false),
+                    yo3_skin::link("Play as another account…", Message::Show(Form::PlayAs), false)].spacing(14)].spacing(6).into(),
             Form::SignIn => {
                 let mut stay = tick("Stay signed in", self.stay, Tick::Stay);
                 if self.vault.is_none() { stay = checkbox(false).label("Stay signed in").style(yo3_skin::tick).size(16).text_size(14) }
@@ -970,6 +1029,21 @@ impl State {
                     actions(if self.busy { "Signing in…" } else { "Play" }, ready.then_some(Message::PlayAsGo)),
                 ].spacing(8).into()
             }
+            Form::Decks => {
+                let mut col = column![
+                    heading("Your decks on this server"),
+                    text("Import an EDOPro deck (.ydk) into Load Deck, or save one of your decks for EDOPro.").size(13).color(color::INK_SOFT),
+                ].spacing(8);
+                match &self.decks {
+                    None => col = col.push(text("Reading your decks…").size(14).color(color::INK_SOFT)),
+                    Some(decks) => for deck in decks {
+                        col = col.push(row![text(deck.clone()).size(14).color(color::INK).width(Fill),
+                            pill("Export…", (!self.busy).then(|| Message::DeckExport(deck.clone())), Kind::Secondary, 110, 30)].spacing(8).align_y(Center));
+                    },
+                }
+                if let Some(note) = &self.note { col = col.push(text(note.clone()).size(13).color(color::INK)) }
+                col.push(actions(if self.busy { "Working…" } else { "Import…" }, (!self.busy).then_some(Message::DeckImport))).into()
+            }
             Form::Code(code) => {
                 let mut col = column![
                     heading("Save your recovery code"),
@@ -1055,6 +1129,24 @@ mod tests {
     }
     fn online() -> Status { Status::Online { online: Some(3), max: None, registration: "invite".into(), news: vec![], ping: std::time::Duration::from_millis(40), clean_game: false } }
     fn signed(user: &str, token: Option<&str>) -> SignedIn { SignedIn { user: user.into(), session: [7; 32], device_token: token.map(str::to_owned) } }
+
+    #[test]
+    fn the_decks_form_lists_the_accounts_decks_and_says_why_not() {
+        // Decks… on a signed-in server: the list is read anew each time (Reading your decks… until it comes), and a
+        // refusal (no player yet, a sign-in that ended) is a sentence under it.
+        let mut state = tab(online(), None);
+        let key = state.servers[0].key().to_string();
+        state.signed_in.insert(key, signed("Yugi", None));
+        let _ = state.update(Message::Show(Form::Decks), &ctx());
+        assert_eq!((state.form.clone(), state.decks.clone()), (Form::Decks, None));
+        let _ = state.update(Message::DecksRead(Ok(vec!["Starter Deck".into(), "Dragons".into()])), &ctx());
+        assert_eq!(state.decks.as_deref(), Some(&["Starter Deck".to_owned(), "Dragons".to_owned()][..]));
+        let _ = state.update(Message::DecksRead(Err("Make your player in the game first (Select Player), then try again.".into())), &ctx());
+        assert_eq!((state.decks.as_deref(), state.note.as_deref()), (Some(&[][..]), Some("Make your player in the game first (Select Player), then try again.")));
+        let _ = state.update(Message::DeckImported(Ok(Some("Imported \"Dragons (2)\" for Yugi: 40 + 0 + 0 cards.".into()))), &ctx());
+        assert!(!state.busy && state.note.as_deref().is_some_and(|n| n.starts_with("Imported")));
+        assert!(matches!(state.escape(), Some(Message::Show(Form::SignIn))), "Escape goes back");
+    }
 
     #[test]
     fn a_long_server_name_never_hides_its_state_in_the_picker() {

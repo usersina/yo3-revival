@@ -462,6 +462,23 @@ pub async fn session_alive(server: &Server, session: &yo3_tunnel::Token) -> Resu
     Err(Problem::Unreachable)
 }
 
+/// The signed-in account's EDOPro decks on `server` (TLS operation 8, the server's `deck_ops`): `request` is
+/// `{op: "decks"|"import"|"export", ...}`. The answer, or why not as a sentence a player reads.
+pub async fn decks(server: &Server, session: &yo3_tunnel::Token, request: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let unreachable = "The server can't be reached. Try again in a moment.".to_owned();
+    for endpoint in server.endpoints().map_err(|_| unreachable.clone())? {
+        let Ok(answer) = endpoint.decks(session, request).await else { continue };
+        if answer["ok"].as_bool() == Some(true) { return Ok(answer) }
+        return Err(match answer["error"].as_str().unwrap_or_default() {
+            "session" => "Your sign-in ended. Sign in again.".to_owned(),
+            "player" => "Make your player in the game first (Select Player), then try again.".to_owned(),
+            "refused" => answer["message"].as_str().unwrap_or("The server didn't take the deck.").to_owned(),
+            _ => "This server can't import or export decks right now.".to_owned(),
+        });
+    }
+    Err(unreachable)
+}
+
 pub async fn sign_out(server: &Server, device_token: &str, everywhere: bool) -> Result<(), Problem> {
     ask(server, json!({ "op": "sign_out", "device_token": device_token, "everywhere": everywhere })).await.map(|_| ())
 }
