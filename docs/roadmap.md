@@ -39,7 +39,7 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
       Tokens (rows 5206-5216). Open: Spirit Illusion, whose Doppelganger Token copies a monster and has no Type or Attribute
       of its own for the client's row; the anime-only ones, 944 in 29 deck batches (`engine/added/anime-batches.tsv`,
       `tools/engine/anime-batches.py`): batch 1 added (rows 5217-5258, 42 cards; Natural Selection waits for its Selection
-      Token), batches 2-29 to come, each tested in tiers (the per-card fuzz, then scenarios for the flagged cards, those
+      Token), batch 2 (rows 5259-5296, 38 with 3 Tokens), batches 3-29 to come, each tested in tiers (the per-card fuzz, then scenarios for the flagged cards, those
       the checks point at, signature cards and a random 30% of the rest: batch 1's sample found a bug the fuzz can't,
       Limit Tribute doing only part of its text); the rule goes into docs/added-cards.md after a few batches; the anime Michion and Hailon
       deal ∞ damage to ∞ LP (half of ∞, and ∞ minus a number, are ∞): confirm that reading.

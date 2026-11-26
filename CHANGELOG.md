@@ -21,16 +21,22 @@ Older entries describe their release at the time. For current setup, use the [RE
   versions.
 - **Anime-only cards, first batch: Yami Yugi's, Yami Bakura's and Rafael's.** 42 cards the anime showed and that were
   never printed (Magical Pigeon, Necro Wall, Guardian Formation, Summoning Clock and more), played with anime cards on.
+- **Anime-only cards, second batch: Seto Kaiba's, Joey Wheeler's and Alister's.** 35 more (Sky Union and Air Fortress
+  Ziggurat, Tank Corps and KC-1 Crayton, Toy Robot Box, Clone Dragon, Roll of Fate, Compensation Mediation and more),
+  with their Robot, Tank and Player Tokens.
 - **Tokens the game never had.** Blackwing - Steam the Cloak, Ecole de Zone, Gadget Box, Demiurge Ema and Black Wing
   Revenge join the new cards, with their Tokens (Steam, Mask, Gadget Box, Homunculus and Black Crest Tokens, and the
   anime Gadget Box's Gadget Token), shown on the field like the game's own.
 - **Anime card fixes.** With anime cards on, Bounce Spell no longer stops when its target is gone, Limit Tribute also
-  stops Summons that need two Tributes, Iron Cage sends the monster to its owner's Graveyard, Dark Element summons
+  stops Summons that need two Tributes, Take One Chance leaves a card that can't be activated in the Graveyard, Iron Cage sends the monster to its owner's Graveyard, Dark Element summons
   Dark Guardian, Advanced Crystal Beast Emerald Tortoise can turn a monster that attacked to Defense Position, Spirit
   Shield negates the attack even with its last Fiend, and Catapult Turtle's effect no longer fails when its target is gone.
 - **Synchro Summons with many possible materials** are worked out quickly: with the anime T.G. Cyber Magician (any
   monster in the hand can be a material), finding the summons took the rules engine half a minute or more.
 - **An Equip Spell left with no monster to equip** does nothing instead of failing with a script error.
+- **A Spell or Trap moved to the other player's field** (Bounce Spell) shows without the counters it lost, and **a card
+  put back on the field from the Graveyard** (Compensation Mediation) no longer shows a Synchro Summon if it was once a
+  Synchro Material.
 - **A monster made a Tuner by an effect** (Noble Knight's Spearholder) tunes as one in the Synchro Summon's animation.
 
 ## v0.1.25 (2026-11-25)
