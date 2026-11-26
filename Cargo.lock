@@ -5742,6 +5742,7 @@ name = "yo3-data"
 version = "0.1.26"
 dependencies = [
  "flate2",
+ "png",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
