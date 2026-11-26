@@ -39,7 +39,7 @@ class AnimeMap(unittest.TestCase):
         self.assertEqual(len(TABLE), len(CARDS), 'a Konami id twice')
         counts = {s: sum(1 for c in CARDS.values() if c['status'] == s) for s in ('mapped', 'default', 'held')}
         self.assertEqual(counts, MAP['counts'])
-        self.assertEqual(sum(counts.values()), 662, '415 candidates, the 3 cards that needed custom work, the added cards with anime versions (#75: Shooting Quasar Dragon, Divine Serpent Geh, Underworld Circle), the three Wicked Gods (their manga versions) and 238 of the printed cards added from the anime (#75, 2026-11-25)')
+        self.assertEqual(sum(counts.values()), 666, '415 candidates, the 3 cards that needed custom work, the added cards with anime versions (#75: Shooting Quasar Dragon, Divine Serpent Geh, Underworld Circle), the three Wicked Gods (their manga versions) and 242 of the printed cards added from the anime (#75, 2026-11-25 and 26)')
         for c in CARDS.values():
             self.assertEqual(bool(c.get('holds')), c['status'] == 'held', c['name'])
 

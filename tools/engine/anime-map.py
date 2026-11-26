@@ -374,7 +374,10 @@ def deck_effects(text):
 def client_tokens():
     """The names of the token cards the client has (engine/anime/client-tokens.tsv, a Konami id and a name each, kept equal
     to the game's by crates/yo3-server/tests/card_data.rs): a token it has no card of is not shown."""
-    return {line.split("\t", 1)[1] for line in read(os.path.join(ENGINE, "anime/client-tokens.tsv")).splitlines() if line}
+    game = {line.split("\t", 1)[1] for line in read(os.path.join(ENGINE, "anime/client-tokens.tsv")).splitlines() if line}
+    # The added Tokens (#75, engine/added-cards.json): rows of the client's card table too
+    added = {c["name"] for c in json.loads(read(os.path.join(ENGINE, "added-cards.json")))["cards"] if c.get("token")}
+    return game | added
 
 
 def script_path(script):

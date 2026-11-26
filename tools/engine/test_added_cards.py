@@ -43,7 +43,7 @@ class AddedCards(unittest.TestCase):
             ['black rose moonlight dragon', 'Number 39: Utopia', 'Stardust Dragon', 'Shooting Quasar Dragon', 'Nope Nope'])}
         line, why = found['Black Rose Moonlight Dragon']
         nxt = str(added.FIRST_ROW + len(added.table()))
-        self.assertEqual((line.split('\t')[:6], why), ([nxt, '11123', '', '', '', 'Black Rose Moonlight Dragon'], []), 'the next row, its Konami id')
+        self.assertEqual((line.split('\t')[:7], why), ([nxt, '11123', '', '', '', '', 'Black Rose Moonlight Dragon'], []), 'the next row, its Konami id')
         self.assertIn("can't show it", found['Number 39: Utopia'][1][0])
         self.assertEqual(found['Stardust Dragon'][1], ['the game already has it'])
         self.assertEqual(found['Shooting Quasar Dragon'][1], ['engine/added/cards.tsv already has it'])
@@ -66,7 +66,7 @@ class AddedCards(unittest.TestCase):
         ctx = added.load()
         (name, line, why), = added.find(['15443125'], ctx)  # Spright Starter, Konami id 17457
         self.assertEqual((name, why), ('Spright Starter', []))
-        _, cid, sid, _, _, _, _ = line.split('\t')
+        _, cid, sid, _, _, _, _, _ = line.split('\t')
         sid = int(sid)
         self.assertEqual(cid, '17457')
         self.assertTrue(ctx['base'] <= sid <= 0x3FFF and sid not in ctx['in_game'] and sid not in ctx['konami'])
@@ -197,6 +197,23 @@ class AddedCards(unittest.TestCase):
         self.assertEqual(found['Ash Blossom & Joyous Spring'][1], [])
         self.assertEqual([n for _, _, n in found.values()], [[], [], []])
 
+    def test_a_token_is_a_row_and_a_card_that_makes_a_missing_one_waits(self):
+        # A Token has no Konami id: --find takes its name or token:PASSCODE and gives it a stand-in; the build marks it a
+        # Token (kind 10, the game's Tokens' kind) and, when only the anime database has it, anime-only.
+        ctx = added.load()
+        self.assertEqual(added.made_tokens(9047460, ctx), [9047461], "Steam the Cloak's Steam Token (its passcode + 1)")
+        (name, line, why), = added.find(['Doppelganger Token'], ctx)
+        self.assertTrue(any('attribute' in w for w in why), why)  # it copies a monster: no Type or Attribute of its own
+        # Spirit Illusion makes that Doppelganger Token, which no card of the client is: it waits.
+        (name, line, why), = added.find(['Spirit Illusion'], ctx)
+        self.assertIsNone(line)
+        self.assertTrue(any('Doppelganger Token' in w and 'token:71939276' in w for w in why), why)
+        built = {c['name']: c for c in added.build()['cards']}
+        steam, gadget = built['Steam Token'], built['Gadget Token']
+        self.assertEqual((steam.get('token'), steam.get('anime_only'), steam['b'] >> 3 & 0x1F), (True, None, 10))
+        self.assertEqual((gadget.get('token'), gadget.get('anime_only')), (True, True), 'only the anime database has it')
+        self.assertNotIn('konami_id', steam)
+
     def test_add_writes_both_tables_and_rebuilds(self):
         # --add: the line with its note at the end of engine/added/cards.tsv, the anime table's line in id order, then the
         # three generators. A card that can't be added, or one with notes not yet read (--checked), writes nothing.
@@ -214,7 +231,7 @@ class AddedCards(unittest.TestCase):
                 self.assertEqual(([open(table).read(), open(anime).read()], ran), (before, []), 'nothing written')
                 self.assertEqual(added.main(['--add', 'Black Rose Moonlight Dragon', '--note', 'asked by test']), 0)
             last = open(table).read().rstrip('\n').split('\n')[-1].split('\t')
-            self.assertEqual((last[1], last[5], last[6]), ('11123', 'Black Rose Moonlight Dragon', 'asked by test'))
+            self.assertEqual((last[1], last[6], last[7]), ('11123', 'Black Rose Moonlight Dragon', 'asked by test'))
             ids = [int(l.split('\t')[0]) for l in open(anime).read().rstrip('\n').split('\n')[1:]]
             self.assertIn(11123, ids)
             self.assertEqual(ids, sorted(ids), 'the anime table stays in id order')

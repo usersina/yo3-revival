@@ -161,6 +161,7 @@ def learn(rows, data, passcode):
 
 
 GENRE_PRECISION = 0.85
+TYPE_TOKEN = 0x4000
 RARITY = {'': 0, 'common': 0, 'rare': 4, 'super': 3, 'ultra': 2}
 
 
@@ -228,6 +229,8 @@ def infinity_hints(line, ctx):
     if not line:
         return []
     parts = line.split('\t')
+    if parts[5]:
+        return []  # a Token: no script of its own
     code = int(parts[4]) if parts[4] else ctx['passcode'].get(int(parts[1]))
     d = (ctx['anime'] if parts[4] else ctx['data']).get(code)
     text = script_text(code)
@@ -254,6 +257,8 @@ def risk_hints(line, ctx):
     if not line:
         return []
     parts = line.split('\t')
+    if parts[5]:
+        return []  # a Token: no script of its own
     code = int(parts[4]) if parts[4] else ctx['passcode'].get(int(parts[1]))
     text = script_text(code)
     if text is None:
@@ -275,6 +280,8 @@ def notes(line, ctx):
     if not line:
         return []
     parts = line.split('\t')
+    if parts[5]:
+        return []  # a Token: no script of its own
     if parts[4]:
         code, d = int(parts[4]), ctx['anime'].get(int(parts[4]))
     else:
@@ -408,12 +415,23 @@ def load():
                     'category': r[9], 'alias': r[10]}
              for r in unofficial.execute('select d.id, d.type, d.atk, d.def, d.level, d.race, d.attribute, t.name, t.desc, d.category, d.alias '
                                          'from datas d join texts t on t.id = d.id where d.ot & 4')}
+    # Tokens (TYPE_TOKEN): the official database's and the unofficial one's, by passcode. They have no Konami id.
+    tokens, official_tokens = {}, set()
+    for source in (db, unofficial):
+        for r in source.execute('select d.id, d.type, d.atk, d.def, d.level, d.race, d.attribute, t.name, t.desc, d.category '
+                                'from datas d join texts t on t.id = d.id where d.type & ?', (TYPE_TOKEN,)):
+            tokens.setdefault(r[0], {'type': r[1], 'atk': r[2], 'def': r[3], 'level': r[4] & 0xFF, 'race': r[5], 'attribute': r[6],
+                                     'name': r[7], 'desc': r[8], 'category': r[9]})
+            if source is db:
+                official_tokens.add(r[0])
+    with open(os.path.join(ENGINE, 'anime', 'client-tokens.tsv'), encoding='utf-8') as f:
+        game_tokens = {line.split('\t', 1)[1].strip().casefold() for line in f if '\t' in line}
     genre = ypk_file('data/bin#/CARD_Genre.bin')
     genres = [struct.unpack_from('<Q', genre, i * 8)[0] for i in range(len(genre) // 8)]
     return {'data': data, 'passcode': passcode, 'rows': rows, 'learned': learn(rows, data, passcode),
             'genre': learn_genre(game_cards(rows, genres, data, passcode)), 'genres': genres,
             'anime_genre': learn_genre(game_cards(rows, genres, data, passcode, category=False)),
-            'in_game': in_game, 'konami': konami, 'base': min(in_game), 'anime': anime}
+            'in_game': in_game, 'konami': konami, 'base': min(in_game), 'anime': anime, 'tokens': tokens, 'official_tokens': official_tokens, 'game_tokens': game_tokens}
 
 
 ANIME_TAG = '[Anime]'  # crates/yo3-server/src/profile.rs ANIME_TAG: an anime card's text starts with it
@@ -461,6 +479,9 @@ def build():
         anime_code = int(line['anime']) if (line.get('anime') or '').strip() else None
         cid = int(line['konami_id']) if (line.get('konami_id') or '').strip() else 0
         sid = int(line['stand_in']) if (line.get('stand_in') or '').strip() else None
+        token = int(line['token']) if (line.get('token') or '').strip() else None
+        if token is not None and (cid or anime_code is not None or sid is None):
+            problems.append(f'{line["name"]}: a Token has a stand-in, no Konami id and no anime passcode')
         if anime_code is not None:
             if cid:
                 problems.append(f'{line["name"]}: an anime-only card has no Konami id (konami_id stays empty)')
@@ -470,7 +491,7 @@ def build():
             problem = stand_in_problem(sid, ctx, taken)
             if problem:
                 problems.append(f'{line["name"]}: {problem}')
-            if anime_code is None and cid <= 0x3FFF:
+            if anime_code is None and token is None and cid <= 0x3FFF:
                 problems.append(f'{line["name"]}: a stand-in, but its Konami id {cid} fits the client')
             taken.add(sid)
         elif cid > 0x3FFF:
@@ -481,7 +502,12 @@ def build():
             problems.append(f'{line["name"]}: row {row}, the next is {len(rows) + i} (rows are permanent and consecutive after the game\'s)')
         if cid in in_game:
             problems.append(f'{line["name"]}: Konami id {cid} is already a card of the game')
-        if anime_code is not None:
+        if token is not None:
+            code, d = token, ctx['tokens'].get(token)
+            if d is None:
+                problems.append(f'{line["name"]}: {token} is no Token in the pinned databases')
+                continue
+        elif anime_code is not None:
             code, d = anime_code, ctx['anime'].get(anime_code)
             if d is None or d['alias']:
                 problems.append(f'{line["name"]}: {anime_code} is no anime card (ot 4, no alias) in the pinned unofficial database')
@@ -508,10 +534,14 @@ def build():
         desc = card_text(d['desc'])
         if anime_code is not None:
             desc = f'{ANIME_TAG}\r{desc}'
+        genre = 0 if token is not None else genre_of(features(d, code, anime_code is None), ctx['anime_genre' if anime_code is not None else 'genre'])
         card = {'row': row, 'cid': client, 'passcode': code, 'name': d['name'], 'desc': desc,
-                'a': a, 'b': b | RARITY.get(rarity, 0) << 24, 'genre': genre_of(features(d, code, anime_code is None), ctx['anime_genre' if anime_code is not None else 'genre']),
-                'note': line['note']}
-        if anime_code is not None:
+                'a': a, 'b': b | RARITY.get(rarity, 0) << 24, 'genre': genre, 'note': line['note']}
+        if token is not None:
+            card['token'] = True
+            if token not in ctx['official_tokens']:
+                card['anime_only'] = True  # only the anime database has it: the engine loads it with anime cards on
+        elif anime_code is not None:
             card['anime_only'] = True
         elif sid is not None:
             card['konami_id'] = cid
@@ -519,6 +549,29 @@ def build():
     if problems:
         raise SystemExit('engine/added/cards.tsv:\n  ' + '\n  '.join(problems))
     return {'format': FORMAT, 'version': 1, 'first_row': len(rows), 'cards': out}
+
+
+def made_tokens(code, ctx):
+    """The Tokens the script the engine plays for `code` makes (Duel.CreateToken): their passcodes, read from the numbers
+    and `id+N` in its CreateToken lines (a card's Token is usually its own passcode plus one)."""
+    text = script_text(code) or ''
+    out = []
+    for line in text.split('\n'):
+        line = line.split('--', 1)[0]
+        if 'CreateToken' not in line and 'TOKEN' not in line:
+            continue
+        found = [int(n) for n in re.findall(r'\b(\d{5,9})\b', line)] + [code + int(n) for n in re.findall(r'\bid\s*\+\s*(\d)\b', line)]
+        out += [t for t in found if t in ctx['tokens'] and t not in out]
+    return out
+
+
+def token_code(card, ctx):
+    """The passcode of the Token `card` names (`token:N` or its name), or None."""
+    text = card.strip()
+    if text.lower().startswith('token:') and text[6:].strip().isdigit():
+        code = int(text[6:])
+        return code if code in ctx['tokens'] else None
+    return next((c for c, d in sorted(ctx['tokens'].items()) if d['name'].casefold() == text.casefold()), None)
 
 
 def lookup(card, data, by_name, cid_of, passcode):
@@ -550,12 +603,40 @@ def find(names, ctx=None):
     listed_anime = {int(line['anime']) for line in lines if (line.get('anime') or '').strip()}
     anime_by_name = {}
     for code, d in ctx['anime'].items():
-        if not d['alias']:  # an anime version of a printed card is no anime-only card
+        if not d['alias'] and not d['type'] & TYPE_TOKEN:  # an anime version of a printed card is no anime-only card
             anime_by_name.setdefault(d['name'].casefold(), code)
     taken = {int(line['stand_in']) for line in lines if (line.get('stand_in') or '').strip()}
+    listed_tokens = {int(line['token']) for line in lines if (line.get('token') or '').strip()}
+    is_token = lambda n: lookup(n, ctx['data'], by_name, cid_of, ctx['passcode']) is None and token_code(n, ctx) is not None
+    names = [n for n in names if is_token(n)] + [n for n in names if not is_token(n)]  # a Token before the cards that make it
+    batch_tokens = set()
+    # A card's Tokens must be cards the client has: the game's (by name), an added Token, or one in this batch.
+    def missing_tokens(code):
+        have = listed_tokens | batch_tokens
+        return [f'its Token {ctx["tokens"][t]["name"]} (token:{t}) is no card the client has: add the Token too (in this batch '
+                f'or before it), or the client shows nothing where the engine has it'
+                for t in made_tokens(code, ctx) if t not in have and ctx['tokens'][t]['name'].casefold() not in ctx['game_tokens']]
     row = len(ctx['rows']) + len(lines)
     out = []
     for name in names:
+        token = token_code(name, ctx) if lookup(name, ctx['data'], by_name, cid_of, ctx['passcode']) is None else None
+        if token is not None:
+            d = ctx['tokens'][token]
+            why = ['engine/added/cards.tsv already has it'] if token in listed_tokens else []
+            if d['name'].casefold() in ctx['game_tokens']:
+                why.append('the game has a Token of that name')
+            sid = next_stand_in(ctx, taken)
+            if sid is None:
+                why.append(NO_STAND_IN)
+            why += encode(d, sid or ctx['base'], ctx['learned'])[2]
+            if why:
+                out.append((d['name'], None, why))
+            else:
+                out.append((d['name'], f'{row}\t\t{sid}\t\t\t{token}\t{d["name"]}\t', []))
+                row += 1
+                taken.add(sid)
+                batch_tokens.add(token)
+            continue
         code = lookup(name, ctx['data'], by_name, cid_of, ctx['passcode'])
         anime_code = None
         if code is None:
@@ -569,6 +650,7 @@ def find(names, ctx=None):
             problem = anime_problem(anime_code, d)
             if problem:
                 why.append(problem)
+            why += missing_tokens(anime_code)
             sid = next_stand_in(ctx, taken)
             if sid is None:
                 why.append(NO_STAND_IN)
@@ -576,7 +658,7 @@ def find(names, ctx=None):
             if why:
                 out.append((d['name'], None, why))
             else:
-                out.append((d['name'], f'{row}\t\t{sid}\t\t{anime_code}\t{d["name"]}\t', []))
+                out.append((d['name'], f'{row}\t\t{sid}\t\t{anime_code}\t\t{d["name"]}\t', []))
                 row += 1
                 taken.add(sid)
             continue
@@ -589,6 +671,9 @@ def find(names, ctx=None):
             why.append('the game already has it')
         if cid in listed:
             why.append('engine/added/cards.tsv already has it')
+        why += missing_tokens(code)
+        for anime in (c for c, a in ctx['anime'].items() if a['alias'] == code):
+            why += [w.replace('its Token', 'its anime version\'s Token', 1) for w in missing_tokens(anime) if w not in why]
         needs = cid > 0x3FFF or cid in taken
         sid = next_stand_in(ctx, taken) if needs else None
         if needs and sid is None:
@@ -597,7 +682,7 @@ def find(names, ctx=None):
         if why:
             out.append((d['name'], None, why))
         else:
-            out.append((d['name'], f'{row}\t{cid}\t{sid or ""}\t\t\t{d["name"]}\t', []))
+            out.append((d['name'], f'{row}\t{cid}\t{sid or ""}\t\t\t\t{d["name"]}\t', []))
             row += 1
             if sid:
                 taken.add(sid)
@@ -612,8 +697,8 @@ def anime_rows(results, ctx):
         if not line:
             continue
         parts = line.split('\t')
-        if parts[4]:
-            continue  # anime-only: it is its own anime version, no row
+        if parts[4] or parts[5]:
+            continue  # anime-only (its own anime version) or a Token: no row
         konami, stand_in = int(parts[1]), parts[2]
         code = ctx['passcode'].get(konami)
         candidates = sorted((c for c, d in ctx['anime'].items() if d['alias'] == code), key=lambda c: not ctx['anime'][c]['name'].endswith('(Anime)'))
@@ -662,7 +747,9 @@ def report(results, ctx):
     """Each card's verdict, with the script lines to read."""
     for name, line, why in results:
         anime_only = line and line.split('\t')[4]
-        print(f'{name}: ' + (('ok (anime-only: played with anime cards on)' if anime_only else 'ok') if line else 'cannot be added: ' + '; '.join(why)))
+        token = line and line.split('\t')[5]
+        verdict = 'ok (a Token: its effect makes it)' if token else 'ok (anime-only: played with anime cards on)' if anime_only else 'ok'
+        print(f'{name}: ' + (verdict if line else 'cannot be added: ' + '; '.join(why)))
         for note in notes(line, ctx):
             print(f'  read first: {note}')
         for hint in infinity_hints(line, ctx):
