@@ -206,3 +206,54 @@ fn an_admin_gives_cards_artworks_and_recipes_and_a_moderator_cannot() {
             Some(serde_json::json!({ "card": "Blue-Eyes White Dragon", "art": 2, "count": 3 }))));
     assert_eq!(rows[3].detail.as_ref().unwrap()["card"], "blue-eyes white dragon");
 }
+
+#[test]
+fn an_edopro_deck_is_imported_for_a_player_and_exported_back() {
+    // Desktop's Import and Export on your own server: a .ydk file's passcodes become the game's rows (an artwork the
+    // player holds first), the deck is kept with the player's decks under a free name, unknown passcodes are left out and
+    // cards not held are named; export writes the deck back as a .ydk file and a ydke:// link.
+    use yo3_server::gifts::{Card, Gifts};
+    let engine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../engine");
+    if !engine.join("vendor/cardinfo.json").is_file() {
+        return;
+    }
+    // SAFETY: nextest runs each test in its own process; nothing else reads the environment here.
+    unsafe { std::env::set_var("YO3_ENGINE_DIR", &engine) };
+    let dir = std::env::temp_dir().join(format!("yo3-ydk-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    yo3_server::store::initialize(&dir).unwrap();
+    let mut d = yo3_server::accounts::Directory::open(vec![], &dir.join("accounts.json")).unwrap();
+    d.add_account(&["Yugi".into()]).unwrap();
+    let accounts = std::sync::Arc::new(std::sync::Mutex::new(d));
+    let settings = std::sync::Arc::new(yo3_server::settings::Live::open(None, vec![]).unwrap());
+    let card = |row, cid, art, name: &str| Card { row, cid, art, name: name.into(), description: String::new() };
+    let cards = vec![card(816, 4007, 1, "Blue-Eyes White Dragon"), card(817, 4007, 2, "Blue-Eyes White Dragon"), card(1199, 5017, 1, "Command Knight")];
+    let a = api::Api::new(accounts.clone(), settings, Some(dir.clone()), std::path::PathBuf::new(), "server").with_gifts(Gifts { cards, recipes: vec![] });
+    // Yugi holds the second Blue-Eyes artwork: the import picks it.
+    a.apply(&Op::GiveCards { player: "Yugi".into(), card: "4007".into(), art: Some(2), count: Some(1) }, "host").unwrap();
+    // Blue-Eyes by an alternate artwork's passcode, Command Knight, and a passcode no card has.
+    let ydk = "#created by Player\n#main\n89631139\n89631140\n89631139\n10375182\n12345678\n#extra\n!side\n10375182\n";
+    let got = a.apply(&Op::ImportDeck { player: None, name: "Dragons".into(), ydk: ydk.into() }, "host").unwrap();
+    assert_eq!((got["deck"].as_str(), got["main"].as_u64(), got["side"].as_u64()), (Some("Dragons"), Some(4), Some(1)), "{got}");
+    assert_eq!(got["unknown"], serde_json::json!([{ "passcode": 12345678, "copies": 1 }]));
+    assert_eq!(got["unowned"], serde_json::json!([{ "name": "Blue-Eyes White Dragon", "copies": 2 }, { "name": "Command Knight", "copies": 2 }]), "{got}");
+    let kept = { let d = accounts.lock().unwrap(); d.player(d.player_id_named("Yugi").unwrap()).unwrap().uploaded.clone() };
+    assert_eq!(kept.len(), 1);
+    assert_eq!((kept[0].main.clone(), kept[0].side.clone()), (vec![817, 817, 817, 1199], vec![1199]));
+    // The same name again: a free one.
+    let again = a.apply(&Op::ImportDeck { player: Some("Yugi".into()), name: "Dragons".into(), ydk: ydk.into() }, "host").unwrap();
+    assert_eq!(again["deck"], "Dragons (2)");
+    let listed = a.apply(&Op::Decks { player: None }, "host").unwrap();
+    assert_eq!(listed["decks"].as_array().map(Vec::len), Some(2), "{listed}");
+    // Export: the card's passcode (its first artwork's), as EDOPro reads it, and the same deck from the link.
+    let out = a.apply(&Op::ExportDeck { player: None, deck: "Dragons".into() }, "host").unwrap();
+    let file = out["ydk"].as_str().unwrap();
+    assert_eq!(file, "#created by yo3-revival\n#main\n89631139\n89631139\n89631139\n10375182\n#extra\n!side\n10375182\n");
+    let back = a.apply(&Op::ImportDeck { player: None, name: "Linked".into(), ydk: out["link"].as_str().unwrap().into() }, "host").unwrap();
+    assert_eq!((back["main"].as_u64(), back["side"].as_u64()), (Some(4), Some(1)), "{back}");
+    // A deck of nothing the server has, and a deck name that isn't there, are refused.
+    assert!(a.apply(&Op::ImportDeck { player: None, name: "x".into(), ydk: "#main\n12345678\n".into() }, "host").is_err());
+    assert!(a.apply(&Op::ExportDeck { player: None, deck: "Nope".into() }, "host").is_err());
+    assert!(Op::ImportDeck { player: None, name: String::new(), ydk: String::new() }.changes() && !Op::ExportDeck { player: None, deck: String::new() }.changes());
+    let _ = std::fs::remove_dir_all(&dir);
+}

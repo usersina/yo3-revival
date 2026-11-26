@@ -83,6 +83,15 @@ fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
         Admin::UnlockCards { player, .. } => Op::UnlockCards { player: player.clone() },
         Admin::GiveRecipe { player, deck, cards, .. } => Op::GiveRecipe { player: player.clone(), deck: deck.clone(), cards: *cards },
         Admin::Recipes => Op::Recipes,
+        Admin::Decks { player } => Op::Decks { player: player.clone() },
+        Admin::ImportDeck { deck, player, name, .. } => {
+            let (text, file_name) = if deck.trim_start().starts_with("ydke://") { (deck.clone(), None) } else {
+                let path = std::path::Path::new(deck);
+                (std::fs::read_to_string(path).map_err(|e| anyhow::anyhow!("{deck}: {e}"))?, path.file_stem().map(|n| n.to_string_lossy().into_owned()))
+            };
+            Op::ImportDeck { player: player.clone(), name: name.clone().or(file_name).unwrap_or_default(), ydk: text }
+        }
+        Admin::ExportDeck { deck, player, .. } => Op::ExportDeck { player: player.clone(), deck: deck.clone() },
         Admin::AddCode { code, bp, uses, .. } => Op::AddCode { code: code.clone(), bp: *bp, uses: *uses },
         Admin::RemoveCode { code, .. } => Op::RemoveCode { code: code.clone() },
         Admin::Codes => Op::Codes,
@@ -200,7 +209,7 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
         | Admin::DeleteAccount { request_id, .. } | Admin::Kick { request_id, .. } | Admin::Ban { request_id, .. } | Admin::Restrict { request_id, .. } | Admin::Lift { request_id, .. }
         | Admin::Mute { request_id, .. } | Admin::Unmute { request_id, .. } | Admin::SignOut { request_id, .. }
         | Admin::Set { request_id, .. } | Admin::Reset { request_id, .. } | Admin::Maintenance { request_id, .. }
-        | Admin::GiveCards { request_id, .. } | Admin::UnlockCards { request_id, .. } | Admin::GiveRecipe { request_id, .. } | Admin::GrantTitle { request_id, .. }
+        | Admin::GiveCards { request_id, .. } | Admin::UnlockCards { request_id, .. } | Admin::ImportDeck { request_id, .. } | Admin::GiveRecipe { request_id, .. } | Admin::GrantTitle { request_id, .. }
         | Admin::AddAccount { request_id, .. } | Admin::Key { request_id, .. } | Admin::Profile { request_id, .. }
         | Admin::AddPlayer { request_id, .. } | Admin::Rename { request_id, .. } | Admin::SetCountry { request_id, .. } | Admin::SetRole { request_id, .. } = &command {
         let id = request_id.clone().unwrap_or_else(yo3_server::logins::new_token);
@@ -213,6 +222,16 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
         anyhow::ensure!(api::mutation::valid_request_id(&id), "invalid request ID (16–128 letters, digits, hyphens or underscores)");
         eprintln!("Request ID: {id} (reuse with --request-id if the invite answer is lost)");
         result["invite"] = call_request(a, &Op::Invite { uses: Some(1), days: Some(7) }, &game_dir, &id)?;
+    }
+    if let Admin::ExportDeck { out, .. } = &command {
+        let ydk = result["ydk"].as_str().unwrap_or_default();
+        let (message, link) = (result["message"].as_str().unwrap_or_default(), result["link"].as_str().unwrap_or_default());
+        // The file on stdout when no OUT is given, so it can be redirected; the message and link beside it on stderr.
+        match out {
+            Some(path) => { std::fs::write(path, ydk)?; println!("{}: {message}\n{link}", path.display()); }
+            None => { print!("{ydk}"); eprintln!("{message}\n{link}"); }
+        }
+        return Ok(());
     }
     show(a, &command, &result, None)
 }

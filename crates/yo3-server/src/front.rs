@@ -277,7 +277,7 @@ const MAX_EVENTS: usize = 100;
 const MAX_RULES: usize = 32;
 
 /// `text` cut to at most `max` bytes at a character boundary.
-fn clip(text: &str, max: usize) -> String {
+pub(crate) fn clip(text: &str, max: usize) -> String {
     let mut end = text.len().min(max);
     while !text.is_char_boundary(end) {
         end -= 1;

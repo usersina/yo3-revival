@@ -38,6 +38,7 @@ pub mod profiles;
 pub mod credentials;
 pub mod keys;
 pub mod gifts;
+pub mod decks;
 pub mod settings;
 pub mod moderation;
 pub mod deletion;
@@ -83,6 +84,13 @@ pub enum Op {
     /// found), out of how many there are, and how many an unlock for every player would give now (Desktop's Unlock all
     /// cards: `new` is every card before the first unlock, then those an update added since).
     Collection { #[serde(default)] player: Option<String> },
+    /// The player's decks (the first player when none): the starter deck unless deleted, then the uploaded ones.
+    Decks { #[serde(default)] player: Option<String> },
+    /// An EDOPro deck (a `.ydk` file's text or a `ydke://` link) kept as one of the player's decks (`name`, a free one
+    /// when taken): in Load Deck the next time the game lists the decks (`api/decks.rs`).
+    ImportDeck { #[serde(default)] player: Option<String>, #[serde(default)] name: String, ydk: String },
+    /// One of the player's decks as an EDOPro `.ydk` file and `ydke://` link.
+    ExportDeck { #[serde(default)] player: Option<String>, deck: String },
     /// A deck recipe for Load Deck's Official tab (#19), by its title or preset id; `cards` gives the recipe's cards too.
     /// The game shows it at the player's next login or after their next duel.
     GiveRecipe { player: String, deck: String, #[serde(default)] cards: bool },
@@ -176,7 +184,7 @@ pub enum Op {
 
 impl Op {
     /// Operations migrated to a committed change/audit/receipt boundary.
-    fn receipted(&self) -> bool { matches!(self, Self::BackUp | Self::Shutdown { .. } | Self::DeleteAccount { .. } | Self::Kick { .. } | Self::Ban { .. } | Self::Restrict { .. } | Self::Lift { .. } | Self::Mute { .. } | Self::Unmute { .. } | Self::SignOut { .. } | Self::Set { .. } | Self::Reset { .. } | Self::Maintenance { .. } | Self::GiveCards { .. } | Self::UnlockCards { .. } | Self::GiveRecipe { .. } | Self::GrantTitle { .. } | Self::CreateAccount { .. } | Self::Key { .. } | Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. } | Self::AddPlayer { .. } | Self::Rename { .. } | Self::SetCountry { .. } | Self::SetRole { .. } | Self::AddUser { .. } | Self::ResetCode { .. }) }
+    fn receipted(&self) -> bool { matches!(self, Self::BackUp | Self::Shutdown { .. } | Self::DeleteAccount { .. } | Self::Kick { .. } | Self::Ban { .. } | Self::Restrict { .. } | Self::Lift { .. } | Self::Mute { .. } | Self::Unmute { .. } | Self::SignOut { .. } | Self::Set { .. } | Self::Reset { .. } | Self::Maintenance { .. } | Self::GiveCards { .. } | Self::UnlockCards { .. } | Self::ImportDeck { .. } | Self::GiveRecipe { .. } | Self::GrantTitle { .. } | Self::CreateAccount { .. } | Self::Key { .. } | Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. } | Self::AddPlayer { .. } | Self::Rename { .. } | Self::SetCountry { .. } | Self::SetRole { .. } | Self::AddUser { .. } | Self::ResetCode { .. }) }
     /// Its name in the API's path and the audit log.
     pub fn name(&self) -> String {
         serde_json::to_value(self).ok().and_then(|v| v["op"].as_str().map(str::to_owned)).unwrap_or_default()
@@ -184,7 +192,7 @@ impl Op {
 
     /// Whether it changes anything (and so writes an audit row).
     pub fn changes(&self) -> bool {
-        !matches!(self, Op::Status | Op::Accounts | Op::Countries | Op::Titles | Op::Recipes | Op::Collection { .. } | Op::Codes | Op::Invites | Op::Settings | Op::Audit { .. }
+        !matches!(self, Op::Status | Op::Accounts | Op::Countries | Op::Titles | Op::Recipes | Op::Collection { .. } | Op::Decks { .. } | Op::ExportDeck { .. } | Op::Codes | Op::Invites | Op::Settings | Op::Audit { .. }
             | Op::Account { .. } | Op::Backups | Op::Logs { .. } | Op::Reports { .. } | Op::Banlists | Op::Events | Op::ProblemReports { .. } | Op::ProblemReport { .. })
     }
 
@@ -218,6 +226,7 @@ impl Op {
             Op::Rename { old, .. } => old.clone(),
             Op::GrantTitle { player, .. } | Op::GiveCards { player, .. } | Op::GiveRecipe { player, .. } => player.clone(),
             Op::UnlockCards { player } => player.clone().unwrap_or_else(|| "every player".into()),
+            Op::ImportDeck { player, name, .. } => format!("{} ({name})", player.clone().unwrap_or_else(|| "the first player".into())),
             Op::AddUser { user, .. } | Op::ResetCode { user, .. } | Op::SetRole { user, .. } | Op::StaffMfaReset { user } => user.clone(),
             Op::Kick { who } | Op::Ban { who, .. } | Op::Restrict { who, .. } | Op::Lift { who } | Op::Mute { who, .. }
             | Op::Unmute { who } | Op::SignOut { who } => who.clone(),
@@ -499,6 +508,7 @@ impl Api {
             Op::CreateAccount { .. } | Op::Key { .. } => self.named_key_account(op, id, actor, origin),
             Op::GiveCards { .. } | Op::GiveRecipe { .. } | Op::GrantTitle { .. } => self.named_gift(op, id, actor, origin),
             Op::UnlockCards { player } => self.unlock_cards(player.as_deref(), id, actor, origin),
+            Op::ImportDeck { player, name, ydk } => self.import_deck(player.as_deref(), name, ydk, id, actor, origin),
             _ => Err(MutationError::new(MutationErrorCode::InvalidRequest, "This operation has not migrated to the typed mutation boundary.")),
         }
     }
@@ -665,6 +675,9 @@ impl Api {
                 Ok((json!({ "player": held.map(|p| p.name.clone()), "owned": owned, "total": total, "new": new, "unlocked": !unlocked.is_empty(),
                     "message": format!("{owned} / {total} cards; {new} to unlock") }), None, None))
             }
+            Op::Decks { player } => self.list_decks(player.as_deref()).map(|v| (v, None, None)),
+            Op::ExportDeck { player, deck } => self.export_deck(player.as_deref(), deck).map(|v| (v, None, None)),
+            Op::ImportDeck { .. } => Err("deck imports require the typed mutation boundary".into()),
             Op::Recipes => {
                 let gifts = self.gifts()?;
                 let rows: Vec<Value> = gifts.recipes.iter().map(|r| json!({ "id": r.id, "title": r.title, "item": r.item, "cards": r.cards.len() })).collect();

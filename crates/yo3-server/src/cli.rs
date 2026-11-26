@@ -178,6 +178,26 @@ pub enum Admin {
     },
     /// List the deck recipes in the client: preset id, title and how many cards.
     Recipes,
+    /// List a player's decks (the first player when none): name and main, Extra and side deck sizes.
+    Decks {
+        player: Option<String>,
+    },
+    /// Keep an EDOPro deck as one of PLAYER's decks (the first player when none): DECK is a .ydk file or a ydke:// link.
+    /// It is in Load Deck the next time the game lists the decks; passcodes with no card here are left out and listed,
+    /// and cards the player doesn't hold are named.
+    ImportDeck {
+        deck: String,
+        #[arg(long)] player: Option<String>,
+        /// The deck's name in the game (the file's name when none; "Name (2)" when taken).
+        #[arg(long)] name: Option<String>,
+        #[arg(long)] request_id: Option<String>,
+    },
+    /// Write one of PLAYER's decks as an EDOPro .ydk file (to OUT, else printed) and print its ydke:// link.
+    ExportDeck {
+        deck: String,
+        #[arg(long)] player: Option<String>,
+        #[arg(long)] out: Option<std::path::PathBuf>,
+    },
     /// Make a BOOSTERPASS code: CODE (16 letters and digits, the game's window) gives BP to each account that enters it
     /// in Main Menu -> BOOSTERPASS, once; --uses N stops it after N accounts. Works while the server runs.
     AddCode {

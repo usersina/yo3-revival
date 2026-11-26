@@ -57,6 +57,7 @@ pub mod web;
 pub mod ranking;
 pub mod titles;
 pub mod gifts;
+pub mod ydk;
 pub use net::IDLE_TIMEOUT;
 
 use crate::lock::Locked;
