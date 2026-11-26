@@ -42,6 +42,8 @@ const POWER_TOOL: u16 = 8137;
 const TURBO_SYNCHRON: u16 = 7870; // a Level 1 Tuner
 const JURASSIC_IMPACT: u16 = 13156; // with less LP: destroy every monster, 1000 damage each to both players
 const SABERSAURUS: u16 = 6796;
+const MIRAGE_RULER: u16 = 5864; // the anime Trap: LP back to the Battle Phase's start, then pay 1000
+const THUNDER_KID: u16 = 4217; // 700 ATK
 
 fn hand(team: u32, cid: u16) -> Spawn { Spawn { team, place: Hand, cid } }
 fn set(team: u32, cid: u16) -> Spawn { Spawn { team, place: SpellSet, cid } }
@@ -289,5 +291,19 @@ fn jurassic_impact_against_infinite_lp_leaves_it() {
     assert_eq!(s.count(1, "szone", JURASSIC_IMPACT), 1, "{}", s.context());
     s.run_both([&[EndTurn], &[Activate(JURASSIC_IMPACT)]]).unwrap();
     assert_eq!((s.lp(0), s.lp(1), s.count(1, "grave", SABERSAURUS)), (INFINITE, 6000, 2), "{}", s.context());
+    clean(&s);
+}
+
+#[test]
+fn mirage_ruler_at_infinite_lp_leaves_it_infinite() {
+    // Mirage Ruler (the anime Trap): Warwolf destroys Thunder Kid, my only monster, and the Ruler is Tributed from the
+    // field: the Kid returns and the LP become what they were when the Battle Phase began, then 1000 are paid. Both are
+    // ∞ here (the finite 1300 of battle damage and the 1000 paid leave ∞ as it is): ∞ stays, in the engine and in the client.
+    let Some(mut s) = infinite(&[set(0, MIRAGE_RULER), mon(0, THUNDER_KID), mon(1, WARWOLF)]) else { return };
+    s.prefer(&[(0, THUNDER_KID)]);
+    s.run_both([&[ChainOnAttack(MIRAGE_RULER), Chain(MIRAGE_RULER)], &[Attack(WARWOLF)]]).unwrap();
+    assert_eq!(s.count(0, "grave", MIRAGE_RULER), 1, "the Ruler was Tributed: {}", s.context());
+    assert_eq!(s.count(0, "mzone", THUNDER_KID), 1, "Thunder Kid is back: {}", s.context());
+    assert_eq!(s.lp(0), INFINITE, "{}", s.context());
     clean(&s);
 }
