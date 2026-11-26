@@ -22,12 +22,32 @@ pub(crate) struct Gate {
     pub settings: Arc<crate::settings::Live>,
     /// Players' problem reports (operation 7), shared with the admin API.
     pub problems: Arc<crate::problems::Problems>,
+    /// The world, for a player's EDOPro decks (operation 8, `deck_ops`), and what those read of it, made at the first.
+    pub world: Option<Arc<World>>,
+    decks: std::sync::OnceLock<Result<Arc<crate::deck_ops::DeckData>, String>>,
 }
 
 impl Gate {
     pub fn new(accounts: Arc<Mutex<Directory>>, settings: Arc<crate::settings::Live>, sessions: Arc<Mutex<Sessions>>,
         problems: Arc<crate::problems::Problems>) -> Self {
-        Gate { sessions, accounts, throttle: Mutex::default(), settings, problems }
+        Gate { sessions, accounts, throttle: Mutex::default(), settings, problems, world: None, decks: std::sync::OnceLock::new() }
+    }
+
+    pub fn with_world(mut self, world: Arc<World>) -> Self {
+        self.world = Some(world);
+        self
+    }
+
+    /// A player's EDOPro deck request (operation 8): the session's account, its inflated JSON, the answer.
+    fn deck_request(&self, session: &yo3_tunnel::Token, body: &[u8]) -> serde_json::Value {
+        let refused = |e: &str| serde_json::json!({ "ok": false, "error": e });
+        let Some(user_id) = self.sessions.locked().user_of(session, Instant::now()) else { return refused("session") };
+        let Some(request) = crate::deck_ops::inflate(body).filter(|r| matches!(r["op"].as_str(), Some("decks" | "import" | "export"))) else { return refused("bad_request") };
+        let Some(world) = &self.world else { return refused("unavailable") };
+        match self.decks.get_or_init(|| crate::deck_ops::DeckData::from_world(world).map(Arc::new)) {
+            Ok(data) => crate::deck_ops::handle(&request, user_id, &self.accounts, data),
+            Err(e) => { tracing::warn!("[decks] the card data is unavailable: {e}"); refused("unavailable") }
+        }
     }
     /// Discovery's answer: the build, and for the server list its name, headline, who is online and how accounts
     /// are made, from the settings now.
@@ -161,6 +181,16 @@ async fn handshake(mut tls: TlsStream<TcpStream>, gate: &Gate, info: &(dyn Fn(bo
                     Err(refused) => tls.write_u8(refused.code()).await?,
                 }
             }
+            8 => {
+                // A player's EDOPro decks (deck_ops.rs): the session, then deflated JSON each way.
+                let mut session = [0; 32]; tls.read_exact(&mut session).await?;
+                let length = tls.read_u32().await? as usize;
+                anyhow::ensure!(length <= yo3_tunnel::MAX_DECK_REQUEST, "deck request too large");
+                let mut body = vec![0; length]; tls.read_exact(&mut body).await?;
+                let reply = yo3_tunnel::deflate_json(&gate.deck_request(&session, &body))?;
+                tls.write_u32(reply.len() as u32).await?;
+                tls.write_all(&reply).await?;
+            }
             6 => {
                 // Account requests (account_ops): a length and a JSON object each way. Never logged as they come.
                 let length = tls.read_u16().await? as usize;
@@ -200,7 +230,7 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
     accounts: Arc<Mutex<Directory>>, log: Arc<PacketLog>, idle: net::Idle, http: SocketAddr,
     sessions: Arc<Mutex<Sessions>>, problems: Arc<crate::problems::Problems>)
 {
-    let gate = Arc::new(Gate::new(accounts.clone(), world.settings.clone(), sessions, problems));
+    let gate = Arc::new(Gate::new(accounts.clone(), world.settings.clone(), sessions, problems).with_world(world.clone()));
     // The connections open now, against the `max-connections` setting, and each address's handshake allowance (#27).
     let open = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let mut buckets = crate::logins::Buckets::default();

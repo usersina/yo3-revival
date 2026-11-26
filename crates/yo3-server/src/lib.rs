@@ -58,6 +58,7 @@ pub mod ranking;
 pub mod titles;
 pub mod gifts;
 pub mod ydk;
+pub mod deck_ops;
 pub use net::IDLE_TIMEOUT;
 
 use crate::lock::Locked;

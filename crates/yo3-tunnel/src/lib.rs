@@ -31,6 +31,19 @@ pub const MAX_PROBLEM_REPORT: usize = 256 * 1024;
 /// ...and at most this many once inflated.
 pub const MAX_PROBLEM_PLAIN: usize = 1024 * 1024;
 
+/// A player's EDOPro deck request (operation 8) as sent, deflate-compressed JSON, at most this many bytes (and the answer)...
+pub const MAX_DECK_REQUEST: usize = 64 * 1024;
+/// ...and at most this many once inflated.
+pub const MAX_DECK_PLAIN: usize = 256 * 1024;
+
+/// A JSON value deflate-compressed, as operations 7 and 8 send it.
+pub fn deflate_json(value: &serde_json::Value) -> anyhow::Result<Vec<u8>> {
+    use std::io::Write;
+    let mut packed = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
+    packed.write_all(&serde_json::to_vec(value)?)?;
+    Ok(packed.finish()?)
+}
+
 /// Why the server didn't take a problem report (operation 7's answer).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ReportRefused {
@@ -329,6 +342,30 @@ impl Endpoint {
             Ok::<_, anyhow::Error>((String::from_utf8(id).context("invalid report id")?, tls))
         }).await.with_context(|| format!("problem report timed out during {stage}"))??;
         finish_response(id, &mut tls).await
+    }
+
+    /// A player's EDOPro decks (operation 8, the server's `deck_ops`): `request` (`{op: "decks"|"import"|"export", ...}`)
+    /// for `session`'s account; the answer, with `ok` and the result or `error`.
+    pub async fn decks(&self, session: &Token, request: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        use std::io::Read;
+        let body = deflate_json(request)?;
+        if body.len() > MAX_DECK_REQUEST { bail!("deck request too large") }
+        let mut stage = "TCP connect";
+        let (answer, mut tls) = tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
+            let mut tls = self.open(8, &mut stage).await?;
+            stage = "send deck request";
+            tls.write_all(session).await?;
+            tls.write_u32(body.len() as u32).await?;
+            tls.write_all(&body).await?;
+            stage = "read deck answer";
+            let length = tls.read_u32().await.context("read deck answer length")? as usize;
+            if length == 0 || length > MAX_DECK_REQUEST { bail!("invalid deck answer length") }
+            let mut packed = vec![0; length]; tls.read_exact(&mut packed).await.context("read deck answer")?;
+            let mut plain = Vec::new();
+            flate2::read::DeflateDecoder::new(&packed[..]).take(MAX_DECK_PLAIN as u64 + 1).read_to_end(&mut plain).context("inflate deck answer")?;
+            Ok::<_, anyhow::Error>((serde_json::from_slice(&plain).context("invalid deck answer")?, tls))
+        }).await.with_context(|| format!("deck request timed out during {stage}"))??;
+        finish_response(answer, &mut tls).await
     }
 
     pub async fn ticket(&self, session: &Token, role: Role) -> anyhow::Result<Token> {
