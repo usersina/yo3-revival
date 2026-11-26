@@ -115,6 +115,16 @@ client's view can't follow fails at once; and the duel check's `duels_with_the_a
 added cards (anime versions off, then on with the anime-only ones). `task check:added` runs them, with the added
 cards' scenarios and the generated files' checks, after a fresh build of the rules engine.
 
+The smoke test runs in tiers, so it keeps up as the cards grow:
+
+| Where | What plays |
+| ----- | ---------- |
+| Every run (`cargo nextest run`, `task check`, CI) | Every card's script loads and registers its effects: one duel per mode starts with every added card in a Deck (a second). Then today's tenth plays its two turns (rows ending in the day's digit, so each card plays within ten days; `YO3_SMOKE_SLICE=n` picks another) |
+| `task check:smoke` (after changing cards) | That tenth and the cards changed since the newest release tag, the working tree included: new or changed rows of `engine/added/cards.tsv`, cards whose own script in `engine/overrides/` changed, and cards calling a function a changed shared procedure there defines (`proc_equip.lua`'s `aux.AddEquipProcedure`...) |
+| `task check:added`, `tools/check.py rust` and the release job | Every card, in the release build (about five minutes for 500 cards; the debug build took most of an hour) |
+
+`YO3_SMOKE=all`, `changed` or rows (`5217-5258,5300`) picks the cards by hand.
+
 **A scenario test for each effect** in `crates/yo3-server/tests/added_cards.rs`. A scenario plays a duel through the
 real rules engine and checks both players' views of the board after every step, the same check every duel gets with
 `--duel-check`. Two ways to start:

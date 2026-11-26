@@ -70,6 +70,15 @@ tasks:
       - python3 tools/engine/anime-pictures.py --check
       - cargo build --release -p yo3-engine
       - cargo nextest run --release -p yo3-server -E 'binary(added_cards_smoke) | binary(added_cards) | binary(added_batch) | binary(material_search) | test(duels_with_the_added_cards)'
+    env:
+      YO3_SMOKE: all
+
+  check:smoke:
+    desc: "The added cards' smoke test for the cards changed since the last release, and today's tenth (YO3_SMOKE=all: every card; YO3_SMOKE=5217-5258: rows)"
+    cmds:
+      - cargo nextest run --release -p yo3-server --test added_cards_smoke --no-capture
+    env:
+      YO3_SMOKE: '{{.YO3_SMOKE | default "changed"}}'
 
   check:shipped:
     desc: "The server's and engine's tests against a built bundle's pruned engine (-- dist/.editions/linux-x86_64/desktop/yo3-revival-desktop --release)"

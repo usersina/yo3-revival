@@ -90,7 +90,10 @@ def steps(group):
     if group == 'docs':
         return [('docs links', [*py, 'tools/docs/docs-check.py'], ROOT)]
     if group == 'rust':
-        return [('nextest', ['cargo', 'nextest', 'run', '--workspace'], ROOT)]
+        # The debug run plays a tenth of the added cards a day (tests/added_cards_smoke.rs); every card plays in the release
+        # build, minutes instead of the better part of an hour.
+        return [('nextest', ['cargo', 'nextest', 'run', '--workspace'], ROOT),
+                ('added cards smoke', ['env', 'YO3_SMOKE=all', 'cargo', 'nextest', 'run', '--release', '-p', 'yo3-server', '--test', 'added_cards_smoke'], ROOT)]
     if group == 'dashboard':
         d = ROOT / 'dashboard'
         install = [] if installed(d) else [('npm ci', ['npm', 'ci'], d)]
