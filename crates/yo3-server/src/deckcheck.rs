@@ -137,7 +137,9 @@ pub fn explain(world: &World, regulation: u32, owned: &BTreeMap<u16, u32>, deck:
     for &(c, row, n) in &want {
         let limit = rules.limit(c);
         if Regulation::NEVER_ALLOWED.contains(&c) { out.push(format!("{} may never be in a deck.", name(&row))) }
-        else if limit == 0 { out.push(format!("{} is Forbidden in {banlist}.", name(&row))) }
+        else if limit == 0 && rules.forbidden().contains(&c) { out.push(format!("{} is Forbidden in {banlist}.", name(&row))) }
+        // A format's list (no copies of a card it doesn't name) leaves the card out rather than forbidding it.
+        else if limit == 0 { out.push(format!("{} isn't one of {banlist}'s cards.", name(&row))) }
         else if n > limit { out.push(format!("{}: {n} copies, but {banlist} allows {limit}.", name(&row))) }
         if crate::engine::NOT_IN_THE_ENGINE.contains(&c) { out.push(format!("{} can't be played on this server yet.", name(&row))) }
     }
@@ -188,6 +190,13 @@ mod tests {
         assert_eq!(said, ["The Main Deck has 39 cards: it needs 40 to 60.", "You hold 2 Card 10 but the deck has 3.",
             "Card 1 is Forbidden in Season 16.", "Card 2: 2 copies, but Season 16 allows 1."], "{said:?}");
         assert!(check(&world, 4, &held, &deck(bad)).is_err(), "the check refuses what explain lists");
+        // A format (no copies of a card it doesn't name): a card outside it is left out, not Forbidden.
+        let mut format = super::tests::world();
+        let rule = format.regulations.get_mut(&4).unwrap();
+        rule.default_limit = 0;
+        rule.lists[3] = (4010..=4022).collect();
+        let said = explain(&format, 4, &all, &deck((10..=22).flat_map(|r| [r; 3]).chain([30]).collect()));
+        assert_eq!(said, ["Card 30 isn't one of Season 16's cards."]);
         // Many problems: the list stops at six lines, the last counting the rest.
         let many: Vec<u16> = (1..=2).chain((30..=40).flat_map(|r| [r; 4])).collect();
         let said = explain(&world, 4, &BTreeMap::new(), &deck(many));
