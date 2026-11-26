@@ -47,7 +47,9 @@ jobs:
     needs: prepare
     if: needs.prepare.outputs.release == 'true'
     runs-on: [self-hosted, home]
-    timeout-minutes: 60
+    # The debug tests alone take about 36 minutes since v0.1.26 (the added and anime cards' scenarios), with the build
+    # and the release-build smoke test on top: an hour cut the v0.1.26 run off in its tests.
+    timeout-minutes: 120
     permissions:
       contents: write
     env:
