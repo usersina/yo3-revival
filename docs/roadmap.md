@@ -35,9 +35,9 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
 - [ ] The manga Gods and the added cards in more places: as a spectator, and the Gods' Soul Energy Max and the added
       cards' effects on Windows (an NPC duel with Geh, Obelisk, Avatar and Skill Drain passed on Windows 11, 2026-11-25).
 - [ ] The anime's missing cards (#75; inventory of 2026-11-25 in the ignored `logs/anime-missing-20261125/`): 358 printed
-      ones are added (rows 4848-5205), with scenario tests (`tests/anime_printed_*.rs`). Open: token rows for added cards, so the six that create a Token the game never had can follow (Blackwing - Steam the
-      Cloak, Ecole de Zone, Spirit Illusion, Gadget Box, Demiurge Ema, Black Wing Revenge: the client shows no token it
-      has no card for); the about 940 anime-only ones the tools accept, in deck batches; the anime Michion and Hailon
+      ones are added (rows 4848-5205), with scenario tests (`tests/anime_printed_*.rs`). Five that make Tokens the game never had came with their
+      Tokens (rows 5206-5216). Open: Spirit Illusion, whose Doppelganger Token copies a monster and has no Type or Attribute
+      of its own for the client's row; the about 940 anime-only ones the tools accept, in deck batches; the anime Michion and Hailon
       deal ∞ damage to ∞ LP (half of ∞, and ∞ minus a number, are ∞): confirm that reading.
 - [ ] Complete menu/effect coverage and automatic native UI replay/minimization. Known reveal/reversal/disabled-zone
       gaps remain visible; neither the random corpus nor matching state hashes proves all card interactions.

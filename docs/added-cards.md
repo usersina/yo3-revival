@@ -39,10 +39,14 @@ So a card can be added when:
   Materials or Monsters, Link, Pendulum Zones and Scales or the Extra Monster Zone, or a card with no script ("read
   first"). Read those lines: drop the card, or add it with `--checked` when they are harmless (a filter that only skips
   Xyz Monsters). About one card in eight that fits otherwise gets a note.
-- **The Tokens it makes are the game's.** The client shows a Token only by a card of its own (the game's 75 Token
-  cards, found by name), and `--find` doesn't check this yet: before adding a card whose script calls `Duel.CreateToken`,
-  look up the Token's name among the game's. A Token the game never had (Blackwing - Steam the Cloak's Steam Token)
-  isn't shown, and the duel check fails on it: such a card waits for token rows ([roadmap](roadmap.md)).
+- **The client has a card for each Token it makes.** The client shows a Token only by a card of its own: the game's 75
+  Token cards, or an added Token. `--find` reads the card's script, and its anime version's, for `Duel.CreateToken` and
+  refuses the card while one of its Tokens is neither: add the Token in the same batch, by its name or `token:PASSCODE`
+  (Blackwing - Steam the Cloak with "Steam Token"). A Token is a row like any added card, under a stand-in, with its
+  passcode in the table's `token` column; the build marks it `"token": true` (kind 10, the game's Tokens' kind), and
+  `"anime_only"` when only the anime database has it (the anime Gadget Box's Gadget Token). The server finds a Token's
+  card by its id or name, shatters it when it leaves the field, and never gives or deals one. A Token with no Type or
+  Attribute of its own (Spirit Illusion's Doppelganger Token, a copy) can't be shown: its card waits.
 - **The pinned data knows it.** A card newer than the pins needs `engine/fetch.sh --update`
   ([development](development.md#the-rules-engine)).
 
@@ -340,5 +344,6 @@ comes with the next Desktop release; until then it shows the stand-in.
 | The card is missing from Edit Deck | The launcher that started the game predates the server's list, or the game was opened without the launcher before its first PLAY: close it and PLAY from the launcher |
 | "Artwork not found" in the game | Its picture isn't downloaded yet (Settings, Game, Card pictures), or the player has none in `pics`, or it isn't in the picture list yet: `task cards:add` runs `tools/engine/anime-pictures.py`, and the list reaches players with the next Desktop release |
 | A spawned card isn't on the field in a scenario | `start_field` takes it from that player's deck or Extra Deck: put a copy there |
-| `the engine has card 0, the client nothing` in a self-played duel | A Token the game has no card for ([what a card needs](#what-a-card-needs)): leave the card out until token rows exist |
+| `the engine has card 0, the client nothing` in a self-played duel | A Token the client has no card for ([what a card needs](#what-a-card-needs)): add the Token (`--find` names it, `token:PASSCODE`) |
+| `its Token X (token:N) is no card the client has` | Add that Token in the same batch, or drop the card |
 | `ERROR duel check` with an added card | The players' views and the engine differ after one of its effects: a scenario that plays that effect will name the step |
