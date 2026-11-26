@@ -346,7 +346,8 @@ python3 tools/monkey/duel-replay.py --recording DATA/recordings/pinned/ID.jsonl.
 - Message ids and UI text ids overlap: a number passed to `FUN_0051E6C0(table, id)` is a text string, not a reply.
 
 - A card effect a player reports, or one `tools/engine/coverage.py` lists as never exercised, gets a scenario test
-  (`duelcheck::scenario`, `tests/card_scenarios.rs`) before any fix.
+  (`duelcheck::scenario`, `tests/card_scenarios.rs`) before any fix. New tests name their cards with
+  `scenario::card("Name")` (the id the client knows, a stand-in for a newer card) rather than ids looked up by hand.
 - Tools live in `tools/<area>/`, each with a `--help`; Python tests are `test_*.py` (unittest, standard library),
   shell tests `test-*.sh`. Register a new Python test in `tools/check.py` (PY if hermetic, else OTHER with what it
   needs; `test_check.py` fails otherwise), and give a new common command a task. A helper an agent writes twice

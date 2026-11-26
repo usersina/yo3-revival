@@ -161,7 +161,9 @@ its text says.
 Pitfalls the 2026-11-25 batch's scenarios met (`tests/anime_printed_*.rs`):
 
 - **Only cards a player can hold.** An id the game lacks still runs in the engine; a newer added card goes by its
-  stand-in, not its Konami id. `python3 tools/engine/check-test-ids.py FILE...` lists any other.
+  stand-in, not its Konami id. `python3 tools/engine/check-test-ids.py FILE...` lists any other. In a new test, name the
+  card instead: `scenario::card("Giant Axe Mummy")` gives the id the client knows (the game's cards and the added ones,
+  from the repository's tables), and panics when no card or several have the name.
 - **A spawned Fusion, Synchro or Ritual Monster was never properly summoned**, so nothing revives it from the Graveyard:
   summon it in the test when an effect revives it.
 - **The anime Kuriboh** (anime cards on) negates an attack on itself and takes its ATK as damage, and offers to reduce

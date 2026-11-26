@@ -69,6 +69,38 @@ pub fn engine_dir() -> Option<PathBuf> {
     Some(dir)
 }
 
+/// The id the client knows a card by (what a scenario's spawns, decks and assertions take), from its English name, any
+/// case: the game's cards (`engine/anime/cards.tsv`, one line per card of the game, in the repository) and the added ones
+/// (`engine/added-cards.json`: the stand-in for a newer card, not its Konami id). Ids typed by hand went wrong; this one
+/// panics, naming the candidates, when no card has the name or several do (Dark Magician's two Konami ids): give the id
+/// then. Needs no game files and no fetched engine.
+pub fn card(name: &str) -> u16 {
+    static NAMES: std::sync::OnceLock<HashMap<String, Vec<u16>>> = std::sync::OnceLock::new();
+    let names = NAMES.get_or_init(|| {
+        let engine = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../engine");
+        let mut names: HashMap<String, Vec<u16>> = HashMap::new();
+        let table = std::fs::read_to_string(engine.join("anime/cards.tsv")).expect("engine/anime/cards.tsv");
+        for line in table.lines().skip(1) {
+            let mut cols = line.split('\t');
+            let (Some(Ok(cid)), Some(name)) = (cols.next().map(str::parse::<u16>), cols.next()) else { continue };
+            names.entry(name.to_lowercase()).or_default().push(cid);
+        }
+        for added in yo3_data::added::Added::load(&engine).expect("engine/added-cards.json").cards {
+            names.entry(added.name.to_lowercase()).or_default().push(added.cid);
+        }
+        for ids in names.values_mut() {
+            ids.sort_unstable();
+            ids.dedup();
+        }
+        names
+    });
+    match names.get(&name.to_lowercase()).map(Vec::as_slice) {
+        Some([one]) => *one,
+        Some(several) => panic!("{several:?} are all named {name:?}: give the id"),
+        None => panic!("no card the client has is named {name:?} (engine/anime/cards.tsv, engine/added-cards.json)"),
+    }
+}
+
 /// The engine's card type of a Konami id (a throwaway engine's card data), for where a spawned card is kept first.
 fn engine_type(engine: &mut Option<Engine>, cid: u16) -> Option<u64> {
     engine.as_mut()?.cards(&[(cid, "")]).ok()?.first()?["data"]["type"].as_u64()
