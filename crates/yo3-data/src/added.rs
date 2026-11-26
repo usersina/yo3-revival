@@ -44,6 +44,10 @@ pub struct AddedCard {
     /// A card never printed (#75): played only with the anime card versions on; every duel with it is refused otherwise.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub anime_only: bool,
+    /// A Token a card's effect makes (TYPE_TOKEN, no Konami id: a stand-in): a row of the client's card table, so the
+    /// client can show it on the field, and never a card a player holds.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub token: bool,
 }
 
 impl AddedCard {
@@ -282,7 +286,7 @@ mod tests {
 
     fn quasar(row: u16) -> AddedCard {
         AddedCard { row, cid: 30, passcode: 35952884, name: "Bravo".into(), desc: "Text\rmore".into(),
-            a: 30 | 400 << 14 | 400 << 23, b: 18 << 3 | 1 << 8 | 12 << 12 | 1 << 19 | 1 << 27, genre: 5, anime_only: false }
+            a: 30 | 400 << 14 | 400 << 23, b: 18 << 3 | 1 << 8 | 12 << 12 | 1 << 19 | 1 << 27, genre: 5, anime_only: false, token: false }
     }
 
     /// A game of three rows (0 empty, "Alpha" id 10, "Charlie" id 12) in English and the readings.

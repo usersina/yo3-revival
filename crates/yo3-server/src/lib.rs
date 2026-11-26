@@ -313,11 +313,14 @@ pub fn regulation_by(arg: &str, known: &[(u32, String)]) -> Result<u32, String> 
 /// Sweet Corn's token is "Maize Token" in EDOPro's database and "Grain Corn Token" in the client's (its text).
 pub const TOKEN_ALIASES: [(&str, &str); 1] = [("Maize Token", "Grain Corn Token")];
 
-/// The client's token cards (Konami ids 3900-3999) by name, as the rules engine names them: the translator finds a
-/// token without a Konami id by its name (`Translator::tokens`).
+/// A token card's kind (bits 3-7 of CARD_Prop's second word).
+pub const TOKEN_KIND: u32 = 10;
+
+/// The client's token cards by name, as the rules engine names them: the translator finds a token without a Konami id by
+/// its name (`Translator::tokens`). The kind-10 rows: the game's own (Konami ids 3900-3999) and the added Tokens (#75).
 pub fn token_rows(cards: &yo3_data::CardDb) -> std::collections::HashMap<String, Vec<u16>> {
     let mut rows = std::collections::HashMap::new();
-    for c in cards.iter().filter(|c| (3900..4000).contains(&c.cid)) {
+    for c in cards.iter().filter(|c| c.kind == TOKEN_KIND) {
         rows.entry(c.name.clone()).or_insert_with(Vec::new).push(c.row);
     }
     for (engine, client) in TOKEN_ALIASES {

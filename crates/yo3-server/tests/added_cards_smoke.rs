@@ -18,7 +18,9 @@ fn every_added_card_starts_on_the_field_and_plays_two_turns_without_an_error() {
     let mut failures = vec![];
     // Each card as printed (anime cards off), and each printed card again with anime cards on, when it may play its anime
     // version (engine/anime-cards.json); an anime-only card only ever plays with them on.
-    let runs = added.cards.iter().map(|card| (card, card.anime_only)).chain(added.cards.iter().filter(|c| !c.anime_only).map(|card| (card, true)));
+    // Tokens are left out: their cards' effects make them (`tests/added_tokens.rs`), no Deck or hand holds one.
+    let cards: Vec<_> = added.cards.iter().filter(|c| !c.token).collect();
+    let runs = cards.iter().map(|&card| (card, card.anime_only)).chain(cards.iter().filter(|c| !c.anime_only).map(|&card| (card, true)));
     for (card, anime) in runs {
         let c = card.card();
         let place = match c.kind {

@@ -1007,10 +1007,11 @@ impl Translator {
             Some((uid, row)) if rows.contains(&row) => (uid, row),
             _ => self.next_token_card(&rows),
         };
-        // The client's own token cards (Konami ids 3900-3999) shatter when they leave the field. A copy token (Multiply,
-        // Cloning: a token with another card's code) is that card to the engine, which keeps it in the Graveyard like any
-        // card, so it moves like one (issue #60).
-        if self.cards.get(&row).is_none_or(|s| s.cid == 0 || (3900..4000).contains(&s.cid)) {
+        // The client's token cards (the game's, Konami ids 3900-3999, and the added Tokens) shatter when they leave the
+        // field. A copy token (Multiply, Cloning: a token with another card's code) is that card to the engine, which keeps
+        // it in the Graveyard like any card, so it moves like one (issue #60).
+        let token_card = self.token_rows.values().any(|rows| rows.contains(&row));
+        if token_card || self.cards.get(&row).is_none_or(|s| s.cid == 0 || (3900..4000).contains(&s.cid)) {
             self.tokens.push(uid);
         }
         let zone = self.sides[to.player as usize].zone(to.zone);

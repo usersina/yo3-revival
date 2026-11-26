@@ -176,12 +176,13 @@ fn every_anime_text_fits_the_connection_dll() {
 #[test]
 fn the_anime_table_has_a_row_for_every_card_of_the_game() {
     // The game's cards and the cards added after them (#75): every card a player can hold has its row, but an anime-only
-    // card (Orichalcos Gigas), which is its own anime version: its data is the anime database's already.
+    // card (Orichalcos Gigas), which is its own anime version: its data is the anime database's already; and an added Token,
+    // which no player holds.
     let Some(mut data) = game() else { return };
     let engine = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../engine");
     let added = yo3_data::added::Added::load(&engine).unwrap();
     data.cards.add(&added).unwrap();
-    let anime_only: Vec<u16> = added.cards.iter().filter(|c| c.anime_only).map(|c| c.cid).collect();
+    let anime_only: Vec<u16> = added.cards.iter().filter(|c| c.anime_only || c.token).map(|c| c.cid).collect();
     let table = std::fs::read_to_string(engine.join("anime/cards.tsv")).unwrap();
     let rows: HashMap<u16, String> = table.lines().skip(1).map(|l| {
         let mut f = l.split('\t');

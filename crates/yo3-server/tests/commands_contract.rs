@@ -554,7 +554,7 @@ fn an_older_database_gets_the_recording_column() {
 fn a_deck_with_an_anime_only_card_is_refused_while_anime_cards_are_off() {
     use yo3_data::added::{Added, AddedCard};
     let gigas = AddedCard { row: 21, cid: 1021, passcode: 170000171, name: "Orichalcos Gigas".into(), desc: "[Anime]\rtext".into(),
-        a: 1021, b: 1 << 3, genre: 0, anime_only: true };
+        a: 1021, b: 1 << 3, genre: 0, anime_only: true, token: false };
     let s = Server::with_world(World { added: Arc::new(Added { first_row: 21, cards: vec![gigas] }), ..world() });
     s.world.settings.set("login-regulation", "Unlimited").unwrap();
     let deck: Vec<u16> = (1..=20).chain(1..=19).chain([21]).collect();

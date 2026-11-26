@@ -1128,9 +1128,10 @@ pub mod selfplay {
     /// player. After every engine step the client model is checked against the engine: the first difference fails the
     /// duel with the seed, the step and the engine messages that came before it.
     pub fn play(dir: &Path, seed: u64, decks: [(&[u16], &[u16]); 2], client_team: usize, hidden: bool) -> Result<Played, String> {
+        let (cards, tokens) = plain_cards(dir, &decks);
         let data = CardData {
-            cards: card_data(&decks),
-            tokens: token_rows(),
+            cards,
+            tokens,
             names: HashMap::new(),
             tuners: tuners(dir, &decks, false)?,
             anime: false,
@@ -1144,9 +1145,10 @@ pub mod selfplay {
     /// [`play`] with the engine playing by the `revival-rule` house rule `revival`.
     pub fn play_revival(dir: &Path, seed: u64, decks: [(&[u16], &[u16]); 2], client_team: usize, hidden: bool,
         revival: crate::engine::Revival) -> Result<Played, String> {
+        let (cards, tokens) = plain_cards(dir, &decks);
         let data = CardData {
-            cards: card_data(&decks),
-            tokens: token_rows(),
+            cards,
+            tokens,
             names: HashMap::new(),
             tuners: tuners(dir, &decks, false)?,
             anime: false,
@@ -1160,7 +1162,8 @@ pub mod selfplay {
     pub type TokenCards = (HashMap<u16, CardStats>, HashMap<String, Vec<u16>>);
 
     /// The client's token cards (`engine/anime/client-tokens.tsv`) as rows of their own (60100 and up), for the anime
-    /// cards' tokens: the rows and the rows by name.
+    /// cards' tokens, then the added Tokens (`engine/added-cards.json`, #75) by their own rows: the rows and the rows by
+    /// name.
     pub fn client_tokens(dir: &Path) -> Result<TokenCards, String> {
         let text = std::fs::read_to_string(dir.join("anime/client-tokens.tsv")).map_err(|e| format!("client-tokens.tsv: {e}"))?;
         let (mut cards, mut names): (HashMap<u16, CardStats>, HashMap<String, Vec<u16>>) = Default::default();
@@ -1170,7 +1173,34 @@ pub mod selfplay {
             cards.insert(row, CardStats { cid: cid.parse().map_err(|_| format!("client-tokens.tsv: {line}"))?, atk: 0, def: 0, level: 1, attribute: 1, race: 1 });
             names.entry(name.to_string()).or_default().push(row);
         }
+        let (added_cards, added_names) = added_tokens(dir);
+        cards.extend(added_cards);
+        for (name, rows) in added_names {
+            names.entry(name).or_default().extend(rows);
+        }
         Ok((cards, names))
+    }
+
+    /// The added Tokens (`engine/added-cards.json`, #75) by their own rows: the rows and the rows by name. A real duel's
+    /// card table has them after the game's rows, as `crate::token_rows` finds them.
+    pub fn added_tokens(dir: &Path) -> TokenCards {
+        let (mut cards, mut names): TokenCards = Default::default();
+        for t in yo3_data::added::Added::load(dir).map(|a| a.cards).unwrap_or_default().into_iter().filter(|c| c.token) {
+            let c = t.card();
+            cards.insert(t.row, CardStats { cid: t.cid, atk: c.atk, def: c.def, level: c.level, attribute: c.attribute, race: c.race });
+            names.entry(t.name.clone()).or_default().push(t.row);
+        }
+        (cards, names)
+    }
+
+    /// The card data of a self-played duel with anime cards off: the decks' cards and the client's token cards (a few of the
+    /// game's as rows of their own, and the added Tokens).
+    fn plain_cards(dir: &Path, decks: &[(&[u16], &[u16]); 2]) -> (HashMap<u16, CardStats>, HashMap<String, Vec<u16>>) {
+        let (mut cards, mut tokens) = (card_data(decks), token_rows());
+        let (added_cards, added_names) = added_tokens(dir);
+        cards.extend(added_cards);
+        tokens.extend(added_names);
+        (cards, tokens)
     }
 
     /// [`play`] with the anime card versions on (the `anime-cards` setting): the decks come from [`anime_deck`], and the
