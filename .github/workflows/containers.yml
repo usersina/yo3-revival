@@ -24,7 +24,8 @@ permissions:
 
 jobs:
   publish:
-    runs-on: [self-hosted, home]
+    # runs-on: [self-hosted, home]  # the home VM runner, off until next month (2026-11-26)
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     outputs:
       server-image: ${{ steps.references.outputs.server-image }}

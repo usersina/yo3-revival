@@ -20,7 +20,8 @@ jobs:
   prepare:
     name: Changelog
     if: github.ref == 'refs/heads/main'
-    runs-on: [self-hosted, home]
+    # runs-on: [self-hosted, home]  # the home VM runner, off until next month (2026-11-26)
+    runs-on: ubuntu-26.04
     outputs:
       version: ${{ steps.changelog.outputs.version }}
       release: ${{ steps.changelog.outputs.release }}
@@ -46,7 +47,8 @@ jobs:
     name: Verify code and prepare ${{ needs.prepare.outputs.version }}
     needs: prepare
     if: needs.prepare.outputs.release == 'true'
-    runs-on: [self-hosted, home]
+    # runs-on: [self-hosted, home]  # the home VM runner, off until next month (2026-11-26)
+    runs-on: ubuntu-26.04
     # The debug tests alone take about 36 minutes since v0.1.26 (the added and anime cards' scenarios), with the build
     # and the release-build smoke test on top: an hour cut the v0.1.26 run off in its tests.
     timeout-minutes: 120
@@ -55,6 +57,9 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
       CARGO_INCREMENTAL: "0"
+      # Debug builds with line tables only (backtraces keep files and lines): each of the ~200 test binaries links the whole
+      # server, and with full debug info they filled the runner's disk in the v0.1.26 run ("No space left on device").
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
     steps:
       - uses: actions/checkout@v7
         with:
@@ -68,11 +73,23 @@ jobs:
           rustup default stable
           rustup component add clippy
           rustup target add x86_64-pc-windows-gnu
-          # OS dependencies are installed once on the home VM; jobs have no sudo.
+          # On the home VM the OS dependencies are installed once (jobs have no sudo); a GitHub runner installs them.
+          sudo apt-get update -q
+          sudo apt-get install -yq mingw-w64 pkg-config libxkbcommon-dev libwayland-dev libx11-dev xvfb xauth \
+            libxcursor1 libx11-xcb1 libxi6 libxkbcommon-x11-0
           x86_64-w64-mingw32-gcc --version
           i686-w64-mingw32-gcc --version
-      - name: Reuse the runner’s local Cargo output
-        run: python3 .github/scripts/local_cargo_cache.py
+      - name: Room for the build (a GitHub runner)
+        run: |
+          # The build takes well over the runner's free root disk: drop the toolchains it never uses and build on /mnt.
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          sudo mkdir -p /mnt/yo3-target && sudo chown "$USER" /mnt/yo3-target
+          ln -s /mnt/yo3-target target
+          df -h / /mnt
+      # The home VM's own Cargo output (back with the home runner):
+      # - name: Reuse the runner’s local Cargo output
+      #   run: python3 .github/scripts/local_cargo_cache.py
+      - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest
@@ -238,7 +255,8 @@ jobs:
     name: Update the hosted server
     needs: [prepare, release, containers]
     if: github.ref == 'refs/heads/main' && needs.prepare.outputs.release == 'true'
-    runs-on: [self-hosted, home]
+    # runs-on: [self-hosted, home]  # the home VM runner, off until next month (2026-11-26)
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     permissions:
       contents: read
@@ -264,7 +282,8 @@ jobs:
     name: Retain the newest two releases and images
     needs: [prepare, release, containers, deploy]
     if: github.ref == 'refs/heads/main' && needs.prepare.outputs.release == 'true'
-    runs-on: [self-hosted, home]
+    # runs-on: [self-hosted, home]  # the home VM runner, off until next month (2026-11-26)
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     permissions:
       contents: write

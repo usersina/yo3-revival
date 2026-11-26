@@ -26,12 +26,16 @@ class DashboardWorkflow(unittest.TestCase):
         self.assertEqual(release['concurrency'],ui['concurrency'])
         self.assertEqual(ui['concurrency']['queue'],'max')
         self.assertEqual(ui['concurrency']['cancel-in-progress'],'false')
+        # The home VM runner is off until next month (2026-11-26): every job runs on GitHub's pinned Ubuntu, and keeps
+        # its home line commented out to switch back.
         for name in ['release.yml','containers.yml','dashboard.yml']:
+            text=(ROOT/'.github/workflows'/name).read_text()
             for job in workflow(name)['jobs'].values():
-                if 'runs-on' in job:self.assertEqual(job['runs-on'],['self-hosted','home'])
+                if 'runs-on' in job:self.assertIn(job['runs-on'],[['self-hosted','home'],'ubuntu-26.04'])
                 for step in job.get('steps',[]):
                     if step.get('uses','').startswith('actions/checkout@'):
                         self.assertEqual(step.get('with',{}).get('persist-credentials'),'false')
+            self.assertEqual(text.count('# runs-on: [self-hosted, home]'),text.count('runs-on: ubuntu-26.04'))
 
     def test_eligibility_and_both_image_gates_precede_deployment_and_safe_cleanup(self):
         job=workflow('dashboard.yml')['jobs']['deliver']

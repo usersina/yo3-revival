@@ -33,7 +33,10 @@ curl, and 32-bit MinGW GCC/binutils (`i686-w64-mingw32-gcc`, `i686-w64-mingw32-d
 The GUI also needs pkg-config and X11/Wayland/xkbcommon development libraries; on Debian/Ubuntu these are
 `pkg-config libx11-dev libwayland-dev libxkbcommon-dev`.
 X11 startup also needs `libxcursor1 libx11-xcb1 libxi6 libxkbcommon-x11-0` at runtime.
-The self-hosted release runner has them installed as one-time prerequisites; jobs do not have sudo access.
+The self-hosted release runner has them installed as one-time prerequisites; jobs do not have sudo access. Since 2026-11-26 the jobs run on GitHub's `ubuntu-26.04` runners instead (the home VM is off until next month;
+each workflow keeps its `[self-hosted, home]` line commented out): the release job installs these with apt, frees the
+runner's unused toolchains and builds on `/mnt`, and caches with `Swatinem/rust-cache` (the home VM's
+`local_cargo_cache.py` step is commented out). To switch back, swap the two `runs-on` lines and the cache steps.
 
 The root `Cargo.toml` owns the shared crate version, edition, license, Rust baseline, dependency versions and lint
 settings. Every crate inherits them; crate-specific features such as Iced's renderer and Windows APIs stay in that

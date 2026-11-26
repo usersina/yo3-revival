@@ -13,28 +13,24 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.1.26 (2026-11-26)
 
 - **EDOPro decks.** Desktop imports an EDOPro deck file (`.ydk`) into your decks, and exports yours for EDOPro: Settings →
   Singleplayer → Your data → EDOPro decks on your own server, and **Decks…** under your User ID on a friend's server.
   The deck is in Load Deck the next time the game lists your decks. Cards the server doesn't have are left out and
   listed; cards you don't hold are named. Hosts: `decks`, `import-deck` (a `.ydk` file or a `ydke://` link) and
   `export-deck`.
-
 - **The Anime Collection pack.** Blister's sells a new pack while the server plays the anime cards: the anime-only
   cards (never printed), five a pack with a rarer card among them, for 300 BP. It is the only way to get them: they
   aren't in the shop's Rental or Trade Card. With anime cards off the pack isn't on the shelf. `where` names it. Hosts:
   `anime-pack-cost` sets its price.
 - **Rarities for the anime-only cards**: 12 Ultra Rare, 13 Super Rare and 25 Rare, picked by their place in the anime; the
   rest are Common. The reveal shows each in its frame.
-
 - **Why a deck can't duel.** The game only says "Invalid Deck" or "There are no valid Decks available."; now the
   server says why in the chat, card by card: "Pot of Greed is Forbidden in Season 16.", "Mirror Force: 2 copies, but
   Season 16 allows 1.", "The Main Deck has 38 cards: it needs 40 to 60.", "You hold 1 Blue-Eyes White Dragon but the
   deck has 3.". It says so when you save such a deck in Edit Deck, when a duel refuses one, and for the new `deck` chat
   command (`deck` checks all your decks, `deck NAME` one).
-
-## v0.1.26 (2026-11-26)
 
 - **358 more cards from the anime.** Cards the Duel Monsters, GX and 5D's anime showed that the game never had: the
   Advanced Crystal Beasts, Valkyries, Timelords, T.G. monsters, Fortune Fairies, Life Stream Dragon, the Legendary

@@ -102,11 +102,17 @@ class LocalCargoCache(unittest.TestCase):
         import yaml
         flow = yaml.load((ROOT / '.github/workflows/release.yml').read_text(), Loader=yaml.BaseLoader)
         steps = flow['jobs']['release']['steps']
-        self.assertFalse(any(s.get('uses', '').startswith('Swatinem/rust-cache@') for s in steps))
         names = [s.get('name') for s in steps]
-        step = steps[names.index('Reuse the runner’s local Cargo output')]
-        self.assertIn('local_cargo_cache.py', step['run'])
-        self.assertLess(names.index(step['name']), names.index('Lints'))
+        if flow['jobs']['release']['runs-on'] == 'ubuntu-26.04':
+            # GitHub's runner while the home VM is off (2026-11-26): rust-cache, the local cache's step kept commented out.
+            text = (ROOT / '.github/workflows/release.yml').read_text()
+            self.assertIn('#   run: python3 .github/scripts/local_cargo_cache.py', text)
+            self.assertTrue(any(s.get('uses', '').startswith('Swatinem/rust-cache@') for s in steps))
+        else:
+            self.assertFalse(any(s.get('uses', '').startswith('Swatinem/rust-cache@') for s in steps))
+            step = steps[names.index('Reuse the runner’s local Cargo output')]
+            self.assertIn('local_cargo_cache.py', step['run'])
+            self.assertLess(names.index(step['name']), names.index('Lints'))
         self.assertIn('python3 tools/check.py py', '\n'.join(s.get('run', '') for s in steps))
         checks_spec = importlib.util.spec_from_file_location('checks', ROOT / 'tools/check.py')
         checks = importlib.util.module_from_spec(checks_spec)

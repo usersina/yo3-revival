@@ -1,2 +1,3 @@
 self-hosted-runner:
-  labels: [home]
+  # ubuntu-26.04: a GitHub runner image newer than actionlint 1.7.12, which CI pins (used while the home VM is off).
+  labels: [home, ubuntu-26.04]
