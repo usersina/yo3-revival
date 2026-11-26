@@ -95,7 +95,7 @@ pub const REGISTRY: &[Setting] = &[
         monsters...): official (the official ruling); ignoring-means-all (a card that Special Summons \"ignoring its Summoning \
         conditions\", such as Illusion Gate, ignores that too); graveyard-is-graveyard (any revival from the Graveyard or \
         banishment, such as Monster Reborn, does; a card's own written conditions still apply)",
-        kind: Kind::Choice(&crate::engine::Revival::NAMES), applies: Applies::NextDuel, default: || json!("official") },
+        kind: Kind::Choice(&crate::engine::Revival::NAMES), applies: Applies::NextDuel, default: || json!("graveyard-is-graveyard") },
     Setting { name: "destiny-draw", help: "Casual duels against the computer (NPC duels): once per duel, at the start of your Draw Phase with \
         1000 LP or less, you may pick any card left in your Deck as the card you draw (off: no)",
         kind: Kind::Choice(&["off", "on"]), applies: Applies::NextDuel, default: || json!("off") },
@@ -487,7 +487,7 @@ mod tests {
         assert_eq!((now.turn_seconds, now.total_seconds), (crate::clock::DEFAULT_TURN, crate::clock::DEFAULT_TOTAL));
         assert_eq!(now.limits, Limits::default());
         assert!(!now.anime_cards, "the anime card versions are off until a host turns them on");
-        assert_eq!(now.revival_rule, crate::engine::Revival::Official, "revival follows the official ruling until a host changes it");
+        assert_eq!(now.revival_rule, crate::engine::Revival::GraveyardIsGraveyard, "any revival from the Graveyard until a host changes it");
         for s in REGISTRY {
             let input = match (s.default)() { Json::String(v) => v, other => other.to_string() };
             parse(s, &input, &banlists()).unwrap_or_else(|e| panic!("{}: {e}", s.name));
@@ -508,10 +508,10 @@ mod tests {
         assert!(live.set("nothing", "1").unwrap_err().contains("no setting"));
         assert!(live.set("anime-cards", "sometimes").unwrap_err().contains("off, on"));
         assert!(live.set("revival-rule", "anime").unwrap_err().contains("official, ignoring-means-all, graveyard-is-graveyard"));
-        live.set("revival-rule", "graveyard-is-graveyard").unwrap();
-        assert_eq!(live.now().revival_rule, crate::engine::Revival::GraveyardIsGraveyard);
-        live.reset("revival-rule").unwrap();
+        live.set("revival-rule", "official").unwrap();
         assert_eq!(live.now().revival_rule, crate::engine::Revival::Official);
+        live.reset("revival-rule").unwrap();
+        assert_eq!(live.now().revival_rule, crate::engine::Revival::GraveyardIsGraveyard);
         assert_eq!(live.set("anime-cards", "ON").unwrap(), "anime-cards is now on (applies at the next duel)");
         assert!(live.now().anime_cards);
         live.reset("anime-cards").unwrap();

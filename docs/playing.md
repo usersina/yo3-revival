@@ -125,8 +125,9 @@ Summon. Its Synchro Materials are in the Graveyard by then, so they don't count:
 alone gives 2300 ATK. With another Quillbolt Hedgehog still on the field it becomes 3100. See the official
 [Junk Warrior](https://www.db.yugioh-card.com/yugiohdb/card_search.action?cid=7696&ope=2) card text.
 
-Revivals follow the official rules unless the host chose otherwise: a monster that must first be properly Summoned
-can't be brought back by Monster Reborn when it never was ([the `revival-rule` house rule](rules-privacy.md#house-rules)).
+Revivals go further than the official rules unless the host chose them: Monster Reborn and every other revival from
+the Graveyard or banishment brings back a monster that must first be properly Summoned even when it never was (a
+discarded Ritual Monster), as in the anime ([the `revival-rule` house rule](rules-privacy.md#house-rules)).
 
 A few more rules that look like bugs and are not (each has a scenario test, `crates/yo3-server/tests/card_scenarios.rs`):
 Zero Gardna must be used when the attack is declared: used earlier in your own turn it protects only that turn.

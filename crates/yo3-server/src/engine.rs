@@ -177,13 +177,14 @@ static RECORDING_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64
 pub enum Revival {
     /// The official ruling: a monster that must first be properly Summoned (Fusion, Synchro, Ritual, "must first be
     /// Special Summoned by...") comes back from the Graveyard only if it was.
-    #[default]
     Official,
     /// "Ignoring its Summoning conditions" also lifts "must first be properly Summoned" (Illusion Gate takes a Geh only
     /// ever sent to the Graveyard); every other revival keeps the limit.
     IgnoringMeansAll,
     /// The anime's habit: any revival from the Graveyard or banishment lifts it (Monster Reborn revives a discarded Ritual
-    /// monster); a card's own written conditions still apply, and the hand and the Deck keep the limit.
+    /// monster); a card's own written conditions still apply, and the hand and the Deck keep the limit. The default (the
+    /// owner's choice, 2026-11-26).
+    #[default]
     GraveyardIsGraveyard,
 }
 

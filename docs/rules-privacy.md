@@ -30,16 +30,18 @@ moderator's name and the reason.
 
 ## House rules
 
-Duels follow the official rules of the card game. A host can change one of them with the `revival-rule` setting
+Duels follow the official rules of the card game but one, which the `revival-rule` setting chooses
 ([live settings](guide.md#live-settings)): how far reviving a monster reaches past "must first be properly Summoned".
+By default a revival from the Graveyard or banishment reaches past it, as in the anime; a host can choose the official
+ruling instead.
 That rule keeps Fusion, Synchro and Ritual Monsters, and monsters that "must first be Special Summoned by..." (Great
 Moth...), in the Graveyard unless they were Summoned that way once.
 
 | `revival-rule` | Cards that Special Summon "ignoring its Summoning conditions" (Illusion Gate, Arduous Decision, the anime Underworld Circle...) | Monster Reborn, Call of the Haunted and every other revival |
 | --- | --- | --- |
-| `official` (the default) | Ignore the card's written conditions, but not "must first be properly Summoned" | Keep every limit |
+| `official` | Ignore the card's written conditions, but not "must first be properly Summoned" | Keep every limit |
 | `ignoring-means-all` | Ignore that too: Illusion Gate takes a Divine Serpent Geh that was only ever sent to the Graveyard, or a Synchro Monster never Synchro Summoned | Keep every limit |
-| `graveyard-is-graveyard` | Ignore it too | Ignore it for a monster in the Graveyard or banished: Monster Reborn revives a Ritual Monster that was discarded. A card's own written conditions ("cannot be Special Summoned", "must be Special Summoned by its own effect") still stop them, and the hand and the Deck keep the limit |
+| `graveyard-is-graveyard` (the default) | Ignore it too | Ignore it for a monster in the Graveyard or banished: Monster Reborn revives a Ritual Monster that was discarded. A card's own written conditions ("cannot be Special Summoned", "must be Special Summoned by its own effect") still stop them, and the hand and the Deck keep the limit |
 
 The anime often revived monsters that were never properly Summoned; the official ruling never allowed it. The rules
 engine applies the setting in `crates/yo3-engine/src/house_rules.lua`.

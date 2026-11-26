@@ -32,14 +32,16 @@ impl Backend {
     /// Your own server's revival rule (`official`, `ignoring-means-all` or `graveyard-is-graveyard`): read the same two ways.
     pub fn revival_rule(&self, settings: &Settings) -> anyhow::Result<String> { self.value(settings, REVIVAL_RULE) }
 
-    /// Sets your own server's revival rule (`official`, the default, resets it); it applies at the next duel, no restart.
+    /// Sets your own server's revival rule (the default, `graveyard-is-graveyard`, resets it); it applies at the next duel,
+    /// no restart.
     pub fn set_revival_rule(&self, settings: &Settings, rule: &str) -> anyhow::Result<String> {
+        let default = rule == yo3_server::engine::Revival::default().name();
         if let Some(live) = self.live(settings) {
-            let op = if rule == "official" { Op::Reset { name: REVIVAL_RULE.into() } } else { Op::Set { name: REVIVAL_RULE.into(), value: rule.into() } };
+            let op = if default { Op::Reset { name: REVIVAL_RULE.into() } } else { Op::Set { name: REVIVAL_RULE.into(), value: rule.into() } };
             api::call(&live, &op).map_err(anyhow::Error::msg)?;
         } else {
             let saved = self.saved_settings(settings)?;
-            let done = if rule == "official" { saved.reset(REVIVAL_RULE) } else { saved.set(REVIVAL_RULE, rule) };
+            let done = if default { saved.reset(REVIVAL_RULE) } else { saved.set(REVIVAL_RULE, rule) };
             done.map_err(anyhow::Error::msg)?;
         }
         self.revival_rule(settings)
@@ -158,18 +160,18 @@ mod tests {
     }
 
     #[test]
-    fn the_revival_rule_is_kept_the_same_way_and_official_resets_it() {
+    fn the_revival_rule_is_kept_the_same_way_and_the_default_resets_it() {
         let root = scratch("revival");
         let backend = Backend::new(root.clone()).unwrap();
         let settings = Settings::default();
-        assert_eq!(backend.revival_rule(&settings).unwrap(), "official", "the official ruling until a player picks another");
-        assert_eq!(backend.set_revival_rule(&settings, "graveyard-is-graveyard").unwrap(), "graveyard-is-graveyard");
+        assert_eq!(backend.revival_rule(&settings).unwrap(), "graveyard-is-graveyard", "any revival from the Graveyard until a player picks another");
+        assert_eq!(backend.set_revival_rule(&settings, "official").unwrap(), "official");
         let data = backend.data_dir(&settings);
         let saved = || yo3_server::settings::Live::open(Some(&data.join("settings.json")), Vec::new()).unwrap().now().revival_rule;
-        assert_eq!(saved(), yo3_server::engine::Revival::GraveyardIsGraveyard, "the server's start finds it");
+        assert_eq!(saved(), yo3_server::engine::Revival::Official, "the server's start finds it");
         assert!(backend.set_revival_rule(&settings, "sometimes").is_err(), "the server refuses a level it doesn't have");
-        assert_eq!(backend.set_revival_rule(&settings, "official").unwrap(), "official");
-        assert_eq!(saved(), yo3_server::engine::Revival::Official);
+        assert_eq!(backend.set_revival_rule(&settings, "graveyard-is-graveyard").unwrap(), "graveyard-is-graveyard");
+        assert_eq!(saved(), yo3_server::engine::Revival::GraveyardIsGraveyard);
         let _ = std::fs::remove_dir_all(root);
     }
 

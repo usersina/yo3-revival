@@ -546,7 +546,7 @@ impl State {
             }
             Message::RevivalSet(Ok(now)) => {
                 self.busy = None;
-                let label = REVIVAL_CHOICES.iter().find(|c| c.value == now).map_or("Official rules", |c| c.label);
+                let label = REVIVAL_CHOICES.iter().find(|c| c.value == now).map_or("Anime: any revival", |c| c.label);
                 self.revival = Some(now);
                 self.good(format!("Revival is now \u{201c}{label}\u{201d}. It starts from your next duel."));
             }
@@ -778,7 +778,7 @@ impl State {
         let choices: Element<'_, Message> = if idle && self.revival.is_some() {
             pick_list(&REVIVAL_CHOICES[..], selected, Message::Revival).style(yo3_skin::choice).menu_style(yo3_skin::choice_menu).width(230).padding([6, 10]).into()
         } else {
-            text(selected.map_or("Official rules", |c| c.label)).size(15).color(color::INK).into()
+            text(selected.map_or("Anime: any revival", |c| c.label)).size(15).color(color::INK).into()
         };
         yo3_skin::setting("Revival", line, Some(choices), None)
     }
