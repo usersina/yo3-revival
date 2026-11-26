@@ -61,7 +61,10 @@ that starts at its lowest id (3900). Cards printed from about 2017 on have Konam
 added card's). `--find` picks it and writes it in the line's `stand_in` column; the client, the server and the rules
 engine (`engine/added-cards.json`'s `cid`) all know the card by it, and `konami_id` keeps the real one. Everything that
 takes a card's id (a scenario test, `--duel-field`, `tools/engine/cardtext.py`, the picture's file name) takes the
-stand-in. About 1,200 ids are free that way; when they run out, `--find` says so.
+stand-in. The ids are few: on 2026-11-26 1,002 were free, and the anime-only batches still to add need about 860 of
+them (837 cards and their Tokens). `--find` and `--add` end with the count (`Stand-in ids: N free after these`), and
+`--find` gives none of the last 100 (`STAND_IN_RESERVE`), kept for fixes and for printed cards whose Konami ids are past
+16383; a card that would need one is refused with the reason.
 
 **What the tool also writes.** Edit Deck's **Search Key** filters (Special Summon, Destroy monster, Pierce, Flip
 Effect...) read a card's genre bits (`CARD_Genre`). The tool learns them from the game's own cards: each genre bit is

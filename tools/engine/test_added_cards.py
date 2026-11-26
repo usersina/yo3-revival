@@ -3,6 +3,8 @@
 and the table's rules hold. Needs engine/fetch.sh's data and the game (skipped without them)."""
 import importlib.util
 import os
+import contextlib
+import io
 import tempfile
 import unittest
 from unittest import mock
@@ -216,6 +218,25 @@ class AddedCards(unittest.TestCase):
         self.assertEqual((steam.get('token'), steam.get('anime_only'), steam['b'] >> 3 & 0x1F), (True, None, 10))
         self.assertEqual((gadget.get('token'), gadget.get('anime_only')), (True, True), 'only the anime database has it')
         self.assertNotIn('konami_id', steam)
+
+    def test_stand_ins_stop_at_the_reserve_and_the_count_is_reported(self):
+        # The client holds ids 3900-16383; --find gives a stand-in only while more than STAND_IN_RESERVE are free, and its
+        # report says how many are left.
+        ctx = added.load()
+        taken = {int(l['stand_in']) for l in added.table() if (l.get('stand_in') or '').strip()}
+        free = len(added.free_stand_ins(ctx, taken))
+        self.assertGreater(free, added.STAND_IN_RESERVE, 'the batches still have stand-ins to give')
+        with mock.patch.object(added, 'STAND_IN_RESERVE', free):
+            (name, line, why), = added.find(['anime:511000220'], ctx)
+            self.assertIsNone(line)
+            self.assertIn(added.NO_STAND_IN.split(':')[0], '; '.join(why))
+        with mock.patch.object(added, 'STAND_IN_RESERVE', free - 1):
+            (name, line, why), = added.find(['anime:511000220'], ctx)
+            self.assertTrue(line, why)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                added.report([(name, line, why)], ctx)
+            self.assertIn(f'Stand-in ids: {free - 1} free after these (0 to give, {free - 1} kept back)', out.getvalue())
 
     def test_add_writes_both_tables_and_rebuilds(self):
         # --add: the line with its note at the end of engine/added/cards.tsv, the anime table's line in id order, then the

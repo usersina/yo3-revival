@@ -37,7 +37,8 @@ engine plays it only with the setting on.
 The client keeps a card's Konami id in 14 bits (16383 at most) and looks cards up from its lowest id (3900). A newer card
 whose Konami id is beyond that gets a permanent stand-in: the lowest id from 3900 that no card has (not the game's, no
 Konami card's in the pinned ids, no other added card's). The client, the server and the rules engine know the card by
-that id (the JSON's `cid`; `konami_id` keeps the real one); --find picks it. Like a row, it is never changed.
+that id (the JSON's `cid`; `konami_id` keeps the real one); --find picks it. Like a row, it is never changed. They are few:
+--find gives none of the last STAND_IN_RESERVE free ones, and reports how many are left.
 
 Each card's data comes from the pinned EDOPro database through the pinned Konami ids (engine/card-ids.json), never typed
 by hand. The client's encoding of a row (`CARD_Prop`: word `a` = Konami id, ATK/10, DEF/10; word `b` = kind, attribute,
@@ -470,11 +471,27 @@ def stand_in_problem(sid, ctx, taken):
     return None
 
 
+# Stand-in ids kept back: --find hands none of the last ones out. The client holds 12,484 ids (3900-16383); the game's
+# cards, every Konami id in the pinned ids (kept for the printed cards they are) and the added cards' stand-ins take most.
+# On 2026-11-26 1,002 were free, and the anime-only batches still to add needed about 860 (837 cards and their Tokens):
+# the reserve keeps room for fixes and for the printed cards whose Konami ids are past 16383, until Tokens share an id or
+# the budget otherwise grows (docs/roadmap.md).
+STAND_IN_RESERVE = 100
+
+
+def free_stand_ins(ctx, taken):
+    """The ids a stand-in could still take (`taken` the stand-ins given already), reserve included."""
+    return [i for i in range(ctx['base'], 0x4000) if stand_in_problem(i, ctx, taken) is None]
+
+
 def next_stand_in(ctx, taken):
-    return next((i for i in range(ctx['base'], 0x4000) if stand_in_problem(i, ctx, taken) is None), None)
+    """The lowest free stand-in id, or None when only the reserve is left."""
+    free = free_stand_ins(ctx, taken)
+    return free[0] if len(free) > STAND_IN_RESERVE else None
 
 
-NO_STAND_IN = 'no stand-in id is left: every id the client can hold from its lowest (3900) to 16383 is taken'
+NO_STAND_IN = (f'no stand-in id is left outside the reserve: the client holds ids 3900 to 16383, and the last {STAND_IN_RESERVE} '
+               'free ones are kept back (STAND_IN_RESERVE in tools/engine/added-cards.py)')
 
 
 def build():
@@ -751,8 +768,15 @@ HELD_FIXES = {
 }
 
 
+def stand_in_budget(results, ctx):
+    """The stand-in ids left once `results`' lines are added: how many, and the reserve among them."""
+    taken = {int(line['stand_in']) for line in table() if (line.get('stand_in') or '').strip()}
+    taken |= {int(line.split('\t')[2]) for _, line, _ in results if line and line.split('\t')[2]}
+    return len(free_stand_ins(ctx, taken)), STAND_IN_RESERVE
+
+
 def report(results, ctx):
-    """Each card's verdict, with the script lines to read."""
+    """Each card's verdict, with the script lines to read, then the stand-in ids left."""
     for name, line, why in results:
         anime_only = line and line.split('\t')[4]
         token = line and line.split('\t')[5]
@@ -764,6 +788,8 @@ def report(results, ctx):
             print(f'  at ∞: {hint}')
         for hint in risk_hints(line, ctx):
             print(f'  script: {hint}')
+    free, reserve = stand_in_budget(results, ctx)
+    print(f'Stand-in ids: {free} free after these ({free - reserve} to give, {reserve} kept back)')
 
 
 def regenerate():
