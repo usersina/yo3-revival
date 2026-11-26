@@ -523,6 +523,9 @@ pub struct Translator {
     /// rows: the opponent's against a player or an NPC (`duel::npc_translator`), both for a spectator, none for a
     /// translator that shows everything (`new`: duel log replays, the duel check's view of what the client isn't told).
     hidden: [bool; 2],
+    /// The Field Spells the client has a field picture for (`GameData::field_pictures`): another one (a card the game
+    /// never had) changes the field to the plain board rather than white. Empty: every Field Spell's id is sent.
+    pub field_pictures: std::sync::Arc<std::collections::HashSet<u16>>,
     /// The values each monster zone's record last went with (level, ATK, DEF, base ATK, base DEF), by player and zone.
     records: HashMap<(u32, u32), [u32; 5]>,
     /// A monster zone's Type and Attribute (the client's numbers) where an effect changed them from CARD_Prop's.
@@ -731,6 +734,7 @@ impl Translator {
             list_order: vec![],
             result: None,
             hidden,
+            field_pictures: Default::default(),
             records: HashMap::new(),
             kinds: HashMap::new(),
             deck_tops: [None; 2],
@@ -866,6 +870,22 @@ impl Translator {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_field_spell_without_a_field_picture_shows_the_plain_board() {
+        // The client loads data/field/<id>_1.png for FieldChange (7): a Field Spell the game never had (The Seal of
+        // Orichalcos, 10327) would turn the field white, so it gets 0, the plain board; one with a picture its id.
+        let (mut t, _) = Translator::new(0, [&[], &[]], HashMap::new());
+        t.field_pictures = std::sync::Arc::new([4336u16].into_iter().collect());
+        let field = |cid| {
+            let from = crate::wire::Place { player: 0, zone: zone::HAND, index: 0, face_up: false, defense: false };
+            let to = crate::wire::Place { player: 0, zone: zone::FIELD_SPELL, index: 0, face_up: true, defense: false };
+            t.presented(vec![], cid, from, to, moves::MOVE_ACTIVATE)
+        };
+        // The FieldChange command (duel command 7) and its first parameter.
+        let sent = |cid| field(cid).iter().find(|m| m.get("id").and_then(Value::as_u32) == Some(cmd::FIELD_CHANGE)).and_then(|m| m.get("param1").and_then(Value::as_u32));
+        assert_eq!((sent(4336), sent(10327)), (Some(4336), Some(0)));
+    }
 
     #[test]
     fn the_picks_of_a_card_list_are_capped() {

@@ -919,10 +919,49 @@ re-encode identical (2026-11-26).
 - The duel cut-ins (`CutinForNPC`) play animations by index: `0x4E2800` maps the table at `0x78A088` (23 motions × 3
   variants) to indices 0–52, which every NPC body holds in the same order (draw, summon, attack, invokes, set, damage,
   shock, the posture and turn-call loops; loops flagged at `0x78A438`).
-- A new body keeps a game body's skeleton and its 53 animations and swaps the meshes, bound to its joints with their
-  inverse bind matrices: a wooden doll of boxes on Pegasus's skeleton (np005) loaded and stood animated in Kaiba
-  Corporation's talk (live, 2026-11-26). Such a body is built on the player's machine from their own game's donor, so
-  no Konami data ships.
+- **The loader's version**: NPC bodies and avatar parts load with version 2 (both `getMesh` calls in
+  `FileResource_loadThread` `0x4E1990` push 2, at `0x4E1D8B` and `0x4E1F9B`; a first pass only prefetches textures).
+  Versions 2 and 4 read every animation set, 0 and 3 the first then stop, 1 none; from 3 a top-level mesh or material
+  is parsed and dropped (motion-only files). Meshes in frames are always kept. The stock game uses only 2.
+- **Joints by name**: only five names are in yo3.exe — `under`, `disc_root`, `neck`, `neck_face`, `hair_root` — read by
+  `CSkinnedMesh_classifyBodyType` `0x5ABDC0` after each top-level frame from the joints that carry weights. With none of
+  the five weighted the body type is 0 and **no animation container is made: every animation set is dropped**. So a
+  body needs a weighted joint named `under` (or one of the others). Nothing else is looked up by name: names only need
+  to agree between frames, weights and animation tracks (a weight or track naming no joint makes a new root joint).
+  The game's 25 skeletons differ (93-167 joints; 41 names common to all). In np005 the duel disk rides `disc_root`
+  (under `duel_disk_DA_sk` on `L_arm_02`), the hand of cards (`opt01`, `opt07`) is skinned to `R_hand`, the single
+  card to `card_single_sk`; the janken hands (`opt11`-`16`) and the cards appear and vanish by visibility keys.
+- **Materials**: names are lower-cased and matched by prefix (`0x595670`); a mesh names its materials (`19`), found by
+  exact name at parse time among those already defined, so **materials come before the frames** that use them (an
+  unknown name is skipped). In the NPC path only `card_omote` (9) does anything: its texture becomes the card's picture.
+  `lambert1` is an ordinary material (2 of 25 bodies name it), not required.
+- **`0C`** sets an identity matrix, as a frame with neither `0B` nor `0C` already has: optional.
+- **Animations by index**: names are never read (the 25 bodies use four sets of names); only the order counts.
+  `CutinForNPC_startAnimation` `0x4E3F30` plays a set only when the index is below the body's count (a missing one
+  leaves the pose). The picker and Kaiba Corporation's talk (`SelectNpcScene` `0x4BD120`) play set 46 (`posture_00`)
+  in a loop. Every game set has position, rotation, scale and visibility tracks for every joint, positions absolute
+  (local translations), and each set stands alone (a joint's keys are cleared at each set's start). 30 frames a second
+  by default (`0x7C1608`; the `01` item is optional).
+- **The cut-in camera**: `CAnimatedMeshSceneNode_animateCamera` `0x591D00` (from OnAnimate and setCurrentFrame) takes
+  the set's camera keys when it has any (position, target, the field of view × 0.6); without, the camera stays at
+  (0, 100, −200) looking at (0, 100, 0).
+- **Rendering**: the body's node sits at the origin, unrotated, scale 1; its materials have lighting off (bilinear and
+  anisotropic filtering on), so **shading is painted into the textures**. Normals are never computed. The loader
+  reverses each face's corners: a closed mesh's faces, read in file order and fan-triangulated, have a negative signed
+  volume (np005's body −37302); default culling. Textures: PNG, power-of-two sizes 16-256, RGB or RGBA in the game's
+  files.
+- **The duel**: a body shows in the cut-ins only. `Duel_createCutins` `0x50F450` makes a `CutinForNPC` for an NPC
+  opponent (id 120 on), index `(id − 120) / 3`, the same `np%03d.mdl` and sets. Its constructor `0x4E3B90` loads a body
+  only below index 25 (`cmp edi,0x19` at `0x4E3C1D`), and its sound timing table (`0x78BBF8`, ten per NPC, read once at
+  `0x4E3EB3` by the index at `+0xE4`) has 25 rows: the connection DLL raises the first to 30 and gives the table rows
+  for slots 25-29 (each its donor body's row, from `model/npNNN/donor.txt`), as it gives the model table room for 30.
+  The duel's faces (`Duel_loadNpcFaces` `0x4F8080`: `data/face/np%03df0-4.png` at the duel's start, Yami Yugi's when
+  absent) become the Flash images `data/game/face1<i>`.
+- **Our own bodies**: a new body keeps a game body's skeleton and its 53 animations and swaps the meshes, bound to its
+  joints with their inverse bind matrices: a wooden doll of boxes, then a clothes-store mannequin (`yo3_data::doll`),
+  loaded and moved in Kaiba Corporation's talk, the picker and the duel's cut-ins (live, 2026-11-26). Such a body is
+  built on the player's machine from their own game's donor, so no Konami data ships. Authoring one:
+  [custom NPCs](custom-npcs.md#authoring-a-3d-body).
 
 ## Behaviours worth knowing
 

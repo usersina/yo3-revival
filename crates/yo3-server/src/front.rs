@@ -593,6 +593,8 @@ pub struct World {
     pub npc_anime_decks: HashMap<u32, Deck>,
     /// The Kaiba Corporation tab of a custom NPC (0 Yu-Gi-Oh!, 1 GX, 2 5D's); the game's own follow their slot.
     pub npc_series: HashMap<u32, u32>,
+    /// The Field Spells the client has a field picture for (`GameData::field_pictures`).
+    pub field_pictures: Arc<std::collections::HashSet<u16>>,
     /// Each NPC's duel bot style (npc.rs), by npc_id.
     pub npc_styles: HashMap<u32, serde_json::Value>,
     /// Each NPC's name (the same for its three levels), by npc_id.
@@ -774,6 +776,7 @@ impl World {
             npc_decks: HashMap::new(),
             npc_anime_decks: HashMap::new(),
             npc_series: HashMap::new(),
+            field_pictures: Default::default(),
             npc_styles: HashMap::new(),
             npc_names: HashMap::new(),
             cards: HashMap::new(),

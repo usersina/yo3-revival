@@ -245,6 +245,7 @@ impl Table {
             }
             let (mut translator, mut table) = Translator::against_player(order, [&mine.main, &theirs.main], view.cards.clone());
             translator.tokens(self.world.token_rows.clone());
+            translator.field_pictures = self.world.field_pictures.clone();
             if anime { translator.note(crate::engine::ANIME_NOTE); }
             if let Some(user) = self.seats[s].entry.identity.filter(|i| !self.world.profiles.current_for(*i, anime)).map(|i| i.user_id) {
                 tracing::info!("user {user}'s game runs another card profile than the server's now");

@@ -1083,7 +1083,8 @@ impl Translator {
             out.push(command(cmd::CARD_SET, [to.player, to.zone, (to.zone < 5) as u32, 0]));
         }
         if to.zone == zone::FIELD_SPELL && to.face_up {
-            out.push(command(cmd::FIELD_CHANGE, [cid as u32, 0, 0, 0]));
+            let pictured = self.field_pictures.is_empty() || self.field_pictures.contains(&cid);
+            out.push(command(cmd::FIELD_CHANGE, [if pictured { cid as u32 } else { 0 }, 0, 0, 0]));
         } else if from.zone == zone::FIELD_SPELL && from.face_up && to.zone != zone::FIELD_SPELL {
             out.push(command(cmd::FIELD_CHANGE, [0; 4]));
         }

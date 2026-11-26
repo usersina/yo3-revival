@@ -612,6 +612,7 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
                 .collect(),
             npc_anime_decks: std::collections::HashMap::new(),
             npc_series: std::collections::HashMap::new(),
+            field_pictures: Arc::new(data.field_pictures.clone()),
             duel_server,
             http_port,
             // Booster packs (pack_type 1), their cards read as rarity tiers.

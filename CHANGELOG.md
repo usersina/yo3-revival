@@ -13,6 +13,15 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- **Dartz joins Kaiba Corporation.** A new opponent on the Yu-Gi-Oh! tab, in three levels: his Seal of Orichalcos
+  decks, printed cards normally and the Orichalcos cards he used in the anime while the server plays the anime cards.
+  He talks before and during the duel in his own words, and stands, poses and plays his duel scenes as a clothes-store
+  mannequin until he has his own art. More characters can follow the same way (#95).
+- **A Field Spell the game never had** (The Seal of Orichalcos...) no longer turns the duel field white: the field stays
+  the plain board.
+
 ## v0.1.26 (2026-11-26)
 
 - **EDOPro decks.** Desktop imports an EDOPro deck file (`.ydk`) into your decks, and exports yours for EDOPro: Settings →

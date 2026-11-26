@@ -136,6 +136,9 @@ static int card_added_read;
  * only find by its full path on disk: once the folder is known, each slot whose model is there gets that path. */
 static const char *npc_model_paths[30];
 static char npc_model_names[5][MAX_PATH * 2 + 32];
+/* The cut-in's sound timing choices, ten per NPC (0x78BBF8, read once at 0x4E3EB3 by the NPC index at +0xE4): the game's
+ * 25 rows, then a custom slot's donor's row (the animations it plays are the donor's), from `model/npNNN/donor.txt`. */
+static int32_t npc_cutin_timing[30 * 10];
 static void npc_models_point(const char *folder) {
     for (int i = 0; i < 5; ++i) {
         char file[MAX_PATH * 2 + 32];
@@ -143,7 +146,13 @@ static void npc_models_point(const char *folder) {
         if (GetFileAttributesA(file) == INVALID_FILE_ATTRIBUTES) continue;
         memcpy(npc_model_names[i], file, sizeof file);
         npc_model_paths[25 + i] = npc_model_names[i];
-        card_profile_log("[YO3 MOD] custom NPC: slot %d's body %s", 25 + i, file);
+        char donor_file[MAX_PATH * 2 + 32], text[8] = {0}; DWORD n = 0; int donor = 0;
+        snprintf(donor_file, sizeof donor_file, "%s/model/np%03d/donor.txt", folder, 25 + i);
+        HANDLE f = CreateFileA(donor_file, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (f != INVALID_HANDLE_VALUE) { ReadFile(f, text, sizeof text - 1, &n, NULL); CloseHandle(f); donor = atoi(text); }
+        if (donor < 0 || donor >= 25) donor = 0;
+        memcpy(&npc_cutin_timing[(25 + i) * 10], &npc_cutin_timing[donor * 10], 10 * sizeof npc_cutin_timing[0]);
+        card_profile_log("[YO3 MOD] custom NPC: slot %d's body %s (moves as NPC %d)", 25 + i, file, donor);
     }
 }
 static void card_added_learn(void) {
@@ -234,7 +243,31 @@ static int card_exists_install(void) {
  * 0x4E430F, its only reader), past which sit unrelated pointers ("bad allocation"). The read takes a table of our own:
  * the game's 25 paths, then `data/model/np025.mdl` to np029 for custom NPCs (the duel cut-in table at 0x788C40 has 30
  * entries). A slot with no body in the launcher's folder loads nothing, as slot 25 always did. */
+/* Patches a `[reg*4 + disp32]` read at `at` (its disp32 at `at + 3`, after the 3 opcode bytes `code`) from the game's
+ * table `table` to `ours`: 1 when the code was as expected. */
+static int npc_patch_table(uintptr_t at, const unsigned char code[3], uintptr_t table, const void *ours) {
+    unsigned char *site = (unsigned char *)game_address(at);
+    uint32_t was = (uint32_t)(uintptr_t)game_address(table), to = (uint32_t)(uintptr_t)ours;
+    if (memcmp(site, code, 3) || memcmp(site + 3, &was, 4)) return 0;
+    DWORD previous, ignored;
+    if (!VirtualProtect(site + 3, 4, PAGE_EXECUTE_READWRITE, &previous)) return 0;
+    memcpy(site + 3, &to, 4);
+    FlushInstructionCache(GetCurrentProcess(), site, 7); VirtualProtect(site + 3, 4, previous, &ignored);
+    return 1;
+}
 static int npc_models_install(void) {
+    /* The cut-in (CutinForNPC, constructor 0x4E3B90) loads a body only for an NPC index below 25 (`cmp edi,0x19` at
+     * 0x4E3C1D): 30, the model table's room. Its sound timing table gets rows for the custom slots too. */
+    static const unsigned char below25[] = { 0x83, 0xff, 0x19 }, timing_read[] = { 0x8b, 0x04, 0x8d };
+    unsigned char *limit = (unsigned char *)game_address(0x4E3C1D);
+    memcpy(npc_cutin_timing, (const void *)game_address(0x78BBF8), 25 * 10 * sizeof npc_cutin_timing[0]);
+    if (!memcmp(limit, below25, sizeof below25) && npc_patch_table(0x4E3EB3, timing_read, 0x78BBF8, npc_cutin_timing)) {
+        DWORD previous, ignored;
+        if (VirtualProtect(limit + 2, 1, PAGE_EXECUTE_READWRITE, &previous)) {
+            limit[2] = 30;
+            FlushInstructionCache(GetCurrentProcess(), limit, 3); VirtualProtect(limit + 2, 1, previous, &ignored);
+        }
+    } else card_profile_log("[YO3 MOD] custom NPC: the cut-in's code is not the expected code, custom NPCs get no cut-in");
     static const unsigned char read[] = { 0x8b, 0x0c, 0x85 };                     /* mov ecx,[eax*4+disp32] */
     unsigned char *site = (unsigned char *)game_address(0x4E430F);
     uint32_t table = (uint32_t)(uintptr_t)game_address(0x7F5B48);

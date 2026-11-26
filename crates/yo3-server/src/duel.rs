@@ -620,6 +620,7 @@ impl DuelSession {
         let answer = engine.new_duel_with(seed, lp, [(&m0, &e0), (&m1, &e1)], &self.world.card_names, &skills);
         let view = self.world.card_view();
         let (mut translator, mut table) = npc_translator(first, [&entry.deck.main, &npc.main], view.cards.clone());
+        translator.field_pictures = self.world.field_pictures.clone();
         if self.world.duel_check {
             // The NPC's hidden cards' rows, from a translator that hides nothing (the same uids in the same order).
             let mut model = crate::duelcheck::ClientModel::new(first, view.cards.clone());

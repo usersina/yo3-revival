@@ -332,3 +332,15 @@ direct: Wide open. Now that's satisfying.
 hurt: Heh... that actually felt good!
 win: Now THAT was satisfying!
 lose: Not satisfied... not yet. Again!
+
+[Dartz]
+greet: Ten thousand years I have waited, {you}. Let the Orichalcos judge your heart.
+greet: Another soul comes to the Seal. Very well, {you}. Let us begin.
+turn: The world's fate turns with each card. Watch.
+turn: Patience. The Great Leviathan does not hurry.
+ace: Behold {card}, a warrior of Atlantis!
+ace: Rise, {card}! Serve the Orichalcos!
+direct: Nothing stands between you and the Seal.
+hurt: A sharp blow... but the Leviathan's power is only waking.
+win: Your soul belongs to the Orichalcos now, {you}.
+lose: Your heart's light... is stronger than I believed. Remember this duel, {you}.

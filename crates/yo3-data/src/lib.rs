@@ -367,6 +367,9 @@ pub struct GameData {
     pub texts: HashMap<u32, String>,
     /// The item catalogue, by pbin id.
     pub catalogue: Vec<CatalogueEntry>,
+    /// The Field Spells the game has a duel field picture for (`data/field/<Konami id>_1.png`): another one shows a white
+    /// field.
+    pub field_pictures: std::collections::HashSet<u16>,
 }
 
 impl GameData {
@@ -417,7 +420,9 @@ impl GameData {
         packs.sort_by_key(|p| p.id);
         let texts = parse_texts(&ypk.read_required("data/text/txttbl_E.bin")?);
         let catalogue = parse_catalogue(&ypk.read_required("data/extra/yo3pbininfo.bin")?);
-        Ok(GameData { cards, regulations, decks, packs, texts, catalogue })
+        let field_pictures = ypk.entries().iter()
+            .filter_map(|e| e.name.strip_prefix("data/field/")?.strip_suffix("_1.png")?.parse().ok()).collect();
+        Ok(GameData { cards, regulations, decks, packs, texts, catalogue, field_pictures })
     }
 
     /// The avatar items the shop sells: the parts to acquire (sub 0), male and female.

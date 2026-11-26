@@ -1161,7 +1161,9 @@ series: NPCs 0–8 on tab 0, 9–16 on tab 1, 17–24 on tab 2 (**guess** from t
 preset (`deck_type` 3) carries that title id as `name_id`, which is how the server finds the ids: 25 NPCs (a 26th,
 ids 195–197, has decks but no name and would be a blank row, so it is left out). Hovering an NPC computes
 `sum(min(ex, need_ex)) * 1000 / sum(need_ex)` over its levels (`0x4BFDC4`, the Friendship Level bar): all-zero
-`need_ex` divides by zero. Seto Kaiba, Yami Marik, Alexis Rhodes and Jack Atlas (first ids 123, 141, 153, 174) refuse
+`need_ex` divides by zero. **Custom NPCs** ([custom NPCs](custom-npcs.md)) take slot 25 on (first id 195, Dartz): the server adds their
+levels to the roster with their tab, and the launcher and DLL supply their texts, body, portrait and faces; live
+2026-11-26. Seto Kaiba, Yami Marik, Alexis Rhodes and Jack Atlas (first ids 123, 141, 153, 174) refuse
 to duel ("Who the hell are you?", speech kind 36) unless the record's `pbin` has bits `0x250`–`0x253` (`pbin[74]`
 bits 0–3, `0x4BDAB0` state 2); the server sets them in every record.
 

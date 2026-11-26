@@ -473,6 +473,8 @@ pub fn npc_files(read: &impl Fn(&str) -> Option<Vec<u8>>, added: &Added) -> Resu
             }
         }
         out.push((format!("data/model/np{to:03}/np{to:03}.mdl"), mesh));
+        // Which game NPC's animations it plays, for the DLL's cut-in timing (tools/mod/card-profile.h).
+        out.push((format!("data/model/np{to:03}/donor.txt"), from.to_string().into_bytes()));
         // Its portrait and duel faces: the mannequin's own pictures, else the borrowed NPC's.
         let mannequin = npc.figure.as_deref() == Some("mannequin");
         let portrait = if mannequin { Some(crate::doll::portrait_png()) } else { read(&format!("data/npc/npcsel{from:03}.png")) };
