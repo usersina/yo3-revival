@@ -430,3 +430,23 @@ fn a_rental_invitation_accepted_after_the_lender_started_another_is_refused() {
     assert_eq!(one(t.a.send(req(0x2C33))).request(), Some(0x2D6A));
     assert_eq!(requests(&t.b.pushed()), [0x2C37]);
 }
+
+#[test]
+fn an_added_card_rents_like_any_other() {
+    // The cards the game never had (#75: the anime-only ones from the Anime Collection among them) are rows after the
+    // game's own; a rental between players takes them as it takes any row: put up, confirmed, in both players' records.
+    let mut t = table();
+    const ADDED: u16 = 45; // past this world's game rows, within its card_rows
+    let a_id = t.a_id;
+    t.dir.lock().unwrap().update_player(a_id, |p| { p.cards.insert(ADDED, 1); }).unwrap();
+    in_scene(&mut t);
+    assert_eq!(conditions(&mut t.a, 0, 7).request(), Some(0x2D5C));
+    assert_eq!(cards(&mut t.a, &[ADDED], &[], &[]).request(), Some(0x2D5A));
+    assert_eq!(one(t.a.send(req(0x2C2D))).request(), Some(0x2D60));
+    assert_eq!(send(&mut t.b, 0x2C2F, &[("answer", 2)]).request(), Some(0x2D64));
+    let record = one(t.b.send(req(0x2C34)));
+    assert_eq!(record.items.len(), 1, "the borrower's record");
+    let rows: Vec<u16> = record.items[0].fields.iter().filter(|(k, _)| ["main", "extra", "side"].contains(&k.as_str())).filter_map(|(_, v)| v.as_bytes())
+        .flat_map(|b| b.chunks(2).map(|c| u16::from_be_bytes([c[0], c[1]])).collect::<Vec<_>>()).collect();
+    assert_eq!(rows, [ADDED], "the added card is the rental's main list");
+}
