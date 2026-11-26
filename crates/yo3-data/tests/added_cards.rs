@@ -101,3 +101,30 @@ fn with_anime_cards_off_every_banlist_forbids_the_anime_only_cards() {
     }
     assert!(out.contains_key("data/regulation/3.y3r"), "Unlimited, which forbids nothing of its own, is written too");
 }
+
+#[test]
+fn the_anime_collection_pack_holds_the_anime_only_cards_and_names_itself_in_every_language() {
+    // Pack 300's file (pack 1's record with its own id, texts, picture and cards) and the UI text tables with its name
+    // and description, read back as the game reads them.
+    let Some(ypk) = game() else { return };
+    let mut added = yo3_data::added::Added { first_row: 5, ..Default::default() };
+    let card = |row: u16, rarity: u32, anime_only: bool, token: bool| yo3_data::added::AddedCard { row, cid: 9000 + row, passcode: 1, name: format!("C{row}"),
+        desc: String::new(), a: 0, b: rarity << 24, genre: 0, anime_only, token };
+    added.cards = vec![card(5, 0, true, false), card(6, 4, true, false), card(7, 0, true, false), card(8, 0, false, false), card(9, 0, true, true)];
+    assert_eq!(yo3_data::added::anime_pack_tiers(&added), vec![vec![5, 7], vec![6]], "Commons, then Rares; the printed card and the Token left out");
+    let files = yo3_data::added::anime_pack_files(&|n: &str| ypk.read(n).ok().flatten(), &added).unwrap();
+    let pack = files.iter().find(|(n, _)| n == "data/pack/300.y3a").expect("the pack file");
+    let record = yo3_proto::decode_file(&pack.1).unwrap();
+    assert_eq!(record.get("pack_image").and_then(yo3_proto::Value::as_str).as_deref(), Some("YO3_ANIME_1.png"));
+    assert_eq!(record.get("name_id").and_then(yo3_proto::Value::as_str).as_deref(), Some("23120"));
+    assert_eq!(record.get("pack").and_then(yo3_proto::Value::as_bytes), Some(&[0, 5, 0, 7, 0, 6][..]));
+    let tables: Vec<_> = files.iter().filter(|(n, _)| n.starts_with("data/text/txttbl_")).collect();
+    assert_eq!(tables.len(), 7, "every language");
+    for (name, table) in tables {
+        let texts = yo3_data::parse_texts(table);
+        assert_eq!(texts.get(&23120).map(String::as_str), Some("Anime Collection"), "{name}");
+        let before = yo3_data::parse_texts(&ypk.read(name).unwrap().unwrap());
+        assert_eq!(texts.len(), before.len() + 2, "{name}: the game's texts all kept");
+        assert_eq!(texts.get(&23000), before.get(&23000), "{name}: pack 1's name unchanged");
+    }
+}

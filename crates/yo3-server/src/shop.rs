@@ -145,6 +145,14 @@ pub struct ExchangePool {
     pub cards: Vec<u16>,
 }
 
+/// The Anime Collection: the anime-only cards, on the shelf only while the server has anime cards on.
+pub const ANIME_PACK: u32 = yo3_data::added::ANIME_PACK;
+
+/// Whether `pack` is on sale now: every booster pack, the Anime Collection only with anime cards on.
+pub fn on_sale(pack: &ShopPack, anime_cards: bool) -> bool {
+    pack.id != ANIME_PACK || anime_cards
+}
+
 /// What a sale id sells.
 pub enum Goods<'a> {
     Pack(&'a ShopPack),
@@ -157,7 +165,7 @@ pub enum Goods<'a> {
 impl<'a> Goods<'a> {
     pub fn find(world: &'a crate::front::World, sale_id: u32) -> Option<Goods<'a>> {
         if let Some(pack) = world.packs.iter().find(|p| p.id == sale_id) {
-            return Some(Goods::Pack(pack));
+            return on_sale(pack, world.settings.now().anime_cards).then_some(Goods::Pack(pack));
         }
         let item = sale_id.checked_sub(ITEM_SALE).and_then(|id| u16::try_from(id).ok());
         if let Some(id) = item {

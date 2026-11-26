@@ -580,6 +580,10 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
                     let date = |k: &str| p.record.get(k).and_then(Value::as_str).unwrap_or_default();
                     shop::ShopPack { id: p.id, released: date("created"), modified: date("modified"), tiers: shop::tiers(&p.cards) }
                 })
+                // The Anime Collection (pack 300, `yo3_data::added::anime_pack_files`): the anime-only cards by rarity,
+                // sold while the server has anime cards on.
+                .chain((!yo3_data::added::anime_pack_tiers(&added).is_empty()).then(|| shop::ShopPack { id: shop::ANIME_PACK,
+                    released: "2026-11-26 00:00:00".into(), modified: "2026-11-26 00:00:00".into(), tiers: yo3_data::added::anime_pack_tiers(&added) }))
                 .collect(),
             pack_lists: pack_lists(&data),
             // Structure decks: the deck_type 1 presets with their own art (SD001-SD005; the others are starters).

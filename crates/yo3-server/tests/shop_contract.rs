@@ -705,3 +705,28 @@ fn the_pack_lists_match_what_the_shops_packs_give() {
         }
     }
 }
+
+#[test]
+fn the_anime_collection_is_on_sale_only_while_the_server_plays_anime_cards() {
+    // Pack 300 (the Anime Collection: the anime-only cards, its file, picture and texts from the launcher's folder) is on
+    // the shelf and sold only with anime cards on; with them off it is neither listed nor sold (the client has no
+    // sold-out state: 0x48C790 shows what the list holds).
+    let anime = ShopPack { id: yo3_server::shop::ANIME_PACK, released: "2026-11-26 00:00:00".into(), modified: "2026-11-26 00:00:00".into(),
+        tiers: vec![vec![45, 46, 47, 48], vec![49]] };
+    let world = World { packs: vec![ShopPack { id: 1, released: String::new(), modified: String::new(), tiers: vec![vec![10, 11]] }, anime],
+        card_rows: 50, ..World::new((1..=20).collect()) };
+    let settings = world.settings.clone();
+    let server = Server::with_world(world);
+    let mut c = server.join_with_bp(1001, "Yugi", 1000);
+    let listed = |c: &mut common::Client| one(c.send(req(0x1B67))).items.iter().filter_map(|i| i.get("item_id").and_then(Value::as_u32)).collect::<Vec<_>>();
+    let buy = req_with(0x1B68, &[("sale_id", Value::U32(yo3_server::shop::ANIME_PACK)), ("item_num", Value::U32(1))]);
+    settings.set("anime-cards", "off").unwrap();
+    assert_eq!(listed(&mut c), [1], "off: not on the shelf");
+    assert_eq!(one(c.send(buy.clone())).request(), Some(0x1C25), "off: not sold");
+    settings.set("anime-cards", "on").unwrap();
+    assert_eq!(listed(&mut c), [1, 300]);
+    assert_eq!(one(c.send(buy)).get("dpoint"), Some(&Value::U32(900)));
+    let p = one(c.send(req(0x2775)));
+    assert_eq!(p.get("pack_id").and_then(Value::as_u32), Some(300));
+    assert!(rows(&p).iter().all(|r| (45..=49).contains(r)), "{:?}", rows(&p));
+}

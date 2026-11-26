@@ -60,10 +60,19 @@ pub fn prepare(base: &Path, game_dir: &Path, added: &yo3_data::added::Added, pic
     for (name, bytes) in &files {
         // `data/bin#/CARD_Prop.bin` -> `CARD_Prop.bin`, `data/regulation/20.y3r` (a banlist with the anime-only cards
         // Forbidden) -> `regulation/20.y3r`: the DLL looks a file up by its last part (tools/mod/added-cards-logic.h).
+        // The Anime Collection pack's file and the UI text tables likewise: `pack/300.y3a`, `text/txttbl_E.bin`.
         let leaf = name.rsplit('/').next().unwrap_or(name);
-        let at = if name.starts_with("data/regulation/") { staging.join("regulation") } else { staging.clone() };
+        let at = match ["regulation", "pack", "text"].into_iter().find(|kind| name.starts_with(&format!("data/{kind}/"))) {
+            Some(kind) => staging.join(kind),
+            None => staging.clone(),
+        };
         std::fs::create_dir_all(&at)?;
         std::fs::write(at.join(leaf), bytes)?;
+    }
+    // The pack's picture (data/img/pack/, 145x290), with its file.
+    if files.iter().any(|(name, _)| name.starts_with("data/pack/")) {
+        std::fs::create_dir_all(staging.join("img/pack"))?;
+        std::fs::write(staging.join("img/pack").join(yo3_data::added::ANIME_PACK_IMAGE), ANIME_PACK_PICTURE)?;
     }
     std::fs::write(staging.join("complete"), format!("{} file(s)\n", files.len()))?;
     let _ = std::fs::remove_dir_all(&folder);
@@ -72,6 +81,9 @@ pub fn prepare(base: &Path, game_dir: &Path, added: &yo3_data::added::Added, pic
     copy_pictures(&folder, added, pictures);
     Ok(Prepared { folder: Some(folder), written: files.len() })
 }
+
+/// The Anime Collection pack's picture (the owner's art, 145x290).
+pub const ANIME_PACK_PICTURE: &[u8] = include_bytes!("../assets/packs/YO3_ANIME_1.png");
 
 /// The face an added card shows while it has no picture of its own (`tools/engine/no-picture.py` makes it, 200x290).
 pub const NO_PICTURE: &[u8] = include_bytes!("../assets/no-picture.png");
@@ -156,6 +168,22 @@ mod tests {
         assert_ne!(std::fs::read(folder.join(format!("card/{cid}.png"))).unwrap(), NO_PICTURE);
         let (_, _, mini) = crate::art::decode_png(std::io::BufReader::new(std::fs::File::open(folder.join(format!("mini/{cid}.png"))).unwrap())).unwrap();
         assert_eq!(mini[0], 200, "the thumbnail is made from its own face");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_anime_collection_pack_is_written_with_its_picture_and_texts() {
+        // The launcher's folder holds what the DLL serves for pack 300: `pack/300.y3a`, `img/pack/YO3_ANIME_1.png` (145x290)
+        // and the UI text tables. Needs the game's files.
+        let game = std::env::var_os("YO3_GAME_DIR").map(PathBuf::from).unwrap_or_else(yo3_data::default_game_dir);
+        if !game.join("package/data002.ypk").is_file() { return }
+        let dir = std::env::temp_dir().join(format!("yo3-added-pack-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let done = prepare(&dir, &game, &quasar(), None).unwrap();
+        let folder = done.folder.unwrap();
+        assert!(folder.join("pack/300.y3a").is_file() && folder.join("text/txttbl_E.bin").is_file());
+        let (w, h, _) = crate::art::decode_png(std::io::Cursor::new(std::fs::read(folder.join("img/pack/YO3_ANIME_1.png")).unwrap())).unwrap();
+        assert_eq!((w, h), (145, 290), "the size of the game's pack pictures");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

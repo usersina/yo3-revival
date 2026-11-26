@@ -159,6 +159,16 @@ static void *__attribute__((thiscall, force_align_arg_pointer)) card_open_hook(v
         card_profile_log("[YO3 MOD] added cards: %s -> %s", path, file);
         return card_open_original(self, file);
     }
+    /* The Anime Collection pack: its file, the UI text tables with its name, and its picture (only when written). */
+    /* How Flash names a pack picture (seen live: the shop's first few). */
+    if (path && strstr(path, "img/pack/")) { static unsigned seen; if (seen++ < 4) card_profile_log("[YO3 MOD] pack picture asked: %s", path); }
+    if (card_added_folder[0] && yo3_added_pack_path(card_added_folder, path, file, sizeof file)) {
+        static unsigned pack_logs;
+        if (GetFileAttributesA(file) != INVALID_FILE_ATTRIBUTES) {
+            if (pack_logs++ < 16) card_profile_log("[YO3 MOD] added cards: %s -> %s", path, file);
+            return card_open_original(self, file);
+        }
+    }
     /* An added card's picture (the folder holds only theirs); read after the card files, so the folder is known. */
     if (card_added_folder[0] && yo3_added_art_path(card_added_folder, path, file, sizeof file) && GetFileAttributesA(file) != INVALID_FILE_ATTRIBUTES)
         return card_open_original(self, file);

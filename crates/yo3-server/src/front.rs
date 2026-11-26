@@ -3607,8 +3607,9 @@ impl FrontSession {
             // An empty text: the game greets with its own line, in its own language (#84).
             0x1B66 => Message::reply(0x1C20).with("text", Value::text("")),
             0x1B67 => {
-                let shop = self.world.settings.now().shop;
-                let packs = self.world.packs.iter().map(|p| crate::shop::shelf_item(p, shop.pack_cost));
+                let settings = self.world.settings.now();
+                let shop = settings.shop;
+                let packs = self.world.packs.iter().filter(|p| crate::shop::on_sale(p, settings.anime_cards)).map(|p| crate::shop::shelf_item(p, shop.pack_cost));
                 let decks = self.world.structure_decks.iter().map(|d| crate::shop::shelf_deck(d, shop.deck_cost));
                 packs.chain(decks).fold(Message::reply(0x1C22), Message::item)
             }

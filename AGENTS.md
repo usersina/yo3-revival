@@ -57,7 +57,8 @@ checks and releases). Keep the root README short; link to those guides for detai
    as an illustration. Launcher screenshots show the real current UI with test accounts and no private credentials.
    The second exception is `crates/yo3-launcher/assets/pics/`: card pictures the project's owner drew, shipped in the
    launcher, as 200x290 faces only (`tools/engine/shipped-pictures.py` makes them; the originals stay with the owner).
-   Add a picture there only when the owner gives it. The third is `tools/mod/art/`: the project's own pictures the
+   Add a picture there only when the owner gives it. `crates/yo3-launcher/assets/packs/` likewise holds the owner's pack
+   art (the Anime Collection's, 145x290, made from the owner's original in `logs/artwork/`). The third is `tools/mod/art/`: the project's own pictures the
    connection DLL draws in the game (the LP and damage pop-up "∞", made for the project, with their SVG sources), compiled into the DLL.
 7. **Don't disturb a live setup.** The user may have a server on the default ports (7443, 8080; older setups may use
    5730/1213/1214) and a client queued on display `:77`. Never stop, restart or touch them, or their `data/`. For your own checks run a

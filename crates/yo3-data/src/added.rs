@@ -126,7 +126,8 @@ impl Added {
 
     /// A short name for this list (FNV-1a of its JSON), for a launcher's folder of extended files.
     pub fn hash(&self) -> String {
-        let text = serde_json::to_string(self).unwrap_or_default();
+        // With the files' format: a launcher writes new kinds of files (the Anime Collection pack) into a new folder.
+        let text = format!("{FILES_FORMAT}{}", serde_json::to_string(self).unwrap_or_default());
         let hash = text.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x100_0000_01b3));
         format!("{hash:016x}")
     }
@@ -291,6 +292,86 @@ pub fn extend_files(read: impl Fn(&str) -> Option<Vec<u8>>, added: &Added) -> Re
         }
     }
     out.extend(banlists(&read, added)?);
+    out.extend(anime_pack_files(&read, added)?);
+    Ok(out)
+}
+
+/// What [`extend_files`] writes, as part of [`Added::hash`]: 2 added the Anime Collection pack's file and texts.
+const FILES_FORMAT: &str = "files 2 ";
+
+/// The Anime Collection pack (pack id [`ANIME_PACK`]): Blister's sells it while the server has anime cards on.
+pub const ANIME_PACK: u32 = 300;
+/// Its name and description in the UI text table: 23120-23199 is free in every language (the packs' texts are 23000-23119).
+pub const ANIME_PACK_NAME: u32 = 23120;
+pub const ANIME_PACK_DESC: u32 = 23121;
+/// Its picture (`data/img/pack/`, 145x290; the launcher ships it).
+pub const ANIME_PACK_IMAGE: &str = "YO3_ANIME_1.png";
+const ANIME_PACK_TEXTS: [(u32, &str); 2] = [(ANIME_PACK_NAME, "Anime Collection"),
+    (ANIME_PACK_DESC, "Cards from the anime that were never printed. On sale while the server plays the anime cards.")];
+
+/// A card's rarity (`b` bits 24-26: 0 Common, 4 Rare, 3 Super Rare, 2 Ultra Rare) as its tier: 0 to 3.
+fn tier_of(card: &AddedCard) -> usize {
+    match (card.b >> 24) & 7 { 4 => 1, 3 => 2, 2 | 1 | 5 => 3, _ => 0 }
+}
+
+/// The anime-only cards (no Tokens) by rarity tier, Common first, each tier in row order; empty tiers left out.
+pub fn anime_pack_tiers(added: &Added) -> Vec<Vec<u16>> {
+    let mut tiers = vec![vec![]; 4];
+    for card in added.cards.iter().filter(|c| c.anime_only && !c.token) {
+        tiers[tier_of(card)].push(card.row);
+    }
+    tiers.into_iter().filter(|t: &Vec<u16>| !t.is_empty()).collect()
+}
+
+/// The pack's file (`data/pack/300.y3a`, pack 1's record with its own id, texts, picture and cards) and the UI text
+/// tables with its name and description, when the server has anime-only cards. The picture is the launcher's.
+pub fn anime_pack_files(read: &impl Fn(&str) -> Option<Vec<u8>>, added: &Added) -> Result<Vec<(String, Vec<u8>)>, String> {
+    let tiers = anime_pack_tiers(added);
+    if tiers.is_empty() {
+        return Ok(vec![]);
+    }
+    let template = read("data/pack/1.y3a").ok_or("the game has no data/pack/1.y3a")?;
+    let mut pack = yo3_proto::decode_file(&template).map_err(|e| format!("data/pack/1.y3a: {e}"))?;
+    let rows: Vec<u8> = tiers.iter().flatten().flat_map(|r| r.to_be_bytes()).collect();
+    for (key, value) in [("pack_id", yo3_proto::Value::U32Alt(ANIME_PACK)), ("name_id", yo3_proto::Value::text(&ANIME_PACK_NAME.to_string())),
+        ("discription_id", yo3_proto::Value::text(&ANIME_PACK_DESC.to_string())), ("pack_image", yo3_proto::Value::text(ANIME_PACK_IMAGE)),
+        ("pack", yo3_proto::Value::Bin(rows)), ("pbin_no", yo3_proto::Value::U32Alt(0))] {
+        match pack.fields.iter_mut().find(|(k, _)| k == key) {
+            Some((_, v)) => *v = value,
+            None => pack.fields.push((key.into(), value)),
+        }
+    }
+    let mut out = vec![(format!("data/pack/{ANIME_PACK}.y3a"), yo3_proto::frame(&pack.encode()))];
+    for lang in LANGUAGES {
+        let name = format!("data/text/txttbl_{lang}.bin");
+        let Some(table) = read(&name) else { continue };
+        out.push((name.clone(), with_texts(&table, &ANIME_PACK_TEXTS).map_err(|e| format!("{name}: {e}"))?));
+    }
+    Ok(out)
+}
+
+/// A UI text table (`crate::parse_texts`' format) with `texts` added after its own (an id it has already is pointed at the
+/// new text; the game builds a map from the pairs at load, 0x51E6C0, so their order doesn't matter):
+/// u32 count, count pairs {u32 id, u32 offset into the strings}, u32 the strings' size, then the strings (UTF-16LE, NUL).
+pub fn with_texts(table: &[u8], texts: &[(u32, &str)]) -> Result<Vec<u8>, String> {
+    let u32_at = |at: usize| table.get(at..at + 4).map(|b| u32::from_le_bytes(b.try_into().unwrap())).ok_or("too short");
+    let count = u32_at(0)? as usize;
+    let base = 8 + 8 * count;
+    if table.len() < base { return Err("too short".into()) }
+    let mut pairs: Vec<(u32, u32)> = (0..count).map(|i| Ok((u32_at(4 + 8 * i)?, u32_at(8 + 8 * i)?))).collect::<Result<_, &str>>()?;
+    let mut strings = table[base..].to_vec();
+    for &(id, text) in texts {
+        let offset = strings.len() as u32;
+        strings.extend(utf16z(text));
+        match pairs.iter_mut().find(|(i, _)| *i == id) {
+            Some(pair) => pair.1 = offset,
+            None => pairs.push((id, offset)),
+        }
+    }
+    let mut out = (pairs.len() as u32).to_le_bytes().to_vec();
+    for (id, offset) in &pairs { out.extend(id.to_le_bytes()); out.extend(offset.to_le_bytes()); }
+    out.extend((strings.len() as u32).to_le_bytes());
+    out.extend(strings);
     Ok(out)
 }
 

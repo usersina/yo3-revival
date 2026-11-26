@@ -49,6 +49,41 @@ static int yo3_added_regulation_path(const char *folder, const char *path, char 
     memcpy(out, folder, a); memcpy(out + a, "/regulation/", 12); memcpy(out + a + 12, leaf, b + 1);
     return 1;
 }
+/* The Anime Collection pack (yo3_data::added::anime_pack_files): the game's open of `data/pack/<id>.y3a` (0x52DCF0),
+ * `data/text/txttbl_<lang>.bin` (0x51E5B0) or a pack picture (Flash's loadClip of "../img/pack/<name>", which may come
+ * as `data/img/pack/<name>` or with the Flash folder before it, `data/gfx/../img/pack/<name>`) becomes `folder/pack/...`,
+ * `folder/text/...` or `folder/img/pack/<name>`. The caller redirects only when that file exists, so the game's own
+ * packs, pictures and texts stay its own unless the launcher wrote a copy. */
+static int yo3_added_join(const char *folder, const char *kind, const char *leaf, char *out, size_t size) {
+    if (!*leaf || strchr(leaf, '/') || strchr(leaf, '\\') || strstr(leaf, "..")) return 0;
+    size_t a = strlen(folder), k = strlen(kind), b = strlen(leaf);
+    if (a + 1 + k + 1 + b + 1 > size) return 0;
+    memcpy(out, folder, a); out[a] = '/'; memcpy(out + a + 1, kind, k); out[a + 1 + k] = '/'; memcpy(out + a + 2 + k, leaf, b + 1);
+    return 1;
+}
+static int yo3_added_pack_path(const char *folder, const char *path, char *out, size_t size) {
+    if (!folder || !folder[0] || !path || strncmp(path, "data/", 5)) return 0;
+    if (!strncmp(path, "data/pack/", 10)) {
+        const char *leaf = path + 10, *p = leaf;
+        while (*p >= '0' && *p <= '9') ++p;
+        if (p == leaf || p - leaf > 5 || strcmp(p, ".y3a")) return 0;
+        return yo3_added_join(folder, "pack", leaf, out, size);
+    }
+    if (!strncmp(path, "data/text/txttbl_", 17)) {
+        const char *leaf = path + 10;
+        size_t n = strlen(leaf);
+        if (n != 12 || strcmp(leaf + 8, ".bin")) return 0; /* txttbl_E.bin */
+        return yo3_added_join(folder, "text", leaf, out, size);
+    }
+    const char *img = strstr(path, "img/pack/");
+    if (img && (img == path + 5 || img[-1] == '/')) {
+        const char *leaf = img + 9;
+        size_t n = strlen(leaf);
+        if (n < 5 || n > 64 || (strcmp(leaf + n - 4, ".png") && strcmp(leaf + n - 4, ".PNG"))) return 0;
+        return yo3_added_join(folder, "img/pack", leaf, out, size);
+    }
+    return 0;
+}
 /* An added card's picture: the game's open of `data/card/<id>_<art>.png` (the face) or `data/mini/<id>_<art>.png` (the
  * thumbnail) becomes `folder/card/<id>.png` or `folder/mini/<id>.png`. The launcher puts only added cards' pictures in
  * its folder, so a game card's picture is never replaced here (the anime pictures go through the card profile). */

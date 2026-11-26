@@ -24,6 +24,17 @@ int main(void) {
     assert(!yo3_added_art_path("C:/x", "data/card/../9709_1.png", out, sizeof out));
     assert(!yo3_added_art_path("C:/x", "data/back/9709_1.png", out, sizeof out));
     assert(!yo3_added_art_path("", "data/card/9709_1.png", out, sizeof out));
+    /* The Anime Collection pack: its file, the text tables and its picture, however Flash names the folder. */
+    assert(yo3_added_pack_path("C:/x", "data/pack/300.y3a", out, sizeof out) && !strcmp(out, "C:/x/pack/300.y3a"));
+    assert(!yo3_added_pack_path("C:/x", "data/pack/300.y3d", out, sizeof out));
+    assert(!yo3_added_pack_path("C:/x", "data/pack/../300.y3a", out, sizeof out));
+    assert(yo3_added_pack_path("C:/x", "data/text/txttbl_E.bin", out, sizeof out) && !strcmp(out, "C:/x/text/txttbl_E.bin"));
+    assert(!yo3_added_pack_path("C:/x", "data/text/countrytbl.bin", out, sizeof out));
+    assert(yo3_added_pack_path("C:/x", "data/img/pack/YO3_ANIME_1.png", out, sizeof out) && !strcmp(out, "C:/x/img/pack/YO3_ANIME_1.png"));
+    assert(yo3_added_pack_path("C:/x", "data/gfx/../img/pack/YO3_ANIME_1.png", out, sizeof out) && !strcmp(out, "C:/x/img/pack/YO3_ANIME_1.png"));
+    assert(!yo3_added_pack_path("C:/x", "data/img/pack/../../x.png", out, sizeof out));
+    assert(!yo3_added_pack_path("C:/x", "data/img/packs/YO3.png", out, sizeof out));
+    assert(!yo3_added_pack_path("", "data/pack/300.y3a", out, sizeof out));
     assert(yo3_added_regulation_path("C:/x", "data/regulation/20.y3r", out, sizeof out) && !strcmp(out, "C:/x/regulation/20.y3r"));
     assert(yo3_added_regulation_path("C:/x", "data/regulation/3.y3r", out, sizeof out) && !strcmp(out, "C:/x/regulation/3.y3r"));
     assert(!yo3_added_regulation_path("C:/x", "data/regulation/../20.y3r", out, sizeof out));
