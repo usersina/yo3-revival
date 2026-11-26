@@ -134,6 +134,7 @@ pub fn effect_number(description: u64) -> u64 {
 const DECK: u64 = 0x1;
 const HAND: u64 = 0x2;
 const MZONE: u64 = 0x4;
+const SZONE: u64 = 0x8;
 const GRAVE: u64 = 0x10;
 const REMOVED: u64 = 0x20;
 const EXTRA: u64 = 0x40;
@@ -155,8 +156,11 @@ pub fn shown(e: &Event) -> u64 {
                 DECK | EXTRA if from != 0 && from != DECK => bits |= TODECK,
                 MZONE if from == 0 => bits |= SPECIAL_SUMMON | TOKEN,
                 MZONE if from != MZONE => bits |= SPECIAL_SUMMON,
-                MZONE if mv.from.controller != mv.to.controller => bits |= CONTROL,
                 _ => {}
+            }
+            // A card kept on the field by the other player (a monster taken, Bounce Spell's Spell).
+            if from == to && from & (MZONE | SZONE) != 0 && mv.from.controller != mv.to.controller {
+                bits |= CONTROL;
             }
             bits
         }

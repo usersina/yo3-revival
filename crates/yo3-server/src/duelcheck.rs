@@ -806,6 +806,8 @@ pub mod selfplay {
         all
     }
     /// The client's token cards for the token package: (row, Konami id, name).
+    /// Where [`added_tokens`] puts the added Tokens: past the game's token rows (60100 on, `client_tokens`).
+    const ADDED_TOKEN_ROWS: u16 = 63000;
     const TOKEN_CARDS: [(u16, u16, &str); 4] =
         [(60010, 3914, "Metal Fiend Token"), (60011, 3913, "Mirage Token"), (60012, 3935, "Skyblaster Token"), (60013, 3922, "Emissary of Darkness Token")];
 
@@ -1190,14 +1192,16 @@ pub mod selfplay {
         Ok((cards, names))
     }
 
-    /// The added Tokens (`engine/added-cards.json`, #75) by their own rows: the rows and the rows by name. A real duel's
-    /// card table has them after the game's rows, as `crate::token_rows` finds them.
+    /// The added Tokens (`engine/added-cards.json`, #75) as rows of the harness's own: the rows and the rows by name. A
+    /// real duel's card table has them after the game's rows, as `crate::token_rows` finds them; here a deck's card is
+    /// its Konami id, so the Tokens' real rows (5206 on) would stand for the cards of those ids.
     pub fn added_tokens(dir: &Path) -> TokenCards {
         let (mut cards, mut names): TokenCards = Default::default();
-        for t in yo3_data::added::Added::load(dir).map(|a| a.cards).unwrap_or_default().into_iter().filter(|c| c.token) {
-            let c = t.card();
-            cards.insert(t.row, CardStats { cid: t.cid, atk: c.atk, def: c.def, level: c.level, attribute: c.attribute, race: c.race });
-            names.entry(t.name.clone()).or_default().push(t.row);
+        let tokens = yo3_data::added::Added::load(dir).map(|a| a.cards).unwrap_or_default().into_iter().filter(|c| c.token);
+        for (i, t) in tokens.enumerate() {
+            let (c, row) = (t.card(), ADDED_TOKEN_ROWS + i as u16);
+            cards.insert(row, CardStats { cid: t.cid, atk: c.atk, def: c.def, level: c.level, attribute: c.attribute, race: c.race });
+            names.entry(t.name.clone()).or_default().push(row);
         }
         (cards, names)
     }
