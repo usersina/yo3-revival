@@ -956,6 +956,19 @@ impl State {
     }
 }
 
+/// A count with thousands separated by commas (5,030), as the game writes them.
+fn grouped(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, d) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(d);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -1246,17 +1259,4 @@ mod tests {
         assert!(note.details.unwrap().contains("cards.cdb"));
         assert!(yo3_desktop::words::technical(&note.sentence).is_none());
     }
-}
-
-/// A count with thousands separated by commas (5,030), as the game writes them.
-fn grouped(n: u64) -> String {
-    let digits = n.to_string();
-    let mut out = String::new();
-    for (i, d) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i) % 3 == 0 {
-            out.push(',');
-        }
-        out.push(d);
-    }
-    out
 }
