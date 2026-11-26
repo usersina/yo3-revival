@@ -19,6 +19,9 @@ int main(void) {
     assert(!yo3_added_path("C:/x", "data/bin#/CARD_PROP.bin", out, 8));               /* too long for the buffer */
     assert(yo3_added_art_path("C:/x", "data/card/9709_1.png", out, sizeof out) && !strcmp(out, "C:/x/card/9709.png"));
     assert(yo3_added_art_path("C:/x", "data/mini/9709_1.png", out, sizeof out) && !strcmp(out, "C:/x/mini/9709.png"));
+    assert(yo3_added_art_path("C:/x", "data/field/10327_1.png", out, sizeof out) && !strcmp(out, "C:/x/field/10327.png"));
+    assert(!yo3_added_art_path("C:/x", "data/field/duel_field_right.png", out, sizeof out)); /* the board itself */
+    assert(!yo3_added_art_path("C:/x", "data/fieldx/10327_1.png", out, sizeof out));
     assert(!yo3_added_art_path("C:/x", "data/card/9709.png", out, sizeof out));       /* not the game's name of a face */
     assert(!yo3_added_art_path("C:/x", "data/card/9709_1.jpg", out, sizeof out));
     assert(!yo3_added_art_path("C:/x", "data/card/../9709_1.png", out, sizeof out));

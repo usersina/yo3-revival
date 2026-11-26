@@ -612,7 +612,9 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
                 .collect(),
             npc_anime_decks: std::collections::HashMap::new(),
             npc_series: std::collections::HashMap::new(),
-            field_pictures: Arc::new(data.field_pictures.clone()),
+            // The game's own field pictures and the added Field Spells': the launcher puts one in its folder for each (the
+            // download, else a clear one), where the DLL finds it.
+            field_pictures: Arc::new(data.field_pictures.iter().copied().chain(added.cards.iter().filter(|c| c.field_spell()).map(|c| c.cid)).collect()),
             duel_server,
             http_port,
             // Booster packs (pack_type 1), their cards read as rarity tiers.

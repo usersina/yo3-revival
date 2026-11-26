@@ -238,6 +238,14 @@ player's): the launcher fills it with the shipped pictures and with any `pics/<p
 parent's `pics`), so a picture of the card there shows it. A picture already made at 200x290 can go in
 `card/<id>.png` instead (the id the client knows: the Konami id or the stand-in id).
 
+**A Field Spell's duel field.** The game draws a face-up Field Spell's field from `data/field/<id>_1.png` (512x512), which
+it has for each of its own Field Spells and for no added one. Desktop fetches EDOPro's (`field/<passcode>.png` on the
+same picture server) with the card pictures, into `anime-art/field/<id>.png`; the list is `engine/anime/fields.tsv`
+(every added card whose row is a Field Spell: kind 13, subtype 2), which `tools/engine/anime-pictures.py` builds with
+the picture list. At each start the launcher copies each one beside the added cards (`field/<id>.png`), where the DLL
+serves it; a Field Spell without one gets `field/<id>.none`, and the DLL then shows the plain board for it. To check
+one on the headless client, put a 512x512 PNG at `field/<id>.png` in your `YO3_ANIME_ART` folder.
+
 ## Its anime version
 
 With the `anime-cards` setting on, an added card can play as its anime version like any card of the game: add its row

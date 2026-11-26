@@ -9,6 +9,8 @@
 //!   start, never meets a half-written picture. A card without a face, for any reason (not fetched yet, cancelled, failed,
 //!   refused as no card picture), shows the game's own artwork in the game, with the profile's stats and text unchanged.
 //! * The faces this made are listed in `card/.downloaded`: a face not listed is the player's own.
+//! * Then the duel field pictures of the added Field Spells ([`fields`]: the game has none for a card it never had),
+//!   EDOPro's `field/<passcode>.png`, as `field/<id>.png` (512x512, the game's own size), by the same rules.
 use super::{FACE, decode_png, id_of, write_png, prepare};
 use std::collections::BTreeSet;
 use std::io;
@@ -19,7 +21,7 @@ use std::time::Duration;
 /// The wait between two requests to the picture server.
 pub const PACE: Duration = Duration::from_millis(400);
 /// What the whole set weighs, said before the player clicks (177x254 JPEGs, about 25 KB each).
-pub const DOWNLOAD_SIZE: &str = "about 10 MB";
+pub const DOWNLOAD_SIZE: &str = "about 16 MB";
 /// A picture larger than this is refused unread.
 pub const MAX_BYTES: usize = 2 << 20;
 /// Faces made by Desktop's download, in `card/`.
@@ -45,13 +47,46 @@ fn parse(text: &str) -> Vec<Entry> {
     }).collect()
 }
 
+/// The duel field picture's size: the game's `data/field/<id>_1.png` and EDOPro's `field/<passcode>.png` alike.
+pub const FIELD: (u32, u32) = (512, 512);
+
+/// An added Field Spell: its Konami id (or stand-in) and the passcode of its field picture.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FieldEntry { pub cid: u32, pub passcode: u32 }
+
+/// The field pictures to fetch (`engine/anime/fields.tsv`, built by `tools/engine/anime-pictures.py`).
+pub fn fields() -> Vec<FieldEntry> {
+    include_str!("../../../../engine/anime/fields.tsv").lines().skip(1).filter_map(|line| {
+        let (cid, passcode) = line.split_once('\t')?;
+        Some(FieldEntry { cid: cid.parse().ok()?, passcode: passcode.parse().ok()? })
+    }).collect()
+}
+
 /// What the server said for one passcode.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Fetched { Jpeg(Vec<u8>), Missing }
 
 /// Asks for pictures. An `Err` is a problem reaching the server (worth a retry); a picture the server does not have is
 /// `Ok(Fetched::Missing)`.
-pub trait Fetcher { fn fetch(&mut self, passcode: u32) -> Result<Fetched, String>; }
+pub trait Fetcher {
+    fn fetch(&mut self, passcode: u32) -> Result<Fetched, String>;
+    /// The duel field picture (EDOPro's `field/<passcode>.png`); the bytes come back in [`Fetched::Jpeg`] all the same.
+    fn fetch_field(&mut self, passcode: u32) -> Result<Fetched, String>;
+}
+
+/// A downloaded field picture (a PNG) as the game's 512x512 RGBA field, opaque (a transparent part over black, as the
+/// Seal of Orichalcos' has), or why it is no field picture.
+pub fn field_from_png(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    if bytes.len() > MAX_BYTES { return Err("the picture is too large".into()) }
+    if !bytes.starts_with(b"\x89PNG") { return Err("it is not a PNG picture".into()) }
+    let (w, h, rgba) = super::decode_png(io::Cursor::new(bytes))?;
+    if !(64..=2048).contains(&w) || !(64..=2048).contains(&h) || rgba.is_empty() { return Err(format!("its size, {w}x{h}, is not a field's")) }
+    let opaque: Vec<u8> = rgba.as_chunks::<4>().0.iter().flat_map(|p| {
+        let a = u16::from(p[3]);
+        [(u16::from(p[0]) * a / 255) as u8, (u16::from(p[1]) * a / 255) as u8, (u16::from(p[2]) * a / 255) as u8, 255]
+    }).collect();
+    Ok(if (w, h) == FIELD { opaque } else { resize(&opaque, (w, h), FIELD) })
+}
 
 /// A downloaded JPEG as a 200x290 RGBA face, or why it is no card picture. Sizes are read before anything is decoded.
 pub fn face_from_jpeg(bytes: &[u8]) -> Result<Vec<u8>, String> {
@@ -131,16 +166,18 @@ pub struct Outcome {
     pub cancelled: bool,
     /// The server could not be reached, so the run stopped (what the last request said).
     pub unreachable: Option<String>,
+    /// Field pictures written by this run (the Field Spells' ids); one that could not be had is in `failed`.
+    pub fields: Vec<u32>,
 }
 
 /// Fetches the pictures of `entries` that have no face yet, into `dir` (see the module's rules). `progress(done, total)` is called
 /// after every card. The thumbnails follow from the faces when the run ends.
-pub fn download(dir: &Path, entries: &[Entry], fetcher: &mut dyn Fetcher, pace: Duration, cancel: &AtomicBool,
-    progress: &mut dyn FnMut(u32, u32)) -> io::Result<Outcome> {
+pub fn download(dir: &Path, entries: &[Entry], field_entries: &[FieldEntry], fetcher: &mut dyn Fetcher, pace: Duration,
+    cancel: &AtomicBool, progress: &mut dyn FnMut(u32, u32)) -> io::Result<Outcome> {
     std::fs::create_dir_all(dir.join("card"))?;
     let marks = dir.join("card").join(DOWNLOADED);
     let mut ours = downloaded(dir);
-    let (mut out, total, mut asked, mut lost) = (Outcome::default(), entries.len() as u32, false, 0);
+    let (mut out, total, mut asked, mut lost) = (Outcome::default(), (entries.len() + field_entries.len()) as u32, false, 0);
     for (n, entry) in entries.iter().enumerate() {
         if cancel.load(Ordering::SeqCst) { out.cancelled = true; break }
         let face: PathBuf = dir.join("card").join(format!("{}.png", entry.cid));
@@ -182,6 +219,42 @@ pub fn download(dir: &Path, entries: &[Entry], fetcher: &mut dyn Fetcher, pace: 
         }
         progress(n as u32 + 1, total);
     }
+    // The field pictures, by the same rules, once the cards are done.
+    let done = entries.len() as u32;
+    for (n, entry) in field_entries.iter().enumerate() {
+        if out.cancelled || out.unreachable.is_some() { break }
+        if cancel.load(Ordering::SeqCst) { out.cancelled = true; break }
+        std::fs::create_dir_all(dir.join("field"))?;
+        let file = dir.join("field").join(format!("{}.png", entry.cid));
+        if file.exists() { out.had += 1; progress(done + n as u32 + 1, total); continue }
+        let mut last = (true, String::new());
+        let mut found = Err(());
+        for attempt in 0..TRIES {
+            if asked { std::thread::sleep(if attempt == 0 { pace } else { pace * 5 * attempt }) }
+            asked = true;
+            match fetcher.fetch_field(entry.passcode) {
+                Ok(Fetched::Missing) => { found = Ok(None); break }
+                Ok(Fetched::Jpeg(bytes)) => match field_from_png(&bytes) {
+                    Ok(rgba) => { found = Ok(Some(rgba)); break }
+                    Err(why) => last = (false, why),
+                },
+                Err(why) => last = (true, why),
+            }
+        }
+        match found {
+            Ok(Some(rgba)) => { lost = 0; write_png(&file, FIELD, &rgba)?; out.fields.push(entry.cid) }
+            Ok(None) => { lost = 0; out.failed.push((entry.cid, "the server has no field picture of it".into())) }
+            Err(()) => {
+                let (network, why) = last;
+                out.failed.push((entry.cid, why.clone()));
+                if network {
+                    lost += 1;
+                    if lost >= GIVE_UP { out.unreachable = Some(why); progress(done + n as u32 + 1, total); break }
+                } else { lost = 0 }
+            }
+        }
+        progress(done + n as u32 + 1, total);
+    }
     prepare(dir)?;
     Ok(out)
 }
@@ -205,8 +278,12 @@ mod tests {
     fn jpeg_square() -> Vec<u8> { gradient(200, 200) }
 
     #[derive(Default)]
-    struct Fake { pics: BTreeMap<u32, Result<Fetched, String>>, asked: Vec<u32>, failing: u32 }
+    struct Fake { pics: BTreeMap<u32, Result<Fetched, String>>, fields: BTreeMap<u32, Vec<u8>>, asked: Vec<u32>, failing: u32 }
     impl Fetcher for Fake {
+        fn fetch_field(&mut self, passcode: u32) -> Result<Fetched, String> {
+            self.asked.push(passcode);
+            Ok(self.fields.get(&passcode).map_or(Fetched::Missing, |b| Fetched::Jpeg(b.clone())))
+        }
         fn fetch(&mut self, passcode: u32) -> Result<Fetched, String> {
             self.asked.push(passcode);
             if self.failing > 0 { self.failing -= 1; return Err("no connection".into()) }
@@ -223,7 +300,7 @@ mod tests {
         dir
     }
     fn run(dir: &Path, entries: &[Entry], fake: &mut Fake) -> Outcome {
-        download(dir, entries, fake, Duration::ZERO, &AtomicBool::new(false), &mut |_, _| {}).unwrap()
+        download(dir, entries, &[], fake, Duration::ZERO, &AtomicBool::new(false), &mut |_, _| {}).unwrap()
     }
     fn jpeg() -> Fetched { Fetched::Jpeg(jpeg_177x254()) }
 
@@ -326,7 +403,7 @@ mod tests {
         fake.pics.insert(102, Ok(Fetched::Jpeg(jpeg_square())));
         fake.pics.insert(104, Ok(jpeg()));
         let cancel = AtomicBool::new(false);
-        let out = download(&dir, &entries, &mut fake, Duration::ZERO, &cancel, &mut |done, _| if done == 4 { cancel.store(true, Ordering::SeqCst) }).unwrap();
+        let out = download(&dir, &entries, &[], &mut fake, Duration::ZERO, &cancel, &mut |done, _| if done == 4 { cancel.store(true, Ordering::SeqCst) }).unwrap();
         assert!(out.cancelled);
         assert_eq!(out.saved, vec![1, 4]);
         assert_eq!(out.failed.iter().map(|f| f.0).collect::<Vec<_>>(), vec![2, 3]);
@@ -352,6 +429,34 @@ mod tests {
         let out = run(&dir, &entries[1..], &mut down);
         assert_eq!(out.unreachable.as_deref(), Some("no connection"));
         assert_eq!(down.asked.len(), 9, "three cards, three tries each, then it stops");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_added_field_spells_get_their_field_picture_at_the_games_size() {
+        // The list: every added Field Spell, The Seal of Orichalcos by its Konami id and passcode.
+        assert!(fields().contains(&FieldEntry { cid: 10327, passcode: 48179391 }));
+        // A 256x256 field with a transparent half (the Seal's is RGBA): 512x512 and opaque, the clear part black.
+        let dir = scratch("fields");
+        std::fs::create_dir_all(&dir).unwrap();
+        let picture = dir.join("seal.png");
+        let rgba: Vec<u8> = (0..256 * 256).flat_map(|i| if i % 256 < 128 { [0, 200, 0, 255] } else { [255, 255, 255, 0] }).collect();
+        super::super::write_png(&picture, (256, 256), &rgba).unwrap();
+        let mut fake = Fake::default();
+        fake.fields.insert(48179391, std::fs::read(&picture).unwrap());
+        let entries = [FieldEntry { cid: 10327, passcode: 48179391 }, FieldEntry { cid: 3981, passcode: 110000100 }];
+        let out = download(&dir, &[], &entries, &mut fake, Duration::ZERO, &AtomicBool::new(false), &mut |_, _| {}).unwrap();
+        assert_eq!(out.fields, vec![10327]);
+        assert_eq!(out.failed, vec![(3981, "the server has no field picture of it".to_string())]);
+        let (w, h, field) = super::super::read_png(&dir.join("field/10327.png")).unwrap();
+        assert_eq!((w, h), FIELD);
+        assert_eq!(&field[..4], &[0, 200, 0, 255]);
+        assert_eq!(&field[field.len() - 4..], &[0, 0, 0, 255]);
+        // A second run asks again only for the one still missing; a PNG that isn't one is refused.
+        fake.asked.clear();
+        let again = download(&dir, &[], &entries, &mut fake, Duration::ZERO, &AtomicBool::new(false), &mut |_, _| {}).unwrap();
+        assert_eq!((again.had, fake.asked.clone()), (1, vec![110000100]));
+        assert!(field_from_png(&jpeg_177x254()).is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

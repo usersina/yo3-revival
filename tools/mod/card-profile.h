@@ -389,6 +389,31 @@ static int card_patch_call(uintptr_t preferred, uintptr_t target, void *replacem
     return 1;
 }
 
+/* The duel field's background (FieldChange, DuelScene 0x50CD60, called once from 0x51464F with EBX's object in EAX and
+ * the Field Spell's Konami id in ESI): 0 hides the field picture (the plain board), any other id loads
+ * `data/field/<id>_1.png`, and a missing one draws the field white. An added Field Spell's picture is downloaded with the
+ * card pictures; until it is, the launcher leaves `field/<id>.none` in its folder, and the id becomes 0 here. */
+static void *field_change_original __attribute__((used));
+static __attribute__((used)) unsigned __attribute__((cdecl)) field_shown(unsigned cid) {
+    char file[MAX_PATH * 2 + 32];
+    if (!cid || !card_added_folder[0]) return cid;
+    snprintf(file, sizeof file, "%s/field/%u.none", card_added_folder, cid);
+    if (GetFileAttributesA(file) == INVALID_FILE_ATTRIBUTES) return cid;
+    card_profile_log("[YO3 MOD] added cards: Field Spell %u has no field picture yet, the plain board", cid);
+    return 0;
+}
+void field_change_stub(void);
+__asm__(".text\n.globl _field_change_stub\n_field_change_stub:\n push %esi\n push %eax\n push %ecx\n push %edx\n push %esi\n"
+        " call _field_shown\n add $4,%esp\n mov %eax,%esi\n pop %edx\n pop %ecx\n pop %eax\n call *_field_change_original\n pop %esi\n ret\n");
+static int field_change_install(void) {
+    field_change_original = game_address(0x50CD60);
+    if (!card_patch_call(0x51464F, 0x50CD60, (void *)field_change_stub)) {
+        card_profile_log("[YO3 MOD] added cards: the field change is not the expected code, left alone");
+        return 0;
+    }
+    return 1;
+}
+
 static int card_profile_install(void) {
     BYTE *base = (BYTE *)GetModuleHandleA(NULL);
     IMAGE_NT_HEADERS32 *nt = (IMAGE_NT_HEADERS32 *)(base + ((IMAGE_DOS_HEADER *)base)->e_lfanew);
@@ -427,6 +452,7 @@ static int card_profile_install(void) {
     if (!open_tramp) return 0;
     card_exists_install();
     npc_models_install();
+    field_change_install();
     card_open_original = (void *(__attribute__((thiscall)) *)(void *, const char *))open_tramp;
     return 1;
 }

@@ -51,6 +51,12 @@ pub struct AddedCard {
 }
 
 impl AddedCard {
+    /// A Field Spell (kind 13 Spell, subtype 2 Field in `b` bits 16-18, as the game's own Field Spells have it): the game
+    /// has no duel field picture (`data/field/<id>_1.png`) for it, so the launcher puts one in its folder.
+    pub fn field_spell(&self) -> bool {
+        (self.b >> 3) & 0x1F == 13 && (self.b >> 16) & 7 == 2
+    }
+
     /// The row as [`CardDb`] holds the game's own.
     pub fn card(&self) -> Card {
         let (a, b) = (self.a, self.b);

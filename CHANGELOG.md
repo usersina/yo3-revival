@@ -19,8 +19,11 @@ Older entries describe their release at the time. For current setup, use the [RE
   decks, printed cards normally and the Orichalcos cards he used in the anime while the server plays the anime cards.
   He talks before and during the duel in his own words, and stands, poses and plays his duel scenes as a clothes-store
   mannequin until he has his own art. More characters can follow the same way (#95).
-- **A Field Spell the game never had** (The Seal of Orichalcos...) no longer turns the duel field white: the field stays
-  the plain board.
+- **The Field Spells the game never had show their own field.** The Seal of Orichalcos, Advanced Dark, Toon Kingdom and
+  the other added Field Spells come with their duel field picture, EDOPro's, downloaded with the card pictures (Settings →
+  Game → Card pictures). Until then they leave the plain board, where the field used to turn white.
+- **A Set Field Spell can be activated.** A Field Spell you Set had no menu to activate it later; it has now, and
+  turned face up it shows its field (Sogen's grassland) like one played from the hand.
 
 ## v0.1.26 (2026-11-26)
 

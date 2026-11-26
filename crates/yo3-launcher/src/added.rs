@@ -98,6 +98,7 @@ pub const NO_PICTURE: &[u8] = include_bytes!("../assets/no-picture.png");
 /// them with the anime ones, by the card's official passcode) into `folder`, at every start, so a picture fetched since the
 /// last one shows. A card without one shows [`NO_PICTURE`] (and its thumbnail), never an empty frame.
 fn copy_pictures(folder: &Path, added: &yo3_data::added::Added, pictures: Option<&Path>) {
+    copy_fields(folder, added, pictures);
     for card in &added.cards {
         let have = |kind: &str| pictures.map(|p| p.join(kind).join(format!("{}.png", card.cid))).filter(|p| p.is_file());
         let (face, mini) = (have("card"), have("mini"));
@@ -110,6 +111,21 @@ fn copy_pictures(folder: &Path, added: &yo3_data::added::Added, pictures: Option
                 // A downloaded face without its thumbnail: the game's own folder thumbnail is made from the face it shows.
                 (None, _) => { let _ = write_mini(face.as_deref(), &to); }
             }
+        }
+    }
+}
+
+/// Each added Field Spell's duel field (`field/<id>.png`, 512x512: Desktop's Get pictures fetches EDOPro's) into `folder`,
+/// where the DLL finds the game's `data/field/<id>_1.png`. Without one it gets `field/<id>.none` instead: the DLL then shows
+/// the plain board for it (the game has no field picture for a card it never had, and a missing one drew the field white).
+fn copy_fields(folder: &Path, added: &yo3_data::added::Added, pictures: Option<&Path>) {
+    let dir = folder.join("field");
+    for card in added.cards.iter().filter(|c| c.field_spell()) {
+        if std::fs::create_dir_all(&dir).is_err() { return }
+        let (to, none) = (dir.join(format!("{}.png", card.cid)), dir.join(format!("{}.none", card.cid)));
+        match pictures.map(|p| p.join("field").join(format!("{}.png", card.cid))).filter(|p| p.is_file()) {
+            Some(from) if std::fs::copy(&from, &to).is_ok() => { let _ = std::fs::remove_file(&none); }
+            _ => { let _ = std::fs::remove_file(&to); let _ = std::fs::write(&none, b""); }
         }
     }
 }
@@ -151,6 +167,27 @@ mod tests {
 
     fn quasar() -> yo3_data::added::Added {
         yo3_data::added::Added::parse(include_str!("../../../engine/added-cards.json")).unwrap()
+    }
+
+    #[test]
+    fn an_added_field_spell_gets_its_field_picture_or_the_plain_board_mark() {
+        let dir = std::env::temp_dir().join(format!("yo3-added-fields-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (folder, pictures) = (dir.join("list"), dir.join("art"));
+        let added = quasar();
+        let seal = added.cards.iter().find(|c| c.name == "The Seal of Orichalcos").unwrap().cid;
+        assert!(added.cards.iter().filter(|c| c.field_spell()).count() >= 14, "the added Field Spells");
+        // Nothing downloaded: a mark for each, no picture (the DLL shows the plain board).
+        copy_fields(&folder, &added, Some(&pictures));
+        assert!(folder.join(format!("field/{seal}.none")).is_file() && !folder.join(format!("field/{seal}.png")).exists());
+        // Downloaded since: the picture, and the mark goes.
+        std::fs::create_dir_all(pictures.join("field")).unwrap();
+        std::fs::write(pictures.join(format!("field/{seal}.png")), b"png").unwrap();
+        copy_fields(&folder, &added, Some(&pictures));
+        assert_eq!(std::fs::read(folder.join(format!("field/{seal}.png"))).unwrap(), b"png");
+        assert!(!folder.join(format!("field/{seal}.none")).exists());
+        assert!(!folder.join("field/9709.none").exists(), "Shooting Quasar Dragon is no Field Spell");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

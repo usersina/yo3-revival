@@ -8,8 +8,10 @@ use std::time::Duration;
 use yo3_launcher::art::get::{self, Fetched, Fetcher, Outcome};
 use yo3_launcher::art::pack;
 
-/// ProjectIgnis' picture server: `{passcode}.jpg` under it.
+/// ProjectIgnis' picture server: `{passcode}.jpg` under it, and a Field Spell's duel field `field/{passcode}.png`.
 pub const SERVER: &str = "https://pics.projectignis.org:2096/pics/";
+/// The duel field pictures' folder on the server (a URL piece, never shown).
+const FIELDS: &str = concat!("field", "/");
 /// Said to the server: only that this is a program, nothing about the player.
 const AGENT: &str = "YO3-Revival-Pictures";
 
@@ -25,9 +27,10 @@ impl HttpFetcher {
     }
 }
 
-impl Fetcher for HttpFetcher {
-    fn fetch(&mut self, passcode: u32) -> Result<Fetched, String> {
-        let url = format!("{}{passcode}.jpg", self.base);
+impl HttpFetcher {
+    /// `name` under the server's folder: the picture's bytes, `Missing` on a 404.
+    fn get(&mut self, name: &str) -> Result<Fetched, String> {
+        let url = format!("{}{name}", self.base);
         self.runtime.block_on(async {
             let mut response = self.client.get(&url).send().await.map_err(|e| e.without_url().to_string())?;
             if response.status() == reqwest::StatusCode::NOT_FOUND { return Ok(Fetched::Missing) }
@@ -42,6 +45,12 @@ impl Fetcher for HttpFetcher {
     }
 }
 
+impl Fetcher for HttpFetcher {
+    fn fetch(&mut self, passcode: u32) -> Result<Fetched, String> { self.get(&format!("{passcode}.jpg")) }
+    /// EDOPro's duel field picture: `field/{passcode}.png`.
+    fn fetch_field(&mut self, passcode: u32) -> Result<Fetched, String> { self.get(&format!("{FIELDS}{passcode}.png")) }
+}
+
 /// What the download thread reports.
 #[derive(Clone, Debug)]
 pub enum Event { Progress(u32, u32), Done(Result<Outcome, String>) }
@@ -52,7 +61,7 @@ pub fn start(dir: PathBuf, base: String, cancel: Arc<AtomicBool>, events: tokio:
     std::thread::spawn(move || {
         let result = HttpFetcher::new(&base).map_err(|e| format!("{e:#}")).and_then(|mut fetcher| {
             let mut progress = |done, total| { let _ = events.send(Event::Progress(done, total)); };
-            get::download(&dir, &get::list(), &mut fetcher, get::PACE, &cancel, &mut progress).map_err(|e| e.to_string())
+            get::download(&dir, &get::list(), &get::fields(), &mut fetcher, get::PACE, &cancel, &mut progress).map_err(|e| e.to_string())
         });
         let _ = events.send(Event::Done(result));
     });
@@ -68,7 +77,7 @@ pub fn stop(cancel: &AtomicBool) { cancel.store(true, Ordering::SeqCst) }
 
 /// The sentence after a download, and whether it went well.
 pub fn download_sentence(out: &Outcome) -> (bool, String) {
-    let got = out.saved.len();
+    let got = out.saved.len() + out.fields.len();
     let pictures = |n: usize| if n == 1 { "1 picture".to_owned() } else { format!("{n} pictures") };
     if out.unreachable.is_some() {
         return (false, format!("We couldn't reach the picture server{}. Check your internet connection and try again, or use Add from a file.",
@@ -169,7 +178,7 @@ mod tests {
         let dir = PathBuf::from(std::env::var("YO3_LIVE_PICTURES").expect("a scratch folder"));
         let entries: Vec<_> = get::list().into_iter().filter(|e| [4021, 8035, 4998].contains(&e.cid)).collect();
         let mut fetcher = HttpFetcher::new(SERVER).unwrap();
-        let out = get::download(&dir, &entries, &mut fetcher, get::PACE, &AtomicBool::new(false), &mut |d, t| eprintln!("{d}/{t}")).unwrap();
+        let out = get::download(&dir, &entries, &[], &mut fetcher, get::PACE, &AtomicBool::new(false), &mut |d, t| eprintln!("{d}/{t}")).unwrap();
         eprintln!("{out:?}");
         assert_eq!(out.saved.len(), 3, "{out:?}");
     }

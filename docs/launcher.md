@@ -216,7 +216,9 @@ press **I saved it**), then Settings. In a text box the first Escape only leaves
 
 Settings → Game → **Card pictures** (v0.1.17 (2026-11-22); before, **Anime pictures** under the Anime cards switch in Settings →
 Singleplayer) holds the pictures of the anime cards and of the [cards the game never had](anime-cards.md#artwork) (Shooting
-Quasar Dragon, Divine Serpent Geh and the others your host gives): about 10 MB from ProjectIgnis' picture server. The game's own cards keep their artwork.
+Quasar Dragon, Divine Serpent Geh and the others your host gives): about 16 MB from ProjectIgnis' picture server. The game's own cards keep their artwork.
+With them come the duel field pictures of the added Field Spells (The Seal of Orichalcos, Advanced Dark, Toon Kingdom...),
+EDOPro's: the board shows one while its Field Spell is face up. Until it is downloaded, that Field Spell leaves the plain board.
 
 ![Settings, Game, Card pictures: the switch, the bar and its buttons](../screenshots/settings-card-pictures.png)
 
@@ -264,7 +266,7 @@ Settings → Singleplayer → **Anime cards** (off by default) plays some cards 
 is your own server's `anime-cards` setting, so the switch shows what the server has (asked of it while it runs, read from its
 saved settings while it is stopped) and writes it the same way. It takes effect from the next game start; with the game open,
 **RESTART THE GAME** appears on the main screen. Turning it on while some pictures are missing opens a dialog: what is about to be
-downloaded (about 10 MB from ProjectIgnis' picture server, how many of the cards still have no picture, that a card without one keeps
+downloaded (about 16 MB from ProjectIgnis' picture server, how many of the cards still have no picture, that a card without one keeps
 the game's artwork), **Get pictures** (the dialog closes and the bar under the switch shows the download; the result is a toast) or **Not now**. The switch stays on
 whatever you choose, and [Card pictures](#card-pictures) downloads later. A server you join never shows this switch: its host
 decides.

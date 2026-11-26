@@ -1850,7 +1850,8 @@ own Spell/Trap zones, the opponent's (Give and Take and Black Garden place there
 Mystical Cards of Light, Numbing Grub, Senet Switch's move) is the player's. The client has no zone dialog, but every
 zone, empty or not, is a click target (pick areas `0x509CD0`, hover place `0x50B510`) whose click sends the card command
 of the command map entry keyed as a card on that zone would be (monster zones zone 0, Spell/Trap zones zone 5, the
-zone's index in bits 16–23): duelRequestName 2 `{CommandID, player, position: the zone, index 0}` (`0x4F9510`). So the
+zone's index in bits 16–23; the Field zone is its own, zone `0xA` at index 0, looked up and sent so: keyed as Spell/Trap
+zone 5 index 5, a Set Field Spell had no menu, live 2026-11-26): duelRequestName 2 `{CommandID, player, position: the zone, index 0}` (`0x4F9510`). So the
 server first shows an OK dialog (kind 0) with the client's own prompt, 155 "Select Monster Card Zones to render
 unusable.", 324 "Select a Spell & Trap Card Zone to make unusable." or, after HINTMSG_TOZONE (571, Card.SelectAdjacent),
 472 "Move this card to an adjacent unoccupied Monster Card Zone.", then the free zones as a command map (Summon for a
@@ -2041,7 +2042,7 @@ way (all from the 227 original duel logs, their handlers read in the client):
 
 | Command | Params | When | Handler |
 | ------- | ------ | ---- | ------- |
-| 7 FieldChange | the Field Spell's Konami id, or 0 | a card face up in the Field zone; 0 when it leaves | DuelScene → `0x50CD60`: the duel field's background (Dragon Ravine, Geartown, Necrovalley... in the logs) |
+| 7 FieldChange | the Field Spell's Konami id, or 0 | a card face up in the Field zone (moved there, or a Set one turned face up: the client changes the background on neither by itself, live 2026-11-26 with Sogen); 0 when it leaves; the id of an added Field Spell too: the launcher puts EDOPro's field picture beside the added cards and the DLL serves it as `data/field/<id>_1.png`, or, before it is downloaded, turns the id into 0 at the call (0x51464F, ESI the id) so the plain board shows (a missing picture drew the field white, a clear one black) | DuelScene → `0x50CD60`: the duel field's background (Dragon Ravine, Geartown, Necrovalley... in the logs) |
 | `0x1E` CardSet | player, zone, 1 for a monster | after a Set's move | DuelScene: the Set effect `0x22` |
 | `0x22` CardActivate | the card's place as moves give it (face up), Konami id, uid | before an activation's ChainSet | DuelScene: the activation effect by card type (`0x1A`–`0x20`; `0x20` for the player's "trump card"), waited for |
 | `0x43` | player, 1, 0 | the turn player's Draw Phase | DuelCutin `0x505A70`: the draw line (param3 non-zero: none) |

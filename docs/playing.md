@@ -160,7 +160,7 @@ If a protected monster disappears, a slot appears empty but remains occupied, or
 ## Anime card versions
 
 Playing alone, turn on **Anime cards** in Desktop's Settings → Singleplayer: it is your own server's `anime-cards` setting, off
-by default, and it shows what the server really has. Turning it on offers the anime pictures right away (a dialog: about 10 MB
+by default, and it shows what the server really has. Turning it on offers the anime pictures right away (a dialog: about 16 MB
 from ProjectIgnis' picture server, how many cards have none yet, **Get pictures** or **Not now**; the switch stays on either way).
 A host of a server sets `anime-cards` to `on` ([the setting](guide.md#live-settings)) for everyone who plays there; a server you
 join is always its host's choice and has no switch for you. A change takes effect at the next duel; a game that is already open
@@ -189,7 +189,7 @@ Deck card.
   deletes a deck and never touches a file it cannot read), and the server places a deck again when you pick it for a duel. A game
   opened without the launcher gets this at its next Play from the launcher.
 - **Pictures come from Settings.** The project does not host the anime pictures. In Desktop, Settings → Game → **Card
-  pictures** downloads them (about 10 MB, from ProjectIgnis' picture server, by itself when **Download automatically** is on,
+  pictures** downloads them (about 16 MB, from ProjectIgnis' picture server, by itself when **Download automatically** is on,
   else when you press **Get pictures**, with **Cancel**); **Add from a file** takes a zip a friend made with **Save to a file**.
   They show from the next PLAY. A card with no picture (not fetched yet, or the download was cancelled or failed) keeps
   the game's own picture with the anime card's stats and text, and your own pictures are never replaced

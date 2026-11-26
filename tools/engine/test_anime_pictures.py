@@ -44,6 +44,16 @@ class AnimePictures(unittest.TestCase):
         self.assertEqual(by[5231][1:], ['0', '29762407'])
         self.assertEqual(by[8035][1:], ['513000079', '32646477'])
 
+    def test_the_committed_field_list_is_every_added_field_spell(self):
+        # The duel field pictures: the game has one for each of its own Field Spells and none for an added one.
+        self.assertEqual((ROOT / 'engine/anime/fields.tsv').read_text(encoding='utf-8'), pictures.build_fields(ADDED))
+        rows = {int(r.split('\t')[0]): int(r.split('\t')[1]) for r in pictures.build_fields(ADDED).splitlines()[1:]}
+        by_name = {c['name']: c for c in ADDED}
+        # The Seal of Orichalcos by its Konami id, the anime-only Deuteros by its stand-in id and anime passcode.
+        self.assertEqual(rows[by_name['The Seal of Orichalcos']['cid']], 48179391)
+        self.assertEqual(rows[by_name['Orichalcos Deuteros']['cid']], 110000100)
+        self.assertNotIn(by_name['Shooting Quasar Dragon']['cid'], rows)
+
     def test_a_card_without_any_passcode_is_refused(self):
         with self.assertRaises(SystemExit):
             pictures.build({'cards': [{'cid': 1, 'anime': 0, 'official': 0}]})

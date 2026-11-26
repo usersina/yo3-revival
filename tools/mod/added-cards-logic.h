@@ -105,23 +105,26 @@ static int yo3_added_npc_path(const char *folder, const char *path, char *out, s
     }
     return 0;
 }
-/* An added card's picture: the game's open of `data/card/<id>_<art>.png` (the face) or `data/mini/<id>_<art>.png` (the
- * thumbnail) becomes `folder/card/<id>.png` or `folder/mini/<id>.png`. The launcher puts only added cards' pictures in
- * its folder, so a game card's picture is never replaced here (the anime pictures go through the card profile). */
+/* An added card's picture: the game's open of `data/card/<id>_<art>.png` (the face), `data/mini/<id>_<art>.png` (the
+ * thumbnail) or `data/field/<id>_1.png` (a Field Spell's duel field) becomes `folder/card/<id>.png`, `folder/mini/<id>.png`
+ * or `folder/field/<id>.png`. The launcher puts only added cards' pictures in its folder, so a game card's picture is
+ * never replaced here (the anime pictures go through the card profile). */
 static int yo3_added_art_path(const char *folder, const char *path, char *out, size_t size) {
     if (!folder || !folder[0] || !path) return 0;
-    const char *kind = !strncmp(path, "data/card/", 10) ? "card" : !strncmp(path, "data/mini/", 10) ? "mini" : NULL;
+    const char *kind = !strncmp(path, "data/card/", 10) ? "card" : !strncmp(path, "data/mini/", 10) ? "mini"
+                     : !strncmp(path, "data/field/", 11) ? "field" : NULL;
     if (!kind) return 0;
-    const char *id = path + 10, *p = id;
+    size_t k = strlen(kind);
+    const char *id = path + 6 + k, *p = id;
     while (*p >= '0' && *p <= '9') ++p;
     if (p == id || p - id > 5 || *p != '_') return 0;
     const char *art = ++p;
     while (*p >= '0' && *p <= '9') ++p;
     if (p == art || strcmp(p, ".png")) return 0;
     size_t a = strlen(folder), n = (size_t)(art - 1 - id);
-    if (a + 6 + n + 5 > size) return 0;
-    memcpy(out, folder, a); memcpy(out + a, "/", 1); memcpy(out + a + 1, kind, 4); out[a + 5] = '/';
-    memcpy(out + a + 6, id, n); memcpy(out + a + 6 + n, ".png", 5);
+    if (a + 2 + k + n + 5 > size) return 0;
+    memcpy(out, folder, a); out[a] = '/'; memcpy(out + a + 1, kind, k); out[a + 1 + k] = '/';
+    memcpy(out + a + 2 + k, id, n); memcpy(out + a + 2 + k + n, ".png", 5);
     return 1;
 }
 #endif
