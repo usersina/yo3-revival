@@ -11,6 +11,8 @@ const SLIFER: u16 = 4999;
 const RA: u16 = 5000;
 const CALL_OF_THE_HAUNTED: u16 = 4989; // a Spell with anime cards on
 const MONSTER_REBORN: u16 = 4842;
+const DARK_HOLE: u16 = 4342;
+const BLUE_EYES: u16 = 4007;
 const FILLER: u16 = 4012; // Feral Imp
 
 fn clean(s: &Scenario) {
@@ -69,4 +71,30 @@ fn monster_reborn_revives_obelisk_until_the_end_phase() {
     s.run(&[EndTurn]).unwrap();
     clean(&s);
     assert_eq!((s.count(0, "mzone", OBELISK), s.count(0, "grave", OBELISK)), (0, 1), "{}", s.context());
+}
+
+/// Ra's other choice when Special Summoned from the Graveyard: "This turn, this card cannot be destroyed, and is unaffected
+/// by card effects that would make it leave the field, also you take no battle damage from battles involving it, also it
+/// gains this effect. If this card can attack (Quick Effect): You can pay 1000 LP, then target 1 other monster on the
+/// field; send it to the Graveyard, ignoring card effects." Monster Reborn brings Ra back; it pays 1000 LP to send the
+/// opponent's Blue-Eyes to the Graveyard, survives Dark Hole, and returns to the Graveyard at the End Phase.
+#[test]
+fn ra_revived_as_the_phoenix_sends_a_monster_away_and_survives_until_the_end_phase() {
+    let spawns = [at(0, Grave, RA), at(0, Hand, MONSTER_REBORN), at(0, Hand, DARK_HOLE), at(1, Monster, BLUE_EYES)];
+    let Some(mut s) = field(&spawns) else { return };
+    s.choose_options(&[1]);
+    s.prefer(&[(1, BLUE_EYES)]);
+    s.run(&[Activate(MONSTER_REBORN)]).unwrap();
+    clean(&s);
+    assert_eq!(s.count(0, "mzone", RA), 1, "{}", s.context());
+    assert_eq!(s.lp(0), 8000, "the Phoenix pays nothing to come: {}", s.context());
+    s.run(&[Activate(RA)]).unwrap();
+    clean(&s);
+    assert_eq!((s.lp(0), s.count(1, "grave", BLUE_EYES)), (7000, 1), "1000 LP, Blue-Eyes sent: {}", s.context());
+    s.run(&[Activate(DARK_HOLE)]).unwrap();
+    clean(&s);
+    assert_eq!(s.count(0, "mzone", RA), 1, "Dark Hole can't destroy it this turn: {}", s.context());
+    s.run(&[EndTurn]).unwrap();
+    clean(&s);
+    assert_eq!((s.count(0, "mzone", RA), s.count(0, "grave", RA)), (0, 1), "back in the Graveyard: {}", s.context());
 }
