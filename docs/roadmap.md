@@ -37,7 +37,11 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
 - [ ] The anime's missing cards (#75; inventory of 2026-11-25 in the ignored `logs/anime-missing-20261125/`): 358 printed
       ones are added (rows 4848-5205), with scenario tests (`tests/anime_printed_*.rs`). Five that make Tokens the game never had came with their
       Tokens (rows 5206-5216). Open: Spirit Illusion, whose Doppelganger Token copies a monster and has no Type or Attribute
-      of its own for the client's row; the about 940 anime-only ones the tools accept, in deck batches; the anime Michion and Hailon
+      of its own for the client's row; the anime-only ones, 944 in 29 deck batches (`engine/added/anime-batches.tsv`,
+      `tools/engine/anime-batches.py`): batch 1 added (rows 5217-5258, 42 cards; Natural Selection waits for its Selection
+      Token), batches 2-29 to come, each tested in tiers (the per-card fuzz, then scenarios for the flagged cards, those
+      the checks point at, signature cards and a random 30% of the rest: batch 1's sample found a bug the fuzz can't,
+      Limit Tribute doing only part of its text); the rule goes into docs/added-cards.md after a few batches; the anime Michion and Hailon
       deal ∞ damage to ∞ LP (half of ∞, and ∞ minus a number, are ∞): confirm that reading.
 - [ ] Complete menu/effect coverage and automatic native UI replay/minimization. Known reveal/reversal/disabled-zone
       gaps remain visible; neither the random corpus nor matching state hashes proves all card interactions.
