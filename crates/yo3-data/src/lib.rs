@@ -9,6 +9,8 @@ use std::path::{Path, PathBuf};
 use yo3_proto::{Message, Value};
 
 pub mod added;
+pub mod doll;
+pub mod mdl;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

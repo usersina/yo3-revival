@@ -97,7 +97,12 @@ pub struct AddedNpc {
     pub help: String,
     /// The tab: 0 Yu-Gi-Oh!, 1 GX, 2 5D's.
     pub series: u32,
+    /// The game NPC whose skeleton and animations it moves with (0-24).
     pub body: u32,
+    /// What it wears on that skeleton: "mannequin" for our clothes-store mannequin (`doll.rs`), else the game NPC's
+    /// own body and skins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub figure: Option<String>,
     /// Three, the easiest first: each a deck by card names (the anime deck plays while the server has anime cards on).
     pub levels: Vec<AddedNpcLevel>,
     /// What they say, by line number in their block of the UI texts (`62000 + 300 * slot + n`): per level a hundred,
@@ -453,10 +458,16 @@ pub fn npc_files(read: &impl Fn(&str) -> Option<Vec<u8>>, added: &Added) -> Resu
         }
         let (from, to) = (npc.body, npc.slot);
         let model = format!("data/model/np{from:03}.mdl");
-        let mesh = read(&model).ok_or_else(|| format!("the game has no {model}"))?;
+        let mut mesh = read(&model).ok_or_else(|| format!("the game has no {model}"))?;
+        if npc.figure.as_deref() == Some("mannequin") {
+            mesh = crate::doll::mannequin(&mesh).map_err(|e| format!("{}'s mannequin: {e}", npc.name))?;
+            out.push((format!("data/model/np{to:03}/{}", crate::doll::TEXTURE), crate::doll::shading_png()));
+        } else if let Some(figure) = &npc.figure {
+            return Err(format!("{}: no figure named {figure:?} (mannequin)", npc.name));
+        }
         // Its own folder, `data/model/np025/`: the model finds its skins by name beside it, so the borrowed body's
         // textures go there too (a character's own skins later replace them under the same names: the "doll").
-        for skin in skins(&mesh) {
+        for skin in skins(&mesh).into_iter().filter(|s| s != crate::doll::TEXTURE) {
             if let Some(png) = read(&format!("data/model/{skin}")) {
                 out.push((format!("data/model/np{to:03}/{skin}"), png));
             }

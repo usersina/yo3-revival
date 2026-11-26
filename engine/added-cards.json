@@ -5752,6 +5752,7 @@
    "help": "The ancient king of Atlantis and leader of the Doma organisation, who has lived ten thousand years.\n\nWith The Seal of Orichalcos he seals the souls of the Duelists he defeats, to awaken the Great Leviathan.",
    "series": 0,
    "body": 5,
+   "figure": "mannequin",
    "levels": [
     {
      "title": "The Seal of Orichalcos",
