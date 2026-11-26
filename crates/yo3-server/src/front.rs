@@ -4112,9 +4112,14 @@ impl FrontSession {
     /// Watching a duel (agent mode 4, 0x4A3340): 0x1838 {duel_id} -> 0x1839 {host, port, card_protector_1,
     /// card_protector_2} with the items avatar_1 and avatar_2 (the players' records by seat, loaded as the duel's two
     /// players) and duelData {event_type, official, duel_id, match_type} (0x4A3650, the duel's rule); 0x183A when the
-    /// duel isn't being played by two seated players, or its host didn't allow watching.
+    /// duel isn't being played by two seated players, its host didn't allow watching, or the watcher's game runs another
+    /// card profile than the server's.
     fn watch(&self, msg: &Message) -> Message {
         let refused = Message::reply(0x183A);
+        // A game that loaded another card profile would show the duel with other cards' stats and texts (#60).
+        if self.stale_game() {
+            return refused;
+        }
         let Some(duel_id) = msg.get("duel_id").and_then(Value::as_u32) else { return refused };
         let (table, match_type) = {
             let hub = self.hub();

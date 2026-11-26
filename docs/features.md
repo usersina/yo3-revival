@@ -207,7 +207,7 @@ release, and "—" a row that is not implemented or unsupported.
 
 | Feature | Status | Since | Verified by | Notes / issues |
 | --- | --- | --- | --- | --- |
-| Watch Duel on a duelling player | Implemented | v0.0.1 (2026-11-09) | `duel_stream_contract.rs`, `pvp_contract.rs`; live | A duel closed to watchers cannot be watched by going around the menu (v0.0.19). |
+| Watch Duel on a duelling player | Implemented | v0.0.1 (2026-11-09) | `duel_stream_contract.rs`, `pvp_contract.rs`; live | A duel closed to watchers cannot be watched by going around the menu (v0.0.19). A game whose card profile isn't the server's (anime cards switched since it started) is refused watching too, with the reason in its chat (Unreleased, `profile_lifecycle.rs`). |
 | Duel logs of player duels (Latest Duel Logs, replay) | Implemented | v0.0.1 (2026-11-09) | `duel_stream_contract.rs`; live | `duellog.rs`; a match keeps its last duel only. |
 | Duel logs of NPC duels | Implemented | v0.0.13 (2026-11-14) | See NPCs | #12. |
 

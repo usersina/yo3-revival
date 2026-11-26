@@ -244,3 +244,19 @@ fn switching_anime_off_and_on_again_keeps_every_card_and_quantity_of_the_servers
         assert_eq!((sorted(placed.main.clone()), sorted(placed.extra.clone())), (sorted(deck.main.clone()), sorted(deck.extra.clone())), "round {round}: the saved deck again");
     }
 }
+
+#[test]
+fn a_stale_game_cannot_watch_a_duel() {
+    // Watch Duel (0x1838 -> 0x1839) shows the duel with the watcher's own card data: a game that loaded another profile
+    // would see other cards' stats and texts. It gets 0x183A (the game's "cannot watch") and the reason in its chat; a
+    // current game asking for a duel that isn't on is refused the same way, without the reason.
+    let server = Server::with_world(world(true));
+    let loaded = hash(&server.world);
+    let watch = || req_with(0x1838, &[("duel_id", Value::U32(7))]);
+    let mut stale = game(&server, 1021, "Rex", Some(""));
+    assert_eq!(one(stale.send(watch())).request(), Some(0x183A));
+    assert!(told(&mut stale));
+    let mut current = game(&server, 1022, "Weevil", Some(&loaded));
+    assert_eq!(one(current.send(watch())).request(), Some(0x183A));
+    assert!(!told(&mut current));
+}

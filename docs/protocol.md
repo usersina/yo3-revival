@@ -1072,6 +1072,7 @@ Play again):
 | Challenge to a hosted duel | `0x17B6` | `0x17B8 {error_code 201}` | "Duel Request was refused." | the table at the challenger step |
 | Create or enter a user event | `0x3390`, `0x3397` | `0x33F5`, `0x33FB` `{error_code 0}` | the events' error twins | `event_request`'s own `fail` |
 | Select Deck (the last gate: a game that went stale while queued, matched or hosting) | `0x1F4F` update_type 1 | `0x22CB` | "You have been disconnected from the Duel Server." and back to the map; the opponent is released as for any refused deck (`0x2009`, `duel_end` 3) | as the deck check above |
+| Watch Duel (the duel would show with the watcher's other card data) | `0x1838` | `0x183A` | the game's refusal to watch, as for a duel closed to watchers | `profile_lifecycle.rs` `a_stale_game_cannot_watch_a_duel` |
 | A stale host's Accept | `0x17CA` answer 2 | answered as a decline (`0x17CB`; the challenger gets `0x17CA` declined) | the challenger's offer is refused | |
 
 A game that loaded the pinned profile is unaffected, and while the game's own cards are pinned every client duels whether
