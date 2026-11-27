@@ -497,11 +497,11 @@ pub fn danger_link<'a, M: Clone + 'a>(label: impl text::IntoFragment<'a>, on_pre
 
 /// The kit's line icons (24 px grid), drawn in one colour: the widget tints them.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Icon { Copy, Save, Help, Flag, Heart, More, Check, Cross, Pending, Plus, Trash, Server, User, Open, Bell, Link, Refresh, Cog, Chat, Book }
+pub enum Icon { Copy, Save, Help, Flag, Heart, More, Check, Cross, Pending, Plus, Trash, Server, User, Open, Bell, Link, Refresh, Cog, Chat, Book, Folder }
 
 static ICONS: LazyLock<Vec<svg::Handle>> = LazyLock::new(|| {
     const LINE: &str = "fill='none' stroke='#000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'";
-    let shapes: [String; 20] = [
+    let shapes: [String; 21] = [
         format!("<g {LINE}><rect x='9' y='9' width='12' height='12' rx='2'/><path d='M5 15V5a2 2 0 0 1 2-2h10'/></g>"),
         format!("<g {LINE}><path d='M12 3v12M7 10l5 5 5-5M4 20h16'/></g>"),
         format!("<g {LINE}><circle cx='12' cy='12' r='9'/><path d='M9.4 9.3a2.7 2.7 0 1 1 3.8 2.5c-.7.3-1.2 1-1.2 1.8v.4'/></g><circle cx='12' cy='17.3' r='1.2'/>"),
@@ -522,6 +522,7 @@ static ICONS: LazyLock<Vec<svg::Handle>> = LazyLock::new(|| {
         format!("<g {LINE}><circle cx='12' cy='12' r='3'/><path d='M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1'/><circle cx='12' cy='12' r='6.5'/></g>"),
         format!("<g {LINE}><path d='M4 5h16v11H9l-5 4z'/><path d='M8 9.5h8M8 12.5h5'/></g>"),
         format!("<g {LINE}><path d='M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z'/><path d='M4 21V5M8 7h7'/></g>"),
+        format!("<g {LINE}><path d='M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/></g>"),
     ];
     shapes.iter().map(|shape| svg::Handle::from_memory(format!("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>{shape}</svg>").into_bytes())).collect()
 });
@@ -736,12 +737,34 @@ pub fn setting_group<'a, M: 'a>(label: &'a str, rows: Vec<Element<'a, M>>) -> El
 /// One setting: its name and one short line on the left, its control on the right; `below` (if any) under the line,
 /// for what belongs to it (a confirmation, a progress bar, a sub-setting).
 pub fn setting<'a, M: 'a>(title: impl text::IntoFragment<'a>, line: impl text::IntoFragment<'a>, control: Option<Element<'a, M>>, below: Option<Element<'a, M>>) -> Element<'a, M> {
-    let mut head = iced::widget::row![iced::widget::column![text(title).size(15).font(BODY_BOLD).color(INK), text(line).size(13).color(INK_SOFT)].spacing(2).width(Grow)]
-        .spacing(14).align_y(iced::Alignment::Center);
+    setting_row(title.into_fragment(), None, line.into_fragment(), control, below)
+}
+
+/// One setting whose explanation waits behind a "?" beside its name (`help_tip`): `line` is only for its state, and
+/// may be empty. Rows stay one line high; the longer word is there for whoever asks.
+pub fn setting_tip<'a, M: 'a>(title: impl text::IntoFragment<'a>, tip: impl text::IntoFragment<'a>, line: impl text::IntoFragment<'a>, control: Option<Element<'a, M>>, below: Option<Element<'a, M>>) -> Element<'a, M> {
+    setting_row(title.into_fragment(), Some(tip.into_fragment()), line.into_fragment(), control, below)
+}
+
+fn setting_row<'a, M: 'a>(title: text::Fragment<'a>, tip: Option<text::Fragment<'a>>, line: text::Fragment<'a>, control: Option<Element<'a, M>>, below: Option<Element<'a, M>>) -> Element<'a, M> {
+    let mut name = iced::widget::row![text(title).size(15).font(BODY_BOLD).color(INK)].spacing(6).align_y(iced::Alignment::Center);
+    if let Some(tip) = tip { name = name.push(help_tip(tip)) }
+    let mut words = iced::widget::column![name].spacing(2).width(Grow);
+    if !line.is_empty() { words = words.push(text(line).size(13).color(INK_SOFT)) }
+    let mut head = iced::widget::row![words].spacing(14).align_y(iced::Alignment::Center);
     if let Some(control) = control { head = head.push(control) }
     let mut body = iced::widget::column![head].spacing(10);
     if let Some(below) = below { body = body.push(below) }
     container(body).padding([10, 14]).width(Grow).into()
+}
+
+/// A small "?" that shows `tip` while the pointer rests on it: what a setting or a field does, kept out of the way.
+pub fn help_tip<'a, M: 'a>(tip: impl text::IntoFragment<'a>) -> Element<'a, M> {
+    let mark = svg(ICONS[Icon::Help as usize].clone()).width(15).height(15)
+        .style(|_, status| svg::Style { color: Some(if matches!(status, svg::Status::Hovered) { LINK } else { alpha(INK_SOFT, 0.8) }) });
+    tooltip(container(mark).padding(1), container(text(tip).size(13).color(ON_DARK)).max_width(340).padding([6, 10]).style(|_| container::Style {
+        background: Some(alpha(BAR_LOW, 0.96).into()), border: Border { color: alpha(GLOW, 0.4), width: 1.0, radius: 4.0.into() }, ..container::Style::default() }),
+        tooltip::Position::Top).gap(6).into()
 }
 
 /// A button on the footer: an icon and a word in a quiet outline that lights up on hover; `active` while its screen is open.

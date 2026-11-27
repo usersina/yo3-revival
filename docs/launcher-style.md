@@ -41,7 +41,8 @@ tabs, typing with Tab and Enter, sign-in errors, dialogs, dragging, minimising a
   line. Notices about both tabs go behind the title bar's bell, not in a banner over the page.
 - **Forms check as you type.** Each rule is a line that turns green when met and red when broken; the form's button
   works once all are met. An address is looked up before Add.
-- **Short words.** A dialog says what it does in a sentence or two.
+- **Short words.** A dialog says what it does in a sentence or two. A setting or option shows its name and control;
+  what it does is behind a **?** (`help_tip`), not a grey paragraph under every row.
 - **Dark outside, light inside.** Bars, tabs and the backdrop are dark with light text; panels are light with dark
   text, as in the game.
 
@@ -93,7 +94,8 @@ Sizes: 15 px body, 14 px captions and footer, 19 px frame titles, about half the
 | Count | `badge(n)` on a control's corner | red with a white number, 9+ above nine |
 | Frame | `panel(Some(title), content)` | silver rim with four bolts, navy title strip with stripes, light-grey body |
 | Title bar, footer | `title_strip(content)`, `footer_strip(content)` | dark bars with a silver line toward the content |
-| Settings rows | `setting_group(label, rows)`, `setting(title, line, control, below)`, `switch` (a `toggler` style) | a labelled card of rows: name and one line left, control right; on/off settings are switches |
+| Settings rows | `setting_group(label, rows)`, `setting_tip(title, tip, line, control, below)`, `setting(title, line, control, below)`, `switch` (a `toggler` style) | a labelled card of rows: name left, control right; what it does behind a **?** beside the name, and a line under it only for a state that needs the player (empty otherwise); on/off settings are switches |
+| Help mark | `help_tip(tip)` | a small **?** that shows its tip (up to 340 px wide) while the pointer rests on it; beside a heading, a tick box or a field's label, in place of a grey sentence under it |
 | Toast | `toast(content, Tone)` | a card in the bottom right corner with a green, red or blue stripe; never moves the page |
 | Text field | `text_input(..).style(field)` | white well, blue ring when focused; `.secure(true)` for passwords |
 | Checkbox | `checkbox(..).style(tick)` | navy when ticked |

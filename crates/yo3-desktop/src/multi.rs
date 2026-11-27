@@ -1003,12 +1003,11 @@ impl State {
             Form::SignIn => {
                 let mut stay = tick("Stay signed in", self.stay, Tick::Stay);
                 if self.vault.is_none() { stay = checkbox(false).label("Stay signed in").style(yo3_skin::tick).size(16).text_size(14) }
-                let mut col = column![
+                let col = column![
                     labelled("User ID", input("", &self.user, Field::User, false)),
                     labelled("Password", input("", &self.password, Field::Password, true)),
-                    row![tick("Save User ID", self.save_user, Tick::SaveUser), Space::new().width(16), stay].align_y(Center),
+                    row![tick("Save User ID", self.save_user, Tick::SaveUser), Space::new().width(16), stay].extend(self.vault_problem.as_deref().map(yo3_skin::help_tip)).spacing(6).align_y(Center),
                 ].spacing(8);
-                if let Some(why) = &self.vault_problem { col = col.push(text(why).size(13).color(color::INK_SOFT)) }
                 col.push(row![yo3_skin::link("Forgot password?", Message::Show(Form::Recover), false), Space::new().width(Fill),
                     text("New here?").size(14).color(color::INK_SOFT), yo3_skin::link("Create account", Message::Show(Form::Register), false)].spacing(6).align_y(Center))
                     .into()
@@ -1067,10 +1066,9 @@ impl State {
             }
             Form::Trust(server) => {
                 let mut col = column![
-                    heading("First connection to this server"),
+                    row![heading("First connection to this server"),
+                        yo3_skin::help_tip("YO3 Revival remembers this server and checks it is the same one each time. An invite link from the host does this for you.")].spacing(6).align_y(Center),
                     text(format!("{} at {}", server.name, server.address)).size(14).font(BODY_BOLD).color(color::INK),
-                    text("YO3 Revival remembers this server and checks it is the same one each time. An invite link from the host does this for you.")
-                        .size(13).color(color::INK_SOFT),
                     yo3_skin::link(if self.show_identity { "Hide details" } else { "Details" }, Message::ShowIdentity, false),
                 ].spacing(8);
                 if self.show_identity {
@@ -1081,8 +1079,8 @@ impl State {
             Form::PlayAs => {
                 let ready = !self.busy && !self.other_user.trim().is_empty() && !self.password.is_empty();
                 column![
-                    heading("Play as another account"),
-                    text("Starts another game on this server, signed in as a different account. Each game keeps its own settings and decks.").size(13).color(color::INK_SOFT),
+                    row![heading("Play as another account"),
+                        yo3_skin::help_tip("Starts another game on this server, signed in as a different account. Each game keeps its own settings and decks.")].spacing(6).align_y(Center),
                     labelled("User ID", input("", &self.other_user, Field::Other, false)),
                     labelled("Password", input("", &self.password, Field::Password, true)),
                     actions(if self.busy { "Signing in…" } else { "Play" }, ready.then_some(Message::PlayAsGo)),
@@ -1090,8 +1088,8 @@ impl State {
             }
             Form::Decks => {
                 let mut col = column![
-                    heading("Your decks on this server"),
-                    text("Import an EDOPro deck (.ydk) into Load Deck, or save one of your decks for EDOPro.").size(13).color(color::INK_SOFT),
+                    row![heading("Your decks on this server"),
+                        yo3_skin::help_tip("Import an EDOPro deck (.ydk) into the game's Load Deck, or save one of your decks for EDOPro.")].spacing(6).align_y(Center),
                 ].spacing(8);
                 match &self.decks {
                     None => col = col.push(text("Reading your decks…").size(14).color(color::INK_SOFT)),
@@ -1101,8 +1099,7 @@ impl State {
                     },
                 }
                 col = col.push(actions(if self.busy { "Working…" } else { "Import…" }, (!self.busy).then_some(Message::DeckImport)));
-                col = col.push(heading("Your banlists on this server"));
-                col = col.push(text("Import an EDOPro banlist (lflist.conf): pick it in the game's Edit Deck → Change Regulations after its next start.").size(13).color(color::INK_SOFT));
+                col = col.push(row![heading("Your banlists on this server"), yo3_skin::help_tip(crate::settings::BANLISTS_TIP)].spacing(6).align_y(Center));
                 match &self.banlists {
                     None => col = col.push(text("Reading your banlists…").size(14).color(color::INK_SOFT)),
                     Some(lists) => for list in lists {

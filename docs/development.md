@@ -201,7 +201,7 @@ clipboard (`DISPLAY=:88 xsel -o -b` reads it).
 
 Host for friends listens on every interface of the PC on its port: use a free scratch port. A friend's check is a
 second launcher with its own scratch data, prefix and display (`:89`), pasting the host's invite link under Other
-servers. Avoid clicking what opens the browser or a folder (Report a problem, Open logs folder) on a private display:
+servers. Avoid clicking what opens the browser or a folder (Report a problem, the logs folder button) on a private display:
 the system's opener may reach your own desktop.
 
 ### The official server list

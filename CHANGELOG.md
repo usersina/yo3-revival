@@ -13,6 +13,12 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- **Desktop says less, and explains on request.** Each setting is one line: its name and its control. What it does
+  waits behind the small **?** beside its name: rest the pointer on it. The same goes for Setup's last step, Host for
+  friends and Multiplayer's dialogs. The data and logs folders open from a folder button beside Backups and Export logs….
+
 ## v0.1.27 (2026-11-27)
 
 - **Dartz joins Kaiba Corporation.** A new opponent on the Yu-Gi-Oh! tab, in three levels: his Seal of Orichalcos

@@ -352,21 +352,21 @@ impl State {
         let direct = if read_only || self.asking || self.saving { direct } else { direct.on_toggle(Message::Direct) };
         let explain = if read_only { "The game folder is read-only, so the game opens only from YO3 Revival." }
             else if self.asking { "Setting it up… Windows may ask for permission." }
-            else { "Start yo3.exe on its own and it still signs you in. Optional: ticking it may ask Windows for permission once." };
+            else { "" };
         let mut list = column![
             text("YO3 Revival is ready.").font(DISPLAY_ITALIC).size(26).color(color::NAVY),
-            direct,
-            text(explain).size(13).color(color::INK_SOFT),
+            row![direct, yo3_skin::help_tip("Start yo3.exe on its own and it still signs you in. Optional: ticking it may ask Windows for permission once.")].spacing(6).align_y(Center),
         ].spacing(10).padding([10, 0]);
+        if !explain.is_empty() { list = list.push(text(explain).size(13).color(color::INK_SOFT)) }
         if let Some(note) = &self.direct_note { list = list.push(text(note).size(13).color(color::INK)) }
         list = list.push(checkbox(self.shortcut).label("Put a YO3 Revival shortcut on the desktop").on_toggle(Message::Shortcut).style(yo3_skin::tick).size(16).text_size(15));
-        list = list.push(checkbox(self.pictures).label("Download card pictures").on_toggle(Message::Pictures).style(yo3_skin::tick).size(16).text_size(15));
-        list = list.push(text(format!("Pictures for the anime cards and the cards added to the game, from ProjectIgnis ({}). \
-            They download in the background after setup; the game's own cards keep their artwork. Change it later in Settings, Game, Card pictures.",
-            yo3_desktop::pictures::SIZE_NOTE)).size(13).color(color::INK_SOFT));
-        list = list.push(checkbox(self.logs).label("Send logs when something breaks, to help fix it").on_toggle(Message::Logs).style(yo3_skin::tick).size(16).text_size(15));
-        list = list.push(text("When a game's connection breaks or it closes with an error, its logs go to the server you played on. \
-            Passwords and keys are never in them. You can turn this off later in Settings, Advanced.").size(13).color(color::INK_SOFT));
+        list = list.push(row![checkbox(self.pictures).label("Download card pictures").on_toggle(Message::Pictures).style(yo3_skin::tick).size(16).text_size(15),
+            yo3_skin::help_tip(format!("Pictures for the anime cards and the cards added to the game, from ProjectIgnis ({}). \
+                They download in the background after setup; the game's own cards keep their artwork. Change it later in Settings, Game, Card pictures.",
+                yo3_desktop::pictures::SIZE_NOTE))].spacing(6).align_y(Center));
+        list = list.push(row![checkbox(self.logs).label("Send logs when something breaks, to help fix it").on_toggle(Message::Logs).style(yo3_skin::tick).size(16).text_size(15),
+            yo3_skin::help_tip("When a game's connection breaks or it closes with an error, its logs go to the server you played on. \
+                Passwords and keys are never in them. You can turn this off later in Settings, Advanced.")].spacing(6).align_y(Center));
         if let Some(error) = &self.error {
             list = list.push(text(error).size(14).font(BODY_BOLD).color(color::BAD));
             if let Some(details) = &self.error_details {

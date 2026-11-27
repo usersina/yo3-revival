@@ -197,7 +197,7 @@ For a server that runs without the launcher (an always-on PC or a VPS), use the 
 
 ## Settings
 
-**Settings** at the bottom right opens **Settings**; **Back**, **Settings** again or Escape returns to the main screen. **Since v0.1.6 (2026-11-20):** it moved there from the title bar, and each section is grouped rows: a setting's name and one line on the left, its control (a switch for on and off) on the right.
+**Settings** at the bottom right opens **Settings**; **Back**, **Settings** again or Escape returns to the main screen. **Since v0.1.6 (2026-11-20):** it moved there from the title bar, and each section is grouped rows: a setting's name on the left, its control (a switch for on and off) on the right. **Since Unreleased:** what a setting does is behind the **?** beside its name (rest the pointer on it); a line under the name only says its state when it needs you (as **Set up at the next PLAY.**).
 Every change is saved at once and applies at the next PLAY (or your server's next start), without restarting YO3 Revival.
 
 **Escape** closes the topmost thing first (**Since v0.1.5 (2026-11-20)**): an open dialog, then the bell's list or the server tools, then a
@@ -210,8 +210,8 @@ press **I saved it**), then Settings. In a text box the first Escape only leaves
 | --- | --- |
 | Game | The game folder (**Change…** opens Setup), **Verify** (checks the game and YO3 Revival's own files in full, and says how to fix what isn't right), the [screen size](#screen-size), [opening the game without the launcher](#open-the-game-directly) (a tick: pressing it sets it up at once, asking Windows for permission when the game folder needs it), **Add** for a desktop shortcut, and [**Card pictures**](#card-pictures) |
 | Accounts | Each server you're signed in to on this PC: **Sign out**, **Sign out everywhere** (every PC signed in to the account must sign in again; asks for the password when this PC didn't stay signed in) and **Change password** (signs every PC out, this one too) |
-| Singleplayer | **Anime cards** (your own server's `anime-cards` setting, [see below](#anime-cards); while some of their pictures are missing, a link under it leads to Card pictures), **Destiny Draw** (your own server's `destiny-draw` setting, [see below](#destiny-draw)), **Revival** (your own server's `revival-rule` setting: Official rules; Ignoring conditions: all; Anime: any revival, the default; from the next duel, [house rules](rules-privacy.md#house-rules)), the [banlist](#banlist), **Back up now**, **Restore…** (a backup from a recent start), **EDOPro decks** (**Import…** keeps an EDOPro deck file, `.ydk`, as one of your player's decks, in Load Deck the next time the game lists them; pick a deck and **Export…** saves it as a `.ydk` file for EDOPro; cards your server doesn't have are left out, and cards you don't hold are named), **Banlists** (**Import…** keeps an EDOPro banlist, an `lflist.conf`'s first list, as one of your own, up to the server's `player-banlists`, 3 by default; pick it in the game's Edit Deck → Change Regulations after its next start; pick one of yours to **Export…** it as an `lflist.conf` or **Delete** it), **Unlock all cards** (three of every card, in every artwork, for every player of your own server, once; it asks first. Beside it, your player's cards out of every card, as 1,214 / 5,030; after the unlock it reads **All cards unlocked**, until an update adds cards, which **Unlock N new** gives), **Reset…** (starts your Singleplayer data again; the old data is kept beside it, renamed) and **Open data folder** |
-| Advanced | On Linux, the Wine prefix and the Wine program (empty for Wine's defaults; **Save** checks it); **Detailed logs** for your servers; **Send logs when something breaks** ([problem reports](#problem-reports)); **Export logs…** and **Open logs folder**; [Reset local game data](#reset-local-game-data) |
+| Singleplayer | **Anime cards** (your own server's `anime-cards` setting, [see below](#anime-cards); while some of their pictures are missing, a link under it leads to Card pictures), **Destiny Draw** (your own server's `destiny-draw` setting, [see below](#destiny-draw)), **Revival** (your own server's `revival-rule` setting: Official rules; Ignoring conditions: all; Anime: any revival, the default; from the next duel, [house rules](rules-privacy.md#house-rules)), the [banlist](#banlist), **Back up now**, **Restore…** (a backup from a recent start) and the folder button (opens your data folder), **EDOPro decks** (**Import…** keeps an EDOPro deck file, `.ydk`, as one of your player's decks, in Load Deck the next time the game lists them; pick a deck and **Export…** saves it as a `.ydk` file for EDOPro; cards your server doesn't have are left out, and cards you don't hold are named), **Your banlists** (**Import…** keeps an EDOPro banlist, an `lflist.conf`'s first list, as one of your own, up to the server's `player-banlists`, 3 by default; pick it in the game's Edit Deck → Change Regulations after its next start; pick one of yours to **Export…** it as an `lflist.conf` or **Delete** it), **Unlock all cards** (three of every card, in every artwork, for every player of your own server, once; it asks first. Beside it, your player's cards out of every card, as 1,214 / 5,030; after the unlock it reads **All cards unlocked**, until an update adds cards, which **Unlock N new** gives), **Reset…** (starts your Singleplayer data again; the old data is kept beside it, renamed) |
+| Advanced | On Linux, the Wine prefix and the Wine program (empty for Wine's defaults; **Save** checks it); **Detailed logs** for your servers; **Send logs when something breaks** ([problem reports](#problem-reports)); **Export logs…** and the folder button beside it (opens the logs folder); [Reset local game data](#reset-local-game-data) |
 | About | The version, **Check for updates**, release notes, the project, licences and credits |
 
 ### Card pictures
@@ -374,7 +374,7 @@ something breaks**: it applies to the next game, and to a game opened [without t
 too. A host can refuse them all (the server's `problem-reports` setting).
 
 Settings → Advanced → **Export logs…** saves the logs in a ZIP of your choosing, also with personal details removed;
-**Open logs folder** shows them. **Detailed logs** makes your servers write more (their debug level) from their next
+The folder button beside **Export logs…** shows them. **Detailed logs** makes your servers write more (their debug level) from their next
 start; turn it on to reproduce a problem for a report, then off again.
 
 Logs rotate at 2 MiB and are kept for up to 14 days or 100 MiB. A remote player's export can't include the host's
@@ -429,7 +429,7 @@ Do not overwrite a running bundle. [Scripts updates](scripts.md#updates) are man
 ## Your data and upgrades
 
 App storage is `%LOCALAPPDATA%\YO3 Revival` on Windows and `${XDG_DATA_HOME:-~/.local/share}/yo3-revival` on Linux.
-Settings → Singleplayer → **Open data folder** and Settings → Advanced → **Open logs folder** open parts of it.
+The folder buttons in Settings → Singleplayer (beside **Backups**) and Settings → Advanced (beside **Export logs…**) open parts of it.
 
 | Location inside app storage | Contents |
 | --- | --- |

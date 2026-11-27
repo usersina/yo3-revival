@@ -204,24 +204,23 @@ impl State {
             Some(_) => pill("Stop hosting", self.busy.is_none().then_some(Message::Stop), Kind::Danger, 150, 38),
             None => pill("Start hosting", self.busy.is_none().then_some(Message::Start), Kind::Primary, 170, 38),
         };
-        let height = if self.hosted.is_some() { 560.0 } else { 360.0 };
+        let height = if self.hosted.is_some() { 500.0 } else { 310.0 };
         yo3_skin::dialog("Host for friends", Some(Message::Help("host")), Message::Close, 600.0, height,
             column![col, Space::new().height(Fill), row![Space::new().width(Fill), action]])
     }
 
     fn form(&self) -> Element<'_, Message> {
-        let input = |label: &'static str, placeholder: &str, value: &str, field: Field| row![
-            text(label).size(14).font(BODY_BOLD).color(color::INK).width(140),
+        let input = |label: &'static str, placeholder: &str, value: &str, field: Field, tip: Option<&'static str>| row![
+            row![text(label).size(14).font(BODY_BOLD).color(color::INK)].extend(tip.map(yo3_skin::help_tip)).spacing(6).align_y(Center).width(140),
             text_input(placeholder, value).on_input(move |v| Message::Edit(field, v)).on_submit(Message::Start).style(yo3_skin::field).padding(7).size(15),
         ].align_y(Center);
         let lan = hosting::lan_address().map_or_else(|| "this PC's network address".to_owned(), |ip| ip.to_string());
         column![
             text("A server on this PC for your friends, with its own cards and accounts. It runs while YO3 Revival is open.").size(15).color(color::INK),
-            input("Server name", hosting::DEFAULT_NAME, &self.name, Field::Name),
-            input("Port", "7443", &self.port, Field::Port),
-            input("Address to share", &lan, &self.share, Field::Share),
-            text("Empty: your network address, for friends on your network. Friends elsewhere need your public address, with the port forwarded on your router.")
-                .size(13).color(color::INK_SOFT),
+            input("Server name", hosting::DEFAULT_NAME, &self.name, Field::Name, None),
+            input("Port", "7443", &self.port, Field::Port, None),
+            input("Address to share", &lan, &self.share, Field::Share, Some("Empty: your network address, for friends on your network. \
+                Friends elsewhere need your public address, with the port forwarded on your router.")),
         ].spacing(10).into()
     }
 
@@ -234,9 +233,8 @@ impl State {
             row![container(Space::new().width(10).height(10)).style(|_| dot(color::GOOD)),
                 text(format!("{} is running", hosted.server.name)).size(15).font(BODY_BOLD).color(color::INK), Space::new().width(Fill),
                 text(online).size(14).color(color::INK_SOFT)].spacing(8).align_y(Center),
-            heading("Invite a friend"),
-            text("Each friend gets their own link. It works once, for a week, and fills in their sign-up: they paste it under Multiplayer, ⋯, Add a server.")
-                .size(13).color(color::INK_SOFT),
+            row![heading("Invite a friend"), yo3_skin::help_tip("Each friend gets their own link. It works once, for a week, and fills in their sign-up: \
+                they paste it under Multiplayer, ⋯, Add a server.")].spacing(6).align_y(Center),
             row![pill("Copy an invite link", self.busy.is_none().then_some(Message::Invite), Kind::Primary, 200, 34)],
         ].spacing(10);
         for (i, (code, link)) in self.invites.iter().enumerate() {
@@ -250,14 +248,17 @@ impl State {
                 yo3_skin::icon_button(Icon::Copy, Some(Message::Copy(hosted.server.address.clone())), "Copy the address", false)].align_y(Center).into()),
         ].spacing(10).align_y(Center));
         if hosted.local_network {
-            col = col.push(text("This address works on your network. For friends elsewhere, stop hosting and type your public address.").size(13).color(color::INK_SOFT));
+            col = col.push(row![text("Works on your network only.").size(13).color(color::INK_SOFT),
+                yo3_skin::help_tip("For friends elsewhere, stop hosting and type your public address, with the port forwarded on your router.")].spacing(6).align_y(Center));
         }
         let mut tools = row![pill("Check reachability", self.busy.is_none().then_some(Message::Reach), Kind::Secondary, 170, 32)].spacing(8);
         if let Some(panel) = &self.panel { tools = tools.push(pill("Admin panel", Some(Message::Open(panel.clone())), Kind::Secondary, 130, 32)) }
         col = col.push(tools);
         if self.panel.is_some() {
             // The panel signs in with an admin account: the host's own, made here (it has no terminal on the server).
-            col = col.push(text("The admin panel signs in with an admin account: make yours one.").size(13).color(color::INK_SOFT)).push(row![
+            col = col.push(row![
+                row![text("Admin").size(14).font(BODY_BOLD).color(color::INK), yo3_skin::help_tip("The admin panel signs in with an admin account: make yours one.")]
+                    .spacing(6).align_y(Center).width(80),
                 text_input("Your User ID on this server", &self.admin).on_input(|v| Message::Edit(Field::Admin, v))
                     .on_submit(Message::MakeAdmin).style(yo3_skin::field).padding(6).size(14).width(Fill),
                 pill("Make admin", (self.busy.is_none() && !self.admin.trim().is_empty()).then_some(Message::MakeAdmin), Kind::Primary, 120, 32)]
