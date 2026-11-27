@@ -132,9 +132,16 @@ static char card_art_folder[MAX_PATH * 2];
 static char card_added_folder[MAX_PATH * 2];
 static int card_added_read;
 /* Kaiba Corporation's slots the DLL makes room for: the game's 25 (0-24), then custom NPCs in 25 to NPC_SLOTS - 1.
- * 42 is the last custom slot: its levels (ids 246-248) are the last whose deck titles (text 0x5FB4 + 2 * id) are free
- * (id 250's is a player title), and the players' NPC experience (0x51C680) reads ids up to 256 (docs/custom-npcs.md). */
-#define NPC_SLOTS 43
+ * 99 is the last custom slot: slot 100's name (text 0x5208 + 2 * slot) is another text of the game's. Past slot 42 the
+ * deck titles move (npc_titles_install) and the players' NPC experience reaches further (NPC_MAX_ID) (docs/custom-npcs.md). */
+#define NPC_SLOTS 100
+/* The highest NPC id the experience blob (npcbin, 0x51C680) covers: the game's bound is 256 (`cmp esi,0x400` at 0x51C68F,
+ * esi = 4 * (id - 1)); slot 99's last level is id 419. The server sends 8 * NPC_MAX_ID bytes (front.rs NPCBIN_LEN). */
+#define NPC_MAX_ID 512
+/* An NPC deck's title is text 0x5FB4 + 2 * id (read at 0x4BB299, 0x4BFE05, 0x5174A8); from id 250 those are player
+ * titles, so higher ids' titles are NPC_HIGH_TITLE + 2 * id (yo3_data::added::deck_title_text). */
+#define NPC_FIRST_HIGH_TITLE_ID 250
+#define NPC_HIGH_TITLE 200000
 #define NPC_CUSTOM (NPC_SLOTS - 25)
 /* The NPC bodies' table (npc_models_install): the game's 25 paths, then the custom slots. A custom NPC's body is a file
  * the launcher wrote, which the resource manager's load (vtable +0x58, which looks in the archives before any open) can
@@ -265,6 +272,7 @@ static int npc_patch_table(uintptr_t at, const unsigned char code[3], uintptr_t 
     FlushInstructionCache(GetCurrentProcess(), site, 7); VirtualProtect(site + 3, 4, previous, &ignored);
     return 1;
 }
+static int npc_ids_install(void);
 static int npc_models_install(void) {
     /* The cut-in (CutinForNPC, constructor 0x4E3B90) loads a body only for an NPC index below 25 (`cmp edi,0x19` at
      * 0x4E3C1D, then a signed jge): NPC_SLOTS, the model table's room. Its sound timing table gets rows for the custom
@@ -287,7 +295,7 @@ static int npc_models_install(void) {
     static const unsigned char read[] = { 0x8b, 0x0c, 0x85 };                     /* mov ecx,[eax*4+disp32] */
     unsigned char *site = (unsigned char *)game_address(0x4E430F);
     uint32_t table = (uint32_t)(uintptr_t)game_address(0x7F5B48);
-    if (memcmp(site, read, sizeof read) || memcmp(site + 3, &table, 4)) { card_profile_log("[YO3 MOD] custom NPC: the model read is not the expected code, left alone"); return 1; }
+    if (memcmp(site, read, sizeof read) || memcmp(site + 3, &table, 4)) { card_profile_log("[YO3 MOD] custom NPC: the model read is not the expected code, left alone"); return npc_ids_install(); }
     memcpy(npc_model_paths, (const void *)(uintptr_t)table, 25 * sizeof npc_model_paths[0]);
     for (int i = 0; i < NPC_CUSTOM; ++i) if (!npc_model_paths[25 + i]) {
         snprintf(npc_model_names[i], sizeof npc_model_names[i], "data/model/np%03d.mdl", 25 + i);
@@ -299,6 +307,43 @@ static int npc_models_install(void) {
     memcpy(site + 3, &to, 4);
     FlushInstructionCache(GetCurrentProcess(), site, 7); VirtualProtect(site + 3, 4, previous, &ignored);
     card_profile_log("[YO3 MOD] custom NPC: room for %d NPC bodies", NPC_SLOTS);
+    return npc_ids_install();
+}
+/* The three deck title lookups: `lea R,[S+S+0x5FB4]` (7 bytes) becomes `call stub; nop; nop`, the stub keeping the
+ * game's text below id 250 and NPC_HIGH_TITLE + 2 * id from there. lea leaves the flags alone, the stubs don't: each
+ * site's next instruction is a call, which doesn't read them. */
+#define YO3_NPC_TITLE(name, in, out) __asm__(".text\n.globl _" #name "\n_" #name ":\n cmp $250,%" #in "\n jge 1f\n" \
+    " lea 0x5fb4(%" #in ",%" #in "),%" #out "\n ret\n1:\n lea 200000(%" #in ",%" #in "),%" #out "\n ret\n")
+void npc_title_edi_edi(void); void npc_title_ebx_esi(void); void npc_title_eax_esi(void);
+YO3_NPC_TITLE(npc_title_edi_edi, edi, edi); YO3_NPC_TITLE(npc_title_ebx_esi, ebx, esi); YO3_NPC_TITLE(npc_title_eax_esi, eax, esi);
+_Static_assert(NPC_FIRST_HIGH_TITLE_ID == 250 && NPC_HIGH_TITLE == 200000, "the stubs' numbers");
+static int npc_call_patch(uintptr_t at, const unsigned char was[7], void (*stub)(void)) {
+    unsigned char *site = (unsigned char *)game_address(at);
+    if (memcmp(site, was, 7)) return 0;
+    DWORD previous, ignored;
+    if (!VirtualProtect(site, 7, PAGE_EXECUTE_READWRITE, &previous)) return 0;
+    int32_t rel = (int32_t)((uintptr_t)stub - ((uintptr_t)site + 5));
+    site[0] = 0xE8; memcpy(site + 1, &rel, 4); site[5] = 0x90; site[6] = 0x90;
+    FlushInstructionCache(GetCurrentProcess(), site, 7); VirtualProtect(site, 7, previous, &ignored);
+    return 1;
+}
+/* Past slot 42: the deck titles' lookups (above) and the experience blob's bound (the imm32 of `cmp esi,0x400` at
+ * 0x51C68F) to NPC_MAX_ID. */
+static int npc_ids_install(void) {
+    static const unsigned char edi_edi[] = { 0x8d, 0xbc, 0x3f, 0xb4, 0x5f, 0x00, 0x00 }, ebx_esi[] = { 0x8d, 0xb4, 0x1b, 0xb4, 0x5f, 0x00, 0x00 },
+        eax_esi[] = { 0x8d, 0xb4, 0x00, 0xb4, 0x5f, 0x00, 0x00 }, bound[] = { 0x81, 0xfe, 0x00, 0x04, 0x00, 0x00 };
+    int titles = npc_call_patch(0x4BB299, edi_edi, npc_title_edi_edi) + npc_call_patch(0x4BFE05, ebx_esi, npc_title_ebx_esi)
+        + npc_call_patch(0x5174A8, eax_esi, npc_title_eax_esi);
+    unsigned char *cmp = (unsigned char *)game_address(0x51C68F);
+    int experience = 0; DWORD previous, ignored;
+    if (!memcmp(cmp, bound, sizeof bound) && VirtualProtect(cmp + 2, 4, PAGE_EXECUTE_READWRITE, &previous)) {
+        uint32_t to = 4 * NPC_MAX_ID;
+        memcpy(cmp + 2, &to, 4);
+        FlushInstructionCache(GetCurrentProcess(), cmp, 6); VirtualProtect(cmp + 2, 4, previous, &ignored);
+        experience = 1;
+    }
+    if (experience) card_profile_log("[YO3 MOD] custom NPC: %d of 3 deck title lookups moved, experience to id %d", titles, NPC_MAX_ID);
+    else card_profile_log("[YO3 MOD] custom NPC: %d of 3 deck title lookups moved, experience left at id 256 (not the expected code)", titles);
     return 1;
 }
 static int card_art_install(void) {
