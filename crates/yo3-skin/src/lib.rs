@@ -116,6 +116,16 @@ fn slant(r: Rectangle, lean: f32) -> Path {
         b.line_to(Point::new(r.x + r.width - lean, r.y + r.height)); b.line_to(Point::new(r.x, r.y + r.height)); b.close();
     })
 }
+/// How wide `content` is drawn at `size` in `font`, as the canvas draws it.
+fn text_width(content: &str, size: f32, font: Font) -> f32 {
+    use iced::advanced::text::Paragraph as _;
+    let paragraph = <<Renderer as iced::advanced::text::Renderer>::Paragraph>::with_text(iced::advanced::text::Text {
+        content, bounds: iced::Size::INFINITE, size: Pixels(size), line_height: text::LineHeight::default(), font,
+        align_x: text::Alignment::Left, align_y: iced::alignment::Vertical::Top, shaping: canvas::Text::default().shaping, wrapping: text::Wrapping::None,
+    });
+    paragraph.min_width()
+}
+
 fn label(frame: &mut Frame, content: &str, at: Point, size: f32, font: Font, ink: Color, shadow: bool) {
     let mut t = canvas::Text { content: content.to_owned(), position: at, color: ink, size: Pixels(size), font,
         align_x: text::Alignment::Center, align_y: iced::alignment::Vertical::Center, ..canvas::Text::default() };
@@ -238,12 +248,16 @@ impl<M: Clone> canvas::Program<M> for Pill<M> {
                 frame.stroke(&chamfer(face, cut * face.height / outer.height), Stroke::default().with_color(alpha(CHROME_EDGE, 0.8)).with_width(1.0));
                 let ink = match (enabled, self.kind) { (false, Kind::Play) => STEEL_TEXT, (false, _) => alpha(Color::WHITE, 0.85), (true, Kind::Secondary) => NAVY, _ => Color::WHITE };
                 let (size, font) = if big { (outer.height * 0.52, DISPLAY_ITALIC) } else { (outer.height * 0.46, BODY_BOLD) };
-                // With a mark, the words make room for it at the right end, inside the chamfer.
+                // With a mark, the words and the mark are centred together: the words' measured width, a gap, the mark.
                 let s = outer.height * 0.2;
-                let room = if self.mark.is_some() { s * 1.6 } else { 0.0 };
-                label(frame, &self.label, Point::new(whole.center_x() - room, whole.center_y() + shift), size, font, ink, enabled && self.kind != Kind::Secondary);
+                let (gap, mark_width) = (s * 1.1, s * 2.0);
+                let words = if self.mark.is_some() { text_width(&self.label, size, font) } else { 0.0 };
+                let group = if self.mark.is_some() { words + gap + mark_width } else { 0.0 };
+                let left = whole.center_x() - group / 2.0;
+                let words_at = if self.mark.is_some() { left + words / 2.0 } else { whole.center_x() };
+                label(frame, &self.label, Point::new(words_at, whole.center_y() + shift), size, font, ink, enabled && self.kind != Kind::Secondary);
                 if let Some(mark) = self.mark {
-                    let c = Point::new(outer.x + outer.width - cut - s * 1.4, whole.center_y() + shift);
+                    let c = Point::new(left + words + gap + mark_width / 2.0, whole.center_y() + shift);
                     let pen = Stroke::default().with_color(ink).with_width(1.6).with_line_cap(canvas::LineCap::Round).with_line_join(canvas::LineJoin::Round);
                     match mark {
                         Mark::Web => {

@@ -10,5 +10,5 @@ description = "The launcher's skin kit: the game-era look (chrome frames, navy p
 workspace = true
 
 [dependencies]
-iced = { workspace = true, features = ["tiny-skia", "x11", "wayland", "canvas", "svg", "tokio", "image-without-codecs"] }
+iced = { workspace = true, features = ["tiny-skia", "x11", "wayland", "canvas", "svg", "tokio", "image-without-codecs", "advanced"] }
 
