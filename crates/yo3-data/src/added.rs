@@ -190,11 +190,21 @@ pub const NPC_NAME_TEXT: u32 = 0x5208;
 pub const NPC_DECK_TITLE_TEXT: u32 = 0x5FB4;
 /// NPC k's lines: texts `62000 + 300k` on (Pegasus's "My turn now!" is 63501).
 pub const NPC_LINES_TEXT: u32 = 62000;
-/// The Kaiba Corporation slots a custom NPC can take: past the game's 25 (0-24), up to 42, the last whose levels' deck
-/// titles (`NPC_DECK_TITLE_TEXT + 2 * id`, id 248 at most) are free texts (id 250's is a player title). The connection
-/// DLL makes room for as many (`NPC_SLOTS` in tools/mod/card-profile.h), and the players' NPC experience (the record's
-/// `npcbin`, read by 0x51C680) reaches id 256. docs/custom-npcs.md has the limits.
-pub const CUSTOM_NPC_SLOTS: std::ops::RangeInclusive<u32> = 25..=42;
+/// The Kaiba Corporation slots a custom NPC can take: past the game's 25 (0-24), up to 99, the last whose name
+/// (`NPC_NAME_TEXT + 2 * slot`) is a free text (slot 100's is another of the game's). The connection DLL makes room for
+/// as many (`NPC_SLOTS` in tools/mod/card-profile.h), moves the deck titles from id 250 ([`deck_title_text`]) and reads
+/// the players' NPC experience (the record's `npcbin`, 0x51C680) up to id 512. docs/custom-npcs.md has the limits.
+pub const CUSTOM_NPC_SLOTS: std::ops::RangeInclusive<u32> = 25..=99;
+/// The first NPC id whose deck title the connection DLL looks up at [`NPC_HIGH_DECK_TITLE_TEXT`]: the game's
+/// `NPC_DECK_TITLE_TEXT + 2 * id` is a player title from there (text 25000, "THE AFRO KAISER").
+pub const FIRST_HIGH_TITLE_ID: u32 = 250;
+pub const NPC_HIGH_DECK_TITLE_TEXT: u32 = 200_000;
+
+/// NPC id `id`'s deck title text: the game's below [`FIRST_HIGH_TITLE_ID`], the DLL's moved one from there
+/// (tools/mod/card-profile.h `npc_ids_install`, at the three lookups 0x4BB299, 0x4BFE05, 0x5174A8).
+pub fn deck_title_text(id: u32) -> u32 {
+    if id < FIRST_HIGH_TITLE_ID { NPC_DECK_TITLE_TEXT + 2 * id } else { NPC_HIGH_DECK_TITLE_TEXT + 2 * id }
+}
 
 /// Checks the custom NPCs: each in [`CUSTOM_NPC_SLOTS`], one per slot, on a game body (0-24), three levels, a cut-in
 /// background of 1-10.
@@ -228,7 +238,7 @@ impl AddedNpc {
     /// Its UI texts: name, help and each level's deck title.
     pub fn texts(&self) -> Vec<(u32, String)> {
         let mut out = vec![(NPC_NAME_TEXT + 2 * self.slot, self.name.clone()), (NPC_NAME_TEXT + 2 * self.slot + 1, self.help.clone())];
-        out.extend(self.ids().iter().zip(&self.levels).map(|(id, level)| (NPC_DECK_TITLE_TEXT + 2 * id, level.title.clone())));
+        out.extend(self.ids().iter().zip(&self.levels).map(|(id, level)| (deck_title_text(*id), level.title.clone())));
         out.extend(self.lines.iter().filter_map(|(n, text)| Some((NPC_LINES_TEXT + 300 * self.slot + n.parse::<u32>().ok().filter(|&n| n < 300)?, text.clone()))));
         out
     }
@@ -778,10 +788,10 @@ mod tests {
     }
 
     #[test]
-    fn custom_npcs_take_slots_25_to_42_one_each() {
-        assert!(check_npcs(&[npc(25), npc(42)]).is_ok());
-        for bad in [24, 43, 99] {
-            assert!(check_npcs(&[npc(bad)]).unwrap_err().contains("(25-42)"), "slot {bad}");
+    fn custom_npcs_take_slots_25_to_99_one_each() {
+        assert!(check_npcs(&[npc(25), npc(42), npc(99)]).is_ok());
+        for bad in [24, 100, 250] {
+            assert!(check_npcs(&[npc(bad)]).unwrap_err().contains("(25-99)"), "slot {bad}");
         }
         assert!(check_npcs(&[npc(30), npc(30)]).unwrap_err().contains("another NPC's"));
         assert!(check_npcs(&[AddedNpc { body: 25, ..npc(26) }]).is_err());
@@ -802,8 +812,18 @@ mod tests {
         };
         assert_eq!(donor(npc(42)), ("data/model/np042/donor.txt".into(), "3".into()));
         assert_eq!(donor(AddedNpc { cutin_bg: Some(7), ..npc(31) }), ("data/model/np031/donor.txt".into(), "3\n7".into()));
-        let added = Added { npcs: vec![npc(43)], ..Added::default() };
-        assert!(npc_files(&read, &added).is_err(), "no slot past 42");
+        let added = Added { npcs: vec![npc(100)], ..Added::default() };
+        assert!(npc_files(&read, &added).is_err(), "no slot past 99");
+    }
+
+
+    #[test]
+    fn deck_titles_move_from_id_250() {
+        // Below 250 the game's own (0x5FB4 + 2 * id: Dartz's first level, id 195, is 24890); from 250 the DLL's.
+        assert_eq!((deck_title_text(195), deck_title_text(249)), (24890, 24998));
+        assert_eq!((deck_title_text(250), deck_title_text(419)), (200_500, 200_838));
+        let titles: Vec<u32> = npc(99).texts().into_iter().map(|(id, _)| id).filter(|&id| id >= NPC_HIGH_DECK_TITLE_TEXT).collect();
+        assert_eq!(titles, [200_834, 200_836, 200_838], "slot 99's levels, ids 417-419");
     }
 
 }

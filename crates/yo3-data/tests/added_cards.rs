@@ -131,9 +131,10 @@ fn the_anime_collection_pack_holds_the_anime_only_cards_and_names_itself_in_ever
     }
 }
 
-/// The custom NPC slots (`CUSTOM_NPC_SLOTS`, 25-42) have their texts to themselves in every language: the name and help
-/// (`0x5208 + 2 * slot`), each level's deck title (`0x5FB4 + 2 * id`) and the 300 lines (`62000 + 300 * slot`). The next
-/// slot's last deck title would be a text the game has (a player title), which `with_texts` would overwrite.
+/// The custom NPC slots (`CUSTOM_NPC_SLOTS`, 25-99) have their texts to themselves in every language: the name and help
+/// (`0x5208 + 2 * slot`), each level's deck title (`deck_title_text`: the game's `0x5FB4 + 2 * id` below id 250, the
+/// DLL's moved one from there) and the 300 lines (`62000 + 300 * slot`). The next slot's name is a text the game has,
+/// which `with_texts` would overwrite.
 #[test]
 fn the_custom_npc_slots_texts_are_free_in_every_language() {
     use yo3_data::added::{AddedNpc, AddedNpcLevel, CUSTOM_NPC_SLOTS, LANGUAGES};

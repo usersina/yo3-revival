@@ -159,9 +159,10 @@ const MAIL_TO_TEAM: u32 = 3;
 /// 0x2B14's error_code: the player has no team.
 const NO_TEAM: u32 = 404;
 
-/// The npcbin's size: 8 bytes for each NPC id 1-256, as far as the client reads it (0x51C680 refuses an offset of
-/// `4 * (id - 1)` u16s at 0x400 or more). Custom NPCs' ids reach 248 (slot 42's last level).
-const NPCBIN_LEN: usize = 2048;
+/// The npcbin's size: 8 bytes for each NPC id 1-512, as far as the connection DLL lets the client read it (0x51C680
+/// refuses an offset of `4 * (id - 1)` u16s at 0x400 or more, id 256; the DLL raises it to 0x800, `NPC_MAX_ID` in
+/// tools/mod/card-profile.h). Custom NPCs' ids reach 419 (slot 99's last level).
+const NPCBIN_LEN: usize = 4096;
 
 /// Speech lines and comments a player has (CharMake's update 0x51C960).
 pub const SPEECHES: usize = 23;
@@ -1531,7 +1532,7 @@ impl Hub {
         let mut npcbin = vec![0; NPCBIN_LEN];
         for (&(me, id), &[w, l, d]) in &self.records {
             let at = 8 * (id as usize).wrapping_sub(1);
-            if me != player_id || !(1..=256).contains(&id) || at + 8 > npcbin.len() {
+            if me != player_id || !(1..=512).contains(&id) || at + 8 > npcbin.len() {
                 continue;
             }
             let exp = 100 * w + 50 * d + 10 * l;
