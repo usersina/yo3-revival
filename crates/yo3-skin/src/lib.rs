@@ -159,7 +159,16 @@ pub enum Kind {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Glyph { Settings, Minimize, Close, Bell, Help }
 
-struct Pill<M> { label: String, on_press: Option<M>, kind: Kind }
+/// A small sign drawn at a button's right end: what pressing it does beyond its words.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Mark {
+    /// It opens a web page in the browser (an arrow leaving a box).
+    Web,
+    /// It downloads (an arrow down onto a line).
+    Download,
+}
+
+struct Pill<M> { label: String, on_press: Option<M>, kind: Kind, mark: Option<Mark> }
 /// Whether the left button went down on this pill and is still held.
 #[derive(Default)]
 pub struct PillState { hovered: bool, pressed: bool, memo: Memo }
@@ -191,7 +200,7 @@ impl<M: Clone> canvas::Program<M> for Pill<M> {
         let enabled = self.on_press.is_some();
         let hovered = enabled && cursor.is_over(bounds);
         let pressed = hovered && state.pressed;
-        let key = format!("{:?}|{}|{enabled}|{hovered}|{pressed}", self.kind, self.label);
+        let key = format!("{:?}|{}|{enabled}|{hovered}|{pressed}|{:?}", self.kind, self.label, self.mark);
         vec![state.memo.draw(renderer, bounds.size(), key, |frame| {
         let whole = Rectangle::new(Point::ORIGIN, bounds.size());
         let shift = if pressed { 1.0 } else { 0.0 };
@@ -229,7 +238,31 @@ impl<M: Clone> canvas::Program<M> for Pill<M> {
                 frame.stroke(&chamfer(face, cut * face.height / outer.height), Stroke::default().with_color(alpha(CHROME_EDGE, 0.8)).with_width(1.0));
                 let ink = match (enabled, self.kind) { (false, Kind::Play) => STEEL_TEXT, (false, _) => alpha(Color::WHITE, 0.85), (true, Kind::Secondary) => NAVY, _ => Color::WHITE };
                 let (size, font) = if big { (outer.height * 0.52, DISPLAY_ITALIC) } else { (outer.height * 0.46, BODY_BOLD) };
-                label(frame, &self.label, Point::new(whole.center_x(), whole.center_y() + shift), size, font, ink, enabled && self.kind != Kind::Secondary);
+                // With a mark, the words make room for it at the right end, inside the chamfer.
+                let s = outer.height * 0.2;
+                let room = if self.mark.is_some() { s * 1.6 } else { 0.0 };
+                label(frame, &self.label, Point::new(whole.center_x() - room, whole.center_y() + shift), size, font, ink, enabled && self.kind != Kind::Secondary);
+                if let Some(mark) = self.mark {
+                    let c = Point::new(outer.x + outer.width - cut - s * 1.4, whole.center_y() + shift);
+                    let pen = Stroke::default().with_color(ink).with_width(1.6).with_line_cap(canvas::LineCap::Round).with_line_join(canvas::LineJoin::Round);
+                    match mark {
+                        Mark::Web => {
+                            frame.stroke(&Path::new(|b| {
+                                b.move_to(Point::new(c.x - s * 0.1, c.y - s)); b.line_to(Point::new(c.x - s, c.y - s)); b.line_to(Point::new(c.x - s, c.y + s));
+                                b.line_to(Point::new(c.x + s, c.y + s)); b.line_to(Point::new(c.x + s, c.y + s * 0.1));
+                            }), pen);
+                            frame.stroke(&Path::new(|b| {
+                                b.move_to(Point::new(c.x + s * 0.25, c.y - s)); b.line_to(Point::new(c.x + s, c.y - s)); b.line_to(Point::new(c.x + s, c.y - s * 0.25));
+                                b.move_to(Point::new(c.x + s, c.y - s)); b.line_to(Point::new(c.x, c.y));
+                            }), pen);
+                        }
+                        Mark::Download => frame.stroke(&Path::new(|b| {
+                            b.move_to(Point::new(c.x, c.y - s)); b.line_to(Point::new(c.x, c.y + s * 0.45));
+                            b.move_to(Point::new(c.x - s * 0.6, c.y - s * 0.1)); b.line_to(Point::new(c.x, c.y + s * 0.5)); b.line_to(Point::new(c.x + s * 0.6, c.y - s * 0.1));
+                            b.move_to(Point::new(c.x - s, c.y + s)); b.line_to(Point::new(c.x + s, c.y + s));
+                        }), pen),
+                    }
+                }
             }
             Kind::Tab { active } => {
                 let shape = inset(whole, 1.0);
@@ -311,7 +344,12 @@ impl<M: Clone> canvas::Program<M> for Pill<M> {
 
 /// A button in the game's style. `None` draws it disabled. Give it a size: the shape fills it.
 pub fn pill<'a, M: Clone + 'a>(label: impl Into<String>, on_press: Option<M>, kind: Kind, width: impl Into<iced::Length>, height: impl Into<iced::Length>) -> Element<'a, M> {
-    canvas::Canvas::new(Pill { label: label.into(), on_press, kind }).width(width).height(height).into()
+    canvas::Canvas::new(Pill { label: label.into(), on_press, kind, mark: None }).width(width).height(height).into()
+}
+
+/// A [`pill`] with a [`Mark`] at its right end: [`Mark::Web`] on every button that opens a web page.
+pub fn marked_pill<'a, M: Clone + 'a>(label: impl Into<String>, mark: Mark, on_press: Option<M>, kind: Kind, width: impl Into<iced::Length>, height: impl Into<iced::Length>) -> Element<'a, M> {
+    canvas::Canvas::new(Pill { label: label.into(), on_press, kind, mark: Some(mark) }).width(width).height(height).into()
 }
 
 /// The launcher's name, after a mark: the drawn diamond, or nothing when the real icon stands beside it.
@@ -458,13 +496,49 @@ pub fn backdrop<'a, M: 'a>() -> Element<'a, M> {
 
 /// A dark overlay over `base` with `dialog` centred on it. A click outside the dialog sends `on_blur`.
 pub fn modal<'a, M: Clone + 'a>(base: impl Into<Element<'a, M>>, dialog: impl Into<Element<'a, M>>, on_blur: M) -> Element<'a, M> {
+    stack![base.into(), modal_layer(dialog, on_blur)].into()
+}
+
+/// The layer of a [`modal`] alone, to push on a stack that is always there: the screen under it then keeps its state
+/// (a scrolled page stays where it was) while the dialog comes and goes.
+pub fn modal_layer<'a, M: Clone + 'a>(dialog: impl Into<Element<'a, M>>, on_blur: M) -> Element<'a, M> {
     let shade = container(center(opaque(dialog))).style(|_| container::Style { background: Some(alpha(Color::BLACK, 0.6).into()), ..container::Style::default() });
-    stack![base.into(), opaque(mouse_area(shade).on_press(on_blur))].into()
+    opaque(mouse_area(shade).on_press(on_blur))
 }
 
 /// A text link: on a panel (`on_dark` false) or on the dark bars.
 pub fn link<'a, M: Clone + 'a>(label: impl text::IntoFragment<'a>, on_press: M, on_dark: bool) -> Element<'a, M> {
     button(text(label).size(14).font(BODY_BOLD)).padding(0).on_press(on_press).style(move |_, status| {
+        let hover = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        let ink = match (on_dark, hover) { (true, false) => ON_DARK_SOFT, (true, true) => Color::WHITE, (false, false) => LINK, (false, true) => LINK_HOVER };
+        button::Style { background: None, text_color: ink, ..button::Style::default() }
+    }).into()
+}
+
+/// A link that shows or hides what is under a row (a list of decks): its words and a chevron that points down while
+/// it is folded, up while it is open.
+pub fn disclosure<'a, M: Clone + 'a>(label: impl text::IntoFragment<'a>, open: bool, on_press: M) -> Element<'a, M> {
+    button(iced::widget::row![
+        text(label).size(14).font(BODY_BOLD),
+        iced::widget::svg(ICONS[if open { Icon::ChevronUp } else { Icon::ChevronDown } as usize].clone()).width(16).height(16).style(|_, status| {
+            svg::Style { color: Some(if matches!(status, svg::Status::Hovered) { LINK_HOVER } else { LINK }) }
+        }),
+    ].spacing(4).align_y(iced::Alignment::Center)).padding([4, 6]).on_press(on_press).style(|_, status| {
+        let hover = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style { background: hover.then(|| alpha(LINK_HOVER, 0.1).into()), text_color: if hover { LINK_HOVER } else { LINK },
+            border: Border { radius: 4.0.into(), ..Border::default() }, ..button::Style::default() }
+    }).into()
+}
+
+/// A text link to a web page: its words and the arrow leaving a box after them, so it is clear it opens the browser.
+pub fn web_link<'a, M: Clone + 'a>(label: impl text::IntoFragment<'a>, on_press: M, on_dark: bool) -> Element<'a, M> {
+    button(iced::widget::row![
+        text(label).size(14).font(BODY_BOLD),
+        iced::widget::svg(ICONS[Icon::Open as usize].clone()).width(13).height(13).style(move |_, status| {
+            let hover = matches!(status, svg::Status::Hovered);
+            svg::Style { color: Some(match (on_dark, hover) { (true, false) => ON_DARK_SOFT, (true, true) => Color::WHITE, (false, false) => LINK, (false, true) => LINK_HOVER }) }
+        }),
+    ].spacing(4).align_y(iced::Alignment::Center)).padding(0).on_press(on_press).style(move |_, status| {
         let hover = matches!(status, button::Status::Hovered | button::Status::Pressed);
         let ink = match (on_dark, hover) { (true, false) => ON_DARK_SOFT, (true, true) => Color::WHITE, (false, false) => LINK, (false, true) => LINK_HOVER };
         button::Style { background: None, text_color: ink, ..button::Style::default() }
@@ -497,11 +571,11 @@ pub fn danger_link<'a, M: Clone + 'a>(label: impl text::IntoFragment<'a>, on_pre
 
 /// The kit's line icons (24 px grid), drawn in one colour: the widget tints them.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Icon { Copy, Save, Help, Flag, Heart, More, Check, Cross, Pending, Plus, Trash, Server, User, Open, Bell, Link, Refresh, Cog, Chat, Book, Folder }
+pub enum Icon { Copy, Save, Help, Flag, Heart, More, Check, Cross, Pending, Plus, Trash, Server, User, Open, Bell, Link, Refresh, Cog, Chat, Book, Folder, History, Upload, Disk, ChevronDown, ChevronUp }
 
 static ICONS: LazyLock<Vec<svg::Handle>> = LazyLock::new(|| {
     const LINE: &str = "fill='none' stroke='#000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'";
-    let shapes: [String; 21] = [
+    let shapes: [String; 26] = [
         format!("<g {LINE}><rect x='9' y='9' width='12' height='12' rx='2'/><path d='M5 15V5a2 2 0 0 1 2-2h10'/></g>"),
         format!("<g {LINE}><path d='M12 3v12M7 10l5 5 5-5M4 20h16'/></g>"),
         format!("<g {LINE}><circle cx='12' cy='12' r='9'/><path d='M9.4 9.3a2.7 2.7 0 1 1 3.8 2.5c-.7.3-1.2 1-1.2 1.8v.4'/></g><circle cx='12' cy='17.3' r='1.2'/>"),
@@ -523,6 +597,11 @@ static ICONS: LazyLock<Vec<svg::Handle>> = LazyLock::new(|| {
         format!("<g {LINE}><path d='M4 5h16v11H9l-5 4z'/><path d='M8 9.5h8M8 12.5h5'/></g>"),
         format!("<g {LINE}><path d='M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z'/><path d='M4 21V5M8 7h7'/></g>"),
         format!("<g {LINE}><path d='M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/></g>"),
+        format!("<g {LINE}><path d='M3.5 12a8.5 8.5 0 1 0 2.5-6l-2.5 2.5M3.5 3.5v5h5M12 7.5V12l3 2'/></g>"),
+        format!("<g {LINE}><path d='M12 15V3M7 8l5-5 5 5M4 20h16'/></g>"),
+        format!("<g {LINE}><path d='M5 3h11l4 4v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM7 3v5h8V3M7 21v-7h10v7'/></g>"),
+        format!("<g {LINE}><path d='M6 9l6 6 6-6'/></g>"),
+        format!("<g {LINE}><path d='M6 15l6-6 6 6'/></g>"),
     ];
     shapes.iter().map(|shape| svg::Handle::from_memory(format!("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>{shape}</svg>").into_bytes())).collect()
 });
@@ -920,7 +999,7 @@ mod tests {
     /// A pill sends its message on a release over it after a press over it, like a native button.
     #[test]
     fn pill_clicks_only_on_press_and_release_inside() {
-        let pill = Pill { label: "PLAY".into(), on_press: Some(7), kind: Kind::Play };
+        let pill = Pill { label: "PLAY".into(), on_press: Some(7), kind: Kind::Play, mark: None };
         let mut state = PillState::default();
         let down = pill.update(&mut state, &press(mouse::Event::ButtonPressed(mouse::Button::Left)), BOUNDS, INSIDE);
         assert!(down.is_some());
@@ -935,7 +1014,7 @@ mod tests {
     /// A disabled pill (no message) ignores presses and leaves them to the widgets around it.
     #[test]
     fn disabled_pill_ignores_presses() {
-        let pill: Pill<u8> = Pill { label: "STARTING…".into(), on_press: None, kind: Kind::Play };
+        let pill: Pill<u8> = Pill { label: "STARTING…".into(), on_press: None, kind: Kind::Play, mark: None };
         let mut state = PillState::default();
         assert!(pill.update(&mut state, &press(mouse::Event::ButtonPressed(mouse::Button::Left)), BOUNDS, INSIDE).is_none());
         assert!(pill.update(&mut state, &press(mouse::Event::ButtonReleased(mouse::Button::Left)), BOUNDS, INSIDE).is_none());

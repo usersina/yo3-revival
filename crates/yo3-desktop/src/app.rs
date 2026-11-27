@@ -388,6 +388,8 @@ impl App {
                 keyboard::key::Named::Escape => if self.dialog.is_some() { self.dialog = None }
                 // Settings' own dialog (Anime pictures) closes first, not the whole Settings screen behind it.
                 else if self.settings.as_ref().is_some_and(|s| s.has_dialog()) { return self.settings_update(settings::Message::PicturesDialogClose) }
+                // An Accounts form is a dialog over Settings too.
+                else if self.settings.is_some() && let Some(close) = self.home.multi.account_close() { return self.settings_update(settings::Message::Account(close)) }
                 // The bell's list and the server tools close before the screen under them does.
                 else if self.setup.is_none() && self.home.bell_open { return self.update(Message::Home(home::Message::Bell(false))) }
                 else if self.settings.is_some() { self.close_settings() }
@@ -627,10 +629,9 @@ impl App {
                 .push(container(self.home.inbox_view().map(Message::Home)).padding(iced::Padding { top: 46.0, right: 96.0, ..iced::Padding::ZERO })
                     .width(Fill).align_x(iced::alignment::Horizontal::Right));
         }
-        match self.dialog {
-            Some(dialog) => yo3_skin::modal(screen, self.dialog(dialog), Message::CloseDialog),
-            None => screen.into(),
-        }
+        // A dialog is one more layer of the same stack, so the screen under it keeps its state (Settings' scroll).
+        if let Some(dialog) = self.dialog { screen = screen.push(yo3_skin::modal_layer(self.dialog(dialog), Message::CloseDialog)) }
+        screen.into()
     }
 
     fn title_bar(&self) -> Element<'_, Message> {
@@ -712,12 +713,12 @@ impl App {
                 row![pill("Cancel", Some(close), Kind::Secondary, 110, 38), pill("Restart", Some(Message::Restart), Kind::Primary, 120, 38)], 200.0),
             Dialog::Contact => self.contact(),
             Dialog::Support => short("Support YO3 Revival", None, "YO3 Revival is free, and nothing in it is for sale. If you enjoy it, a donation helps keep it going.".into(),
-                row![pill("Discussions", Some(Message::OpenLink(DISCUSSIONS.into())), Kind::Secondary, 140, 38),
-                    pill("Donate", Some(Message::OpenLink(DONATE.into())), Kind::Primary, 130, 38)], 190.0),
+                row![yo3_skin::marked_pill("Discussions", yo3_skin::Mark::Web, Some(Message::OpenLink(DISCUSSIONS.into())), Kind::Secondary, 160, 38),
+                    yo3_skin::marked_pill("Donate", yo3_skin::Mark::Web, Some(Message::OpenLink(DONATE.into())), Kind::Primary, 140, 38)], 190.0),
             Dialog::Repair => short("YO3 Revival needs repair", Some("repair"), "Some of YO3 Revival's own files are missing or changed, often after an antivirus scan. \
                 Download the latest release and replace this folder with it: your settings are kept.".into(),
-                row![pill("Antivirus help", Some(Message::OpenLink(ANTIVIRUS.into())), Kind::Secondary, 160, 38),
-                    pill("Download", Some(Message::OpenLink(RELEASES.into())), Kind::Primary, 130, 38)], 230.0),
+                row![yo3_skin::marked_pill("Antivirus help", yo3_skin::Mark::Web, Some(Message::OpenLink(ANTIVIRUS.into())), Kind::Secondary, 180, 38),
+                    yo3_skin::marked_pill("Download", yo3_skin::Mark::Web, Some(Message::OpenLink(RELEASES.into())), Kind::Primary, 150, 38)], 230.0),
             Dialog::Backups => {
                 // Newest first; the damaged database is kept beside the restored one, renamed.
                 let backups = self.ctx.backend.as_ref().map(|b| b.backups(&self.ctx.settings)).unwrap_or_default();
@@ -836,7 +837,7 @@ impl App {
             let (fraction, words) = updates::flow::download_line(self.transfer.bytes(), release.asset.bytes, self.transfer.verifying());
             progress = progress.push(yo3_skin::progress_bar(fraction.map_or(yo3_skin::Bar::Starting, yo3_skin::Bar::Fraction), words, 22.0));
         }
-        let mut buttons = row![yo3_skin::icon_link(Icon::Open, "Release page", Message::OpenLink(release.url.clone()), false), Space::new().width(Fill)].spacing(10).align_y(Center);
+        let mut buttons = row![yo3_skin::web_link("Release page", Message::OpenLink(release.url.clone()), false), Space::new().width(Fill)].spacing(10).align_y(Center);
         if self.updater.ready().is_some() { buttons = buttons.push(pill("Restart to install", restart.then_some(Message::Home(home::Message::RestartToInstall)), Kind::Primary, 190, 38)) }
         else if self.updater.can_download() { buttons = buttons.push(pill("Download", Some(Message::DownloadUpdate), Kind::Primary, 190, 38)) }
         yo3_skin::dialog(&format!("Update to {}", release.tag.trim_start_matches('v')), None, Message::CloseDialog, 620.0, 440.0, column![
@@ -849,19 +850,20 @@ impl App {
 
     /// Help & contact: the three ways to get a hand, each one line and one button.
     fn contact(&self) -> Element<'_, Message> {
-        let way = |icon: Icon, title: &'static str, line: &'static str, button: &'static str, action: Message| {
+        // A way to get help; one that opens a web page has the web mark.
+        let way = |icon: Icon, title: &'static str, line: &'static str, button: &'static str, action: Message, web: bool| {
             container(row![
                 yo3_skin::icon(icon, 26.0, color::NAVY),
                 column![text(title).size(15).font(yo3_skin::BODY_BOLD).color(color::INK), text(line).size(14).color(color::INK_SOFT)].spacing(2).width(Fill),
-                pill(button, Some(action), Kind::Secondary, 130, 34),
+                if web { yo3_skin::marked_pill(button, yo3_skin::Mark::Web, Some(action), Kind::Secondary, 150, 34) } else { pill(button, Some(action), Kind::Secondary, 150, 34) },
             ].spacing(14).align_y(Center)).padding([10, 12]).width(Fill).style(|_| container::Style { background: Some(color::ROW.into()),
                 border: iced::Border { color: color::CHROME, width: 1.0, radius: 4.0.into() }, ..container::Style::default() })
         };
-        yo3_skin::dialog("Need a hand?", None, Message::CloseDialog, 600.0, 320.0, column![
+        yo3_skin::dialog("Need a hand?", None, Message::CloseDialog, 600.0, 350.0, column![
             text("YO3 Revival is a small fan project made by players. We read every question and report.").size(15).color(color::INK),
-            way(Icon::Book, "Read the guide", "Setup, playing, hosting, and fixes for common problems.", "Open guide", Message::OpenHelp(None)),
-            way(Icon::Chat, "Ask the community", "Questions, ideas and servers to join, on GitHub.", "Discussions", Message::OpenLink(DISCUSSIONS.into())),
-            way(Icon::Flag, "Report a problem", "Tell us what went wrong. It is saved as one file with your logs, to send us.", "Report…", Message::OpenReport(String::new())),
+            way(Icon::Book, "Read the guide", "Setup, playing, hosting, and fixes for common problems.", "Open guide", Message::OpenHelp(None), false),
+            way(Icon::Chat, "Ask the community", "Questions, ideas and servers to join, on GitHub.", "Discussions", Message::OpenLink(DISCUSSIONS.into()), true),
+            way(Icon::Flag, "Report a problem", "Tell us what went wrong. It is saved as one file with your logs, to send us.", "Report…", Message::OpenReport(String::new()), false),
         ].spacing(10))
     }
 
@@ -881,7 +883,7 @@ impl App {
                     pill("Copy path", Some(Message::Copy(path)), Kind::Secondary, 120, 32)].spacing(10));
             return yo3_skin::dialog("Report a problem", help, Message::CloseDialog, 560.0, 360.0, column![
                 col, Space::new().height(Fill),
-                row![yo3_skin::icon_link(Icon::Open, "Also talk about it on GitHub", Message::Report(ReportMessage::GitHub), false), Space::new().width(Fill),
+                row![yo3_skin::web_link("Also talk about it on GitHub", Message::Report(ReportMessage::GitHub), false), Space::new().width(Fill),
                     pill("Done", Some(Message::CloseDialog), Kind::Primary, 120, 38)].align_y(Center),
             ].spacing(10));
         }

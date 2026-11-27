@@ -39,9 +39,9 @@ The server runs while YO3 Revival is open. Stop hosting ends it.
 # reach | Friends can't reach your server
 Friends on the same network use the address YO3 Revival shows. Friends elsewhere need more:
 - Your router must forward the port (7443 unless you changed it) to this computer. Look for Port forwarding in your router's settings page.
-- Type your public address in Host for friends' Address box. A search for "what is my IP" shows it.
+- Type your public address in Host for friends' Address to share. A search for "what is my IP" shows it.
 - When Windows asks whether YO3 Revival's server may use the network, allow it for private networks.
-- Some internet providers share one public address between many homes (it is called CGNAT). Forwarding can't work then; ask your provider for a public address, or use a virtual network such as a VPN both of you join, and pick its address in the Address box.
+- Some internet providers share one public address between many homes (it is called CGNAT). Forwarding can't work then; ask your provider for a public address, or use a virtual network such as a VPN both of you join, and pick its address under Listen on.
 Check reachability tests the port from this computer's side.
 
 # settings | Settings

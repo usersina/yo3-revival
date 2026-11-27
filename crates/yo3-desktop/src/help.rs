@@ -67,7 +67,7 @@ impl State {
             body = body.push(match block {
                 Block::Paragraph(p) => Element::from(text(p).size(15).color(color::INK)),
                 Block::Point(p) => row![text("•").size(15).color(color::NAVY), text(p).size(15).color(color::INK).width(Fill)].spacing(8).into(),
-                Block::Link(label, url) => yo3_skin::link(label.clone(), Message::Open(url.clone()), false),
+                Block::Link(label, url) => yo3_skin::web_link(label.clone(), Message::Open(url.clone()), false),
             });
         }
         let buttons = row![yo3_skin::icon_link(yo3_skin::Icon::Flag, "Report a problem", Message::Report, false)];

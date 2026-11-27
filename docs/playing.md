@@ -92,8 +92,9 @@ the server doesn't have are left out, and cards you don't hold are named.
 **Your own banlists.** Desktop imports an EDOPro banlist (`lflist.conf`, the format sites such as format libraries
 share: Goat, Edison...) as one of your own, up to 3 on a server: Settings → Singleplayer → Your data → Your banlists for your
 own server, **Decks…** under your User ID on a Multiplayer server. Every player there can pick it: it is in Edit Deck →
-Change Regulations from the game's next start, for duels against the computer and the rooms you host. **Export…**
-writes it back for EDOPro; **Delete** removes it (players who picked it are back on the host's banlist).
+Change Regulations from the game's next start, for duels against the computer and the rooms you host. In Desktop's
+Settings, **N banlists** shows yours: the download button writes one back for EDOPro and the bin deletes it (players who
+picked it are back on the host's banlist); **Decks…** has **Export…** and **Delete**.
 
 **Two accounts on one PC.** Your launcher can run a second game as another account
 ([Play as another account](launcher.md#several-games-at-once)), for example to duel a friend who plays on the same computer.
@@ -204,7 +205,7 @@ Deck card.
   opened without the launcher gets this at its next Play from the launcher.
 - **Pictures come from Settings.** The project does not host the anime pictures. In Desktop, Settings → Game → **Card
   pictures** downloads them (about 16 MB, from ProjectIgnis' picture server, by itself when **Download automatically** is on,
-  else when you press **Get pictures**, with **Cancel**); **Add from a file** takes a zip a friend made with **Save to a file**.
+  else when you press **Get pictures**, with **Cancel**); the upload button beside the bar takes a zip a friend made with its disk button.
   They show from the next PLAY. A card with no picture (not fetched yet, or the download was cancelled or failed) keeps
   the game's own picture with the anime card's stats and text, and your own pictures are never replaced
   ([how](anime-cards.md#artwork)). The manga Gods and the anime Divine Serpent Geh come with pictures of their own, and

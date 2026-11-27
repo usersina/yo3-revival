@@ -96,6 +96,24 @@ mod tests {
     }
 
     #[test]
+    fn every_control_that_opens_a_web_page_shows_the_web_mark() {
+        // A button or link whose message opens a URL (OpenLink, Open with an address, the report's GitHub) is a
+        // `marked_pill(…, Mark::Web, …)` or a `web_link`, so the player knows it leaves for the browser.
+        let mut found = Vec::new();
+        for (file, source) in SCREENS {
+            let source = source.split("#[cfg(test)]").next().unwrap_or(source);
+            for (n, code) in source.lines().enumerate() {
+                let opens = code.contains("Message::OpenLink(") || code.contains("ReportMessage::GitHub)") || code.contains("Message::Open(panel")
+                    || code.contains("Message::Open(updates::") || code.contains("Message::Open(GETTING_THE_GAME") || code.contains("Message::Open(url");
+                let control = code.contains("pill(") || code.contains("link(") || code.contains("way(");
+                let marked = code.contains("marked_pill(") || code.contains("web_link(") || code.contains(", true),");
+                if opens && control && !marked { found.push(format!("{file}:{}: {}", n + 1, code.trim())) }
+            }
+        }
+        assert!(found.is_empty(), "controls that open a web page without the web mark:\n{}", found.join("\n"));
+    }
+
+    #[test]
     fn every_error_message_becomes_a_plain_sentence() {
         let mut found = Vec::new();
         let mut checked = 0;

@@ -41,6 +41,8 @@ tabs, typing with Tab and Enter, sign-in errors, dialogs, dragging, minimising a
   line. Notices about both tabs go behind the title bar's bell, not in a banner over the page.
 - **Forms check as you type.** Each rule is a line that turns green when met and red when broken; the form's button
   works once all are met. An address is looked up before Add.
+- **One button per row.** A row's main action is its one labelled button, at the right; the rest are icon buttons
+  with a hint (open a folder, restore, export, delete).
 - **Short words.** A dialog says what it does in a sentence or two. A setting says what it does in one short sentence that fits
   on its line; longer details (exceptions, when it applies, what each choice means) go behind a **?** (`help_tip`).
 - **Dark outside, light inside.** Bars, tabs and the backdrop are dark with light text; panels are light with dark
@@ -95,6 +97,9 @@ Sizes: 15 px body, 14 px captions and footer, 19 px frame titles, about half the
 | Frame | `panel(Some(title), content)` | silver rim with four bolts, navy title strip with stripes, light-grey body |
 | Title bar, footer | `title_strip(content)`, `footer_strip(content)` | dark bars with a silver line toward the content |
 | Settings rows | `setting_group(label, rows)`, `setting_tip(title, tip, line, control, below)`, `setting(title, line, control, below)`, `switch` (a `toggler` style) | a labelled card of rows: name and one short sentence left, control right; `setting_tip` adds a **?** beside the name for details that are long or tricky (a sentence that would wrap); on/off settings are switches |
+| Web link | `web_link(label, message, on_dark)`, `marked_pill(label, Mark::Web, …)` | everything that opens a web page carries the arrow leaving a box; `ui_texts` fails a control that opens a URL without it. `Mark::Download` marks a download button |
+| List toggle | `disclosure(label, open, message)` | "3 decks ⌄": a row's list folded until asked for, then one line per item with icon buttons |
+| Confirmation | `dialog` in `modal_layer` | a question before what can't be undone is a dialog over the screen (Cancel, the act), never a line inside a row; push the layer on a stack that is always there so the page keeps its scroll |
 | Help mark | `help_tip(tip)` | a small **?** that shows its tip (up to 340 px wide) while the pointer rests on it; beside a heading, a tick box or a field's label, in place of a grey sentence under it |
 | Toast | `toast(content, Tone)` | a card in the bottom right corner with a green, red or blue stripe; never moves the page |
 | Text field | `text_input(..).style(field)` | white well, blue ring when focused; `.secure(true)` for passwords |

@@ -63,6 +63,9 @@ pub enum Direct {
 
 /// The section's scrollable, for [`Message::ShowPictures`].
 const SCROLL: &str = "settings-section";
+/// A small soft icon before a line's words (the lists under a row).
+fn svg_icon<'a>(which: Icon) -> Element<'a, Message> { yo3_skin::icon(which, 15.0, color::INK_SOFT) }
+
 /// A row's line when its value (your own server's) can't be read.
 const UNREAD: &str = "Can't be read right now.";
 /// What a player's own banlists are for (Settings → Singleplayer and Multiplayer's Decks dialog).
@@ -150,17 +153,20 @@ pub enum Message {
     DecksRead(Result<Vec<String>, String>),
     ImportDeck,
     DeckImported(Result<Option<String>, String>),
-    ExportPick(String),
-    ExportDeck,
+    ExportDeck(String),
     DeckExported(Result<Option<String>, String>),
     /// Banlists (#77): your own on your own server, Import… (an EDOPro lflist.conf), the one to export or delete.
     BanlistsRead(Result<Vec<String>, String>),
     ImportBanlist,
     BanlistImported(Result<Option<String>, String>),
-    BanlistPick(String),
-    ExportBanlist,
+    ExportBanlist(String),
+    /// The decks' and banlists' lines under their rows, shown or folded.
+    ShowDecks(bool),
+    ShowBanlists(bool),
     BanlistExported(Result<Option<String>, String>),
-    DeleteBanlist,
+    /// The bin on one of your banlists: Some asks under its line, None takes the question back.
+    DeleteBanlistAsk(Option<String>),
+    DeleteBanlist(String),
     BanlistDeleted(Result<String, String>),
     /// Handled by the window: open a web page or a folder.
     Open(String),
@@ -234,8 +240,10 @@ pub struct State {
     /// Your player's decks on your own server, and the one Export… writes.
     decks: Vec<String>,
     banlists: Vec<String>,
-    banlist_pick: Option<String>,
-    export_pick: Option<String>,
+    /// The banlist whose Delete waits for a yes under its line.
+    confirm_banlist: Option<String>,
+    show_decks: bool,
+    show_banlists: bool,
     licences: bool,
     update: Option<String>,
     /// The desktop shortcut is already there: its row offers to make it again (after an update moved the launcher).
@@ -283,7 +291,7 @@ The full licences come with YO3 Revival, in its notices folder.";
 impl State {
     pub fn new(ctx: &Ctx, section: Section) -> Self {
         Self { section, note: None, busy: None, direct: Direct::Unknown, prefix: ctx.settings.wine_prefix.clone(), wine: ctx.settings.wine_binary.clone(),
-            confirm_reset: false, confirm_game_reset: false, confirm_unlock: false, collection: None, decks: vec![], banlists: vec![], banlist_pick: None, export_pick: None, licences: false, update: None, shortcut: yo3_desktop::shortcut::exists(),
+            confirm_reset: false, confirm_game_reset: false, confirm_unlock: false, collection: None, decks: vec![], banlists: vec![], confirm_banlist: None, show_decks: false, show_banlists: false, licences: false, update: None, shortcut: yo3_desktop::shortcut::exists(),
             moved: yo3_desktop::foreign::moved_aside(std::path::Path::new(&ctx.settings.game_dir)), pictures: None, getting: None, art_problem: None, art_busy: None, anime: None, destiny: None, revival: None, dialog: None, offer_when_counted: false }
     }
 
@@ -295,7 +303,9 @@ impl State {
     pub fn resume_pictures(&mut self, run: Option<Run>) { if run.is_some() { self.getting = run } }
 
     /// Whether Settings' own dialog is open: Escape closes it before it leaves Settings.
-    pub fn has_dialog(&self) -> bool { self.dialog.is_some() }
+    /// A dialog of Settings' own is open: the card pictures' offer, or a question before something that can't be undone.
+    pub fn has_dialog(&self) -> bool { self.dialog.is_some() || self.confirming() }
+    fn confirming(&self) -> bool { self.confirm_reset || self.confirm_unlock || self.confirm_game_reset || self.confirm_banlist.is_some() }
 
     /// The first tasks: what direct start is like now, and how many anime pictures there are.
     pub fn start(&self, ctx: &Ctx) -> Task<Message> { Task::batch([self.check_direct(ctx), self.count_pictures(ctx), self.read_anime(ctx), self.read_destiny(ctx), self.read_revival(ctx), self.read_collection(ctx), self.read_decks(ctx), self.read_banlists(ctx)]) }
@@ -335,30 +345,74 @@ impl State {
     }
 
     /// Banlists: Import… an EDOPro lflist.conf as one of yours, or pick one of yours and Export… or Delete it.
-    /// Your banlists: pick one to Export… or delete it (the bin); Import… stays in the column of the rows' buttons.
-    fn banlists_control(&self) -> Element<'_, Message> {
-        let idle = self.busy.is_none();
+    /// A row's list toggle and its Import…: "3 decks ⌄" shows the lines under the row (`lines`).
+    fn list_control<'a>(&self, count: usize, one: &str, many: &str, open: bool, toggle: fn(bool) -> Message, import: Message) -> Element<'a, Message> {
         let mut controls = row![].spacing(8).align_y(Center);
-        if !self.banlists.is_empty() {
-            let picked = idle && self.banlist_pick.is_some();
-            controls = controls.push(pick_list(&self.banlists[..], self.banlist_pick.as_ref(), Message::BanlistPick).style(yo3_skin::choice)
-                .menu_style(yo3_skin::choice_menu).width(200).padding([6, 10]));
-            controls = controls.push(yo3_skin::icon_button(Icon::Trash, picked.then_some(Message::DeleteBanlist), "Delete this banlist", false));
-            controls = controls.push(pill("Export…", picked.then_some(Message::ExportBanlist), Kind::Secondary, 110, 32));
+        if count > 0 {
+            controls = controls.push(yo3_skin::disclosure(format!("{count} {}", if count == 1 { one } else { many }), open, toggle(!open)));
         }
-        controls.push(pill("Import…", idle.then_some(Message::ImportBanlist), Kind::Secondary, 120, 32)).into()
+        controls.push(pill("Import…", self.busy.is_none().then_some(import), Kind::Secondary, 120, 32)).into()
     }
 
-    /// EDOPro decks: pick one of your decks and Export… it, or Import… a .ydk file into Load Deck.
-    fn decks_control(&self) -> Element<'_, Message> {
-        let idle = self.busy.is_none();
-        let mut controls = row![].spacing(8).align_y(Center);
-        if !self.decks.is_empty() {
-            controls = controls.push(pick_list(&self.decks[..], self.export_pick.as_ref(), Message::ExportPick).style(yo3_skin::choice)
-                .menu_style(yo3_skin::choice_menu).width(200).padding([6, 10]));
-            controls = controls.push(pill("Export…", (idle && self.export_pick.is_some()).then_some(Message::ExportDeck), Kind::Secondary, 110, 32));
+    /// The lines of a shown list: each name, then its actions as icons (`actions` gives them for a name).
+    fn lines<'a>(names: &'a [String], icon: Icon, actions: impl Fn(&'a String) -> Vec<Element<'a, Message>>) -> Element<'a, Message> {
+        let mut lines = column![].spacing(2).padding(iced::Padding { left: 4.0, ..iced::Padding::ZERO });
+        for name in names {
+            let mut line = row![svg_icon(icon), text(name.as_str()).size(14).color(color::INK).width(Fill)].spacing(8).align_y(Center);
+            for action in actions(name) { line = line.push(action) }
+            lines = lines.push(line);
         }
-        controls.push(pill("Import…", idle.then_some(Message::ImportDeck), Kind::Secondary, 120, 32)).into()
+        lines.into()
+    }
+
+    /// Your banlists, when shown: Export (the download) and Delete (the bin, which asks first in a dialog).
+    fn banlist_lines(&self) -> Option<Element<'_, Message>> {
+        if self.banlists.is_empty() || !self.show_banlists { return None }
+        let idle = self.busy.is_none();
+        Some(Self::lines(&self.banlists, Icon::Book, |name| vec![
+            yo3_skin::icon_button(Icon::Save, idle.then(|| Message::ExportBanlist(name.clone())), "Save it for EDOPro", false),
+            yo3_skin::icon_button(Icon::Trash, idle.then(|| Message::DeleteBanlistAsk(Some(name.clone()))), "Delete it", false),
+        ]))
+    }
+
+    /// Your decks, when shown: each one's download saves it for EDOPro.
+    fn deck_lines(&self) -> Option<Element<'_, Message>> {
+        if self.decks.is_empty() || !self.show_decks { return None }
+        let idle = self.busy.is_none();
+        Some(Self::lines(&self.decks, Icon::Copy, |deck| vec![
+            yo3_skin::icon_button(Icon::Save, idle.then(|| Message::ExportDeck(deck.clone())), "Save it for EDOPro", false),
+        ]))
+    }
+
+    /// The question before something that can't be undone, as a dialog over Settings: what happens, Cancel and the act.
+    fn confirm_dialog(&self) -> Option<Element<'_, Message>> {
+        let idle = self.busy.is_none();
+        let ask = |title: &str, body: String, actions: Vec<Element<'static, Message>>, width: f32| -> Element<'static, Message> {
+            let mut buttons = row![Space::new().width(Fill), pill("Cancel", Some(Message::PicturesDialogClose), Kind::Secondary, 110, 38)].spacing(10);
+            for action in actions { buttons = buttons.push(action) }
+            yo3_skin::dialog(title, None, Message::PicturesDialogClose, width, 210.0, column![text(body).size(15).color(color::INK), Space::new().height(Fill), buttons])
+        };
+        if let Some(name) = &self.confirm_banlist {
+            return Some(ask("Delete this banlist?", format!("\"{name}\" is deleted. Players who picked it are back on the server's banlist."),
+                vec![pill("Delete", idle.then(|| Message::DeleteBanlist(name.clone())), Kind::Danger, 120, 38)], 470.0));
+        }
+        if self.confirm_reset {
+            return Some(ask("Reset your singleplayer data?", "Your collection, decks and duel record start again. The old data is kept beside it.".into(),
+                vec![pill("Reset", idle.then_some(Message::ResetData(true)), Kind::Danger, 120, 38)], 470.0));
+        }
+        if self.confirm_unlock {
+            let body = match self.collection {
+                Some(c) if c.unlocked => format!("Every player of your server gets three of each of the {} new cards. Backups keep your collection as it was.", grouped(c.new)),
+                _ => "Every player of your server gets three of every card, in every artwork. This happens once. Backups keep your collection as it was.".to_owned(),
+            };
+            return Some(ask("Unlock all cards?", body, vec![pill("Unlock", idle.then_some(Message::UnlockCards), Kind::Primary, 120, 38)], 470.0));
+        }
+        if self.confirm_game_reset {
+            return Some(ask("Reset local game data?", "Which data? The old data is kept in a backup folder either way.".into(), vec![
+                pill("Display and login", idle.then_some(Message::ResetGame(Some(false))), Kind::Danger, 190, 38),
+                pill("All of it", idle.then_some(Message::ResetGame(Some(true))), Kind::Danger, 120, 38)], 560.0));
+        }
+        None
     }
 
     fn read_revival(&self, ctx: &Ctx) -> Task<Message> {
@@ -512,7 +566,6 @@ impl State {
                 return self.read_collection(ctx);
             }
             Message::DecksRead(Ok(decks)) => {
-                if self.export_pick.as_ref().is_none_or(|p| !decks.contains(p)) { self.export_pick = decks.last().cloned() }
                 self.decks = decks;
             }
             Message::DecksRead(Err(_)) => self.decks.clear(),
@@ -531,7 +584,7 @@ impl State {
                 match result { Ok(Some(sentence)) => { self.good(sentence); return self.read_decks(ctx) } Ok(None) => {} Err(error) => self.fail(ctx, &format!("Couldn't import the deck.\n{error}")) } // → Details
             }
             Message::BanlistsRead(Ok(lists)) => {
-                if self.banlist_pick.as_ref().is_none_or(|p| !lists.contains(p)) { self.banlist_pick = lists.last().cloned() }
+                if self.confirm_banlist.as_ref().is_some_and(|p| !lists.contains(p)) { self.confirm_banlist = None }
                 self.banlists = lists;
             }
             Message::BanlistsRead(Err(_)) => self.banlists.clear(),
@@ -549,9 +602,8 @@ impl State {
                 self.busy = None;
                 match result { Ok(Some(sentence)) => { self.good(sentence); return self.read_banlists(ctx) } Ok(None) => {} Err(error) => self.fail(ctx, &format!("Couldn't import the banlist.\n{error}")) } // → Details
             }
-            Message::BanlistPick(name) => self.banlist_pick = Some(name),
-            Message::ExportBanlist => {
-                let (Some(backend), Some(name)) = (ctx.backend.clone(), self.banlist_pick.clone()) else { return Task::none() };
+            Message::ExportBanlist(name) => {
+                let Some(backend) = ctx.backend.clone() else { return Task::none() };
                 let settings = ctx.settings.clone();
                 self.busy = Some("Exporting the banlist…");
                 return Task::perform(async move {
@@ -564,8 +616,10 @@ impl State {
                 self.busy = None;
                 match result { Ok(Some(sentence)) => self.good(sentence), Ok(None) => {} Err(error) => self.fail(ctx, &format!("Couldn't export the banlist.\n{error}")) } // → Details
             }
-            Message::DeleteBanlist => {
-                let (Some(backend), Some(name)) = (ctx.backend.clone(), self.banlist_pick.clone()) else { return Task::none() };
+            Message::DeleteBanlistAsk(name) => self.confirm_banlist = name,
+            Message::DeleteBanlist(name) => {
+                let Some(backend) = ctx.backend.clone() else { return Task::none() };
+                self.confirm_banlist = None;
                 let settings = ctx.settings.clone();
                 self.busy = Some("Deleting the banlist…");
                 return Task::perform(async move {
@@ -576,9 +630,10 @@ impl State {
                 self.busy = None;
                 match result { Ok(sentence) => { self.good(sentence); return self.read_banlists(ctx) } Err(error) => self.fail(ctx, &format!("Couldn't delete the banlist.\n{error}")) } // → Details
             }
-            Message::ExportPick(deck) => self.export_pick = Some(deck),
-            Message::ExportDeck => {
-                let (Some(backend), Some(deck)) = (ctx.backend.clone(), self.export_pick.clone()) else { return Task::none() };
+            Message::ShowDecks(open) => self.show_decks = open,
+            Message::ShowBanlists(open) => self.show_banlists = open,
+            Message::ExportDeck(deck) => {
+                let Some(backend) = ctx.backend.clone() else { return Task::none() };
                 let settings = ctx.settings.clone();
                 self.busy = Some("Exporting the deck…");
                 return Task::perform(async move {
@@ -595,7 +650,7 @@ impl State {
             Message::CollectionRead(Ok(seen)) => self.collection = Some(seen),
             Message::CollectionRead(Err(_)) => self.collection = None,
             Message::Unlocked(Err(error)) => { self.busy = None; self.fail(ctx, &format!("Couldn't unlock the cards.\n{error}")) } // → Details
-            Message::ResetData(false) => self.confirm_reset = !self.confirm_reset,
+            Message::ResetData(false) => self.confirm_reset = true,
             Message::ResetData(true) => {
                 let Some(backend) = ctx.backend.clone() else { return Task::none() };
                 if playing { self.note = Some(Note { good: false, sentence: "Close the game first.".into(), details: None, open: false }); return Task::none() }
@@ -638,7 +693,7 @@ impl State {
             Message::LogsExported(Ok(false)) => {}
             Message::LogsExported(Err(error)) => self.fail(ctx, &error),
             Message::OpenLogs => return Task::done(Message::Open(ctx.root.join("logs").to_string_lossy().into_owned())),
-            Message::ResetGame(None) => self.confirm_game_reset = !self.confirm_game_reset,
+            Message::ResetGame(None) => self.confirm_game_reset = true,
             Message::ResetGame(Some(full)) => {
                 let Some(backend) = ctx.backend.clone() else { return Task::none() };
                 let settings = ctx.settings.clone();
@@ -727,7 +782,11 @@ impl State {
             }
             Message::RevivalSet(Err(error)) => { self.busy = None; self.fail(ctx, &error) }
             // Closing the offer never stops a download: it goes on with its bar in Settings and its toast at the end.
-            Message::PicturesDialogClose => self.dialog = None,
+            // Cancel, the ×, Escape: whichever dialog is open closes.
+            Message::PicturesDialogClose => {
+                self.dialog = None;
+                (self.confirm_reset, self.confirm_unlock, self.confirm_game_reset, self.confirm_banlist) = (false, false, false, None);
+            }
             Message::GetPictures => {
                 if self.getting.is_some() { return Task::none() }
                 // Started from the offer: the offer closes, and the bar under the switch shows the download.
@@ -831,10 +890,15 @@ impl State {
         let content = column![body].spacing(16);
         let panel = yo3_skin::panel(Some(self.section.title()), scrollable(content.padding([0, 14])).id(SCROLL).height(Fill));
         let screen: Element<'_, Message> = row![container(tabs).width(200).height(Fill), container(panel).width(Fill).height(Fill)].spacing(16).padding([16, 18]).height(Fill).into();
-        match &self.dialog {
-            Some(dialog) => yo3_skin::modal(screen, self.pictures_dialog(dialog), Message::PicturesDialogClose),
-            None => screen,
+        // Settings' own dialogs over it, then a dialog of the Accounts page (its forms): layers of a stack that is
+        // always there, so the page under them keeps its scroll.
+        let mut layers = iced::widget::Stack::new().push(screen);
+        if let Some(dialog) = &self.dialog { layers = layers.push(yo3_skin::modal_layer(self.pictures_dialog(dialog), Message::PicturesDialogClose)) }
+        else if let Some(confirm) = self.confirm_dialog() { layers = layers.push(yo3_skin::modal_layer(confirm, Message::PicturesDialogClose)) }
+        else if self.section == Section::Accounts && let Some((dialog, close)) = home.multi.account_dialog() {
+            layers = layers.push(yo3_skin::modal_layer(dialog.map(Message::Account), Message::Account(close)));
         }
+        layers.into()
     }
 
     /// The toasts of Settings: a job in progress (with its waiting bar), then the note of what just happened.
@@ -984,18 +1048,19 @@ impl State {
         let all = self.pictures.is_some_and(|(have, total)| have >= total);
         let get = match &self.getting {
             Some(_) => pill("Cancel", Some(Message::CancelPictures), Kind::Secondary, 150, 32),
-            None => pill(if self.pictures.is_some_and(|(have, _)| have > 0) { "Get the rest" } else { "Get pictures" },
-                (idle && !all && self.pictures.is_some()).then_some(Message::GetPictures), Kind::Primary, 150, 32),
+            None => yo3_skin::marked_pill(if self.pictures.is_some_and(|(have, _)| have > 0) { "Get the rest" } else { "Get pictures" }, yo3_skin::Mark::Download,
+                (idle && !all && self.pictures.is_some()).then_some(Message::GetPictures), Kind::Primary, 160, 32),
         };
         let auto = toggler(ctx.settings.card_pictures).on_toggle_maybe(self.busy.is_none().then_some(Message::AutoPictures)).style(yo3_skin::switch).size(22);
         let tip = format!("From ProjectIgnis ({}); the game's own cards keep their artwork. Until then, an added card shows a stand-in. {}",
             pictures::SIZE_NOTE, if playing { "New pictures show from the game's next PLAY." } else { "They show from the next PLAY." });
         let (bar, words) = self.pictures_bar();
-        let below: Element<'_, Message> = column![
-            yo3_skin::progress_bar(bar, words, 22.0),
-            row![get, pill("Add from a file…", idle.then_some(Message::AddPictures), Kind::Secondary, 180, 32),
-                pill("Save to a file…", idle.then_some(Message::SavePictures), Kind::Secondary, 170, 32)].spacing(10),
-        ].spacing(8).into();
+        // The bar and what fills it on one line: the download, then a zip of pictures added or saved (for a PC offline).
+        let below: Element<'_, Message> = row![
+            container(yo3_skin::progress_bar(bar, words, 22.0)).width(Fill), get,
+            yo3_skin::icon_button(Icon::Upload, idle.then_some(Message::AddPictures), "Add pictures from a zip file", false),
+            yo3_skin::icon_button(Icon::Disk, idle.then_some(Message::SavePictures), "Save the pictures to a zip file", false),
+        ].spacing(6).align_y(Center).into();
         yo3_skin::setting_group("Card pictures", vec![
             yo3_skin::setting_tip("Download automatically", tip, "Pictures of the anime cards and the added ones.", Some(auto.into()), Some(below)),
         ])
@@ -1010,16 +1075,6 @@ impl State {
             pick_list(choices, selected, |b: home::Banlist| Message::Change(Change::Banlist(b.value))).style(yo3_skin::choice).menu_style(yo3_skin::choice_menu)
                 .width(230).padding([6, 10]).placeholder(yo3_desktop::DEFAULT_BANLIST).into()
         };
-        let reset_below: Option<Element<'_, Message>> = self.confirm_reset.then(|| row![
-            text("Reset your singleplayer data? The old data is kept beside it.").size(14).font(BODY_BOLD).color(color::BAD).width(Fill),
-            pill("Reset", Some(Message::ResetData(true)), Kind::Danger, 100, 32), yo3_skin::link("Cancel", Message::ResetData(false), false)].spacing(10).align_y(Center).into());
-        let unlock_ask = match self.collection {
-            Some(c) if c.unlocked => format!("Give every player of your server three of each of the {} new cards? Backups keep your collection as it was.", grouped(c.new)),
-            _ => "Give every player of your server three of every card, in every artwork? This happens once. Backups keep your collection as it was.".to_owned(),
-        };
-        let unlock_below: Option<Element<'_, Message>> = self.confirm_unlock.then(|| row![
-            text(unlock_ask).size(14).font(BODY_BOLD).color(color::INK).width(Fill),
-            pill("Unlock", self.busy.is_none().then_some(Message::UnlockCards), Kind::Primary, 110, 32), yo3_skin::link("Cancel", Message::UnlockAsk(false), false)].spacing(10).align_y(Center).into());
         column![
             yo3_skin::setting_group("Cards", vec![
                 self.anime_cards_view(playing),
@@ -1031,16 +1086,16 @@ impl State {
             yo3_skin::setting_group("Your data", vec![
                 yo3_skin::setting("Backups", "One from each of your server's last starts.",
                     Some(row![yo3_skin::icon_button(Icon::Folder, Some(Message::OpenData), "Open the data folder", false),
-                        pill("Restore…", (!playing).then_some(Message::Restore), Kind::Secondary, 120, 32),
-                        pill("Back up now", self.busy.is_none().then_some(Message::BackUp), Kind::Secondary, 140, 32)].spacing(8).align_y(Center).into()), None),
+                        yo3_skin::icon_button(Icon::History, (!playing).then_some(Message::Restore), "Restore a backup", false),
+                        pill("Back up now", self.busy.is_none().then_some(Message::BackUp), Kind::Secondary, 140, 32)].spacing(4).align_y(Center).into()), None),
                 yo3_skin::setting_tip("EDOPro decks", "Import an EDOPro deck (.ydk) into the game's Load Deck, or save one of your decks for EDOPro. Cards your server doesn't have are left out.", "Bring decks in, or save yours for EDOPro.",
-                    Some(self.decks_control()), None),
+                    Some(self.list_control(self.decks.len(), "deck", "decks", self.show_decks, Message::ShowDecks, Message::ImportDeck)), self.deck_lines()),
                 yo3_skin::setting_tip("Your banlists", BANLISTS_TIP, "For your duels against the computer.",
-                    Some(self.banlists_control()), None),
+                    Some(self.list_control(self.banlists.len(), "banlist", "banlists", self.show_banlists, Message::ShowBanlists, Message::ImportBanlist)), self.banlist_lines()),
                 yo3_skin::setting_tip("Unlock all cards", "In every artwork, for every player of your own server: once, and again only for cards an update adds.", "Three of every card.",
-                    Some(self.unlock_control()), unlock_below),
+                    Some(self.unlock_control()), None),
                 yo3_skin::setting("Reset", "Start your collection, decks and duel record again.",
-                    Some(pill("Reset…", (self.busy.is_none() && !playing).then_some(Message::ResetData(false)), Kind::Secondary, 120, 32)), reset_below),
+                    Some(pill("Reset…", (self.busy.is_none() && !playing).then_some(Message::ResetData(false)), Kind::Secondary, 120, 32)), None),
             ]),
         ].spacing(18).into()
     }
@@ -1073,15 +1128,9 @@ impl State {
                 Some(pill("Put back", Some(Message::PutBack(name.clone())), Kind::Secondary, 120, 32)), None)).collect();
             col = col.push(yo3_skin::setting_group("Files moved aside", rows));
         }
-        let reset_below: Option<Element<'_, Message>> = self.confirm_game_reset.then(|| column![
-            text("Which data? The old data is kept in a backup folder either way.").size(14).font(BODY_BOLD).color(color::INK),
-            row![pill("Display and login settings", self.busy.is_none().then_some(Message::ResetGame(Some(false))), Kind::Danger, 240, 32),
-                pill("All local game data", self.busy.is_none().then_some(Message::ResetGame(Some(true))), Kind::Danger, 190, 32),
-                yo3_skin::link("Cancel", Message::ResetGame(None), false)].spacing(10).align_y(Center),
-        ].spacing(8).into());
         col.push(yo3_skin::setting_group("The game's own data", vec![
             yo3_skin::setting("Reset local game data", "When the game's screen or saved login is stuck.",
-                Some(pill("Reset…", Some(Message::ResetGame(None)), Kind::Secondary, 120, 32)), reset_below),
+                Some(pill("Reset…", Some(Message::ResetGame(None)), Kind::Secondary, 120, 32)), None),
         ])).into()
     }
 
@@ -1090,7 +1139,7 @@ impl State {
         // A version found opens the same Update window as the footer (its notes, Download, Restart to install), not GitHub.
         if self.update.is_some() { updates = updates.push(yo3_skin::link("See the update", Message::ShowUpdate, false)) }
         let auto = toggler(ctx.settings.auto_updates).on_toggle_maybe(self.busy.is_none().then_some(Message::AutoUpdates)).style(yo3_skin::switch).size(22);
-        let links = row![yo3_skin::link("Release notes", Message::Open(updates::RELEASES.into()), false), yo3_skin::link("The project", Message::Open(updates::REPOSITORY.into()), false),
+        let links = row![yo3_skin::web_link("Release notes", Message::Open(updates::RELEASES.into()), false), yo3_skin::web_link("The project", Message::Open(updates::REPOSITORY.into()), false),
             yo3_skin::link("Licences and credits", Message::Licences, false)].spacing(18);
         let licences: Option<Element<'_, Message>> = self.licences.then(|| text(LICENCES).size(14).color(color::INK).into());
         column![
@@ -1343,6 +1392,25 @@ mod tests {
         refused.pictures = Some((0, 418));
         let _ = refused.update(Message::AnimeSet(true, Ok(false)), &mut ctx, false);
         assert!(refused.dialog.is_none() && refused.anime == Some(false) && refused.note.as_ref().is_some_and(|n| !n.good));
+    }
+
+    #[test]
+    fn a_question_before_an_act_is_a_dialog_and_lists_fold_under_their_rows() {
+        let mut ctx = ctx();
+        let mut state = State::new(&ctx, Section::Singleplayer);
+        for ask in [Message::ResetData(false), Message::UnlockAsk(true), Message::ResetGame(None), Message::DeleteBanlistAsk(Some("My Goat".into()))] {
+            let _ = state.update(ask.clone(), &mut ctx, false);
+            assert!(state.has_dialog() && state.confirm_dialog().is_some(), "{ask:?} asks in a dialog");
+            // Cancel, the × and Escape all send this.
+            let _ = state.update(Message::PicturesDialogClose, &mut ctx, false);
+            assert!(!state.has_dialog() && state.confirm_dialog().is_none(), "{ask:?} closes");
+        }
+        state.banlists = vec!["My Goat".into()];
+        state.decks = vec!["Starter Deck".into()];
+        assert!(state.banlist_lines().is_none() && state.deck_lines().is_none(), "folded at first");
+        let _ = state.update(Message::ShowBanlists(true), &mut ctx, false);
+        let _ = state.update(Message::ShowDecks(true), &mut ctx, false);
+        assert!(state.banlist_lines().is_some() && state.deck_lines().is_some());
     }
 
     #[test]

@@ -279,7 +279,7 @@ impl State {
             text("Welcome to YO3 Revival").font(DISPLAY_ITALIC).size(28).color(color::NAVY),
             text("YO3 Revival brings Yu-Gi-Oh! ONLINE 3 back: your own server for duels against the NPCs, and servers to play with friends.").size(15).color(color::INK),
             text("You need your own copy of the game, installed on this computer. YO3 Revival never ships or downloads it.").size(15).color(color::INK),
-            yo3_skin::link("Where to get the original game", Message::Open(GETTING_THE_GAME), false),
+            yo3_skin::web_link("Where to get the original game", Message::Open(GETTING_THE_GAME), false),
         ].spacing(14).padding([10, 0]).into()
     }
 
@@ -301,7 +301,7 @@ impl State {
         let mut column = column![text("Where is Yu-Gi-Oh! ONLINE 3 installed?").size(15).font(BODY_BOLD).color(color::INK)].spacing(8);
         if self.candidates.is_empty() {
             column = column.push(row![text("No installed copy was found automatically.").size(14).color(color::INK_SOFT),
-                yo3_skin::link("Getting the game", Message::Open(GETTING_THE_GAME), false)].spacing(10));
+                yo3_skin::web_link("Getting the game", Message::Open(GETTING_THE_GAME), false)].spacing(10));
         } else {
             column = column.push(found);
         }

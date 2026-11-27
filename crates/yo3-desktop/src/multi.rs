@@ -763,8 +763,6 @@ impl State {
         } else if accounts.is_empty() {
             col = col.push(text("You aren't signed in to any server on this PC. Sign in on the Multiplayer tab.").size(15).color(color::INK));
         }
-        let field = |placeholder: &'static str, value: &str, which: AccountField| text_input(placeholder, value)
-            .on_input(move |v| Message::AccountEdit(which, v)).on_submit(Message::AccountSubmit).secure(true).style(yo3_skin::field).padding(7).size(15);
         let mut rows = Vec::new();
         for account in accounts {
             let state = match (account.signed_in, account.stays) {
@@ -772,31 +770,10 @@ impl State {
                 _ => format!("Signed in as {}.", account.user),
             };
             // One row per server, as Settings' other rows: Sign out on the right, the account's other actions under it.
-            let mut row_col = column![
+            let row_col = column![
                 row![yo3_skin::link("Sign out everywhere", Message::AccountForm(account.key.clone(), Some(AccountForm::Everywhere)), false),
                     yo3_skin::link("Change password", Message::AccountForm(account.key.clone(), Some(AccountForm::Password)), false)].spacing(16).align_y(Center),
             ].spacing(8);
-            if let Some((key, form)) = &self.account && *key == account.key {
-                let has_token = account.stays || self.signed_in.get(&account.key).is_some_and(|s| s.device_token.is_some());
-                let cancel = yo3_skin::link("Cancel", Message::AccountForm(account.key.clone(), None), false);
-                let busy = self.account_busy;
-                row_col = row_col.push(match form {
-                    AccountForm::Everywhere => {
-                        let mut f = column![text("Every PC signed in to this account is signed out, this one too.").size(14).color(color::INK)].spacing(8);
-                        if !has_token { f = f.push(row![text("Password").size(14).font(BODY_BOLD).color(color::INK).width(130), field("", &self.account_password, AccountField::Password)].align_y(Center)) }
-                        f.push(row![pill("Sign out everywhere", (!busy && (has_token || !self.account_password.is_empty())).then_some(Message::AccountSubmit), Kind::Primary, 200, 34),
-                            Space::new().width(Fill), cancel].align_y(Center))
-                    }
-                    AccountForm::Password => column![
-                        text("A new password signs out every PC, this one too.").size(14).color(color::INK),
-                        row![text("Current password").size(14).font(BODY_BOLD).color(color::INK).width(130), field("", &self.account_password, AccountField::Password)].align_y(Center),
-                        row![text("New password").size(14).font(BODY_BOLD).color(color::INK).width(130), field("8 to 16 letters or digits", &self.account_new, AccountField::New)].align_y(Center),
-                        row![text("Again").size(14).font(BODY_BOLD).color(color::INK).width(130), field("", &self.account_again, AccountField::Again)].align_y(Center),
-                        row![pill("Change password", (!busy && !self.account_password.is_empty() && !self.account_new.is_empty()).then_some(Message::AccountSubmit), Kind::Primary, 180, 34),
-                            Space::new().width(Fill), cancel].align_y(Center),
-                    ].spacing(8),
-                });
-            }
             rows.push(yo3_skin::setting(account.server.clone(), state, Some(pill("Sign out", Some(Message::AccountSignOut(account.key.clone())), Kind::Secondary, 120, 32)),
                 Some(row_col.into())));
         }
@@ -807,6 +784,44 @@ impl State {
                 .spacing(8).align_y(Center));
         }
         col.into()
+    }
+
+    /// What closes the Accounts page's open form, when one is open.
+    pub fn account_close(&self) -> Option<Message> { self.account.as_ref().map(|(key, _)| Message::AccountForm(key.clone(), None)) }
+
+    /// The Accounts page's open form, as a dialog over Settings: Sign out everywhere or Change password, and the message
+    /// that closes it (Cancel, the ×, Escape).
+    pub fn account_dialog(&self) -> Option<(Element<'_, Message>, Message)> {
+        let (key, form) = self.account.as_ref()?;
+        let account = self.accounts().into_iter().find(|a| a.key == *key)?;
+        let close = Message::AccountForm(key.clone(), None);
+        let field = |placeholder: &'static str, value: &str, which: AccountField| text_input(placeholder, value)
+            .on_input(move |v| Message::AccountEdit(which, v)).on_submit(Message::AccountSubmit).secure(true).style(yo3_skin::field).padding(7).size(15);
+        fn labelled<'a>(label: &'static str, input: Element<'a, Message>) -> Element<'a, Message> {
+            row![text(label).size(14).font(BODY_BOLD).color(color::INK).width(140), input].align_y(Center).into()
+        }
+        let has_token = account.stays || self.signed_in.get(key).is_some_and(|s| s.device_token.is_some());
+        let busy = self.account_busy;
+        let cancel = pill("Cancel", Some(close.clone()), Kind::Secondary, 110, 38);
+        let (title, body, height): (&str, Element<'_, Message>, f32) = match form {
+            AccountForm::Everywhere => {
+                let mut f = column![text(format!("Every PC signed in to {} on {} is signed out, this one too.", account.user, account.server)).size(15).color(color::INK)].spacing(10);
+                if !has_token { f = f.push(labelled("Password", field("", &self.account_password, AccountField::Password).into())) }
+                f = f.push(Space::new().height(Fill)).push(row![Space::new().width(Fill), cancel,
+                    pill("Sign out everywhere", (!busy && (has_token || !self.account_password.is_empty())).then_some(Message::AccountSubmit), Kind::Danger, 200, 38)].spacing(10));
+                ("Sign out everywhere?", f.into(), if has_token { 200.0 } else { 250.0 })
+            }
+            AccountForm::Password => ("Change password", column![
+                text("A new password signs out every PC, this one too.").size(15).color(color::INK),
+                labelled("Current password", field("", &self.account_password, AccountField::Password).into()),
+                labelled("New password", field("8 to 16 letters or digits", &self.account_new, AccountField::New).into()),
+                labelled("Again", field("", &self.account_again, AccountField::Again).into()),
+                Space::new().height(Fill),
+                row![Space::new().width(Fill), cancel,
+                    pill("Change password", (!busy && !self.account_password.is_empty() && !self.account_new.is_empty()).then_some(Message::AccountSubmit), Kind::Primary, 180, 38)].spacing(10),
+            ].spacing(10).into(), 330.0),
+        };
+        Some((yo3_skin::dialog(title, None, close.clone(), 520.0, height, body), close))
     }
 
     /// What the typed address is: an invite link is read at once; an address is looked up once typing pauses.
