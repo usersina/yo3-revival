@@ -15,6 +15,18 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- **Every anime-only card of Duel Monsters, GX and 5D's that can be played.** 28 more batches, about 930 cards: the
+  last Duel Monsters decks (Valon's Armor monsters, Tristan, Rebecca, Rex Raptor, Mako), all of GX (Jaden's Neos cards,
+  Chazz's Ojamas, Sartorius' Arcana Force, Camula, Dr. Eisenstein, Bastion's formulas, the Dark World, Yubel) and all of
+  5D's (Yusei's Synchro cards, Jack's, Akiza's Plants, the Meklord Emperors' parts, the Dark Signers' Dark Tuners, Z-one's
+  Timelord support), and the anime cards the Tag Force games kept, Bastion's Magnet Warriors Σ+, Ω− and Σ− among them.
+  Armor monsters and the Magnet Warriors' poles play by their rules; Dark Synchro Summons work with the anime Dark Tuners.
+  About 50 cards whose scripts were wrong now play by their text (Fossil Hammer, Monster Chain, Shadow Moon, Spotlight,
+  Brilliant Shrine Art and more), and Cemetery Change's swap shows right. With anime cards off they stay Forbidden.
+- **What can't be added yet is written down.** Riding Duel cards (Speed Spells and the cards that count Speed
+  Counters), cards ProjectIgnis has only placeholders for and the 42 it lacks: the list, with why and what each would take,
+  is in the docs (Anime cards left out).
+
 - **Anime-only cards, sixth batch: Battle City's and the Big Five's.** 33 more (Duke Devlin's Diamond Head Dragon and
   Adamantine Sword Revival, Odion's Seal of Serket, Gansley's Ruklamba The Spirit King, Umbra's Masked Doll and
   Masquerade, the Big Five's Dragon Revival Ritual for the anime Five-Headed Dragon, Gurimo's Bronze Knights and Shield
@@ -24,7 +36,7 @@ Older entries describe their release at the time. For current setup, use the [RE
   (Orichalcos Malevolence and Mirror Knight Calling with its Mirror Knights, Jean-Claude Magnum's Ninja Master Shogun with
   Ninja Soldier Katana and Kunoichi Ayame, Mai's Harpie Lady Sparrow Formation, Nightmare Mirror and more), and the
   anime's vanilla monsters, which no batch had: Tom Thumb, the Landstar soldiers, Necro Mannequin and Aeris now, the
-  others with their decks. Valon's Armor cards wait: the game has no Armor monsters to show.
+  others with their decks.
 - **Anime-only cards, fourth batch: Noah Kaiba's, Zigfried von Schroeder's, Solomon Muto's and Vivian Wong's.** 33 more
   (Next World, Deepest Impact, Zigfried's Nibelung's Ring and Treasure and Wotan's Judgment, Solomon's Ancient Dragon,
   Ancient City and The Legendary Gambler, Vivian's Dragon Lady and Luminous Clouds, and more). Nibelung's Ring goes back

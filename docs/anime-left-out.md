@@ -17,7 +17,7 @@ than Anime (their texts are the Tag Force games'), added in batches 30-34 as ani
 | [Not in ProjectIgnis](#not-in-projectignis) | 42 | No database row and no script | A row (stats, text) and a script of our own per card: a source for added cards the tool does not have yet |
 | [Other](#other) | 4 | A kind or stats the client can't show, or a data gap | Per card, below |
 
-Each card here would need a stand-in id. On 2026-11-27 the added cards hold 1,267 and 1,010 are free (100 of them kept
+Each card here would need a stand-in id. On 2026-11-27 the added cards hold 1,269 and 1,008 are free (100 of them kept
 back), counting the Konami ids of the Xyz, Link and Pendulum Monsters the client never shows: enough for all of them.
 
 ## Riding Duels

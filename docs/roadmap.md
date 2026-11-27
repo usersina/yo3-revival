@@ -34,21 +34,10 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
 
 - [ ] The manga Gods and the added cards in more places: as a spectator, and the Gods' Soul Energy Max and the added
       cards' effects on Windows (an NPC duel with Geh, Obelisk, Avatar and Skill Drain passed on Windows 11, 2026-11-25).
-- [ ] The anime's missing cards (#75; inventory of 2026-11-25 in the ignored `logs/anime-missing-20261125/`): 358 printed
-      ones are added (rows 4848-5205), with scenario tests (`tests/anime_printed_*.rs`). Five that make Tokens the game never had came with their
-      Tokens (rows 5206-5216), and the four whose Tokens copy a monster (Spirit Illusion, Natural Selection, Cell Division,
-      Reckless Parasite) with theirs (rows 5325-5333, `tests/added_copy_tokens.rs`). The cards that can't be added yet, with
-      why: [Anime cards left out](anime-left-out.md) (Riding Duels, placeholder scripts, cards ProjectIgnis lacks; nothing
-      after 5D's). Open: the anime-only ones, in 34 deck batches (`engine/added/anime-batches.tsv`,
-      `tools/engine/anime-batches.py`): batch 1 added (rows 5217-5258, 42 cards), batch 2 (rows 5259-5296, 38 with 3 Tokens), batch 3 (rows 5297-5324,
-      28), batch 4 (rows 5334-5366, 33 with 2 Tokens; Rainbow Bridge Bifrost (Anime) is the printed Bifrost's anime
-      version, so it isn't added twice), batch 5 (rows 5367-5403, 37 with 2 Tokens and the vanilla monsters of batches 1-5;
-      Valon's Armor cards, Armored Gravitation, Data Brain, Full Armor Gravitation, Magnet Armor and Phoenix Gravitation,
-      wait: the Armor monsters' type is none the client can show), batch 6 (rows 5404-5436, 33 with 2 Tokens), batches 7-29
-      to come, each tested in tiers ([the rule](added-cards.md#add-a-batch):
-      the per-card fuzz, then scenarios for the flagged cards, those the checks point at, signature cards and a random 30%
-      of the rest: batch 1's sample found a bug the fuzz can't, Limit Tribute doing only part of its text); the anime Michion and Hailon
-      deal ∞ damage to ∞ LP (half of ∞, and ∞ minus a number, are ∞): confirm that reading.
+- [ ] The anime's missing cards (#75): every card of Duel Monsters, GX and 5D's that can be played is added (rows
+      4848-6371; [history](history.md)). Open: the cards that wait, each with why and what it would take, in
+      [Anime cards left out](anime-left-out.md) (Riding Duels, placeholder scripts, the 42 ProjectIgnis lacks); the anime
+      Michion and Hailon deal ∞ damage to ∞ LP (half of ∞, and ∞ minus a number, are ∞): confirm that reading.
 - [ ] Card tags (the client has none: no tag control in Edit Deck's screens, no request carrying one), in this order:
       1. An "Anime" search word: Edit Deck's text search (`0x416C10`) finds the anime-only cards through a marker in
          their text, written by the card profile.

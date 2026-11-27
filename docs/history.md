@@ -8,56 +8,65 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 
 **Contents**
 
-- [History](#history)
-  - [2026-11-27 — Black Brutdrago's crash (#87) and Unlock all cards (#89)](#2026-11-27--black-brutdragos-crash-87-and-unlock-all-cards-89)
-  - [2026-11-21 — Player website pages and pack contents (#74, #73), anime Ra's text](#2026-11-21--player-website-pages-and-pack-contents-74-73-anime-ras-text)
-  - [2026-11-21 — Problem reports: a broken game's logs go to the host](#2026-11-21--problem-reports-a-broken-games-logs-go-to-the-host)
-  - [2026-11-21 — Network review: whole frames to the game, and its disconnect reasons logged (#65)](#2026-11-21--network-review-whole-frames-to-the-game-and-its-disconnect-reasons-logged-65)
-  - [2026-11-21 — The Championship (#17)](#2026-11-21--the-championship-17)
-  - [2026-11-20 — Preset-deck scenarios, paged effect choices and lasting-effect markers (#67, #16)](#2026-11-20--preset-deck-scenarios-paged-effect-choices-and-lasting-effect-markers-67-16)
-  - [2026-11-20 — Synchro Strike was never broken (#67)](#2026-11-20--synchro-strike-was-never-broken-67)
-  - [2026-11-18 — Bundled GitHub TLS trust](#2026-11-18--bundled-github-tls-trust)
-  - [2026-11-18 — Measured release-runner concurrency](#2026-11-18--measured-release-runner-concurrency)
-  - [2026-11-18 — Production image dependency-cache inputs](#2026-11-18--production-image-dependency-cache-inputs)
-  - [2026-11-18 — The shop disconnect and another program's winmm.dll (#65)](#2026-11-18--the-shop-disconnect-and-another-programs-winmmdll-65)
-  - [2026-11-18 — Original card previews in the staff dashboard](#2026-11-18--original-card-previews-in-the-staff-dashboard)
-  - [2026-11-18 — Local Cargo cache on the home runner](#2026-11-18--local-cargo-cache-on-the-home-runner)
-  - [2026-11-18 — Full release and independent dashboard delivery](#2026-11-18--full-release-and-independent-dashboard-delivery)
-  - [2026-11-18 — First home-runner Actions check](#2026-11-18--first-home-runner-actions-check)
-  - [2026-11-18 — Dashboard automation and home runner (#62)](#2026-11-18--dashboard-automation-and-home-runner-62)
-  - [2026-11-18 — Windows 7 with VxKex (#5)](#2026-11-18--windows-7-with-vxkex-5)
-  - [2026-11-17 — Restricted dashboard replacement (#62, slice 2)](#2026-11-17--restricted-dashboard-replacement-62-slice-2)
-  - [2026-11-17 — Dashboard delivery compatibility gate (#62)](#2026-11-17--dashboard-delivery-compatibility-gate-62)
-  - [2026-11-17 — Automatic release deployment and launcher version floor](#2026-11-17--automatic-release-deployment-and-launcher-version-floor)
-  - [2026-11-17 — Public VPS deployment and recovery](#2026-11-17--public-vps-deployment-and-recovery)
-  - [2026-11-17 — First VPS checks and portable image exports](#2026-11-17--first-vps-checks-and-portable-image-exports)
-  - [2026-11-17 — Compose hosting and local VPS setup](#2026-11-17--compose-hosting-and-local-vps-setup)
-  - [2026-11-17 — Transactional account deletion in the connected dashboard](#2026-11-17--transactional-account-deletion-in-the-connected-dashboard)
-  - [2026-11-17 — Durable graceful stop and checked live status](#2026-11-17--durable-graceful-stop-and-checked-live-status)
-  - [2026-11-17 — Connected audit and server logs](#2026-11-17--connected-audit-and-server-logs)
-  - [2026-11-17 — Checked backups and audited streaming downloads](#2026-11-17--checked-backups-and-audited-streaming-downloads)
-  - [2026-11-17 — Real dashboard navigation and production entry](#2026-11-17--real-dashboard-navigation-and-production-entry)
-  - [2026-11-17 — Checked Overview and moderation-list parity](#2026-11-17--checked-overview-and-moderation-list-parity)
-  - [Status](#status)
-  - [▶ Overnight plan (2026-11-07): everything left, end to end](#-overnight-plan-2026-11-07-everything-left-end-to-end)
-  - [▶ Windows VM test (2026-11-08): what a real Windows client turned up](#-windows-vm-test-2026-11-08-what-a-real-windows-client-turned-up)
-  - [▶ Robustness review (2026-11-08): what three code reviews found, and the fixes](#-robustness-review-2026-11-08-what-three-code-reviews-found-and-the-fixes)
-  - [▶ Monkey testing (2026-11-08): two monkeys, what they covered and found](#-monkey-testing-2026-11-08-two-monkeys-what-they-covered-and-found)
-  - [✅ Screenshot session (2026-11-08): two things seen playing NPC duels](#-screenshot-session-2026-11-08-two-things-seen-playing-npc-duels)
-  - [▶ Duel check (2026-11-09): the client's view checked against the engine](#-duel-check-2026-11-09-the-clients-view-checked-against-the-engine)
-  - [▶ Connection DLL wave (2026-11-14): issues #10–#13](#-connection-dll-wave-2026-11-14-issues-1013)
-  - [▶ Website links, titles and official events (planned 2026-11-15)](#-website-links-titles-and-official-events-planned-2026-11-15)
-  - [✅ Summon animations (2026-11-15): Tribute, Fusion and Synchro as the original showed them](#-summon-animations-2026-11-15-tribute-fusion-and-synchro-as-the-original-showed-them)
-  - [✅ Avatars (2026-11-14): Avatar Settings' parts, and the Millennium Eye against Pegasus](#-avatars-2026-11-14-avatar-settings-parts-and-the-millennium-eye-against-pegasus)
-  - [✅ Duel windows (2026-11-13): every choice and reveal the client can show](#-duel-windows-2026-11-13-every-choice-and-reveal-the-client-can-show)
-  - [▶ Higher resolution (2026-11-14): issue #1's sharp 4:3](#-higher-resolution-2026-11-14-issue-1s-sharp-43)
-  - [✅ M0: Research and tooling](#-m0-research-and-tooling)
-  - [✅ M1: Stable world](#-m1-stable-world)
-  - [✅ M2: An instrumented client](#-m2-an-instrumented-client)
-  - [▶ M3: A social world](#-m3-a-social-world)
-  - [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
-  - [✅ M5: Duels](#-m5-duels)
-  - [▶ M6: Play with friends](#-m6-play-with-friends)
+- [2026-11-20 · Staff MFA and a restore rehearsal on the hosted server](#2026-11-20--staff-mfa-and-a-restore-rehearsal-on-the-hosted-server)
+- [2026-11-21 — Special Packs, event titles and normal ways to the missing cards and recipes (#18, #19)](#2026-11-21--special-packs-event-titles-and-normal-ways-to-the-missing-cards-and-recipes-18-19)
+- [2026-11-27 — The anime's missing cards, anime-only batches 1-34 (#75)](#2026-11-27--the-animes-missing-cards-anime-only-batches-1-34-75)
+- [2026-11-27 — Black Brutdrago's crash (#87) and Unlock all cards (#89)](#2026-11-27--black-brutdragos-crash-87-and-unlock-all-cards-89)
+- [2026-11-21 — Player website pages and pack contents (#74, #73), anime Ra's text](#2026-11-21--player-website-pages-and-pack-contents-74-73-anime-ras-text)
+- [2026-11-21 — Problem reports: a broken game's logs go to the host](#2026-11-21--problem-reports-a-broken-games-logs-go-to-the-host)
+- [2026-11-21 — Network review: whole frames to the game, and its disconnect reasons logged (#65)](#2026-11-21--network-review-whole-frames-to-the-game-and-its-disconnect-reasons-logged-65)
+- [2026-11-21 — The Championship (#17)](#2026-11-21--the-championship-17)
+- [2026-11-20 — The Ultimate Match against the computer (#18)](#2026-11-20--the-ultimate-match-against-the-computer-18)
+- [2026-11-19 — Official Events (the Stadium) and the real leaderboard (#18, #16)](#2026-11-19--official-events-the-stadium-and-the-real-leaderboard-18-16)
+- [2026-11-19 — Issue sweep: surrender, chat commands, foreign programs, staff MFA (#57, #52, #51, #63, #58, #55, #44, #68, #43, #38, #16)](#2026-11-19--issue-sweep-surrender-chat-commands-foreign-programs-staff-mfa-57-52-51-63-58-55-44-68-43-38-16)
+- [2026-11-19 — Card search ignores case; effect coverage and scenario tests (#54, #67)](#2026-11-19--card-search-ignores-case-effect-coverage-and-scenario-tests-54-67)
+- [2026-11-20 — Preset-deck scenarios, paged effect choices and lasting-effect markers (#67, #16)](#2026-11-20--preset-deck-scenarios-paged-effect-choices-and-lasting-effect-markers-67-16)
+- [2026-11-20 — Synchro Strike was never broken (#67)](#2026-11-20--synchro-strike-was-never-broken-67)
+- [2026-11-18 — Bundled GitHub TLS trust](#2026-11-18--bundled-github-tls-trust)
+- [2026-11-18 — Measured release-runner concurrency](#2026-11-18--measured-release-runner-concurrency)
+- [2026-11-18 — Production image dependency-cache inputs](#2026-11-18--production-image-dependency-cache-inputs)
+- [2026-11-18 — The shop disconnect and another program's winmm.dll (#65)](#2026-11-18--the-shop-disconnect-and-another-programs-winmmdll-65)
+- [2026-11-20 — Choices the dialogs can't show, asked in steps (#16)](#2026-11-20--choices-the-dialogs-cant-show-asked-in-steps-16)
+- [2026-11-20 — Three Discord reports after v0.1.5](#2026-11-20--three-discord-reports-after-v015)
+- [2026-11-20 — #65: the winmm.dll was ours](#2026-11-20--65-the-winmmdll-was-ours)
+- [2026-11-18 — Original card previews in the staff dashboard](#2026-11-18--original-card-previews-in-the-staff-dashboard)
+- [2026-11-18 — Local Cargo cache on the home runner](#2026-11-18--local-cargo-cache-on-the-home-runner)
+- [2026-11-18 — Full release and independent dashboard delivery](#2026-11-18--full-release-and-independent-dashboard-delivery)
+- [2026-11-18 — First home-runner Actions check](#2026-11-18--first-home-runner-actions-check)
+- [2026-11-18 — Dashboard automation and home runner (#62)](#2026-11-18--dashboard-automation-and-home-runner-62)
+- [2026-11-18 — Windows 7 with VxKex (#5)](#2026-11-18--windows-7-with-vxkex-5)
+- [2026-11-17 — Restricted dashboard replacement (#62, slice 2)](#2026-11-17--restricted-dashboard-replacement-62-slice-2)
+- [2026-11-17 — Dashboard delivery compatibility gate (#62)](#2026-11-17--dashboard-delivery-compatibility-gate-62)
+- [2026-11-17 — Automatic release deployment and launcher version floor](#2026-11-17--automatic-release-deployment-and-launcher-version-floor)
+- [2026-11-17 — Public VPS deployment and recovery](#2026-11-17--public-vps-deployment-and-recovery)
+- [2026-11-17 — First VPS checks and portable image exports](#2026-11-17--first-vps-checks-and-portable-image-exports)
+- [2026-11-17 — Compose hosting and local VPS setup](#2026-11-17--compose-hosting-and-local-vps-setup)
+- [2026-11-17 — Checked Overview and moderation-list parity](#2026-11-17--checked-overview-and-moderation-list-parity)
+- [2026-11-17 — Real dashboard navigation and production entry](#2026-11-17--real-dashboard-navigation-and-production-entry)
+- [2026-11-17 — Checked backups and audited streaming downloads](#2026-11-17--checked-backups-and-audited-streaming-downloads)
+- [2026-11-17 — Connected audit and server logs](#2026-11-17--connected-audit-and-server-logs)
+- [2026-11-17 — Durable graceful stop and checked live status](#2026-11-17--durable-graceful-stop-and-checked-live-status)
+- [2026-11-17 — Transactional account deletion in the connected dashboard](#2026-11-17--transactional-account-deletion-in-the-connected-dashboard)
+- [Status](#status)
+- [▶ Overnight plan (2026-11-07): everything left, end to end](#-overnight-plan-2026-11-07-everything-left-end-to-end)
+- [▶ Windows VM test (2026-11-08): what a real Windows client turned up](#-windows-vm-test-2026-11-08-what-a-real-windows-client-turned-up)
+- [▶ Robustness review (2026-11-08): what three code reviews found, and the fixes](#-robustness-review-2026-11-08-what-three-code-reviews-found-and-the-fixes)
+- [▶ Monkey testing (2026-11-08): two monkeys, what they covered and found](#-monkey-testing-2026-11-08-two-monkeys-what-they-covered-and-found)
+- [✅ Screenshot session (2026-11-08): two things seen playing NPC duels](#-screenshot-session-2026-11-08-two-things-seen-playing-npc-duels)
+- [▶ Duel check (2026-11-09): the client's view checked against the engine](#-duel-check-2026-11-09-the-clients-view-checked-against-the-engine)
+- [▶ Connection DLL wave (2026-11-14): issues #10–#13](#-connection-dll-wave-2026-11-14-issues-1013)
+- [▶ Website links, titles and official events (planned 2026-11-15)](#-website-links-titles-and-official-events-planned-2026-11-15)
+- [✅ Summon animations (2026-11-15): Tribute, Fusion and Synchro as the original showed them](#-summon-animations-2026-11-15-tribute-fusion-and-synchro-as-the-original-showed-them)
+- [✅ Avatars (2026-11-14): Avatar Settings' parts, and the Millennium Eye against Pegasus](#-avatars-2026-11-14-avatar-settings-parts-and-the-millennium-eye-against-pegasus)
+- [✅ Duel windows (2026-11-13): every choice and reveal the client can show](#-duel-windows-2026-11-13-every-choice-and-reveal-the-client-can-show)
+- [▶ Higher resolution (2026-11-14): issue #1's sharp 4:3](#-higher-resolution-2026-11-14-issue-1s-sharp-43)
+- [✅ M0: Research and tooling](#-m0-research-and-tooling)
+- [✅ M1: Stable world](#-m1-stable-world)
+- [✅ M2: An instrumented client](#-m2-an-instrumented-client)
+- [▶ M3: A social world](#-m3-a-social-world)
+- [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
+- [✅ M5: Duels](#-m5-duels)
+- [▶ M6: Play with friends](#-m6-play-with-friends)
 
 ## 2026-11-20 · Staff MFA and a restore rehearsal on the hosted server
 
@@ -93,6 +102,27 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   one PC are "linked accounts": the first duel counted nothing until `set linked-accounts off`.
 - **Guesses** (roadmap): the Special Pack's contents, tiers and cap, the artwork odds (1 in 20), the theme decks' price, the
   champion rule and THE ANNIVERSARIAN's win.
+
+## 2026-11-27 — The anime's missing cards, anime-only batches 1-34 (#75)
+
+- [x] The anime's missing cards (#75; inventory of 2026-11-25 in the ignored `logs/anime-missing-20261125/`): 358 printed
+      ones are added (rows 4848-5205), with scenario tests (`tests/anime_printed_*.rs`). Five that make Tokens the game never had came with their
+      Tokens (rows 5206-5216), and the four whose Tokens copy a monster (Spirit Illusion, Natural Selection, Cell Division,
+      Reckless Parasite) with theirs (rows 5325-5333, `tests/added_copy_tokens.rs`). The anime-only ones, in 34 deck batches
+      (`engine/added/anime-batches.tsv`, `tools/engine/anime-batches.py`): batch 1 (rows 5217-5258, 42 cards), batch 2 (rows
+      5259-5296, 38 with 3 Tokens), batch 3 (rows 5297-5324, 28), batch 4 (rows 5334-5366, 33 with 2 Tokens; Rainbow Bridge
+      Bifrost (Anime) is the printed Bifrost's anime version, so it isn't added twice), batch 5 (rows 5367-5403, 37 with 2
+      Tokens and the vanilla monsters of batches 1-5), batch 6 (rows 5404-5436, 33 with 2 Tokens), batches 7-34 (rows
+      5437-6371, about 930 cards with their Tokens: the rest of the three series, Valon's Armor monsters among them, and
+      30-34 the cards ProjectIgnis marks Video Game, with Bastion's Magnet Warriors; 12 cards counting Speed Counters were
+      dropped before their rows were committed). Each batch tested in tiers ([the rule](added-cards.md#add-a-batch): the
+      per-card fuzz, then scenarios for the flagged cards, those the checks point at, signature cards and a random 30% of
+      the rest): `tests/anime_only_01.rs` to `anime_only_34.rs`, `anime_fixes.rs`. Batches 7-34 ran in parallel (the fuzz
+      one batch at a time, scenario agents about four at once) and found about 50 ProjectIgnis scripts doing less than their
+      text or stopping on a Lua error (overrides in `engine/overrides/`), two translator bugs in Cemetery Change's Graveyard
+      swap, a Token named by a constant (Volcanic Mine's `TOKEN_BOMB`), a timing the core no longer raises
+      (`EVENT_BATTLE_END`), and the anime Scab Scar Knight in place of the video game's. Stand-ins reach past the free ids:
+      a printed Xyz, Link or Pendulum Monster's Konami id (the client never shows one) names the added card only.
 
 ## 2026-11-27 — Black Brutdrago's crash (#87) and Unlock all cards (#89)
 
