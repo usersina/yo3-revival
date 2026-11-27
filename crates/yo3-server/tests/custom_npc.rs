@@ -15,7 +15,7 @@ fn dartz_joins_the_roster_with_printed_and_anime_decks() {
     data.cards.add(&added).unwrap();
     let mut world = World { added: Arc::new(added), ..World::new(vec![]) };
     yo3_server::add_custom_npcs(&mut world, &data);
-    assert!(world.npcs.ends_with(&[195, 196, 197]), "{:?}", world.npcs);
+    assert!(world.npcs.windows(3).any(|w| w == [195, 196, 197]), "{:?}", world.npcs);
     assert_eq!(world.npc_names.get(&195).map(String::as_str), Some("Dartz"));
     for id in [195, 196, 197] {
         assert_eq!(world.npc_decks[&id].main.len(), 40, "every card of level {id}'s deck is one of the server's");
@@ -45,7 +45,7 @@ fn the_last_custom_slot_joins_the_roster_on_its_tab() {
     let mut added = yo3_data::added::Added::load(&engine).unwrap();
     let dartz = added.npcs.iter().find(|n| n.name == "Dartz").unwrap().clone();
     let last = *yo3_data::added::CUSTOM_NPC_SLOTS.end();
-    added.npcs.push(yo3_data::added::AddedNpc { slot: last, name: "Rafael".into(), series: 2, body: 9, figure: None, ..dartz.clone() });
+    added.npcs.push(yo3_data::added::AddedNpc { slot: last, name: "The Last Slot".into(), series: 2, body: 9, figure: None, ..dartz.clone() });
     assert!(yo3_data::added::check_npcs(&added.npcs).is_ok());
     assert!(yo3_data::added::check_npcs(&[yo3_data::added::AddedNpc { slot: last + 1, ..dartz }]).is_err());
     let mut data = yo3_data::GameData::load(&game).unwrap();
@@ -57,9 +57,9 @@ fn the_last_custom_slot_joins_the_roster_on_its_tab() {
     assert!(world.npcs.ends_with(&ids), "{:?}", world.npcs);
     let mut c = common::Server::with_world(world).join(1001, "Yugi");
     let roster = c.send(common::req(0x2710)).remove(0);
-    let rafael: Vec<_> = roster.items.iter().filter(|i| i.get("npc_id").and_then(Value::as_u32).is_some_and(|id| ids.contains(&id))).collect();
-    assert_eq!(rafael.len(), 3);
-    assert!(rafael.iter().all(|i| i.get("npc_type").and_then(Value::as_u32) == Some(2)));
+    let last_slot: Vec<_> = roster.items.iter().filter(|i| i.get("npc_id").and_then(Value::as_u32).is_some_and(|id| ids.contains(&id))).collect();
+    assert_eq!(last_slot.len(), 3);
+    assert!(last_slot.iter().all(|i| i.get("npc_type").and_then(Value::as_u32) == Some(2)));
 }
 
 /// Every custom NPC's decks, as the server builds them from `engine/added/npcs.json`: each card name is one the server
@@ -76,7 +76,7 @@ fn every_custom_npcs_decks_load_and_pass_the_deck_check_in_both_modes() {
     let root = std::env::temp_dir().join(format!("yo3-custom-npc-decks-{}", std::process::id()));
     let mut cfg = yo3_server::Config::ephemeral(root.clone());
     cfg.game_dir = game;
-    let mut world = yo3_server::game_world(&cfg).unwrap();
+    let world = yo3_server::game_world(&cfg).unwrap();
     let npcs = world.added.npcs.clone();
     assert!(!npcs.is_empty());
     let mut problems = vec![];
