@@ -48,7 +48,7 @@ pub(crate) const CHARACTERS: &[(&str, f64, f64, bool)] = &[
     // Noah Kaiba: bold and playful, overconfident
     ("Noah Kaiba", 0.5, 0.2, false),
     // Ishizu Ishtar: patient control, waits on Exodia and her sphinxes
-    ("Ishizu Ishtar", 0.1, 0.5, false),
+    ("Ishizu Ishtar", 0.4, 0.3, false),
     // Weevil Underwood: aggressive, swarms with insects
     ("Weevil Underwood", 0.6, 0.1, false),
     // Rex Raptor: reckless, charges in with big dinosaurs
@@ -90,7 +90,7 @@ pub(crate) const CHARACTERS: &[(&str, f64, f64, bool)] = &[
     // Antinomy: custom NPC, slot 50
     ("Antinomy", 0.2, 0.5, false),
     // Misty Tredwell: custom NPC, slot 51
-    ("Misty Tredwell", 0.1, 0.6, false),
+    ("Misty Tredwell", 0.4, 0.3, false),
     // Roman Goodwin: custom NPC, slot 52
     ("Roman Goodwin", 0.3, 0.4, false),
     // Sherry LeBlanc: custom NPC, slot 53
@@ -98,7 +98,7 @@ pub(crate) const CHARACTERS: &[(&str, f64, f64, bool)] = &[
     // Greiger: custom NPC, slot 54
     ("Greiger", 0.8, 0.0, false),
     // Tetsu Trudge: custom NPC, slot 55
-    ("Tetsu Trudge", 0.1, 0.6, false),
+    ("Tetsu Trudge", 0.4, 0.3, false),
 ];
 
 /// The Millennium Eye a player can wear: Bakura's Accessories (male 84, female 342 in the item catalogue), a golden
