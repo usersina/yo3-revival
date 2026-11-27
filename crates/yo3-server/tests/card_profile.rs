@@ -149,6 +149,31 @@ fn decks_follow_the_selected_profile_and_keep_every_card() {
     assert_eq!((back.main, back.extra), (vec![elf, other, elf], vec![flame, flame]), "and an Extra Deck card again with the game's own cards selected");
 }
 
+/// The game's NPC decks reach a duel through `World::place_deck` (`duel.rs`, the NPC duel's opening): with anime cards on,
+/// a card whose anime version is a Main Deck card leaves the Extra Deck. Seto Kaiba's level-2 deck holds three Five-Headed
+/// Dragons, a Fusion in the game and a Ritual Monster in the anime: left in the Extra Deck, the client's view split from the
+/// engine's at the first draw (the custom characters' self-play, 2026-11-27).
+#[test]
+fn every_npc_deck_follows_the_anime_placement() {
+    let (Some(data), Some(dir)) = (game(), engine_dir()) else { return };
+    let profile = Arc::new(anime_profile(&data, &dir));
+    let base = CardView { extra_deck_rows: data.cards.iter().filter(|c| c.extra_deck()).map(|c| c.row).collect(), ..Default::default() };
+    let world = World { profiles: Profiles::with_anime(CardView::over(&base, profile.clone())), extra_deck_rows: base.extra_deck_rows.clone(), ..World::new(vec![]) };
+    world.settings.set("anime-cards", "on").unwrap();
+    let five_headed = data.cards.iter().find(|c| c.name == "Five-Headed Dragon").map(|c| c.cid).expect("the game has Five-Headed Dragon");
+    let mut seen = 0;
+    for id in data.npc_ids() {
+        let d = data.npc_deck(id).unwrap();
+        let deck = Deck { id: d.id, name: format!("NPC {id}"), main: d.main.clone(), extra: d.extra.clone(), side: d.side.clone() };
+        let placed = world.place_deck(&deck);
+        let main_now = |row: &u16| profile.target(*row).is_some_and(|t| !t.extra_deck());
+        assert!(!placed.extra.iter().any(main_now), "NPC {id}: an anime Main Deck card left in the Extra Deck: {:?}", placed.extra);
+        assert_eq!(placed.main.len() + placed.extra.len(), deck.main.len() + deck.extra.len(), "NPC {id}: every card stays");
+        seen += placed.main.iter().filter(|r| data.cards.by_row(**r).is_some_and(|c| c.cid == five_headed)).count();
+    }
+    assert!(seen >= 3, "Kaiba's Five-Headed Dragons are Main Deck cards: {seen}");
+}
+
 #[test]
 fn the_anime_data_the_profile_reads_matches_the_map() {
     let Some(dir) = engine_dir() else { return };
