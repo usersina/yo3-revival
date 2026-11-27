@@ -31,6 +31,9 @@ const MYSTICAL_SPACE_TYPHOON: u16 = 4909;
 const DIMENSION_FUSION: u16 = 5906;
 const RAIGEKI_BREAK: u16 = 5544; // Trap: discard 1 card; target 1 card on the field; destroy it
 
+/// Nighmare Tri-Mirror's Copy Token (row 5368): batch 11's Copy Doll makes another card of that name (16120).
+const COPY_TOKEN: u16 = 6462;
+
 fn clean(s: &Scenario) {
     assert!(s.problems.is_empty(), "the client's view left the engine's: {:#?}", s.problems);
 }
@@ -220,7 +223,7 @@ fn a_token_without_a_shield_counter_fights_with_zero_atk() {
 /// Spellcaster, DARK).
 #[test]
 fn nighmare_tri_mirror_copies_a_monster_once_per_special_summon() {
-    let (tri, copy) = (card("Nighmare Tri-Mirror"), card("Copy Token"));
+    let (tri, copy) = (card("Nighmare Tri-Mirror"), COPY_TOKEN);
     let spawns = [set(0, tri), mon(0, DARK_MAGICIAN), hand(1, DIMENSION_FUSION), banished(1, WARWOLF), banished(1, DARK_BLADE)];
     let Some(mut s) = field(&[], &spawns) else { return };
     keep_hands(&mut s);

@@ -88,6 +88,7 @@ fn every_chosen_card_plays_and_its_effects_are_reported() {
         names.extend(game.cards.iter().filter(|c| c.kind != 10).map(|c| (c.name.clone(), c.cid, c.extra_deck())));
     }
 
+    let anime_only: std::collections::BTreeSet<u16> = added.cards.iter().filter(|c| c.anime_only).map(|c| c.cid).collect();
     let mut failures = vec![];
     let mut report = vec![];
     let mut pools = BTreeMap::new();
@@ -95,7 +96,10 @@ fn every_chosen_card_plays_and_its_effects_are_reported() {
         let modes: Vec<bool> = if card.anime_only { vec![true] } else if anime_of.contains_key(&card.cid) { vec![false, true] } else { vec![false] };
         let partners = partners(&card.desc, &names, card.cid);
         for anime in modes {
-            let partners: Vec<(u16, bool)> = partners.iter().map(|&(p, e)| (p, if anime { anime_extra.get(&p).copied().unwrap_or(e) } else { e })).collect();
+            // With anime cards off the engine has no anime-only card: a partner of that kind (Dark Tuner Doom Submarine for the
+            // printed Dark Tuners' "Dark Tuner") stays out of the duel.
+            let partners: Vec<(u16, bool)> = partners.iter().filter(|&&(p, _)| anime || !anime_only.contains(&p))
+                .map(|&(p, e)| (p, if anime { anime_extra.get(&p).copied().unwrap_or(e) } else { e })).collect();
             let pool = pools.entry(anime).or_insert_with(|| selfplay::added_pool(&dir, anime, 8).expect("the added cards"));
             let code = if anime && !card.anime_only { anime_of[&card.cid] } else { card.passcode as u64 };
             let mut tallies: BTreeMap<(u16, u64), Tally> = BTreeMap::new();
