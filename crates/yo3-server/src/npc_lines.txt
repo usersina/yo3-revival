@@ -486,3 +486,147 @@ win: Smooth sailing, {you}! Better luck next time!
 lose: I'm washed up! Great duel, {you}!
 trump: Umi | Feel the might of the ocean! The Umi is mine!
 trump: Great White | Great White, bite! Bring them to the deep!
+
+[Yubel]
+greet: You came to me at last, {you}. Do not expect mercy.
+greet: Pain brought us here, {you}. Let it end in this duel.
+turn: I will protect what I love.
+turn: Do not look away from me.
+ace: Awaken, {card}! Show them my sorrow!
+ace: {card}, come forth! Bear my pain!
+direct: Feel the pain I have carried!
+hurt: You hurt me... but I will not fall.
+win: Stay with me, {you}. You will never be alone again.
+lose: Your heart is stronger than my pain, {you}... I am free.
+trump: Yubel | Yubel awakens. No harm shall come to me.
+trump: Yubel - Terror Incarnate | My love has become terror. Run, if you can.
+trump: Yubel - The Ultimate Nightmare | This is the end of my sorrow... and yours.
+
+[Sartorius]
+greet: I foresaw your coming, {you}. Let the cards judge you.
+greet: Fate brought you here, {you}. Show me yours.
+turn: The cards have spoken. I draw.
+turn: Fate turns, as it was written.
+ace: Behold {card}! Destiny itself fights for me!
+ace: {card}, rise! The Arcana's will is absolute!
+direct: Fate leaves you no shield.
+hurt: A blow the cards did not show... but fate bends back.
+win: The cards never lie, {you}. This was always written.
+lose: The cards... were wrong. You have my respect, {you}.
+trump: Arcana Force EX - The Light Ruler | The Light Ruler descends! Fate is sealed.
+trump: Arcana Force EX - The Dark Ruler | The Dark Ruler comes! The coin falls where it must.
+trump: Arcana Knight Joker | The three knights unite as the Joker! Fate cannot touch him.
+
+[Bastion Misawa]
+greet: Let me calculate your odds, {you}. The numbers favour me.
+greet: A new test subject, {you}? The experiment begins.
+turn: My turn. The formula is ready.
+turn: Calculated, as always.
+ace: By my formula, {card}! The experiment succeeds!
+ace: Behold {card}! Perfect science!
+direct: Your defence is zero. The math is simple.
+hurt: A blow outside my calculations. I will adjust.
+win: As calculated, {you}. The data was in my favour.
+lose: My formula failed. Fascinating work, {you}.
+trump: Valkyrion the Magna Warrior | Alpha, Beta, Gamma unite! Valkyrion, the Magna Warrior!
+trump: Water Dragon | The Water formula is complete! Water Dragon, appear!
+trump: Bonding - H2O | Two parts hydrogen, one part oxygen. Bonding - H2O!
+
+[Nightshroud]
+greet: The curtain rises, {you}. Step into the dark.
+greet: I am Nightshroud. Let the darkness judge you, {you}.
+turn: The show goes on.
+turn: Darkness gathers around you.
+ace: Shroud the stage, {card}!
+ace: {card}, rise from the dark!
+direct: No light shields you from the dark.
+hurt: A sharp blow... but the dark only grows deeper.
+win: The curtain falls on you, {you}.
+lose: You carried the light through the dark, {you}. Well played.
+trump: Red-Eyes Darkness Dragon | Darkness is born! Red-Eyes Darkness Dragon, rise!
+trump: Red-Eyes B. Dragon | Rise from the shadows, Red-Eyes!
+
+[Tyranno Hassleberry]
+greet: Yo, {you}! Get ready for a dino-mite duel, sir!
+greet: Time for a stampede, {you}! Ya ready?
+turn: My turn, sir! I'm chargin' in!
+turn: Ya can't outrun a Tyranno!
+ace: Roar, {card}! Show 'em who rules!
+ace: {card}, charge! Squash 'em flat!
+direct: Nothin' left to stop me! Direct attack, sir!
+hurt: Ya got me good, sir! But a dino never quits!
+win: Dino-mite victory! Good duel, {you}, sir!
+lose: I got stomped, {you}! Ya fought like a true soldier!
+trump: Ultimate Tyranno | Ultimate Tyranno! Nobody stands up to this king!
+trump: Jurassic World | Welcome to Jurassic World, sir! The dinos get stronger!
+
+[Axel Brodie]
+greet: Let's turn up the heat, {you}!
+greet: Hey {you}, ready to get burned?
+turn: My turn! Time to light it up!
+turn: The volcano's still hot, kid!
+ace: Erupt, {card}! Burn it all down!
+ace: {card}, fire it up!
+direct: Nothing to stop me! Burn, {you}!
+hurt: Ow! Hot stuff... but I'm still burnin'!
+win: Another one burned! Good duel, {you}!
+lose: You took the heat and beat me, {you}. Respect.
+trump: Volcanic Doomfire | Doomfire! Come burn it all to the ground!
+trump: Volcanic Queen | Volcanic Queen! Take 'em down, her fire never goes out!
+
+[Camula]
+greet: Welcome to the night, {you}. Come closer.
+greet: Do you taste of fear, {you}? Let us see.
+turn: The night grows longer.
+turn: Do not worry, darling. It will be quick.
+ace: Rise, {card}! Feast on the living!
+ace: {card}, my pet! Drink deep!
+direct: You have no guard, darling. Sweet.
+hurt: A bite from the living... how rude.
+win: Sleep now, {you}. The night belongs to me.
+lose: Your blood is too strong, {you}. I yield.
+trump: Vampire Genesis | Vampire Genesis! The queen's child awakens!
+trump: Vampire Lord | The Vampire Lord rises to feast!
+trump: Zombie World | The world turns to my court of the dead!
+
+[Lyman Banner]
+greet: Welcome to my laboratory, {you}. The experiment begins.
+greet: A new subject, {you}? Fascinating.
+turn: My turn. Let us transmute.
+turn: Observe the reaction.
+ace: Behold the Great Work, {card}!
+ace: {card}, transmuted from lead to gold!
+direct: No defence. The reaction is complete.
+hurt: A reaction I did not expect... fascinating.
+win: The experiment is a success, {you}.
+lose: A failed formula... well done, {you}.
+trump: Alchemy Cycle | The cycle of alchemy spins! Nothing is lost, only changed.
+trump: Dimensional Alchemist | Dimensional Alchemist, turn the void to gold!
+
+[Jim Crocodile Cook]
+greet: G'day {you}! Ready for a dig, mate?
+greet: Crikey, a fresh opponent! Let's go, {you}!
+turn: My turn, mate! Time to dig!
+turn: Fossils never sleep for long!
+ace: Wake up, {card}! Show 'em what the ages made!
+ace: {card}! Crikey, what a beauty!
+direct: No guard, mate! Chomp!
+hurt: Crikey, that stung! But old ones don't die easy!
+win: Good duel, {you}, mate! The old ones win again!
+lose: Crikey, ya beat me, {you}! Top duel, mate!
+trump: Fossil Fusion | Fossil Fusion! Wake up, old ones!
+trump: Fossil Machine Skull Convoy | Skull Convoy, roll out, mate!
+
+[Blair Flannigan]
+greet: Hi, {you}! Let's have a fun duel!
+greet: I'm Blair! Ready to lose your heart, {you}?
+turn: My turn! Let's go!
+turn: Isn't this fun?
+ace: Go, {card}! Win it for love!
+ace: {card}, show them what you've got!
+direct: Direct attack! Take that, {you}!
+hurt: Ouch! That hurt, {you}! Now I'm mad!
+win: Yay! I won, {you}! Let's duel again!
+lose: Aww, you won, {you}! You're really strong!
+trump: Maiden in Love | Maiden in Love! Your monsters can't resist her charm!
+trump: Mystic Dragon | Mystic Dragon, I believe in you!

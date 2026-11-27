@@ -59,6 +59,26 @@ pub(crate) const CHARACTERS: &[(&str, f64, f64, bool)] = &[
     ("Odion", -0.3, 0.7, false),
     // Mako Tsunami: bold and cheerful, steady pressure
     ("Mako Tsunami", 0.5, 0.2, false),
+    // Custom NPCs, GX (engine/added/npcs.json). Yubel: her best monster is untouchable, so she holds the board and waits.
+    ("Yubel", 0.1, 0.6, false),
+    // Sartorius: a patient fate-reader, balanced.
+    ("Sartorius", 0.2, 0.4, false),
+    // Bastion Misawa: a calculating scientist, careful and exact.
+    ("Bastion Misawa", 0.0, 0.7, false),
+    // Nightshroud: a showman of the dark, aggressive with his dragons.
+    ("Nightshroud", 0.5, 0.2, false),
+    // Tyranno Hassleberry: charges in with his dinosaurs, barely guards.
+    ("Tyranno Hassleberry", 0.8, 0.1, false),
+    // Axel Brodie: a hothead, all-out aggression.
+    ("Axel Brodie", 0.9, 0.1, false),
+    // Camula: bites when she can, patient between.
+    ("Camula", 0.3, 0.4, false),
+    // Lyman Banner: experimenter, cautious until the reaction is ready.
+    ("Lyman Banner", 0.1, 0.5, false),
+    // Jim Crocodile Cook: steady, builds his Fossil Fusion before striking.
+    ("Jim Crocodile Cook", 0.4, 0.3, false),
+    // Blair Flannigan: lures with her Maidens, then takes what she wants.
+    ("Blair Flannigan", 0.2, 0.5, false),
 ];
 
 /// The Millennium Eye a player can wear: Bakura's Accessories (male 84, female 342 in the item catalogue), a golden
