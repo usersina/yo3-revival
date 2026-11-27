@@ -53,6 +53,8 @@ pub enum Action {
     /// Chain this card's effect only in answer to an attack declaration (Zero Gardna, Mirror Force): a chance of
     /// the declaring step, not one at a summon or a phase.
     ChainOnAttack(u16),
+    /// Change this monster's position: a Flip Summon for a Set one (Morphing Jar's flip).
+    Reposition(u16),
     /// End the turn: the plan goes on in the next own turn.
     EndTurn,
 }
@@ -565,6 +567,7 @@ impl Scenario {
                     Some(Action::SpSummon(c)) => found("special_summons", c).map(|i| (idle::SPSUMMON, i)),
                     Some(Action::SetSpell(c)) => found("spell_sets", c).map(|i| (idle::SPELL_SET, i)),
                     Some(Action::Activate(c)) => found("activates", c).map(|i| (idle::ACTIVATE, i)),
+                    Some(Action::Reposition(c)) => found("pos_changes", c).map(|i| (idle::REPOS, i)),
                     Some(Action::Attack(_)) if p["to_bp"] == true => {
                         // Into the Battle Phase; the attack is chosen at its prompt below.
                         self.respond(json!({"type": 1, "action": idle::TO_BP, "index": null}))?;

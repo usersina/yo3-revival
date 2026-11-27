@@ -626,3 +626,33 @@ fn black_brutdrago_from_a_tuned_magician_going_second_issue_87() {
     assert!(s.problems.is_empty(), "{:#?}", s.problems);
     assert_eq!(s.attack_of(1, BLACK_BRUTDRAGO), Some(3000), "Black Brutdrago is on the field");
 }
+
+// Sillva, Warlord of Dark World (#88): discarded from the hand by a card effect, it Special Summons itself. The Tricky
+// and Raigeki Break discard as a cost (no effect: it stays in the Graveyard, as the rules say); Morphing Jar's and Card
+// Destruction's discards are effects. (A Morphing Jar flipped by an attack discards it in the Damage Step, where the
+// engine raises no trigger for it: open, docs/roadmap.md.)
+#[test]
+fn sillva_comes_back_when_card_destruction_discards_it_issue_88() {
+    use yo3_server::duelcheck::scenario::card;
+    use yo3_server::engine::{Spawn, SpawnPlace::*};
+    let Some(dir) = engine_dir() else { return };
+    let (sillva, destruction) = (card("Sillva, Warlord of Dark World"), card("Card Destruction"));
+    let field = [Spawn { team: 0, place: Hand, cid: sillva }, Spawn { team: 0, place: Hand, cid: destruction }];
+    let mut s = Scenario::start_field(&dir, 7, 8000, [(&[WARWOLF; 40], &[]), (&[WARWOLF; 40], &[])], &field).unwrap();
+    s.run(&[Activate(destruction)]).unwrap();
+    assert!(s.problems.is_empty(), "{:#?}", s.problems);
+    assert_eq!(s.count(0, "mzone", sillva), 1, "Sillva came back: {:#?}", s.state()[0]);
+}
+
+#[test]
+fn sillva_comes_back_when_a_flip_summoned_morphing_jar_discards_it_issue_88() {
+    use yo3_server::duelcheck::scenario::card;
+    use yo3_server::engine::{Spawn, SpawnPlace::*};
+    let Some(dir) = engine_dir() else { return };
+    let (sillva, jar) = (card("Sillva, Warlord of Dark World"), card("Morphing Jar"));
+    let field = [Spawn { team: 0, place: MonsterSet, cid: jar }, Spawn { team: 0, place: Hand, cid: sillva }];
+    let mut s = Scenario::start_field(&dir, 7, 8000, [(&[WARWOLF; 40], &[]), (&[WARWOLF; 40], &[])], &field).unwrap();
+    s.run(&[Reposition(jar)]).unwrap();
+    assert!(s.problems.is_empty(), "{:#?}", s.problems);
+    assert_eq!(s.count(0, "mzone", sillva), 1, "Sillva came back: {:#?}", s.state()[0]["grave"]);
+}
