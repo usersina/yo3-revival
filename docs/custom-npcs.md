@@ -9,6 +9,7 @@ This guide covers adding one, the art it can have, and authoring a 3D body; the 
 
 - [How it works](#how-it-works)
 - [How many](#how-many)
+- [The characters](#the-characters)
 - [Adding a character](#adding-a-character)
 - [Lines](#lines)
 - [Art](#art)
@@ -54,6 +55,47 @@ outside it, a slot two characters share, a body past 24, a character without thr
 (`0x4F8080`), the talk's gate (`0x4BDAB0`), the free NPCs (`0x79039C`: never a custom id, they need `premium`, which
 every account has) and the NPC texts take any slot. Characters past slot 29 need a launcher and DLL of this version:
 an older launcher refuses them when it writes the added files.
+
+## The characters
+
+31 so far, each on the mannequin with its portrait and faces, three levels (titles easiest first), printed and anime
+decks that pass the server's deck check in both modes (`tests/custom_npc.rs`), talk, chat lines and a bot style.
+"Waiting" counts the later-batch anime-only cards their anime decks list (`anime_waiting`): each plays its stand-in
+until the server has the card.
+
+| Slot | Name | Tab | Decks | Waiting |
+| --- | --- | --- | --- | --- |
+| 25 | Dartz | Yu-Gi-Oh! | The Seal of Orichalcos / The Soldiers of Atlantis / The Great Leviathan Awakens |  |
+| 26 | Rafael | Yu-Gi-Oh! | Guardians of the Gods / The Guardian Assault / The Ultimate Guardian |  |
+| 27 | Valon | Yu-Gi-Oh! | The Armor of a Street Fighter / Knuckles and Armor / The Full Armor Duelist | 21 |
+| 28 | Alister | Yu-Gi-Oh! | The Machines of the Sky / Tanks and Fortresses / The Air Fortress Ziggurat |  |
+| 29 | Noah Kaiba | Yu-Gi-Oh! | The Virtual World / Noah's Phantom Army / Shinato, King of a Higher Plane |  |
+| 30 | Ishizu Ishtar | Yu-Gi-Oh! | The Tablet's Secret / The Millennium Sphinx / The Forbidden One |  |
+| 31 | Weevil Underwood | Yu-Gi-Oh! | The Insect Swarm / Lair of the Parasites / Perfectly Ultimate Great Moth | 2 |
+| 32 | Rex Raptor | Yu-Gi-Oh! | Primal Instinct / Jurassic Rampage / The Tyranno Pride | 5 |
+| 33 | Zigfried von Schroeder | Yu-Gi-Oh! | The Prince of the Nibelung / Wotan's Judgment / Valkyrie's Wrath |  |
+| 34 | Odion | Yu-Gi-Oh! | The Tomb Keeper / The Sealed Soul / Embodiment of Apophis |  |
+| 35 | Mako Tsunami | Yu-Gi-Oh! | The Rage of the Sea / Fishermen of the Deep / Legendary Ocean's Fury | 3 |
+| 36 | Yubel | GX | The Gaze of the Spirit / Love Beyond Rebirth / The Ultimate Nightmare | 17 |
+| 37 | Sartorius | GX | The First Card of Fortune / Reading the Arcana / The Destiny of the Light Ruler | 16 |
+| 38 | Bastion Misawa | GX | Magnetic Attraction / Polarity of the Warriors / The Magna Warrior and the Water Dragon | 15 |
+| 39 | Nightshroud | GX | A Spotlight in the Dark / Red-Eyes in the Night / The Darkness Takes the Stage | 16 |
+| 40 | Tyranno Hassleberry | GX | Dino Rush / Jurassic Ambush / Rise of the Ultimate Tyranno | 13 |
+| 41 | Axel Brodie | GX | Burning Streets / Volcanic Eruption / Doomfire of the Volcano King | 15 |
+| 42 | Camula | GX | Bloodline of the Night / The Vampire Court / Genesis of the Vampire Queen | 13 |
+| 43 | Lyman Banner | GX | The Alchemist's Laboratory / Transmutation of Gold / The Great Work of Amnael | 16 |
+| 44 | Jim Crocodile Cook | GX | Fossil Dig Site / Fossil Fusion Awakened / The Skull Convoy Rolls Out | 13 |
+| 45 | Blair Flannigan | GX | Love at First Sight / The Maidens' Charm / The Mystic Dragon's Promise | 15 |
+| 46 | Z-one | 5D's | Echoes of Tomorrow / Sandaion's Standby / The Last of the Timelords | 12 |
+| 47 | Rex Goodwin | 5D's | Spirits of the Bound Land / The Immortals Rise / The Wrath of Wiraqocha Rasca | 4 |
+| 48 | Aporia | 5D's | Armies of the Meklords / Emperors of the Machine World / The Meklord Emperors ∞ | 17 |
+| 49 | Primo | 5D's | Wisel's Vanguard / Carriers of the Meklord Army / Primo, Guardian of the Future | 18 |
+| 50 | Antinomy | 5D's | Genus Trials / Technical Genus Strike / Halberd Cannon, the Final Genus |  |
+| 51 | Misty Tredwell | 5D's | Cold Gaze of the Reptilianne / Sad Stories of the Serpent / The Gaze That Turns to Stone | 12 |
+| 52 | Roman Goodwin | 5D's | Webs in the Dark / The Bound Deity Stirs / Roman Goodwin, the Weaver of Fate | 10 |
+| 53 | Sherry LeBlanc | 5D's | The Garden of Fleur-de-lis / Thorns of the Noble Rose / Chevalier de Fleur, Knight of the Lily | 15 |
+| 54 | Greiger | 5D's | Spirits in the Quake / The Earth Cries Out / Chacu Challhua, the Fury of Earth | 14 |
+| 55 | Tetsu Trudge | 5D's | Sector Security Patrol / The Security Barricade / Gate Guardian, Sector Security's Pride | 15 |
 
 ## Adding a character
 

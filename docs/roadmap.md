@@ -32,11 +32,12 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
 
 **Kaiba Corporation's characters**
 
-- [ ] More custom characters (slots 26-42 are free; candidates Yubel, Z-one, Rafael, Sartorius, then Valon, Alister,
-      Noah, Bastion, Rex Goodwin, Aporia).
-- [ ] Past slot 42 ([the limits](custom-npcs.md#how-many)): move the deck titles (`lea esi,[r+r+0x5FB4]` at `0x4BB299`,
-      `0x4BFE05`, `0x5174A8` to a free base, the launcher writing every title there), widen `npcbin` past id 256 (the
-      imm32 at `0x51C691`, a longer blob), raise `NPC_SLOTS`; then names past slot 99 (`0x51CC56`, `0x4BFE45`).
+- [ ] The 30 characters of slots 26-55 in more duels: only Valon, Yubel and Antinomy were played live; the bot with
+      the Timelords, Meklord Emperors and Earthbound Immortals (a self-play run per deck). The owner's art for any of them.
+- [ ] Their later-batch anime-only cards (`anime_waiting`, [the list](custom-npcs.md#the-characters)) play by themselves
+      once batches 7-34 are on `main`: run `custom_npc.rs` then, as a swap can change a deck's legality.
+- [ ] More characters: slots 56-99 are free. Past 99 ([the limits](custom-npcs.md#how-many)): the names' base
+      (`0x51CC56`, `0x4BFE45`) or skipping slots 100-102; past 126 the cut-in's signed-byte limit needs a stub.
 - [ ] A visible scrollbar on Kaiba Corporation's list (the wheel scrolls it; its scrollbar is hidden and unwired):
       `kaiba_main.swf` changed by the launcher from the player's own copy and served by the DLL, as other files are.
 

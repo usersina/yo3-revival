@@ -15,9 +15,15 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
-- **Room for 18 custom Kaiba Corporation characters.** Kaiba Corporation can now hold characters of ours in slots 25
-  to 42 (it held 5). Each tab lists any number of them: the list scrolls with the mouse wheel. Their duels count towards
-  their stars and Friendship Level, their bodies show in the duel's cut-ins, and each can pick its cut-in background.
+- **30 new opponents at Kaiba Corporation.** From Duel Monsters: Rafael, Valon, Alister, Noah Kaiba, Ishizu Ishtar,
+  Weevil Underwood, Rex Raptor, Zigfried von Schroeder, Odion and Mako Tsunami. From GX: Yubel, Sartorius, Bastion
+  Misawa, Nightshroud, Tyranno Hassleberry, Axel Brodie, Camula, Lyman Banner, Jim Crocodile Cook and Blair Flannigan.
+  From 5D's: Z-one, Rex Goodwin, Aporia, Primo, Antinomy, Misty Tredwell, Roman Goodwin, Sherry LeBlanc, Greiger and
+  Tetsu Trudge. Each has three decks to beat, their own words in the talk and the duel, and their own style of play.
+  Scroll the list with the mouse wheel to find them.
+- **Room for 75 of Kaiba Corporation's own characters.** Their duels count towards their stars and Friendship Level,
+  their deck names show, and their bodies appear in the duel's cut-ins over a background of their own.
+- **Dartz's decks follow the banlist.** One Swords of Revealing Light, one Magic Cylinder and no Heavy Storm.
 - **Anime-only cards, sixth batch: Battle City's and the Big Five's.** 33 more (Duke Devlin's Diamond Head Dragon and
   Adamantine Sword Revival, Odion's Seal of Serket, Gansley's Ruklamba The Spirit King, Umbra's Masked Doll and
   Masquerade, the Big Five's Dragon Revival Ritual for the anime Five-Headed Dragon, Gurimo's Bronze Knights and Shield
