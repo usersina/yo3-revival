@@ -5738,6 +5738,14 @@
       {
        "card": "Vision",
        "instead": "Nobleman of Crossout"
+      },
+      {
+       "card": "Necro Sacrifice",
+       "instead": "Call of the Haunted"
+      },
+      {
+       "card": "Magician's Scales",
+       "instead": "Dark Hole"
       }
      ]
     },
@@ -5869,6 +5877,42 @@
       {
        "card": "Ace of Wand",
        "instead": "Sakuretsu Armor"
+      },
+      {
+       "card": "The Sky Lord",
+       "instead": "Call of the Haunted"
+      },
+      {
+       "card": "The Material Lord",
+       "instead": "Magic Cylinder"
+      },
+      {
+       "card": "The Spiritual Lord",
+       "instead": "Mirror Force"
+      },
+      {
+       "card": "Ace of Sword",
+       "instead": "Solemn Judgment"
+      },
+      {
+       "card": "Suit of Sword X",
+       "instead": "Torrential Tribute"
+      },
+      {
+       "card": "Arcanatic Doomscythe",
+       "instead": "Dark Hole"
+      },
+      {
+       "card": "Emperor's Staff",
+       "instead": "Arcana Call"
+      },
+      {
+       "card": "Pentacle of Ace",
+       "instead": "Arcana Call"
+      },
+      {
+       "card": "Knight of Pentacles",
+       "instead": "Arcana Force XIV - Temperance"
       }
      ]
     }
