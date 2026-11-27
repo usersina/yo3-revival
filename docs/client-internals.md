@@ -957,9 +957,11 @@ re-encode identical (2026-11-26).
   `data/gfx/cutin_bg_npc%02d.swf` (01-10) by the number at `0x788C40 + 4 * (index + 1)` (read at `0x50627E` and, by
   `Cutin_bgSwfPath` `0x517870`, at `0x51789E`; a player's cut-in uses `cutin_bg_%02d.swf`). That table has 26 entries
   (the first unused); past them sit other tables (`0x788CA8`, `0x788D04`), so slots 25-42 read unrelated numbers and
-  slots 43 on 0 (no `npc00` exists). The connection DLL raises the limit to 43 and gives both tables rows for slots
-  25-42 (the timing row its donor body's; the background its `cutin_bg`, else its donor's: `model/npNNN/donor.txt`),
-  as it gives the model table room for 43. The limits per slot are in [custom NPCs](custom-npcs.md#how-many).
+  slots 43 on 0 (no `npc00` exists). The connection DLL raises the limit to 100 and gives both tables rows for slots
+  25-99 (the timing row its donor body's; the background its `cutin_bg`, else its donor's: `model/npNNN/donor.txt`),
+  as it gives the model table room for 100. It also moves the NPC deck titles from id 250 (`0x5FB4 + 2 * id` is a
+  player title there; the three lookups at `0x4BB299`, `0x4BFE05`, `0x5174A8` call a stub giving `200000 + 2 * id`)
+  and raises the experience blob's bound (`0x51C68F`) from id 256 to 512. The limits per slot are in [custom NPCs](custom-npcs.md#how-many).
   The duel's faces (`Duel_loadNpcFaces` `0x4F8080`: `data/face/np%03df0-4.png` at the duel's start, Yami Yugi's when
   absent) become the Flash images `data/game/face1<i>`.
 - **Our own bodies**: a new body keeps a game body's skeleton and its 53 animations and swaps the meshes, bound to its
