@@ -313,7 +313,12 @@ impl Cards {
         let added = vendor.parent().unwrap_or(vendor).join("added-cards.json");
         // An anime-only card (its data and script from the unofficial database) plays only with the anime versions on;
         // the server refuses every duel with it otherwise.
-        for (cid, code, anime_only) in read_added(&added)? {
+        let added_cards = read_added(&added)?;
+        // A stand-in may be the Konami id of a card the client can never show (an Xyz, Link or Pendulum Monster): the id is
+        // the added card's, and that card's passcodes name nothing the client has.
+        let owner: HashMap<u32, u32> = added_cards.iter().map(|&(cid, code, _)| (cid, code)).collect();
+        cid_of.retain(|id, cid| owner.get(cid).is_none_or(|&code| *id == code || alias.get(id) == Some(&code)));
+        for (cid, code, anime_only) in added_cards {
             if anime_only && !anime {
                 continue;
             }

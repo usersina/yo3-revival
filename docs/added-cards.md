@@ -261,11 +261,19 @@ Konami id and no official data: its data and script are ProjectIgnis' anime ones
 `unofficial/`), and it plays only with the `anime-cards` setting on.
 
 - **Find it** by name or `anime:PASSCODE`: `tools/engine/added-cards.py --find "Orichalcos Gigas"`. It must be marked
-  Anime in the unofficial database (not a video game or manga version, not an anime version of a printed card: those are
-  [anime versions](#its-anime-version)) and have a script that registers effects, not a placeholder; a Normal Monster
+  Anime in the unofficial database, or Video Game when the anime showed it too (Absurd Stealer: ProjectIgnis took its
+  text from the Tag Force games; found by `anime:PASSCODE` only), never a manga version or a copy of a printed card (an
+  anime version of a printed card is [its anime version](#its-anime-version)), and have a script that registers effects,
+  not a placeholder, and that needs no Speed Counters (a Riding Duel's, which the game never had); a Normal Monster
   needs none (Ninja Soldier Katana, Tom Thumb: the engine plays it bare, as it does the game's own). An anime passcode
-  that is already a printed card's anime version (`engine/anime-cards.json`) is refused: that card plays it. The line has an
-  empty Konami id, a stand-in id and the passcode in the `anime` column.
+  that is already a printed card's anime version (`engine/anime-cards.json`) is refused: that card plays it.
+- **An Armor monster** (Valon's Psychic Armor Head and the others, the database's `TYPE_ARMOR`) is an Effect Monster to
+  the client, its text saying it is an Armor monster; the engine reads the database itself and plays the Armor rules
+  (one Armor attacker a turn, an attack moved to another Armor monster). A Fusion that is an Equip Spell (Big Bang Dragon
+  Blow, The Claw of Hermos's) has no kind the client can show and waits. The line has an
+  empty Konami id, a stand-in id and the passcode in the `anime` column. The Magnet Warriors' poles (Σ+, Ω−) are
+  hidden the same way: the client shows an Effect Monster, the engine keeps the pole.
+- **The cards that wait**, with why and what each would take: [Anime cards left out](anime-left-out.md).
 - **Its text** starts with the `[Anime]` line, like every anime card. Its genre bits come from its script's effects and
   its type (the unofficial database numbers its categories its own way).
 - **With anime cards off** it is Forbidden in every banlist the game has, Unlimited too: the server tells the launcher
@@ -339,7 +347,8 @@ The data side doesn't grow with the batch: one table, one command.
 A batch of about twenty cards of one era, mostly Synchro monsters, is about half a day to a day, almost all of it
 scenarios. Simple cards (no effect, or one effect of a kind the game already has) are minutes each.
 
-**The anime-only batches (#75)** are the 29 deck batches of `engine/added/anime-batches.tsv`, about 30 cards each, too
+**The anime-only batches (#75)** are the 34 deck batches of `engine/added/anime-batches.tsv` (30-34: the cards ProjectIgnis
+marks Video Game, the anime's cards with the Tag Force games' texts), about 30 cards each, too
 many for a scenario per effect. They are tested in tiers instead, which the first four batches calibrated:
 
 1. **Every card**, without writing anything: the smoke test (`task check:added`, `YO3_SMOKE=all`: each card on the field

@@ -36,7 +36,9 @@ engine plays it only with the setting on.
 
 The client keeps a card's Konami id in 14 bits (16383 at most) and looks cards up from its lowest id (3900). A newer card
 whose Konami id is beyond that gets a permanent stand-in: the lowest id from 3900 that no card has (not the game's, no
-Konami card's in the pinned ids, no other added card's). The client, the server and the rules engine know the card by
+Konami card's in the pinned ids, no other added card's); when those run out, the Konami id of a printed Xyz, Link or
+Pendulum Monster, a card the client can never show (EDOPro decks and banlists then leave that card out). The client, the
+server and the rules engine know the card by
 that id (the JSON's `cid`; `konami_id` keeps the real one); --find picks it. Like a row, it is never changed. They are few:
 --find gives none of the last STAND_IN_RESERVE free ones, and reports how many are left.
 
@@ -63,6 +65,7 @@ Needs the pinned data (engine/fetch.sh) and the game (YO3_GAME_DIR, else the def
 import argparse
 import collections
 import contextlib
+import functools
 import csv
 import importlib.util
 import io
@@ -167,6 +170,9 @@ TYPE_TOKEN = 0x4000
 # A copy Token's stand-in Type and Attribute (`encode`): Fiend, DARK.
 COPY_TOKEN_RACE, COPY_TOKEN_ATTRIBUTE = 0x8, 0x20
 RARITY = {'': 0, 'common': 0, 'rare': 4, 'super': 3, 'ultra': 2}
+UNSHOWN_TYPES = 0x800000 | 0x1000000 | 0x4000000  # TYPE_XYZ, TYPE_PENDULUM, TYPE_LINK
+TYPE_ARMOR = 0x80000000  # the anime's Armor monsters (ProjectIgnis' constant.lua)
+CLIENT_HIDDEN_TYPES = TYPE_ARMOR | 0x20000000 | 0x40000000  # and TYPE_PLUS, TYPE_MINUS (the Magnet Warriors' poles)
 
 
 EFFECT_WORD = re.compile(r'\b(?:CATEGORY|EFFECT)_[A-Z_]+')
@@ -381,7 +387,10 @@ def encode(d, cid, learned):
         # Its row stands in with Fiend, DARK, Level 1: the engine's field report brings the real ones as it is summoned, and
         # the server sends a Type or Attribute other than the row's in the monster's record (translate's `field`).
         d = dict(d, attribute=d['attribute'] or COPY_TOKEN_ATTRIBUTE, race=d['race'] or COPY_TOKEN_RACE, level=d['level'] or 1)
-    kind, attribute, race = (learned['kind'].get(d['type']), learned['attribute'].get(d['attribute']), learned['race'].get(d['race']))
+    # An Armor monster (Valon's, the anime's TYPE_ARMOR) and a Magnet Warrior's plus or minus (TYPE_PLUS, TYPE_MINUS) are an
+    # Effect Monster to the client: its text says what it is, and the engine, which reads the database itself, plays their
+    # rules (`Armor.AddProcedure`, the magnets' attraction).
+    kind, attribute, race = (learned['kind'].get(d['type'] & ~CLIENT_HIDDEN_TYPES), learned['attribute'].get(d['attribute']), learned['race'].get(d['race']))
     for what, value, given in (('type', d['type'], kind), ('attribute', d['attribute'], attribute), ('race', d['race'], race)):
         if given is None:
             why.append(f'no game card has its {what} ({value:#x}), so the client can\'t show it (Xyz, Link, Pendulum and newer kinds)')
@@ -418,13 +427,22 @@ def load():
     passcode = passcodes(alias)
     rows = client_rows()
     with open(os.path.join(ENGINE, 'card-ids.json')) as f:
-        konami = {m['konami_id'] for c in json.load(f)['data'] for m in c.get('misc_info', []) if m.get('konami_id', 0) > 0}
+        ids = json.load(f)['data']
+    konami = {m['konami_id'] for c in ids for m in c.get('misc_info', []) if m.get('konami_id', 0) > 0}
+    # The Konami ids of printed Xyz, Link and Pendulum Monsters: the client can never show such a card (it has no such kind,
+    # and the project stops at 5D's), so a stand-in may take its id after the free ones run out. The server and the engine
+    # then name the added card by it, and that printed card's passcode by nothing (ydk.rs, cards.rs).
+    unshown = {m['konami_id'] for c in ids if (data.get(c['id']) or {}).get('type', 0) & UNSHOWN_TYPES
+               for m in c.get('misc_info', []) if m.get('konami_id', 0) > 0}
     in_game = {a & 0x3FFF for a, _ in rows} - {0}
     unofficial = sqlite3.connect(os.path.join(ENGINE, 'vendor', 'BabelCDB', 'cards-unofficial.cdb'))
     anime = {r[0]: {'type': r[1], 'atk': r[2], 'def': r[3], 'level': r[4] & 0xFF, 'race': r[5], 'attribute': r[6], 'name': r[7], 'desc': r[8],
-                    'category': r[9], 'alias': r[10]}
-             for r in unofficial.execute('select d.id, d.type, d.atk, d.def, d.level, d.race, d.attribute, t.name, t.desc, d.category, d.alias '
-                                         'from datas d join texts t on t.id = d.id where d.ot & 4')}
+                    'category': r[9], 'alias': r[10], 'video_game': not r[11] & 4}
+             # The anime's cards: those marked Anime, and those marked Video Game (0x10) whose texts ProjectIgnis took from the
+             # Tag Force games (Absurd Stealer, Acceleration Zone: shown in the anime too). A Video Game one is found by its
+             # passcode alone (`anime:CODE`, as the batches name them), never by name.
+             for r in unofficial.execute('select d.id, d.type, d.atk, d.def, d.level, d.race, d.attribute, t.name, t.desc, d.category, d.alias, d.ot '
+                                         'from datas d join texts t on t.id = d.id where d.ot & 0x14')}
     # Tokens (TYPE_TOKEN): the official database's and the unofficial one's, by passcode. They have no Konami id.
     tokens, official_tokens = {}, set()
     for source in (db, unofficial):
@@ -441,7 +459,7 @@ def load():
     return {'data': data, 'passcode': passcode, 'rows': rows, 'learned': learn(rows, data, passcode),
             'genre': learn_genre(game_cards(rows, genres, data, passcode)), 'genres': genres,
             'anime_genre': learn_genre(game_cards(rows, genres, data, passcode, category=False)),
-            'in_game': in_game, 'konami': konami, 'base': min(in_game), 'anime': anime, 'tokens': tokens, 'official_tokens': official_tokens, 'game_tokens': game_tokens}
+            'in_game': in_game, 'konami': konami - unshown, 'unshown': unshown - in_game, 'base': min(in_game), 'anime': anime, 'tokens': tokens, 'official_tokens': official_tokens, 'game_tokens': game_tokens}
 
 
 ANIME_TAG = '[Anime]'  # crates/yo3-server/src/profile.rs ANIME_TAG: an anime card's text starts with it
@@ -459,6 +477,9 @@ def anime_problem(code, d):
         text = f.read()
     if not normal and not any(w in text for w in ('RegisterEffect', 'aux.Add', 'Procedure', '.Add')):
         return f'unofficial/c{code}.lua registers no effect (a placeholder)'
+    if re.search(r'\b0x91\b', text):
+        # Speed Counters: Speed World's, a Riding Duel's Field Spell the game never had (docs/anime-left-out.md).
+        return f'unofficial/c{code}.lua needs Speed Counters (counter 0x91: a Riding Duel\'s Speed World), which the game never had'
     return None
 
 
@@ -475,15 +496,18 @@ def stand_in_problem(sid, ctx, taken):
 
 # Stand-in ids kept back: --find hands none of the last ones out. The client holds 12,484 ids (3900-16383); the game's
 # cards, every Konami id in the pinned ids (kept for the printed cards they are) and the added cards' stand-ins take most.
-# On 2026-11-26 1,002 were free, and the anime-only batches still to add needed about 860 (837 cards and their Tokens):
-# the reserve keeps room for fixes and for the printed cards whose Konami ids are past 16383, until Tokens share an id or
-# the budget otherwise grows (docs/roadmap.md).
+# On 2026-11-26 1,002 were free, and the anime-only batches still to add needed about 860 (837 cards and their Tokens);
+# on 2026-11-27 the video game's versions of anime cards came in too, and the 1,044 Konami ids of the Xyz, Link and
+# Pendulum Monsters under 16384 became stand-ins as well. The reserve keeps room for fixes and for the printed cards whose
+# Konami ids are past 16383.
 STAND_IN_RESERVE = 100
 
 
 def free_stand_ins(ctx, taken):
-    """The ids a stand-in could still take (`taken` the stand-ins given already), reserve included."""
-    return [i for i in range(ctx['base'], 0x4000) if stand_in_problem(i, ctx, taken) is None]
+    """The ids a stand-in could still take (`taken` the stand-ins given already), reserve included: the ids no card has, then
+    the Konami ids of the Xyz, Link and Pendulum Monsters the client can never show."""
+    free = [i for i in range(ctx['base'], 0x4000) if stand_in_problem(i, ctx, taken) is None]
+    return [i for i in free if i not in ctx['unshown']] + [i for i in free if i in ctx['unshown']]
 
 
 def next_stand_in(ctx, taken):
@@ -585,6 +609,18 @@ def build():
     return doc
 
 
+@functools.cache
+def token_constants():
+    """ProjectIgnis' named Tokens (`TOKEN_BOMB = 22411610` in card_counter_constants.lua and constant.lua): name -> passcode."""
+    out = {}
+    for name in ('constant.lua', 'card_counter_constants.lua'):
+        path = os.path.join(ENGINE, 'vendor', 'CardScripts', name)
+        if os.path.exists(path):
+            with open(path, encoding='utf-8', errors='replace') as f:
+                out.update({m[0]: int(m[1], 0) for m in re.findall(r'^\s*(TOKEN_[A-Z0-9_]+)\s*=\s*(0x[0-9A-Fa-f]+|\d+)', f.read(), re.M)})
+    return out
+
+
 def made_tokens(code, ctx):
     """The Tokens the script the engine plays for `code` makes (Duel.CreateToken): their passcodes, read from the numbers
     and `id+N` in its CreateToken lines (a card's Token is usually its own passcode plus one)."""
@@ -595,6 +631,7 @@ def made_tokens(code, ctx):
         if 'CreateToken' not in line and 'TOKEN' not in line:
             continue
         found = [int(n) for n in re.findall(r'\b(\d{5,9})\b', line)] + [code + int(n) for n in re.findall(r'\bid\s*\+\s*(\d)\b', line)]
+        found += [token_constants()[n] for n in re.findall(r'\b(TOKEN_[A-Z0-9_]+)\b', line) if n in token_constants()]
         out += [t for t in found if t in ctx['tokens'] and t not in out]
     return out
 
@@ -637,7 +674,7 @@ def find(names, ctx=None):
     listed_anime = {int(line['anime']) for line in lines if (line.get('anime') or '').strip()}
     anime_by_name = {}
     for code, d in ctx['anime'].items():
-        if not d['alias'] and not d['type'] & TYPE_TOKEN:  # an anime version of a printed card is no anime-only card
+        if not d['alias'] and not d['type'] & TYPE_TOKEN and not d['video_game']:  # an anime version of a printed card is no anime-only card
             anime_by_name.setdefault(d['name'].casefold(), code)
     taken = {int(line['stand_in']) for line in lines if (line.get('stand_in') or '').strip()}
     # The anime passcodes already played as a printed card's anime version (engine/anime-cards.json, #60): adding one as

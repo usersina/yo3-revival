@@ -179,6 +179,25 @@ class AddedCards(unittest.TestCase):
                 added.build()
             self.assertIn('has no Konami id', str(e.exception))
 
+    def test_an_armor_monster_is_an_effect_monster_to_the_client(self):
+        # Psychic Armor Head (Valon's, TYPE_ARMOR 0x80000000 on an Effect Monster): the client's row is an Effect
+        # Monster's, the engine plays the Armor rules from the database. A Fusion Equip Spell (Big Bang Dragon Blow)
+        # still has no row the client can show.
+        ctx = added.load()
+        found = {n: (l, w) for n, l, w in added.find(['anime:110000104', 'anime:170000196'], ctx)}
+        armor = found['Psychic Armor Head']
+        self.assertTrue(armor[0] or 'engine/added/cards.tsv already has it' in armor[1], armor[1])
+        d = ctx['anime'][110000104]
+        a, b, why = added.encode(d, 7022, ctx['learned'])
+        self.assertEqual(why, [])
+        effect = dict(d, type=d['type'] & ~added.TYPE_ARMOR)
+        self.assertEqual(b, added.encode(effect, 7022, ctx['learned'])[1], 'the same row as an Effect Monster')
+        self.assertTrue(any('no game card has its type' in w for w in found['Big Bang Dragon Blow'][1]))
+
+    def test_a_token_named_by_a_constant_is_found(self):
+        # Volcanic Mine makes its Bomb Token by ProjectIgnis' TOKEN_BOMB (card_counter_constants.lua), not by a number.
+        self.assertIn(22411610, added.made_tokens(511004114, added.load()))
+
     def test_an_anime_only_normal_monster_needs_no_script(self):
         # Ninja Soldier Katana is a vanilla anime monster with no script upstream (Ninja Master Shogun's Summon needs it):
         # it can be added; an Effect Monster without a script can't.
@@ -186,6 +205,10 @@ class AddedCards(unittest.TestCase):
         self.assertTrue(line or 'engine/added/cards.tsv already has it' in why, why)
         self.assertIsNone(added.anime_problem(511001319, {'type': 0x11}))
         self.assertIn('no script', added.anime_problem(511001319, {'type': 0x21}))
+
+    def test_a_card_needing_speed_counters_waits(self):
+        # Speed Spell - Defense Buster counts Speed World's Speed Counters, a Riding Duel's: the game never had them.
+        self.assertIn('Speed Counters', added.anime_problem(511000093, {'type': 0x2}))
 
     def test_an_anime_version_of_a_printed_card_is_no_anime_only_card_to_add(self):
         # Rainbow Bridge Bifrost (id 5115) plays 100000539 as its anime version: adding that passcode again as an
@@ -304,6 +327,14 @@ class Pure(unittest.TestCase):
         f = added.fields(18 << 3 | 1 << 8 | 12 << 12 | 1 << 19 | 1 << 27)
         self.assertEqual((f['kind'], f['attribute'], f['level'], f['race'], f['art']), (18, 1, 12, 1, 1))
 
+    def test_stand_ins_take_an_unshown_cards_konami_id_after_the_free_ones(self):
+        # 3900-3909: 3900 is the game's, 3902 a printed card's, 3901 and 3905 an Xyz Monster's (unshown), 3903 taken.
+        ctx = {'base': 3900, 'in_game': {3900}, 'konami': {3902}, 'unshown': {3901, 3905}}
+        free = added.free_stand_ins(ctx, {3903})
+        self.assertEqual(free[:3], [3904, 3906, 3907])
+        self.assertEqual(free[-2:], [3901, 3905], 'an unshown card\'s id comes last')
+        self.assertIsNone(added.stand_in_problem(3905, ctx, set()))
+        self.assertIsNotNone(added.stand_in_problem(3902, ctx, set()))
 
     def test_mechanics_name_their_lines_and_leave_material_rules_alone(self):
         lua = 'local s,id=GetID()\nfunction s.filter(c) return c:IsType(TYPE_XYZ) end\n' \

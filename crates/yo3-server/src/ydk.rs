@@ -111,13 +111,22 @@ impl Passcodes {
                 }
             }
         }
-        // An added card's passcode names it by the id the client knows (a stand-in for a newer card).
+        // An added card's passcode names it by the id the client knows (a stand-in for a newer card). A stand-in may be the
+        // Konami id of a card the client can never show (an Xyz, Link or Pendulum Monster): the id is the added card's, and
+        // that card's passcodes name nothing the client has (an EDOPro deck or banlist leaves it out).
         if let Some(added) = read("added-cards.json")? {
-            for c in added["cards"].as_array().into_iter().flatten() {
-                if let (Some(cid), Some(code)) = (c["cid"].as_u64().and_then(|c| u16::try_from(c).ok()), c["passcode"].as_u64().map(|c| c as u32)) {
-                    map.cid_of.insert(code, cid);
-                    map.passcode_of.insert(cid, code);
-                }
+            let pairs: Vec<(u16, u32)> = added["cards"].as_array().into_iter().flatten()
+                .filter_map(|c| Some((c["cid"].as_u64().and_then(|c| u16::try_from(c).ok())?, c["passcode"].as_u64()? as u32)))
+                .collect();
+            let owner: HashMap<u16, u32> = pairs.iter().copied().collect();
+            let arts: HashMap<u32, u32> = info["data"].as_array().into_iter().flatten()
+                .filter_map(|card| Some((card["id"].as_u64()? as u32, card)))
+                .flat_map(|(main, card)| card["card_images"].as_array().into_iter().flatten().filter_map(move |i| Some((i["id"].as_u64()? as u32, main))))
+                .collect();
+            map.cid_of.retain(|code, cid| owner.get(cid).is_none_or(|&own| *code == own || arts.get(code) == Some(&own)));
+            for (cid, code) in pairs {
+                map.cid_of.insert(code, cid);
+                map.passcode_of.insert(cid, code);
             }
         }
         // An anime version's passcode names the game's card; a deck written back keeps the printed passcode.
@@ -314,6 +323,23 @@ mod tests {
     use super::*;
 
     const FILE: &str = "#created by Player\n#main\n89631139\n89631139\n46986414\n#extra\n44508094\n!side\n5318639\n";
+
+    #[test]
+    fn a_stand_in_on_an_unshown_cards_konami_id_names_the_added_card_only() {
+        // An Xyz Monster's Konami id (9600, passcodes 111 and its art 112) given to an anime-only card as its stand-in: the
+        // Xyz Monster's passcodes name nothing, so an EDOPro deck leaves it out. An added printed card (9800) keeps its art.
+        let engine = std::env::temp_dir().join(format!("yo3-ydk-stand-in-{}", std::process::id()));
+        std::fs::create_dir_all(engine.join("vendor")).unwrap();
+        let card = |id: u32, arts: &[u32], cid: u16| serde_json::json!({"id": id, "card_images": arts.iter().map(|a| serde_json::json!({"id": a})).collect::<Vec<_>>(), "misc_info": [{"konami_id": cid}]});
+        let info = serde_json::json!({"data": [card(111, &[111, 112], 9600), card(200, &[200], 9700), card(300, &[300, 301], 9800)]});
+        std::fs::write(engine.join("vendor/cardinfo.json"), info.to_string()).unwrap();
+        std::fs::write(engine.join("added-cards.json"), r#"{"cards":[{"cid":9600,"passcode":511000040},{"cid":9800,"passcode":300}]}"#).unwrap();
+        let map = Passcodes::load(&engine).unwrap();
+        std::fs::remove_dir_all(&engine).unwrap();
+        assert_eq!((map.cid(111), map.cid(112)), (None, None), "the Xyz Monster names nothing the client has");
+        assert_eq!((map.cid(511000040), map.passcode(9600)), (Some(9600), Some(511000040)));
+        assert_eq!((map.cid(300), map.cid(301), map.cid(200)), (Some(9800), Some(9800), Some(9700)), "other cards as before");
+    }
 
     #[test]
     fn a_ydk_file_reads_by_section_and_writes_back() {

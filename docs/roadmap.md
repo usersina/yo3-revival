@@ -37,7 +37,9 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
 - [ ] The anime's missing cards (#75; inventory of 2026-11-25 in the ignored `logs/anime-missing-20261125/`): 358 printed
       ones are added (rows 4848-5205), with scenario tests (`tests/anime_printed_*.rs`). Five that make Tokens the game never had came with their
       Tokens (rows 5206-5216), and the four whose Tokens copy a monster (Spirit Illusion, Natural Selection, Cell Division,
-      Reckless Parasite) with theirs (rows 5325-5333, `tests/added_copy_tokens.rs`). Open: the anime-only ones, 944 in 29 deck batches (`engine/added/anime-batches.tsv`,
+      Reckless Parasite) with theirs (rows 5325-5333, `tests/added_copy_tokens.rs`). The cards that can't be added yet, with
+      why: [Anime cards left out](anime-left-out.md) (Riding Duels, placeholder scripts, cards ProjectIgnis lacks; nothing
+      after 5D's). Open: the anime-only ones, in 34 deck batches (`engine/added/anime-batches.tsv`,
       `tools/engine/anime-batches.py`): batch 1 added (rows 5217-5258, 42 cards), batch 2 (rows 5259-5296, 38 with 3 Tokens), batch 3 (rows 5297-5324,
       28), batch 4 (rows 5334-5366, 33 with 2 Tokens; Rainbow Bridge Bifrost (Anime) is the printed Bifrost's anime
       version, so it isn't added twice), batch 5 (rows 5367-5403, 37 with 2 Tokens and the vanilla monsters of batches 1-5;
@@ -56,8 +58,8 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
          and a server setting allows it between players (today `destiny_draw_applies` keeps it to NPC duels).
       3. Only then, if still wanted, a tag button in Edit Deck (a change to the game's Flash screen, never done yet).
 - [ ] Later, if needed: Tokens sharing one stand-in id, or skipping the id lookup, if the stand-in budget gets tight
-      (1,002 free on 2026-11-26 against about 860 for the anime-only batches; it needs proof the client never looks a Token
-      up by id). After `engine/fetch.sh --update`, re-test only the added and anime cards whose scripts changed between
+      (1,010 free on 2026-11-27 once the Konami ids of Xyz, Link and Pendulum Monsters count as free; it needs proof the
+      client never looks a Token up by id). After `engine/fetch.sh --update`, re-test only the added and anime cards whose scripts changed between
       the pins.
 - [ ] Complete menu/effect coverage and automatic native UI replay/minimization. Known reveal/reversal/disabled-zone
       gaps remain visible; neither the random corpus nor matching state hashes proves all card interactions.

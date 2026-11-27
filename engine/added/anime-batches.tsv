@@ -137,12 +137,7 @@ batch	series	deck	anime	name	tokens
 4	DM	Vivian Wong	810000092	Luminous Clouds	
 4	DM	Vivian Wong	511000269	Mystic Eruption	
 4	DM	Vivian Wong	511000272	Snowfall Sword	
-5	DM	Valon	110000116	Armored Gravitation	
-5	DM	Valon	511002999	Data Brain	
 5	DM	Valon	511001005	Extinction Fist	
-5	DM	Valon	110000114	Full Armor Gravitation	
-5	DM	Valon	110000115	Magnet Armor	
-5	DM	Valon	110000113	Phoenix Gravitation	
 5	DM	Yami Marik	511001893	Class System	
 5	DM	Yami Marik	511000167	Dark Wall of Wind	
 5	DM	Yami Marik	511000424	Nightmare Mirror	
@@ -221,6 +216,23 @@ batch	series	deck	anime	name	tokens
 7	DM	Rex Raptor	511000894	Chain of the Underworld	
 7	DM	Mako Tsunami	511002503	Great White Terror	
 7	DM	Rebecca Hawkins	511001150	Ruby Dragon	
+7	DM	Valon	110000103	Active Guard	
+7	DM	Valon	110000104	Psychic Armor Head	
+7	DM	Valon	110000105	Trap Buster	
+7	DM	Valon	110000106	Over Boost	
+7	DM	Valon	110000107	Jet Gauntlet	
+7	DM	Valon	110000108	Black Hole Shield	
+7	DM	Valon	110000109	Buster Knuckle	
+7	DM	Valon	110000110	Big Bang Blow	
+7	DM	Valon	110000111	Burning Knuckle	
+7	DM	Valon	110000112	Advanced Shield	
+7	DM	Valon	110000117	Buster Pyle	
+7	DM	Valon	110000120	Double Cloth Armor	
+7	DM	Valon	110000116	Armored Gravitation	
+7	DM	Valon	511002999	Data Brain	
+7	DM	Valon	110000114	Full Armor Gravitation	
+7	DM	Valon	110000115	Magnet Armor	
+7	DM	Valon	110000113	Phoenix Gravitation	
 8	GX	Jaden Yuki	511005016	Astral Shift	
 8	GX	Jaden Yuki	511002619	Battle x 2	
 8	GX	Jaden Yuki	511002154	Bubble Rod	
@@ -714,9 +726,6 @@ batch	series	deck	anime	name	tokens
 22	5Ds	Yusei Fudo	511001763	Skill Twist	
 22	5Ds	Yusei Fudo	810000009	Sneak Giant	
 22	5Ds	Yusei Fudo	511000875	Space Jump	
-22	5Ds	Yusei Fudo	511000093	Speed Spell - Defense Buster	
-22	5Ds	Yusei Fudo	511000780	Speed Spell - Overspeed	
-22	5Ds	Yusei Fudo	100100525	Speed Spell - Synchro Panic	
 22	5Ds	Yusei Fudo	511000873	Star Excursion	
 22	5Ds	Yusei Fudo	511000865	Star Shift	
 22	5Ds	Yusei Fudo	511000862	Stay Force	
@@ -806,8 +815,6 @@ batch	series	deck	anime	name	tokens
 24	5Ds	Jakob	511000975	Banishing Climb	
 24	5Ds	Jakob	511008026	Granel Top 5	
 24	5Ds	Jakob	511000979	Infinity Wall	
-24	5Ds	Jakob	511000977	Speed Spell - Silent Burn	
-24	5Ds	Jakob	511000978	Speed Spell - Takeover	
 24	5Ds	Jakob	100000309	Wisel Attack 5	
 25	5Ds	Bashford	511000967	Junk Factory	
 25	5Ds	Bashford	511000968	Junk Spirit	
@@ -843,7 +850,6 @@ batch	series	deck	anime	name	tokens
 26	5Ds	Primo	511002554	Echo Mirror	
 26	5Ds	Primo	511002887	Explosive Blast	
 26	5Ds	Primo	511000973	Infinity Guard Formation	
-26	5Ds	Primo	511000972	Speed Spell - Lightning Rod	
 26	5Ds	Primo	100000441	Wise G3	
 26	5Ds	Primo	100000442	Wise T3	
 26	5Ds	Professor Frank	511002752	Gestalt Trap	
@@ -964,3 +970,153 @@ batch	series	deck	anime	name	tokens
 29	5Ds	The Giant	511005629	Illegal Keeper	
 29	5Ds	Vizor	511000976	Magnetic Storm	
 29	5Ds	(no deck)	511009122	Diva Adriana	
+30	DM	Arkana	511002593	Doll of Demise	
+30	DM	Weevil Underwood	511002428	Soldier Ari	
+30	GX	Adrian Gecko	111215001	Fog Castle	
+30	GX	Aster Phoenix	100006001	D - Mind	
+30	GX	Bastion Misawa	170000111	Magnet Warrior Σ＋	
+30	GX	Bastion Misawa	170000113	Magnet Warrior Σ－	
+30	GX	Bastion Misawa	170000112	Magnet Warrior Ω－	
+30	GX	Bastion Misawa	100001008	Plasma Warrior Eitom (VG)	
+30	GX	Blair Flannigan	100000138	Cupid's Kiss	
+30	GX	Blair Flannigan	100000136	Defense Maiden	
+30	GX	Blair Flannigan	100000137	Happy Marriage	
+30	GX	Chazz Princeton	511000037	Pride Shout	
+30	GX	Don Zaloog (character)	111203901	Dark Scorpion - Tragedy of Love	
+30	GX	Don Zaloog (character)	111203902	Dark Scorpion Retreat	
+30	GX	Jaden Yuki	511000021	Burst Impact	
+30	GX	Jaden Yuki	511000045	The Rival's Name	
+30	GX	Jean-Louis Bonaparte	511000007	Crowning of the Emperor	
+30	GX	Jean-Louis Bonaparte	511000006	Toy Emperor	
+30	GX	Jean-Louis Bonaparte	511000005	Toy Soldier	
+30	GX	Jim Crocodile Cook	511027109	Sacred Defense Barrier	
+30	GX	Lorenzo	100000085	B.E.S. Assault Core	
+30	GX	Lorenzo	511000019	Shield Recovery	
+30	GX	Mad Dog	100000166	Last Machine Acid Virus	
+30	GX	Mr. Huffington	100000322	Dizzy Angel	
+30	GX	Mr. Huffington	100000321	Dizzy Tiger	
+30	GX	Mr. Huffington	100000323	Flipping the Table	
+30	GX	Mr. Huffington	100000320	Hot Sauce Bottle	
+31	GX	Mr. Stein	100000224	Scab Scar Knight	
+31	GX	Prince Ojin	100000022	Satellite Laser Balsam	
+31	GX	Princess Rose	511000046	Amphibian Angel - Frog-Hael	
+31	GX	Sarina	100000080	Infinite Fiend Mirror	100000082
+31	GX	Sartorius	100000105	Arcana Force VIII - The Strength	
+31	GX	Sartorius	100000106	Arcana Force XII - The Hangman (VG)	
+31	GX	Sartorius	511000022	Suit of Sword X	
+31	GX	Sartorius	100000107	The Material Lord	
+31	GX	Sartorius	100000109	The Sky Lord	
+31	GX	Sartorius	100000108	The Spiritual Lord	
+31	GX	Syrus Truesdale	511000011	Kiteroid (VG)	
+31	GX	Tania	511001731	Amazoness Arena	
+31	GX	Titan	511000017	Dark Arena	
+31	GX	Titan	511000010	Ritual of the Matador	
+31	GX	Trueman	100000032	Dark Archetype	
+31	GX	Trueman	100000033	Dark Psycho Eye	
+31	GX	Trueman	511000131	Flame Wall	
+31	GX	Trueman	511000062	The Unselected One	
+31	GX	Trueman	100000290	Volcanic Wall	
+31	GX	Yubel (character)	511000003	Zero Sprite	
+31	GX	Yusuke Fujiwara	100000197	Attribute Bomb	
+31	GX	Yusuke Fujiwara	100000198	Attribute Chameleon	
+31	GX	Yusuke Fujiwara	511000079	Attribute Gravity	
+31	GX	Yusuke Fujiwara	100000196	Attribute Mastery	
+31	GX	Zure, Knight of Dark World (character)	100000281	Power Zone	
+32	5Ds	Akiza Izinski	511000053	Synchro Back	
+32	5Ds	Andre	100000031	Beast Burial Ritual	
+32	5Ds	Andre	100000030	Dimension Equilibrium	
+32	5Ds	Aporia	100000038	Aurora Draw	
+32	5Ds	Aporia	100000072	Chaos Blast (VG)	
+32	5Ds	Aporia	500314601	Chaos Bloom	
+32	5Ds	Aporia	100000234	Cursed Synchro	
+32	5Ds	Aporia	100000070	Future Destruction	
+32	5Ds	Aporia	100000068	Meklord Emperor Creation	
+32	5Ds	Bolt Tanner	100000074	Giant Ushi Oni	
+32	5Ds	Breo	111310102	Destruction Trigger	
+32	5Ds	Breo	511000025	Tuning Collapse	
+32	5Ds	Devack	110000099	Cursed Prison	
+32	5Ds	Devack	511000043	Dark Matter (VG)	511000042
+32	5Ds	Devack	100000146	Dark Tuner Dark Ape	
+32	5Ds	Devack	100000147	Dark Wave	
+32	5Ds	Don Piero	511000067	Endless Loan	
+32	5Ds	Don Piero	511000069	Toichi the Nefarious Debt Collector	
+32	5Ds	Ghost	100000088	Battle Return	
+32	5Ds	Ghost	511000028	Labyrinth of Kline	
+32	5Ds	Ghost	511000001	Spark Breaker	
+32	5Ds	Ghost	100000055	Wise Core	
+32	5Ds	Ghost	100000052	Wisel Attack (TF6)	
+32	5Ds	Ghost	100000048	Wisel Attack 3 (TF6)	
+32	5Ds	Ghost	100000054	Wisel Carrier (TF6)	
+32	5Ds	Ghost	100000053	Wisel Guard (TF6)	
+32	5Ds	Ghost	100000047	Wisel Guard 3 (TF6)	
+32	5Ds	Ghost	100000051	Wisel Top (TF6)	
+32	5Ds	Gill Randsborg	100004001	Masked Knight LV3	
+32	5Ds	Gill Randsborg	100004002	Masked Knight LV5	
+32	5Ds	Gill Randsborg	100004003	Masked Knight LV7	
+32	5Ds	Grady	100000157	Blizzard Lizard	
+33	5Ds	Greiger	511000015	Basara	
+33	5Ds	Greiger	511000047	Chariot Pile	
+33	5Ds	Greiger	100000307	Contaminated Earth	
+33	5Ds	Greiger	100000141	Dark Tuner Doom Submarine	
+33	5Ds	Greiger	511000033	Diving Exploder	
+33	5Ds	Halldor	511000061	Gjallarhorn	
+33	5Ds	Jakob	100000067	Grand Core	
+33	5Ds	Jakob	100000063	Granel Attack (TF6)	
+33	5Ds	Jakob	100000065	Granel Carrier (TF6)	
+33	5Ds	Jakob	100000064	Granel Guard (TF6)	
+33	5Ds	Jakob	100000062	Granel Top (TF6)	
+33	5Ds	Jean	511000023	Superficial Peace	
+33	5Ds	Jean	511000048	Thousand Crisscross	
+33	5Ds	Kalin Kessler	511000145	Infernity Zero	
+33	5Ds	Lazar	511001103	Card of Distrain	
+33	5Ds	Lazar	511000060	Hidden Passage	
+33	5Ds	Lazar	511000026	Jester Queen	
+33	5Ds	Lazar	511000066	Jester's Panic	
+33	5Ds	Lazar	511000050	Late Penalty	
+33	5Ds	Lazar	511001107	Tuning Barrier	
+33	5Ds	Leo	511000049	Central Shield	
+33	5Ds	Leo	511000056	Double Ripple	
+33	5Ds	Leo	511000052	Pain to Power	
+33	5Ds	Leo	511000031	Power Converter	
+33	5Ds	Lester	511000040	Absurd Stealer	
+33	5Ds	Lester	100000039	Convert Ghost (TF6)	
+33	5Ds	Lester	500313101	Infinite Prison	
+33	5Ds	Lester	100000040	Infinity Force (TF6)	
+33	5Ds	Lester	100000058	Skiel Attack (TF6)	
+33	5Ds	Lester	100000045	Skiel Attack 3 (TF6)	
+33	5Ds	Lester	100000043	Skiel Attack 5 (TF6)	
+33	5Ds	Lester	100000060	Skiel Carrier (TF6)	
+33	5Ds	Lester	100000046	Skiel Carrier 3 (TF6)	
+33	5Ds	Lester	100000059	Skiel Guard (TF6)	
+33	5Ds	Lester	100000057	Skiel Top (TF6)	
+33	5Ds	Lester	100000066	Sky Core	
+34	5Ds	Luna	511000039	Synchro Monument	
+34	5Ds	Nicolas	511000008	Hook the Hidden Knight	
+34	5Ds	Primo	511000051	Divergence	
+34	5Ds	Primo	100000044	Skiel Carrier 5 (TF6)	
+34	5Ds	Primo	511000004	Twin Vortex	
+34	5Ds	Primo	100000049	Wisel Top 3 (TF6)	
+34	5Ds	Rex Goodwin	100000145	Dark Tuner - Dark Goddess Witaka	
+34	5Ds	Rex Goodwin	100000431	Passion of Baimasse	
+34	5Ds	Roman Goodwin	100000432	Altar of the Bound Deity	
+34	5Ds	Roman Goodwin	100000144	Dark Tuner Spider Cocoon	
+34	5Ds	Sector Security	511000027	Defender's Mind	
+34	5Ds	Sector Security	511000016	Gate Defender	
+34	5Ds	Sherry LeBlanc	511000029	Chain Close	
+34	5Ds	Sherry LeBlanc	511000018	Fleur de Vertiges	
+34	5Ds	Sherry LeBlanc	511000002	Floral Shield	
+34	5Ds	Sherry LeBlanc	511000032	For Our Dreams	
+34	5Ds	Sherry LeBlanc	511000044	Imitation	500000148
+34	5Ds	Tetsu Trudge	511000054	Climactic Barricade	
+34	5Ds	Tetsu Trudge	100000142	Dark Tuner Chaos Rogue	
+34	5Ds	Tetsu Trudge	511001106	Discord Counter	
+34	5Ds	Tetsu Trudge	511000059	Final Penalty	
+34	5Ds	Tetsu Trudge	511000071	Terminal Countdown	
+34	5Ds	Vizor	511000063	Double Type Rescue	
+34	5Ds	Yusei Fudo	511000065	High and Low	
+34	5Ds	Yusei Fudo	100000348	Mach Synchron	
+34	5Ds	Yusei Fudo	511001105	Synchro Spirits	
+34	5Ds	Z-one	511000030	Empress's Crown	
+34	5Ds	Z-one	100000021	Empress's Staff	
+34	5Ds	Z-one	100000011	Time Angel	
+34	5Ds	Jack Atlas	511002765	Zero Hole (GX)	

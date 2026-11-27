@@ -24,6 +24,7 @@
 - [Custom NPCs](custom-npcs.md): characters the game never had as Kaiba Corporation opponents (Dartz first): their decks for both card modes, lines, art, and their bodies (a game NPC's or our mannequin), with authoring a 3D body.
 - [Problem report file](report-format.md): what Report a problem's ZIP holds (format 4): the report, the PC, the logs and Singleplayer's duel recordings.
 - [Log format](logs.md): yo3-log/1, the one JSON Lines schema of every log, and reading them with `tools/logs/yo3log.py` or lnav.
+- [Anime cards left out](anime-left-out.md): the Duel Monsters, GX and 5D's anime cards not in the game yet (Riding Duels, placeholder scripts, cards ProjectIgnis lacks), each with why and what it would take.
 - [Anime card versions](anime-cards.md): which cards play by their anime effects with the host's setting on, and which are held back and why.
 - [Development guide](development.md): source builds, checks, duel diagnostics and release packaging.
 - [Standalone dashboard](dashboard.md): current preview, transactional admin operations and the accepted public-management/nginx plan.
