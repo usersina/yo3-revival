@@ -65,7 +65,7 @@ fn the_last_custom_slot_joins_the_roster_on_its_tab() {
 /// Every custom NPC's decks, as the server builds them from `engine/added/npcs.json`: each card name is one the server
 /// knows (none left out), and each level's deck passes the server's deck check (`deckcheck::check`: sizes, Extra Deck
 /// placement, the login banlist, cards the engine has) with anime cards off (the printed deck, no anime-only card) and
-/// on (the anime deck).
+/// on (the anime deck); and each has a bot style.
 #[test]
 fn every_custom_npcs_decks_load_and_pass_the_deck_check_in_both_modes() {
     let game = std::env::var_os("YO3_GAME_DIR").map(std::path::PathBuf::from).unwrap_or_else(yo3_data::default_game_dir);
@@ -81,6 +81,9 @@ fn every_custom_npcs_decks_load_and_pass_the_deck_check_in_both_modes() {
     assert!(!npcs.is_empty());
     let mut problems = vec![];
     for npc in &npcs {
+        if yo3_server::npc::style(&npc.name).is_null() {
+            problems.push(format!("{}: no bot style (npc.rs CHARACTERS)", npc.name));
+        }
         for (id, level) in npc.ids().into_iter().zip(&npc.levels) {
             let printed = &world.npc_decks[&id];
             if printed.main.len() != level.deck.len() || printed.extra.len() != level.extra.len() {
@@ -89,6 +92,11 @@ fn every_custom_npcs_decks_load_and_pass_the_deck_check_in_both_modes() {
             if let Some(anime) = world.npc_anime_decks.get(&id)
                 && (anime.main.len() != level.anime_deck.len() || anime.extra.len() != level.anime_extra.len()) {
                 problems.push(format!("{} level {id}: an anime card name the server doesn't know", npc.name));
+            }
+            for w in &level.anime_waiting {
+                if !level.anime_deck.contains(&w.instead) && !level.anime_extra.contains(&w.instead) {
+                    problems.push(format!("{} level {id}: {} waits in place of {}, which the anime deck doesn't have", npc.name, w.card, w.instead));
+                }
             }
             for anime in ["off", "on"] {
                 world.settings.set("anime-cards", anime).unwrap();

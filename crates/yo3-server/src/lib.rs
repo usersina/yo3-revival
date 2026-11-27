@@ -465,7 +465,9 @@ pub fn add_custom_npcs(world: &mut World, data: &yo3_data::GameData) {
             let deck = |main: &[String], extra: &[String]| Deck { id: id * 100, name: String::new(), main: rows(main), extra: rows(extra), side: vec![] };
             world.npc_decks.insert(id, deck(&level.deck, &level.extra));
             if !level.anime_deck.is_empty() {
-                world.npc_anime_decks.insert(id, deck(&level.anime_deck, &level.anime_extra));
+                // A later batch's card plays once the server has it (`anime_waiting`), its stand-in until then.
+                let (main, extra) = level.anime_cards(|name| row_of.contains_key(name));
+                world.npc_anime_decks.insert(id, deck(&main, &extra));
             }
         }
     }

@@ -140,7 +140,7 @@ fn the_custom_npc_slots_texts_are_free_in_every_language() {
     use yo3_data::added::{AddedNpc, AddedNpcLevel, CUSTOM_NPC_SLOTS, LANGUAGES};
     let Some(ypk) = game() else { return };
     let npc = |slot: u32| AddedNpc { slot, name: "N".into(), help: "H".into(), series: 0, body: 0, figure: None, cutin_bg: None,
-        levels: (0..3).map(|_| AddedNpcLevel { title: "T".into(), deck: vec![], extra: vec![], anime_deck: vec![], anime_extra: vec![] }).collect(),
+        levels: (0..3).map(|_| AddedNpcLevel { title: "T".into(), deck: vec![], extra: vec![], anime_deck: vec![], anime_extra: vec![], anime_waiting: vec![] }).collect(),
         lines: (0..300).map(|n| (n.to_string(), "L".into())).collect() };
     for lang in LANGUAGES {
         let texts = yo3_data::parse_texts(&ypk.read(&format!("data/text/txttbl_{lang}.bin")).unwrap().unwrap());

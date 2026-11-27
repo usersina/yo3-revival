@@ -181,6 +181,33 @@ pub struct AddedNpcLevel {
     pub anime_deck: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub anime_extra: Vec<String>,
+    /// Anime-only cards this level's anime deck wants that the server doesn't have yet (a later batch's): each plays
+    /// in place of one copy of `instead` (in `anime_deck` or `anime_extra`) until the server knows the card.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub anime_waiting: Vec<AnimeWaiting>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AnimeWaiting {
+    pub card: String,
+    pub instead: String,
+}
+
+impl AddedNpcLevel {
+    /// The anime deck as it plays now (main, extra): each waiting card the server knows (`known`) replaces one copy of
+    /// its stand-in, the others wait.
+    pub fn anime_cards(&self, known: impl Fn(&str) -> bool) -> (Vec<String>, Vec<String>) {
+        let (mut main, mut extra) = (self.anime_deck.clone(), self.anime_extra.clone());
+        for w in self.anime_waiting.iter().filter(|w| known(&w.card)) {
+            for list in [&mut main, &mut extra] {
+                if let Some(at) = list.iter().position(|n| *n == w.instead) {
+                    list[at] = w.card.clone();
+                    break;
+                }
+            }
+        }
+        (main, extra)
+    }
 }
 
 /// The first NPC id (0x4BFE34): NPC k's levels are `FIRST_NPC_ID + 3k` to `+ 2`.
@@ -783,7 +810,7 @@ mod tests {
 
     fn npc(slot: u32) -> AddedNpc {
         AddedNpc { slot, name: format!("N{slot}"), help: "H".into(), series: 0, body: 3, figure: None, cutin_bg: None,
-            levels: (0..3).map(|_| AddedNpcLevel { title: "T".into(), deck: vec![], extra: vec![], anime_deck: vec![], anime_extra: vec![] }).collect(),
+            levels: (0..3).map(|_| AddedNpcLevel { title: "T".into(), deck: vec![], extra: vec![], anime_deck: vec![], anime_extra: vec![], anime_waiting: vec![] }).collect(),
             lines: Default::default() }
     }
 
@@ -824,6 +851,20 @@ mod tests {
         assert_eq!((deck_title_text(250), deck_title_text(419)), (200_500, 200_838));
         let titles: Vec<u32> = npc(99).texts().into_iter().map(|(id, _)| id).filter(|&id| id >= NPC_HIGH_DECK_TITLE_TEXT).collect();
         assert_eq!(titles, [200_834, 200_836, 200_838], "slot 99's levels, ids 417-419");
+    }
+
+
+    #[test]
+    fn a_waiting_anime_card_plays_once_the_server_has_it() {
+        let level = AddedNpcLevel { title: "T".into(), deck: vec![], extra: vec![],
+            anime_deck: vec!["A".into(), "Stand-in".into(), "Stand-in".into()], anime_extra: vec!["Fusion".into()],
+            anime_waiting: vec![AnimeWaiting { card: "New".into(), instead: "Stand-in".into() },
+                AnimeWaiting { card: "New Fusion".into(), instead: "Fusion".into() },
+                AnimeWaiting { card: "Later".into(), instead: "A".into() }] };
+        let (main, extra) = level.anime_cards(|n| n != "Later");
+        assert_eq!(main, ["A", "New", "Stand-in"], "one copy replaced, the card not yet known waits");
+        assert_eq!(extra, ["New Fusion"]);
+        assert_eq!(level.anime_cards(|_| false), (level.anime_deck.clone(), level.anime_extra.clone()));
     }
 
 }
