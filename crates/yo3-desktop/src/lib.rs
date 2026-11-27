@@ -432,9 +432,13 @@ impl Backend {
         let _lock = if changes { Some(yo3_server::store::lock(&data)?) } else { None };
         if changes { yo3_server::store::initialize(&data)?; }
         let directory = yo3_server::accounts::Directory::open(vec![], &data.join("accounts.json"))?;
-        let player = directory.player_id_named(&settings.player_name).ok_or_else(|| anyhow::anyhow!("Make your player in the game first (Select Player), then try again."))?;
-        let owner = directory.entries().find(|(_, _, a)| a.players.iter().any(|p| p.player_id == player)).map(|(_, _, a)| a.user_id)
-            .ok_or_else(|| anyhow::anyhow!("Make your player in the game first (Select Player), then try again."))?;
+        // Your player's account; before the game made the player, your own server's one account (a banlist is the
+        // account's, not a player's).
+        let by_player = directory.player_id_named(&settings.player_name)
+            .and_then(|player| directory.entries().find(|(_, _, a)| a.players.iter().any(|p| p.player_id == player)).map(|(_, _, a)| a.user_id));
+        let accounts: Vec<u32> = directory.entries().map(|(_, _, a)| a.user_id).collect();
+        let owner = by_player.or_else(|| (accounts.len() == 1).then(|| accounts[0]))
+            .ok_or_else(|| anyhow::anyhow!("Press PLAY once first: your own server makes your account then."))?;
         drop(directory);
         yo3_server::player_banlists::offline(&data, Path::new(&settings.game_dir), owner, &settings.player_name, &request).map_err(anyhow::Error::msg)
     }
