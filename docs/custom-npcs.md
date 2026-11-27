@@ -67,7 +67,7 @@ until the server has the card.
 | --- | --- | --- | --- | --- |
 | 25 | Dartz | Yu-Gi-Oh! | The Seal of Orichalcos / The Soldiers of Atlantis / The Great Leviathan Awakens |  |
 | 26 | Rafael | Yu-Gi-Oh! | Guardians of the Gods / The Guardian Assault / The Ultimate Guardian |  |
-| 27 | Valon | Yu-Gi-Oh! | The Armor of a Street Fighter / Knuckles and Armor / The Full Armor Duelist | 21 |
+| 27 | Valon | Yu-Gi-Oh! | The Armor of a Street Fighter / Knuckles and Armor / The Full Armor Duelist | 29 |
 | 28 | Alister | Yu-Gi-Oh! | The Machines of the Sky / Tanks and Fortresses / The Air Fortress Ziggurat |  |
 | 29 | Noah Kaiba | Yu-Gi-Oh! | The Virtual World / Noah's Phantom Army / Shinato, King of a Higher Plane |  |
 | 30 | Ishizu Ishtar | Yu-Gi-Oh! | The Tablet's Secret / The Millennium Sphinx / The Forbidden One |  |
@@ -81,21 +81,28 @@ until the server has the card.
 | 38 | Bastion Misawa | GX | Magnetic Attraction / Polarity of the Warriors / The Magna Warrior and the Water Dragon | 15 |
 | 39 | Nightshroud | GX | A Spotlight in the Dark / Red-Eyes in the Night / The Darkness Takes the Stage | 16 |
 | 40 | Tyranno Hassleberry | GX | Dino Rush / Jurassic Ambush / Rise of the Ultimate Tyranno | 13 |
-| 41 | Axel Brodie | GX | Burning Streets / Volcanic Eruption / Doomfire of the Volcano King | 15 |
+| 41 | Axel Brodie | GX | Burning Streets / Volcanic Eruption / Doomfire of the Volcano King | 21 |
 | 42 | Camula | GX | Bloodline of the Night / The Vampire Court / Genesis of the Vampire Queen | 13 |
-| 43 | Lyman Banner | GX | The Alchemist's Laboratory / Transmutation of Gold / The Great Work of Amnael | 16 |
+| 43 | Lyman Banner | GX | The Alchemist's Laboratory / Transmutation of Gold / The Great Work of Amnael | 25 |
 | 44 | Jim Crocodile Cook | GX | Fossil Dig Site / Fossil Fusion Awakened / The Skull Convoy Rolls Out | 13 |
 | 45 | Blair Flannigan | GX | Love at First Sight / The Maidens' Charm / The Mystic Dragon's Promise | 15 |
 | 46 | Z-one | 5D's | Echoes of Tomorrow / Sandaion's Standby / The Last of the Timelords | 12 |
-| 47 | Rex Goodwin | 5D's | Spirits of the Bound Land / The Immortals Rise / The Wrath of Wiraqocha Rasca | 4 |
+| 47 | Rex Goodwin | 5D's | Spirits of the Bound Land / The Immortals Rise / The Wrath of Wiraqocha Rasca | 7 |
 | 48 | Aporia | 5D's | Armies of the Meklords / Emperors of the Machine World / The Meklord Emperors ∞ | 17 |
 | 49 | Primo | 5D's | Wisel's Vanguard / Carriers of the Meklord Army / Primo, Guardian of the Future | 18 |
 | 50 | Antinomy | 5D's | Genus Trials / Technical Genus Strike / Halberd Cannon, the Final Genus |  |
 | 51 | Misty Tredwell | 5D's | Cold Gaze of the Reptilianne / Sad Stories of the Serpent / The Gaze That Turns to Stone | 12 |
-| 52 | Roman Goodwin | 5D's | Webs in the Dark / The Bound Deity Stirs / Roman Goodwin, the Weaver of Fate | 10 |
+| 52 | Roman Goodwin | 5D's | Webs in the Dark / The Bound Deity Stirs / Roman Goodwin, the Weaver of Fate | 13 |
 | 53 | Sherry LeBlanc | 5D's | The Garden of Fleur-de-lis / Thorns of the Noble Rose / Chevalier de Fleur, Knight of the Lily | 15 |
-| 54 | Greiger | 5D's | Spirits in the Quake / The Earth Cries Out / Chacu Challhua, the Fury of Earth | 14 |
-| 55 | Tetsu Trudge | 5D's | Sector Security Patrol / The Security Barricade / Gate Guardian, Sector Security's Pride | 15 |
+| 54 | Greiger | 5D's | Spirits in the Quake / The Earth Cries Out / Chacu Challhua, the Fury of Earth | 17 |
+| 55 | Tetsu Trudge | 5D's | Sector Security Patrol / The Security Barricade / Gate Guardian, Sector Security's Pride | 18 |
+
+The Dark Signers (Rex Goodwin, Roman Goodwin, Greiger, and Trudge's last level) play Dark Tuner Nightmare Hand and
+Catastrogue: their effect Tributes the Dark Tuner and a lower non-Tuner to bring the Synchro Monster of the Levels'
+difference, which with anime cards on is the game's Dark Synchro Monster in its anime version (Underground Arachnid,
+Hundred Eyes Dragon, Frozen Fitzgerald, Dark Highlander, Dark Diviner; `tests/dark_synchro.rs`). A true Dark Synchro
+Summon needs an anime Dark Tuner (setcode 0x600: Doom Submarine, Spider Cocoon, Chaos Rogue, Dark Goddess Witaka, in
+batches 32-34), which their anime decks list as waiting.
 
 ## Adding a character
 
@@ -243,7 +250,10 @@ than 256 or not a power of two, a mesh with no visibility track (shown by defaul
 
 ## Checking it
 
-- `cargo nextest run -p yo3-server --test custom_npc` (roster, tab, both decks complete), `-p yo3-data --test models`
+- `cargo nextest run -p yo3-server --test custom_npc` (roster, tab, every character's decks known and legal in both
+  modes, a bot style each), `task check:npcs` (`tests/custom_npc_selfplay.rs`: each level's deck in duels the bot plays
+  on both sides against a hero of its series, anime cards off and on, under the duel check; a report of results, stalls
+  and the bosses summoned), `-p yo3-data --test models`
   (every game model round-trips; the mannequin builds and keeps its 53 animations).
 - Live, with a scratch server (`task dev:server`, `scratch-server.py admin set anime-cards on|off`) and the headless
   client: Kaiba Corporation (765, 275), click through the greeting to the list, select the character (its portrait and

@@ -24,6 +24,10 @@ Older entries describe their release at the time. For current setup, use the [RE
 - **Room for 75 of Kaiba Corporation's own characters.** Their duels count towards their stars and Friendship Level,
   their deck names show, and their bodies appear in the duel's cut-ins over a background of their own.
 - **Dartz's decks follow the banlist.** One Swords of Revealing Light, one Magic Cylinder and no Heavy Storm.
+- **Zigfried calls his Valkyries,** and the Dark Signers Rex Goodwin, Roman Goodwin and Greiger bring their Dark
+  Synchro Monsters with their Dark Tuners.
+- **Earthbound Release works with anime cards on.** It used to break the duel when an Earthbound Immortal was on the
+  field.
 - **Anime-only cards, sixth batch: Battle City's and the Big Five's.** 33 more (Duke Devlin's Diamond Head Dragon and
   Adamantine Sword Revival, Odion's Seal of Serket, Gansley's Ruklamba The Spirit King, Umbra's Masked Doll and
   Masquerade, the Big Five's Dragon Revival Ritual for the anime Five-Headed Dragon, Gurimo's Bronze Knights and Shield
