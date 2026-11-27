@@ -98,11 +98,12 @@ until the server has the card.
 | 55 | Tetsu Trudge | 5D's | Sector Security Patrol / The Security Barricade / Gate Guardian, Sector Security's Pride | 18 |
 
 The Dark Signers (Rex Goodwin, Roman Goodwin, Greiger, and Trudge's last level) play Dark Tuner Nightmare Hand and
-Catastrogue: their effect Tributes the Dark Tuner and a lower non-Tuner to bring the Synchro Monster of the Levels'
-difference, which with anime cards on is the game's Dark Synchro Monster in its anime version (Underground Arachnid,
-Hundred Eyes Dragon, Frozen Fitzgerald, Dark Highlander, Dark Diviner; `tests/dark_synchro.rs`). A true Dark Synchro
-Summon needs an anime Dark Tuner (setcode 0x600: Doom Submarine, Spider Cocoon, Chaos Rogue, Dark Goddess Witaka, in
-batches 32-34), which their anime decks list as waiting.
+Catastrogue: their effect Tributes the Dark Tuner and a lower non-Tuner to bring any Synchro Monster of the Levels'
+difference (Underground Arachnid, Hundred Eyes Dragon, Dark Diviner, which with anime cards on are Dark Synchro Monsters,
+and the printed Frozen Fitzgerald and Dark Highlander; `tests/dark_synchro.rs`). A true Dark Synchro Summon needs an
+anime Dark Tuner (setcode 0x600, batches 32-34), whose Level minus the non-Tuner's is the Dark Synchro's: Roman's
+Spider Cocoon (5) makes Dark Diviner with a Level 1, Greiger's Doom Submarine (9) Underground Arachnid with a Level 3,
+Trudge's Chaos Rogue (8) Dark Diviner with a Level 4. Rex's Dark Goddess Witaka (3) has no Dark Synchro the game has.
 
 ## Adding a character
 
