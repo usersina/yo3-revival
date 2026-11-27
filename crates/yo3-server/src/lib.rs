@@ -47,7 +47,7 @@ pub mod problems;
 pub mod sources;
 mod teams;
 mod trade;
-mod deckcheck;
+pub mod deckcheck;
 mod rental;
 mod events;
 pub mod championship;
@@ -577,6 +577,12 @@ fn add_host_banlists(world: &mut World, data: &yo3_data::GameData, dir: &std::pa
         added.banlists = custom;
         world.added = Arc::new(added);
     }
+}
+
+/// The world a server with `cfg` starts with (no listeners: duel and HTTP ports 0), for tests that need the game's
+/// whole data as the server sees it (the custom NPCs' decks under the login banlist).
+pub fn game_world(cfg: &Config) -> anyhow::Result<World> {
+    world(cfg, 0, 0)
 }
 
 fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> {
