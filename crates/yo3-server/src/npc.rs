@@ -79,6 +79,26 @@ pub(crate) const CHARACTERS: &[(&str, f64, f64, bool)] = &[
     ("Jim Crocodile Cook", 0.4, 0.3, false),
     // Blair Flannigan: lures with her Maidens, then takes what she wants.
     ("Blair Flannigan", 0.2, 0.5, false),
+    // Z-one: custom NPC, slot 46
+    ("Z-one", 0.5, 0.2, false),
+    // Rex Goodwin: custom NPC, slot 47
+    ("Rex Goodwin", 0.4, 0.3, false),
+    // Aporia: custom NPC, slot 48
+    ("Aporia", 0.6, 0.1, false),
+    // Primo: custom NPC, slot 49
+    ("Primo", 0.4, 0.3, false),
+    // Antinomy: custom NPC, slot 50
+    ("Antinomy", 0.2, 0.5, false),
+    // Misty Tredwell: custom NPC, slot 51
+    ("Misty Tredwell", 0.1, 0.6, false),
+    // Roman Goodwin: custom NPC, slot 52
+    ("Roman Goodwin", 0.3, 0.4, false),
+    // Sherry LeBlanc: custom NPC, slot 53
+    ("Sherry LeBlanc", 0.5, 0.2, false),
+    // Greiger: custom NPC, slot 54
+    ("Greiger", 0.8, 0.0, false),
+    // Tetsu Trudge: custom NPC, slot 55
+    ("Tetsu Trudge", 0.1, 0.6, false),
 ];
 
 /// The Millennium Eye a player can wear: Bakura's Accessories (male 84, female 342 in the item catalogue), a golden

@@ -630,3 +630,136 @@ win: Yay! I won, {you}! Let's duel again!
 lose: Aww, you won, {you}! You're really strong!
 trump: Maiden in Love | Maiden in Love! Your monsters can't resist her charm!
 trump: Mystic Dragon | Mystic Dragon, I believe in you!
+
+[Z-one]
+greet: Four hundred years I have watched, {you}. Show me what your bonds are worth.
+greet: A new hour begins, {you}. Let time judge you.
+turn: Time moves forward. So must you.
+turn: Each turn is a grain of sand, {you}. Yours are running low.
+ace: Come, {card}, a keeper of the hours!
+ace: Rise, {card}! Time itself answers!
+direct: There is no future where this attack misses.
+hurt: A strong blow... but time is not so easily broken.
+win: The future ends here, {you}. I am sorry.
+lose: Perhaps... there is hope after all, {you}. Take it with you.
+trump: Sandaion, the Timelord | The Timelord of time's beginning! Stand with me, Sandaion!
+trump: Sephylon, the Ultimate Timelord | Sephylon! Judge the end of time!
+
+[Rex Goodwin]
+greet: Neo Domino answers to me, {you}. Let the Immortals judge your worth.
+greet: Another challenger, {you}. Kneel now and spare yourself.
+turn: The Earth does not hurry. Neither do I.
+turn: Every turn brings you closer to the ground.
+ace: Awake, {card}, god of the Nazca lines!
+ace: Rise, {card}! The Earth is yours to break!
+direct: Nothing stands between you and the Immortals.
+hurt: A tremor... the Earth has barely stirred.
+win: The Earth claims you, {you}. Kneel.
+lose: You have shaken the Immortals, {you}. Remember it well.
+trump: Earthbound Immortal Wiraqocha Rasca | Wiraqocha Rasca, the Earthbound god, awakens!
+
+[Aporia]
+greet: I carry the end of the world, {you}. Forgive me.
+greet: The future must be saved, {you}. I cannot afford to lose.
+turn: There is no time left. I will end this.
+turn: Each turn is a step toward the end, {you}.
+ace: Rise, {card}! Emperor of the machines!
+ace: {card}! Carry my despair!
+direct: Forgive me, {you}. This ends now.
+hurt: A heavy blow... but I must not fall.
+win: Forgive me, {you}. The future needed this.
+lose: Perhaps you can change what I could not, {you}.
+trump: Meklord Emperor Wisel ∞ | Wisel, Emperor of the machines, descend!
+trump: Meklord Emperor Granel ∞ | Granel! Crush the world's hope!
+
+[Primo]
+greet: Aporia is not alone, {you}. I fight beside him.
+greet: Stand aside, {you}, or the Meklord Army will move you.
+turn: The Army marches on. Keep up, {you}.
+turn: One more step toward the future.
+ace: Come, {card}! For the future!
+ace: Form up, {card}! The Army answers!
+direct: Nothing stops the Meklord Army!
+hurt: That hurt... but we do not retreat.
+win: Forgive me, {you}. The future comes first.
+lose: Aporia... forgive me. Well fought, {you}.
+trump: Meklord Army of Wisel | Meklord Army of Wisel, take your place!
+
+[Antinomy]
+greet: Hello, {you}. I have been expecting you.
+greet: Let us compare our results, {you}. Please begin.
+turn: Turn recorded. Proceed, {you}.
+turn: The data is gathering nicely.
+ace: Synchro Summon! Appear, {card}!
+ace: Technical Genus, assemble! {card}!
+direct: The result is as calculated.
+hurt: An unexpected value. Noted.
+win: The data was clear, {you}. Thank you for the match.
+lose: My numbers were wrong, {you}. I will learn from this.
+trump: T.G. Halberd Cannon | Halberd Cannon! The final Technical Genus!
+trump: T.G. Blade Blaster | Blade Blaster, cut through!
+
+[Misty Tredwell]
+greet: Do not look away, {you}. Look at me.
+greet: Another sad story begins, {you}. Please, sit.
+turn: How sad. It is my turn again.
+turn: The story goes on, {you}.
+ace: Look into the gaze of {card}!
+ace: Come, {card}. Turn them to stone.
+direct: Do not close your eyes, {you}.
+hurt: That hurt... but my gaze does not blink.
+win: How sad it ends, {you}. Goodnight.
+lose: Your story is the stronger, {you}. I am glad.
+
+[Roman Goodwin]
+greet: Welcome, {you}. Please, step into my web.
+greet: A new thread, {you}. Let us see how long it holds.
+turn: The web is patient, and so am I.
+turn: Another thread is spun, {you}.
+ace: Weave, {card}! Bind them in fate!
+ace: Come, {card}. The web is yours.
+direct: There is nowhere left to struggle.
+hurt: A thread snapped... but the web remains.
+win: The web holds, {you}. Rest now.
+lose: You broke my web, {you}. My brother will not be pleased.
+trump: Spider Web | The web closes. Do not struggle, {you}.
+
+[Sherry LeBlanc]
+greet: Bonjour, {you}. Do try to entertain me.
+greet: The Fleur-de-lis blooms for me, {you}. Show me your pride.
+turn: How dull. My turn already.
+turn: Another petal falls, {you}.
+ace: Bloom, {card}! Show them the thorns!
+ace: Synchro Summon! Come forth, {card}!
+direct: Wilt before me, {you}.
+hurt: How dare you wound a LeBlanc!
+win: You have wilted, {you}. Magnifique.
+lose: Magnifique, {you}. You have more spirit than I thought.
+trump: Chevalier de Fleur | Chevalier de Fleur! Knight of the Lily, ride!
+trump: Sorciere de Fleur | Sorciere de Fleur! Bloom into darkness!
+
+[Greiger]
+greet: You will not leave here alive, {you}.
+greet: Another fool, {you}. Come, then.
+turn: My turn. Do not blink.
+turn: Run if you want, {you}. The Earth will catch you.
+ace: Dive, {card}! Tear them apart!
+ace: Rise, {card}! Crush them!
+direct: Die, {you}!
+hurt: That hurt... you will pay for it.
+win: Rex's will is done. Crawl away, {you}.
+lose: You are strong, {you}. Rex will hear of this.
+trump: Earthbound Immortal Chacu Challhua | Dive, Chacu Challhua! Tear them apart!
+
+[Tetsu Trudge]
+greet: Halt, {you}! In the name of Security, you are under arrest!
+greet: Hands where I can see them, {you}! This is Sector Security!
+turn: My turn, citizen. No sudden moves.
+turn: The law moves slowly, {you}, but it moves!
+ace: Go, {card}! In the name of Security!
+ace: Block the road, {card}!
+direct: You are under arrest, {you}!
+hurt: Ow! That is assault on an officer!
+win: Case closed, {you}! Come along quietly.
+lose: Good duel, {you}. I will put it in the file.
+trump: Gate Guardian | Gate Guardian! The pride of Sector Security!
