@@ -31,6 +31,7 @@ pub mod table;
 pub mod engine;
 pub mod npc;
 pub mod profile;
+pub mod banlists;
 pub mod banter;
 pub mod translate;
 mod card_options;
@@ -544,6 +545,29 @@ pub fn game_data(game_dir: &std::path::Path) -> anyhow::Result<(yo3_data::GameDa
     Ok((data, added))
 }
 
+/// The host's banlists (#77, `banlists/*.conf` in the data folder, `crate::banlists`): checked like the game's own, in
+/// Create Duel's list and the `banlist` names, and served to the launcher, which writes them as the game's files.
+fn add_host_banlists(world: &mut World, data: &yo3_data::GameData, dir: &std::path::Path) {
+    let Some(template) = data.regulations.iter().find(|r| r.id == front::LOGIN_REGULATION).map(|r| r.record.clone()) else { return };
+    let passcodes = engine::Engine::dir().map(|d| ydk::Passcodes::load(&d)).transpose().unwrap_or_else(|e| {
+        tracing::warn!("host banlists: no card passcodes ({e})");
+        None
+    });
+    let Some(passcodes) = passcodes else { return };
+    let taken: Vec<String> = world.banlists.iter().map(|(_, n)| n.clone()).collect();
+    let custom = banlists::load(dir, &taken, |code| passcodes.cid(code).filter(|cid| world.cards.values().any(|c| c.cid == *cid)));
+    for b in &custom {
+        world.regulations.insert(b.id, banlists::regulation(b, &template));
+        world.banlists.push((b.id, b.name.clone()));
+        world.regulation_ids.push(b.id as u16);
+    }
+    if !custom.is_empty() {
+        let mut added = (*world.added).clone();
+        added.banlists = custom;
+        world.added = Arc::new(added);
+    }
+}
+
 fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> {
     let duel_server = (cfg.advertise.clone().unwrap_or_default(), duel_port);
     let world = match game_data(&cfg.game_dir) {
@@ -661,6 +685,9 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
                 extra_deck_rows: world.extra_deck_rows.clone(), tuners: world.tuners.clone(), ..Default::default() };
             world.profiles = profile::Profiles::load(&base, data.cards.iter(), world.engine_dir.as_deref());
             add_custom_npcs(&mut world, &data);
+            if let Some(dir) = &cfg.data_dir {
+                add_host_banlists(&mut world, &data, dir);
+            }
             world
         }
         Err(e) => {

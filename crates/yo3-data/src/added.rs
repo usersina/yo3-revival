@@ -91,6 +91,52 @@ pub struct Added {
     /// Characters the game never had as NPCs (`engine/added/npcs.json`), in the Kaiba Corporation slots past its 25.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub npcs: Vec<AddedNpc>,
+    /// The host's own banlists (#77, EDOPro `lflist.conf` files in the server's `banlists` folder): each becomes
+    /// `data/regulation/<id>.y3r` with its name in the UI texts, so Edit Deck marks its limits and the game's own deck
+    /// check knows it. Not in the engine's file; the server sets them in what it serves.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub banlists: Vec<AddedBanlist>,
+}
+
+/// A banlist the game never had: its number (21 on, never reused), its name and its name's UI text id, its lists by
+/// Konami id (Forbidden, Limited, Semi-Limited, three copies) and the copies of a card in none (3; 0 for an allowlist).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AddedBanlist {
+    pub id: u32,
+    pub name: String,
+    pub name_id: u32,
+    pub lists: [Vec<u16>; 4],
+    pub default_limit: u32,
+}
+
+/// The UI text ids of the custom banlists' names (`AddedBanlist::name_id`): the twenty after the Anime Collection's
+/// and the NPCs', in the free range 23120-23199 of every language's table.
+pub const BANLIST_NAME_TEXT: u32 = 23180;
+/// How many custom banlists a server serves at once (one name text each).
+pub const MAX_BANLISTS: usize = 20;
+
+impl AddedBanlist {
+    /// Its `.y3r` record from a game banlist's (`template`, the game's newest): its number, name and lists, each value in
+    /// the type the template has it.
+    pub fn record(&self, template: &yo3_proto::Message) -> yo3_proto::Message {
+        let mut rule = template.clone();
+        let mut set = |key: &str, value: yo3_proto::Value| match rule.fields.iter_mut().find(|(k, _)| k == key) {
+            Some((_, v)) => *v = value,
+            None => rule.fields.push((key.into(), value)),
+        };
+        let number = |key: &str, n: u32| match template.get(key) {
+            Some(yo3_proto::Value::Text(_) | yo3_proto::Value::TextAlt(_)) => yo3_proto::Value::text(&n.to_string()),
+            Some(yo3_proto::Value::U32Alt(_)) => yo3_proto::Value::U32Alt(n),
+            _ => yo3_proto::Value::U32(n),
+        };
+        set("regulation_id", number("regulation_id", self.id));
+        set("name_id", number("name_id", self.name_id));
+        set("addition_card", number("addition_card", self.default_limit));
+        for (i, list) in self.lists.iter().enumerate() {
+            set(&format!("card{i}"), yo3_proto::Value::Bin(list.iter().flat_map(|c| c.to_be_bytes()).collect()));
+        }
+        rule
+    }
 }
 
 /// A custom NPC: slot 25 on (ids `120 + 3 * slot` to `+ 2`, one per level), on a body the game has (`body`, one of its
@@ -364,6 +410,7 @@ pub fn extend_files(read: impl Fn(&str) -> Option<Vec<u8>>, added: &Added) -> Re
         }
     }
     out.extend(banlists(&read, added)?);
+    out.extend(custom_banlists(&read, added)?);
     out.extend(anime_pack_files(&read, added)?);
     out.extend(text_files(&read, added)?);
     out.extend(npc_files(&read, added)?);
@@ -427,6 +474,7 @@ pub fn text_files(read: &impl Fn(&str) -> Option<Vec<u8>>, added: &Added) -> Res
     for npc in &added.npcs {
         texts.extend(npc.texts());
     }
+    texts.extend(added.banlists.iter().map(|b| (b.name_id, b.name.clone())));
     if texts.is_empty() {
         return Ok(vec![]);
     }
@@ -553,6 +601,26 @@ fn banlists(read: &impl Fn(&str) -> Option<Vec<u8>>, added: &Added) -> Result<Ve
     Ok(out)
 }
 
+/// The host's banlists ([`Added::banlists`]) as `data/regulation/<id>.y3r`, from the game's banlist 20's record; with
+/// the anime-only cards Forbidden too while the server bans them, as the game's own banlists ([`banlists`]).
+fn custom_banlists(read: &impl Fn(&str) -> Option<Vec<u8>>, added: &Added) -> Result<Vec<(String, Vec<u8>)>, String> {
+    if added.banlists.is_empty() {
+        return Ok(vec![]);
+    }
+    let name = "data/regulation/20.y3r";
+    let template = read(name).ok_or_else(|| format!("the game has no {name}"))?;
+    let template = yo3_proto::decode_file(&template).map_err(|e| format!("{name}: {e}"))?;
+    let banned: Vec<u16> = if added.anime_only_banned { added.cards.iter().filter(|c| c.anime_only && !c.token).map(|c| c.cid).collect() } else { vec![] };
+    Ok(added.banlists.iter().map(|b| {
+        let mut b = b.clone();
+        if b.default_limit != 0 {
+            let more: Vec<u16> = banned.iter().copied().filter(|c| !b.lists[0].contains(c)).collect();
+            b.lists[0].extend(more);
+        }
+        (format!("data/regulation/{}.y3r", b.id), yo3_proto::frame(&b.record(&template).encode()))
+    }).collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -582,6 +650,34 @@ mod tests {
         put("CARD_Sort_E", bytes16(&[0, 2, 1]));
         put("CARD_Sort2_E", bytes16(&[0, 1, 2]));
         files
+    }
+
+    #[test]
+    fn a_hosts_banlist_is_a_regulation_file_named_in_every_language() {
+        // #77: the game loads banlist N as data/regulation/N.y3r (0x52DB30) and names it by its name_id's UI text.
+        let mut files = game();
+        let template = yo3_proto::Message::record().with("regulation_id", yo3_proto::Value::U32Alt(20))
+            .with("regulation_type", yo3_proto::Value::U32Alt(0)).with("name_id", yo3_proto::Value::text("15800"))
+            .with("addition_card", yo3_proto::Value::U32Alt(3)).with("card0", yo3_proto::Value::Bin(vec![0, 10]));
+        files.insert("data/regulation/20.y3r".into(), yo3_proto::frame(&template.encode()));
+        files.insert("data/pack/1.y3a".into(), yo3_proto::frame(&yo3_proto::Message::record().with("pack_id", yo3_proto::Value::U32Alt(1)).encode()));
+        let table = |texts: &[(u32, &str)]| with_texts(&{
+            let mut t = 0u32.to_le_bytes().to_vec(); t.extend(0u32.to_le_bytes()); t }, texts).unwrap();
+        for lang in LANGUAGES { files.insert(format!("data/text/txttbl_{lang}.bin"), table(&[(1, "One")])); }
+        let goat = AddedBanlist { id: 21, name: "Goat".into(), name_id: BANLIST_NAME_TEXT, lists: [vec![12], vec![10], vec![], vec![]], default_limit: 3 };
+        let added = Added { first_row: 3, cards: vec![AddedCard { anime_only: true, ..quasar(3) }], anime_only_banned: true, banlists: vec![goat], ..Default::default() };
+        let out: HashMap<String, Vec<u8>> = extend_files(|n| files.get(n).cloned(), &added).unwrap().into_iter().collect();
+        let rule = yo3_proto::decode_file(&out["data/regulation/21.y3r"]).unwrap();
+        assert_eq!(rule.get("regulation_id"), Some(&yo3_proto::Value::U32Alt(21)));
+        assert_eq!(rule.get("name_id"), Some(&yo3_proto::Value::text("23180")), "the name's text id, as text like the game's");
+        let list = |k: &str| rule.get(k).and_then(yo3_proto::Value::as_bytes).unwrap().as_chunks::<2>().0.iter().map(|c| u16::from_be_bytes(*c)).collect::<Vec<_>>();
+        assert_eq!(list("card0"), [12, 30], "Forbidden, with the anime-only card the server bans");
+        assert_eq!(list("card1"), [10]);
+        for lang in LANGUAGES {
+            let texts = crate::parse_texts(&out[&format!("data/text/txttbl_{lang}.bin")]);
+            assert_eq!(texts.get(&BANLIST_NAME_TEXT).map(String::as_str), Some("Goat"), "{lang}");
+        }
+        assert_eq!(Added::parse(&added.render()).unwrap(), added, "served and read back");
     }
 
     #[test]

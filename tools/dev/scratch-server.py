@@ -2,7 +2,7 @@
 """A throwaway server beside a live one: its own data, logs, ports and launcher profiles, in one command.
 
     scratch-server.py start [--accounts N] [--from-db FILE --profile-for WHO ...] [--port P] [--http P]
-                            [--game-dir DIR] [--server BIN] [--host HOST] [-- EXTRA SERVER ARGS]
+                            [--game-dir DIR] [--banlist FILE] [--server BIN] [--host HOST] [-- EXTRA SERVER ARGS]
     scratch-server.py status [DIR]
     scratch-server.py env [DIR] [--account N | --profile-for WHO]   the export lines for a client terminal
     scratch-server.py stop [DIR]
@@ -156,6 +156,10 @@ def start(args, extra):
     data.mkdir()
     if args.from_db:
         copy_database(args.from_db, data / 'server.db')
+    if args.banlist:
+        (data / 'banlists').mkdir()
+        for n, path in enumerate(args.banlist):
+            shutil.copy2(path, data / 'banlists' / f'{n:02d}-{Path(path).name}')
     host = args.host
     admin(binary, data, 'init-auth', 'localhost', '127.0.0.1', *([host] if host not in ('localhost', '127.0.0.1') else []))
     shutil.copy2(data / 'server.crt', directory / 'server.crt')
@@ -213,6 +217,8 @@ def main(argv):
     p.add_argument('--port', type=int, default=17443)
     p.add_argument('--http', type=int, default=18080)
     p.add_argument('--game-dir')
+    p.add_argument('--banlist', action='append', default=[], metavar='FILE',
+                   help="an EDOPro lflist.conf for the server's banlists/ folder (#77); repeatable")
     p.add_argument('--server')
     p.add_argument('--host', default='localhost', help='the name or address a client dials (a VM: 192.168.122.1); also bound by --bind')
     for name in ('status', 'stop', 'dir'):

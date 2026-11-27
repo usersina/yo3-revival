@@ -43,6 +43,10 @@ Older entries describe their release at the time. For current setup, use the [RE
 - **Each duel says its banlist.** When you pick your deck, the chat window tells you which banlist the duel uses, so an
   opponent's three Morphing Jar in a room on Unlimited no longer looks like cheating.
 
+- **Hosts can add their own banlists, in EDOPro's format.** Drop an EDOPro `lflist.conf` into the server's
+  `banlists` folder and restart it: each list in it can be chosen like the game's own (`/p Server banlist NAME`,
+  Create Duel, events), and the game's Edit Deck shows its limits (#77, a first step: players' own lists come next).
+
 ## v0.1.26 (2026-11-26)
 
 - **EDOPro decks.** Desktop imports an EDOPro deck file (`.ydk`) into your decks, and exports yours for EDOPro: Settings →

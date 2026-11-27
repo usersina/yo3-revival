@@ -325,7 +325,13 @@ newer than March 2004); with `--regulation 4` Kaiba Corporation answered "There 
 regulation as "Latest Regulation" (with "unlimited": no Forbidden cards, "Cards not listed are Unlimited.") and Select
 lists the others by name with their Forbidden / Limited / Semi-Limited tabs (an OCG list: Limited, Semi-Limited and
 "Any", "Cards not listed are Forbidden."). The same screen offers Wait Time Per Turn (Standard, Any, 2, 3, 5 minutes)
-and Total Wait Time (Standard, Any, 5, 10, 20 minutes): Standard is the 180 s / 600 s the clocks use.
+and Total Wait Time (Standard, Any, 5, 10, 20 minutes): Standard is the 180 s / 600 s the clocks use. A host's own banlists (#77, `crate::banlists`: EDOPro `lflist.conf` files in the data folder's `banlists/`) get ids
+21 on: the server adds them to `0x2398`'s list and its checks, and serves them in the added-cards file
+(`yo3_data::added::AddedBanlist`), which the launcher writes as `regulation/<id>.y3r` (banlist 20's record with the
+id, `name_id` 23180 + n and the four lists) beside UI texts naming them; the DLL's open of `data/regulation/<id>.y3r`
+(`0x52DB30`) serves it. Live (2026-11-27, `scratch-server.py --banlist`): a list forbidding Giant Orc and limiting
+Blade Rabbit chosen with `banlist Test Format`, at the next login Edit Deck greyed out both Giant Orc with the
+Forbidden mark, marked Blade Rabbit 1 and left Heavy Storm unmarked.
 
 ### Info and chat windows
 

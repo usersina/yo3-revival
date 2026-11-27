@@ -263,6 +263,15 @@ that change something also with it stopped. They are admin API operations like t
 ./yo3-server --by Anna set-banlist Yugi unlimited       # WHO's next login uses it (an id or a name); `default` is the server's
 ```
 
+**Your own banlists (#77).** Put EDOPro banlist files (`lflist.conf`, the same format EDOPro uses: `!Name`, then
+`passcode count` lines, `$whitelist` for a format where unlisted cards are allowed none) in the data folder's
+`banlists/` folder, any name ending in `.conf`, and restart the server. Each list becomes a banlist like the game's own,
+numbered from 21 (`banlists/ids.json` keeps the numbers, so a number is never given to another list), at most 20 at a
+time: players pick it with `/p Server banlist NAME`, `banlists` and Create Duel list it, `set login-regulation NAME`
+makes it the default and an event's `--regulation` can require it. The players' launchers write it into the game at
+the game's next start (Edit Deck marks its limits, the game's own deck check uses it). Cards the game doesn't have are
+left out, and a list named like one of the game's is skipped (the server's log says which).
+
 A report keeps who sent it, who it is about, the reason (300 characters), the time and, once closed, who handled it and
 the note. It stays in `server.db` (so in backups) until its account is deleted. A player can send `report-limit` an hour.
 The reported player is never told.
