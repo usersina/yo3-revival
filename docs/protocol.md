@@ -1822,7 +1822,8 @@ activated from the Graveyard) go in the command map at that pile's zone, index 0
 place (pile zone, index 0) (`0x50B510`), and the menu and the highlight look bits up by that exact key (`0x5204E0`),
 so a command at the index of a card other than the pile's first was unreachable. The client sends the command at index
 0; the server finds the listed cards of that pile with that command (by `cid`: the engine's extra deck order isn't the
-card table's): one answers at once, several open the card list (one pick or none, kind 1) with the original's "Select
+card table's): one answers at once (the Extra Deck excepted: it lists even one, #92, so the player sees which monster
+and can go back), several open the card list (one pick or none, kind 1) with the original's "Select
 the monster(s) to Special Summon from your Extra Deck." (26; 25 elsewhere, "Select effect to activate." 276 for
 effects), whose pick answers the engine and whose right-click goes back to the prompt (**shape**: the original's
 flow is unknown, the text is its own). EDOPro asks for Synchro and Fusion
@@ -2137,7 +2138,9 @@ slot`, 256 slots used in turn; the DLL (`tools/mod/dialog-text.h`) keeps each te
 past the end of that one table with an entry pointing at it, so the client's own markup applies (`0x519F80`: `@n`
 colours; the server escapes `<`, `>`, `&`). Messages are built in a 1024-unit buffer, so a text is cut at 400.
 Live (2026-11-14): Pyramid Energy's two options showed as the Select dialog's labels and the first answered +200 ATK;
-the Synchro material list read "Select the monster(s) to use as Synchro Material." in the client's colours.
+the Synchro material list read "Select the monster(s) to use as Synchro Material." in the client's colours. The server's texts follow the game's login language (0x1F48 `lang`, kept by the hub for the duel's translator): its
+38 hint lines are written in the seven languages the game ships (#92). A card's own option strings (EDOPro's English)
+are not translated.
 
 **Option texts.** A card's options the client has no label for (`card_options.rs` pairs 44 cards' strings with the
 prompt table) open as the Select dialog with the engine's own text for each option (the card's strings, `str1`–`str16`

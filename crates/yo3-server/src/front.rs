@@ -2986,6 +2986,12 @@ impl Hub {
         self.online.values().find(|o| o.player_id == player_id).map(|o| (o.name.clone(), o.outbox.clone()))
     }
 
+    /// An online player's game language (0x1F48 lang: 0 Japanese, 1 English, then German, French, Italian, Spanish, Korean,
+    /// Chinese).
+    pub fn lang_of(&self, player_id: u32) -> Option<u32> {
+        self.online.values().find(|o| o.player_id == player_id).map(|o| o.lang)
+    }
+
     /// An online player's appearance (`avatar1`) as others see it.
     pub fn avatar_of(&self, player_id: u32) -> Option<Vec<u8>> {
         let online = self.online.values().find(|o| o.player_id == player_id)?;

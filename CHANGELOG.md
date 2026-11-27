@@ -31,6 +31,12 @@ Older entries describe their release at the time. For current setup, use the [RE
 - **Black Brutdrago from Tuned Magician** (made a Tuner by Unleash Your Power!) is covered by a test; the crash it
   caused before v0.1.26 is gone (#87).
 
+- **The Extra Deck always asks which monster.** With only one Synchro you could summon, a click on the Extra Deck went
+  straight to the materials without naming it; the list now shows it first, and closing it takes you back (#92).
+- **The server's own duel prompts speak your game's language.** "Select the monster(s) to use as Synchro Material." and
+  the other lines the game has no text for are now in Japanese, German, French, Italian, Spanish and Korean too (#92).
+  A card's own options (Enemy Controller's, Elemental HERO Stratos') are still in English.
+
 ## v0.1.26 (2026-11-26)
 
 - **EDOPro decks.** Desktop imports an EDOPro deck file (`.ydk`) into your decks, and exports yours for EDOPro: Settings →

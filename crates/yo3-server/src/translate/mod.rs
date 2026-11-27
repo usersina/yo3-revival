@@ -527,6 +527,8 @@ pub struct Translator {
     /// picture the launcher puts in its folder: EDOPro's, else a clear one): another one changes the field to the plain
     /// board rather than white. Empty: every Field Spell's id is sent.
     pub field_pictures: std::sync::Arc<std::collections::HashSet<u16>>,
+    /// The player's game language (0x1F48 lang: 0 Japanese, 1 English...): the server's own texts are in it (#92).
+    pub lang: u32,
     /// The values each monster zone's record last went with (level, ATK, DEF, base ATK, base DEF), by player and zone.
     records: HashMap<(u32, u32), [u32; 5]>,
     /// A monster zone's Type and Attribute (the client's numbers) where an effect changed them from CARD_Prop's.
@@ -736,6 +738,7 @@ impl Translator {
             result: None,
             hidden,
             field_pictures: Default::default(),
+            lang: 1,
             records: HashMap::new(),
             kinds: HashMap::new(),
             deck_tops: [None; 2],
@@ -793,7 +796,7 @@ impl Translator {
     }
 
     /// A card choice's message after the selection hint `hint`: the card's own string when the hint is one (code << 20
-    /// | n), the client's text where one says the same, else the server's own words for EDOPro's hint (`HINT_WORDS`).
+    /// | n), the client's text where one says the same, else the server's own words for EDOPro's hint in the player's language (`hint_words`).
     fn hint_message(&mut self, out: &mut Vec<Message>, hint: u64) -> Option<u32> {
         if let Some((_, note)) = self.hint_note.take().filter(|(h, _)| *h == hint && hint != 0) {
             return Some(self.text(out, &note));
@@ -801,7 +804,7 @@ impl Translator {
         if let Some(id) = hint_text(hint) {
             return Some(id);
         }
-        let words = HINT_WORDS.iter().find(|(h, _)| *h == hint).map(|(_, w)| *w)?;
+        let words = hint_words(hint, self.lang)?;
         Some(self.text(out, words))
     }
 

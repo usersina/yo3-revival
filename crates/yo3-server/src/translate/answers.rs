@@ -170,7 +170,8 @@ impl Translator {
 
     /// A command on a pile (sent at index 0, where the client found it): the one card of the pile it fits, or with
     /// several, the card list asks which (the original's "Select the monster(s) to Special Summon from your Extra
-    /// Deck.", 26).
+    /// Deck.", 26). The Extra Deck asks even for one (#92: a lone Synchro went straight to its materials, unnamed, with
+    /// no way back); closed with no pick, it asks the pending prompt again.
     pub(super) fn pile_command(&mut self, m: &Json, cmd: CardCommand) -> Option<Prompt> {
         let ask = Ask::lenient(m).ok()??;
         let (lists, kind) = command_lists(&ask);
@@ -184,7 +185,7 @@ impl Translator {
             .collect();
         match candidates[..] {
             [] => None,
-            [(index, _)] => {
+            [(index, _)] if cmd.zone != zone::EXTRA => {
                 self.pending = None;
                 Some(Prompt::Answer(Response::command(kind, action, Some(index)).json()))
             }

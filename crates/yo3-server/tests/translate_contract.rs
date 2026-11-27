@@ -964,6 +964,25 @@ fn a_chain_list_can_be_left_without_chaining() {
 }
 
 #[test]
+fn the_servers_own_prompt_texts_are_in_the_games_language() {
+    // #92: a Japanese game read "Select the monster(s) to use as Synchro Material." in English. The front session's
+    // login language (0x1F48 lang: 0 Japanese, 1 English, 2 German...) picks the server's words; any other is English.
+    let synchro = |lang: u32| {
+        let mut t = with_cards();
+        t.lang = lang;
+        t.events(&[json!({ "type": 2, "hint_type": 3, "player": 0, "hint": 512 })]);
+        let ask = json!({ "type": 26, "player": 0, "can_finish": false, "can_cancel": false, "min": 1, "max": 2,
+            "select_cards": [card_at(0, 4, 0, 4100), card_at(0, 4, 1, 4101)], "unselect_cards": [] });
+        server_texts(&t.prompt(&ask))[0].1.clone()
+    };
+    assert_eq!(synchro(0), "@3シンクロ素材@0にする@3モンスター@0を選択してください。");
+    assert_eq!(synchro(2), "Wähle die @3Monster@0, die als @3Synchro-Material@0 verwendet werden.");
+    assert_eq!(synchro(6), "@3싱크로 소재@0로 할 @3몬스터@0를 선택해 주세요");
+    assert_eq!(synchro(1), "Select the @3monster(s)@0 to use as @3Synchro Material@0.");
+    assert_eq!(synchro(7), synchro(1), "Chinese: the English");
+}
+
+#[test]
 fn materials_are_picked_one_at_a_time_in_the_card_list() {
     // MSG_SELECT_UNSELECT_CARD (26) {can_finish, can_cancel, select_cards, unselect_cards}, EDOPro's Synchro and
     // Fusion material choice, asked again after each pick: the card list of `select_cards` with one pick (kind 0x27),
@@ -2196,8 +2215,17 @@ fn an_extra_deck_summon_is_offered_on_the_extra_deck_pile() {
     // lookup), so the card at index 1 is offered there, with Confirm (the pile's view).
     let data = [0x00, 0x00, 0x0C, 0x00, 0, 0, 0x08, 0x04, 0, 0, 0x0D, 0, 0, 0, 0x04, 0, 5, 1];
     assert_eq!(out[0].get("COMIDDATA"), Some(&Value::Bin(data.to_vec())));
+    // Even a lone Extra Deck monster is named in the list first (#92), "Select the monster(s) to Special Summon from
+    // your Extra Deck." (26), with no pick needed: closed empty, the idle prompt comes back; picked, it answers.
     let summon = CardCommand { command: 2, player: 0, zone: 0xC, index: 0 };
-    assert_eq!(t.command(summon), Some(Prompt::Answer(json!({ "type": 1, "action": 1, "index": 0 }))));
+    let Some(Prompt::Client(list)) = t.command(summon) else { panic!("the list") };
+    let list: Vec<_> = list.iter().map(cmd).collect();
+    assert!(list.contains(&(0x3F2, [151, 0, 0, 0])), "{list:?}");
+    assert_eq!(list.last(), Some(&(0x37, [0, 1, 1, 0])), "{list:?}");
+    assert!(matches!(t.dialog_result(0), Some(Prompt::Client(_))), "closed: asked again");
+    t.command(summon);
+    t.pick(0);
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 1, "action": 1, "index": 0 }))));
 }
 
 #[test]
