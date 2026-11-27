@@ -15,6 +15,11 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- **Anime-only cards, fourth batch: Noah Kaiba's, Zigfried von Schroeder's, Solomon Muto's and Vivian Wong's.** 33 more
+  (Next World, Deepest Impact, Zigfried's Nibelung's Ring and Treasure and Wotan's Judgment, Solomon's Ancient Dragon,
+  Ancient City and The Legendary Gambler, Vivian's Dragon Lady and Luminous Clouds, and more). Nibelung's Ring goes back
+  to the Deck when its monster is destroyed in battle, The Legendary Gambler answers only the opponent's dice, and Take
+  One Chance leaves a card in the Graveyard when it can't be activated then, instead of stopping the duel.
 - **Desktop says less, and explains on request.** Each setting has one short sentence; when there is more to know, a
   small **?** beside its name shows it while you rest the pointer on it. The same goes for Setup's last step, Host for
   friends and Multiplayer's dialogs.

@@ -86,10 +86,16 @@ function s.activate(e,tp,eg,ep,ev,re,r,rp)
 		_,ceg,cep,cev,cre,cr,crp=Duel.CheckEvent(te_effect_code,true)
 	end
 	--yo3-revival: "if able" is checked as it resolves too (the filter checks only outside a chain): a card whose condition,
-	--cost or target fails stays in the GY (Battle Fusion outside a battle indexed a nil attacker)
+	--cost or target fails stays in the GY (Battle Fusion outside a battle indexed a nil attacker). A check that errors
+	--counts as failing: Dark Magic Retribution's condition reads the attacker, and outside an attack there is none.
 	local cond,cst,tgt=te:GetCondition(),te:GetCost(),te:GetTarget()
-	if (cond and not cond(te,tp,ceg,cep,cev,cre,cr,crp)) or (cst and not cst(te,tp,ceg,cep,cev,cre,cr,crp,0))
-		or (tgt and not tgt(te,tp,ceg,cep,cev,cre,cr,crp,0)) then return end
+	local function able(f,...)
+		if not f then return true end
+		local ok,res=pcall(f,...)
+		return ok and res
+	end
+	if not (able(cond,te,tp,ceg,cep,cev,cre,cr,crp) and able(cst,te,tp,ceg,cep,cev,cre,cr,crp,0)
+		and able(tgt,te,tp,ceg,cep,cev,cre,cr,crp,0)) then return end
 	if not Duel.MoveToField(sc,tp,tp,location,POS_FACEUP,true,zones) then return end
 	--Set activated status, show the card, create relation to itself, and use the effect's count limit (if any)
 	sc:SetStatus(STATUS_ACTIVATED,true)

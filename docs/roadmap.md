@@ -39,13 +39,11 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
       Tokens (rows 5206-5216), and the four whose Tokens copy a monster (Spirit Illusion, Natural Selection, Cell Division,
       Reckless Parasite) with theirs (rows 5325-5333, `tests/added_copy_tokens.rs`). Open: the anime-only ones, 944 in 29 deck batches (`engine/added/anime-batches.tsv`,
       `tools/engine/anime-batches.py`): batch 1 added (rows 5217-5258, 42 cards), batch 2 (rows 5259-5296, 38 with 3 Tokens), batch 3 (rows 5297-5324,
-      28), batches 4-29 to come, each tested in tiers (the per-card fuzz, then scenarios for the flagged cards, those
-      the checks point at, signature cards and a random 30% of the rest: batch 1's sample found a bug the fuzz can't,
-      Limit Tribute doing only part of its text); the rule goes into docs/added-cards.md after a few batches; the anime Michion and Hailon
+      28), batch 4 (rows 5334-5366, 33 with 2 Tokens; Rainbow Bridge Bifrost (Anime) is the printed Bifrost's anime
+      version, so it isn't added twice), batches 5-29 to come, each tested in tiers ([the rule](added-cards.md#add-a-batch):
+      the per-card fuzz, then scenarios for the flagged cards, those the checks point at, signature cards and a random 30%
+      of the rest: batch 1's sample found a bug the fuzz can't, Limit Tribute doing only part of its text); the anime Michion and Hailon
       deal ∞ damage to ∞ LP (half of ∞, and ∞ minus a number, are ∞): confirm that reading.
-- [ ] EDOPro banlists (`lflist.conf`, by passcode) as banlists a host can pick: the launcher writes them as game banlist
-      files (the path the anime-only Forbidden banlists take, `yo3_data::added::extend_files`) and the server's deck check
-      uses the same list. Planned after v0.1.26.
 - [ ] Card tags (the client has none: no tag control in Edit Deck's screens, no request carrying one), in this order:
       1. An "Anime" search word: Edit Deck's text search (`0x416C10`) finds the anime-only cards through a marker in
          their text, written by the card profile.

@@ -639,6 +639,13 @@ def find(names, ctx=None):
         if not d['alias'] and not d['type'] & TYPE_TOKEN:  # an anime version of a printed card is no anime-only card
             anime_by_name.setdefault(d['name'].casefold(), code)
     taken = {int(line['stand_in']) for line in lines if (line.get('stand_in') or '').strip()}
+    # The anime passcodes already played as a printed card's anime version (engine/anime-cards.json, #60): adding one as
+    # an anime-only card too gives the engine two client ids for one passcode.
+    try:
+        with open(os.path.join(ENGINE, 'anime-cards.json'), encoding='utf-8') as f:
+            versions = {int(c['anime']): (c['cid'], c.get('name', '')) for c in json.load(f)['cards'] if c.get('anime') and c.get('status') == 'mapped'}
+    except FileNotFoundError:
+        versions = {}
     listed_tokens = {int(line['token']) for line in lines if (line.get('token') or '').strip()}
     is_token = lambda n: lookup(n, ctx['data'], by_name, cid_of, ctx['passcode']) is None and token_code(n, ctx) is not None
     names = [n for n in names if is_token(n)] + [n for n in names if not is_token(n)]  # a Token before the cards that make it
@@ -680,6 +687,10 @@ def find(names, ctx=None):
         if anime_code is not None:
             d = ctx['anime'][anime_code]
             why = ['engine/added/cards.tsv already has it'] if anime_code in listed_anime else []
+            if anime_code in versions:
+                cid, printed = versions[anime_code]
+                why.append(f'it is already the anime version of {printed} (id {cid}, engine/anime-cards.json): with anime cards on, '
+                           f'that card plays it')
             problem = anime_problem(anime_code, d)
             if problem:
                 why.append(problem)

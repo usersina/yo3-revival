@@ -164,6 +164,14 @@ class AddedCards(unittest.TestCase):
                 added.build()
             self.assertIn('has no Konami id', str(e.exception))
 
+    def test_an_anime_version_of_a_printed_card_is_no_anime_only_card_to_add(self):
+        # Rainbow Bridge Bifrost (id 5115) plays 100000539 as its anime version: adding that passcode again as an
+        # anime-only card would give the engine two client ids for one passcode (batch 4's fuzz found the drift).
+        found = {n: (l, w) for n, l, w in added.find(['anime:100000539'], added.load())}
+        (line, why), = found.values()
+        self.assertIsNone(line)
+        self.assertTrue(any('already the anime version of Rainbow Bridge Bifrost' in w for w in why), why)
+
     def test_find_gives_the_anime_table_line_and_what_the_anime_map_would_make_of_it(self):
         # A printed card needs a line in engine/anime/cards.tsv too: --find writes it and runs the anime map's own rules
         # on it. Black Rose Moonlight Dragon's anime version is mapped; an anime-only card gets no line.
@@ -227,12 +235,20 @@ class AddedCards(unittest.TestCase):
         taken = {int(l['stand_in']) for l in added.table() if (l.get('stand_in') or '').strip()}
         free = len(added.free_stand_ins(ctx, taken))
         self.assertGreater(free, added.STAND_IN_RESERVE, 'the batches still have stand-ins to give')
+        # A card of the anime-only batches not added yet (the batches add them one by one).
+        have = {l['anime'] for l in added.table()}
+        batches = os.path.join(added.ENGINE, 'added', 'anime-batches.tsv')
+        with open(batches, encoding='utf-8') as f:
+            waiting = [l.split('\t')[3] for l in f.read().splitlines()[1:] if l.split('\t')[3] not in have and not l.split('\t')[5].strip()]
+        if not waiting:
+            self.skipTest('every anime-only batch is added')
+        card = f'anime:{waiting[-1]}'
         with mock.patch.object(added, 'STAND_IN_RESERVE', free):
-            (name, line, why), = added.find(['anime:511000220'], ctx)
+            (name, line, why), = added.find([card], ctx)
             self.assertIsNone(line)
             self.assertIn(added.NO_STAND_IN.split(':')[0], '; '.join(why))
         with mock.patch.object(added, 'STAND_IN_RESERVE', free - 1):
-            (name, line, why), = added.find(['anime:511000220'], ctx)
+            (name, line, why), = added.find([card], ctx)
             self.assertTrue(line, why)
             out = io.StringIO()
             with contextlib.redirect_stdout(out):

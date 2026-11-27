@@ -337,6 +337,26 @@ The data side doesn't grow with the batch: one table, one command.
 A batch of about twenty cards of one era, mostly Synchro monsters, is about half a day to a day, almost all of it
 scenarios. Simple cards (no effect, or one effect of a kind the game already has) are minutes each.
 
+**The anime-only batches (#75)** are the 29 deck batches of `engine/added/anime-batches.tsv`, about 30 cards each, too
+many for a scenario per effect. They are tested in tiers instead, which the first four batches calibrated:
+
+1. **Every card**, without writing anything: the smoke test (`task check:added`, `YO3_SMOKE=all`: each card on the field
+   and its effects tried), the self-played duels with the added cards, and **the per-card fuzz** on the batch's rows
+   (`YO3_FUZZ_ROWS=a-b YO3_FUZZ_DUELS=8 task check:fuzz`): each card in eight self-played duels, with the effects never
+   activated, or never doing what they declare, listed. Fix every failing fuzz duel first: they are often the
+   translator's bugs, not the batch's (batch 2's fuzz found three, two of them in `translate/`).
+2. **Scenarios** (`crates/yo3-server/tests/anime_only_NN.rs`, `Scenario::start_anime_field`) for: the cards the fuzz
+   flags, the cards `--find` noted (a script note, a case at ∞ in `infinite_lp.rs`), the Tokens, the deck's
+   **signature cards** (the ones its duelist won or turned a duel with), and **a seeded random 30% of the rest**. The
+   sample is what catches a card doing only part of its text, which no fuzz sees (batch 1: Limit Tribute; batch 3:
+   Seven Kid Goats, fixed by an override). A scenario per fix, too.
+3. **Rarities** in the table's `rarity` column, by the card's place in the anime: about 10% Ultra, 10% Super, 20% Rare,
+   the rest Common.
+
+Each batch is its own branch and commit (`feat(cards): anime-only batch N, …`), fast-forwarded into `main` when every
+check above is green. `tools/engine/anime-batches.py --batch N` writes the batch's `--find-file`/`--add-file` list (its
+Tokens first, each card once) and `--list` shows how far the batches are.
+
 ## How it reaches the game
 
 1. **The server** adds the rows after the game's own (`yo3_data::added`: `CardDb::add`), so decks, trunks, trades,

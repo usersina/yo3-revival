@@ -2,7 +2,7 @@
 //! which a finite cost, damage, gain or ATK change leaves as it is, and an amount that is itself ∞ moves as is. The cards
 //! of the game that set, pay, give or take LP, and those that change an ∞ ATK, through the real core (anime cards on),
 //! with both seats' client views checked against the engine after every step.
-use yo3_server::duelcheck::scenario::{Action::*, Scenario, engine_dir};
+use yo3_server::duelcheck::scenario::{Action::*, Scenario, card, engine_dir};
 use yo3_server::engine::{Spawn, SpawnPlace::*};
 
 const INFINITE: i64 = 19_999_998;
@@ -305,5 +305,18 @@ fn mirage_ruler_at_infinite_lp_leaves_it_infinite() {
     assert_eq!(s.count(0, "grave", MIRAGE_RULER), 1, "the Ruler was Tributed: {}", s.context());
     assert_eq!(s.count(0, "mzone", THUNDER_KID), 1, "Thunder Kid is back: {}", s.context());
     assert_eq!(s.lp(0), INFINITE, "{}", s.context());
+    clean(&s);
+}
+
+#[test]
+fn deepest_impact_halves_infinite_lp_to_infinity_and_the_other_side_to_4000() {
+    // The anime Trap-like Spell: "Destroy all monsters on the field, also, halve both players' LP." Half of ∞ is ∞, the
+    // opponent's 8000 is 4000, and every monster on the field is destroyed.
+    let impact = card("Deepest Impact");
+    let Some(mut s) = infinite(&[hand(0, impact), mon(1, WARWOLF), mon(0, THUNDER_KID)]) else { return };
+    s.run(&[Activate(impact)]).unwrap();
+    assert_eq!((s.lp(0), s.lp(1)), (INFINITE, 4000), "Deepest Impact: {}", s.context());
+    assert_eq!((s.count(1, "grave", WARWOLF), s.count(0, "grave", THUNDER_KID)), (1, 1), "monsters destroyed: {}", s.context());
+    assert_eq!(s.count(1, "mzone", WARWOLF) + s.count(0, "mzone", THUNDER_KID) + s.count(0, "mzone", GEH), 0, "{}", s.context());
     clean(&s);
 }

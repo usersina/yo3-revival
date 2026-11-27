@@ -96,7 +96,8 @@ def main(args):
     if args[0] == "--batch":
         batch = [r for r in rows if r["batch"] == args[1]]
         tokens = sorted({t for r in batch for t in r["tokens"].split(",") if t})
-        print("\n".join([f"token:{t}" for t in tokens] + [f"anime:{r['anime']}" for r in batch]))
+        # A Token the inventory also lists as a card of the deck (Stone Giant Token) is added once, as the Token.
+        print("\n".join([f"token:{t}" for t in tokens] + [f"anime:{r['anime']}" for r in batch if r["anime"] not in tokens]))
         return 0
     if args[0] == "--list":
         with open(os.path.join(ROOT, "engine", "added", "cards.tsv"), encoding="utf-8") as f:

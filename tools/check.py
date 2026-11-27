@@ -44,6 +44,7 @@ PY = [
     'tools/docs/test_docs_check.py',
     'tools/engine/test_coverage.py',
     'tools/engine/test_anime_map.py',
+    'tools/engine/test_anime_batches.py',
     'tools/engine/test_anime_pictures.py',
     'tools/engine/test_shipped_pictures.py',
     'tools/release/test_bundle_docs.py',
