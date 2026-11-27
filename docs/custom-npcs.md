@@ -107,7 +107,8 @@ difference (Underground Arachnid, Hundred Eyes Dragon, Dark Diviner, which with 
 and the printed Frozen Fitzgerald and Dark Highlander; `tests/dark_synchro.rs`). A true Dark Synchro Summon needs an
 anime Dark Tuner (setcode 0x600, batches 32-34), whose Level minus the non-Tuner's is the Dark Synchro's: Roman's
 Spider Cocoon (5) makes Dark Diviner with a Level 1, Greiger's Doom Submarine (9) Underground Arachnid with a Level 3,
-Trudge's Chaos Rogue (8) Dark Diviner with a Level 4. Rex's Dark Goddess Witaka (3) has no Dark Synchro the game has.
+Trudge's Chaos Rogue (8) Dark Diviner with a Level 4. Rex's Dark Goddess Witaka (3) takes a Synchro Monster's
+Level for 1000 LP: at Hundred Eyes Dragon's 8 she makes Dark Diviner with a Level 4, or Underground Arachnid with Man-Eater Bug (2).
 
 ## Adding a character
 
