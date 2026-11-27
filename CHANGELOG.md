@@ -25,6 +25,12 @@ Older entries describe their release at the time. For current setup, use the [RE
 - **A Set Field Spell can be activated.** A Field Spell you Set had no menu to activate it later; it has now, and
   turned face up it shows its field (Sogen's grassland) like one played from the hand.
 
+- **Set cards can be picked when a card needs several.** Brionac, Dragon of the Ice Barrier and other cards that
+  pick two or more cards on the field showed the opponent's Set cards as blank slots you couldn't click; they show as
+  card backs and can be picked (#90).
+- **Black Brutdrago from Tuned Magician** (made a Tuner by Unleash Your Power!) is covered by a test; the crash it
+  caused before v0.1.26 is gone (#87).
+
 ## v0.1.26 (2026-11-26)
 
 - **EDOPro decks.** Desktop imports an EDOPro deck file (`.ydk`) into your decks, and exports yours for EDOPro: Settings →

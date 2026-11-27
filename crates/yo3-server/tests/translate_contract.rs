@@ -1554,6 +1554,37 @@ fn a_list_with_the_opponents_hidden_card_shows_card_backs() {
 }
 
 #[test]
+fn a_choice_of_several_cards_with_a_set_one_shows_card_backs_too() {
+    // Brionac, Dragon of the Ice Barrier (#90): "return 2 cards" listed the opponent's Set cards with row 0 in the
+    // must-pick-all kind (6), so they were blank and couldn't be clicked. A hidden card opens the card-back kind (4)
+    // whatever the count, its max the picks needed; closed with fewer than those, a forced choice is asked again.
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 10 * r as u32, def: 1000, level: 4, attribute: 2, race: 12 };
+    let cids = (100..110).chain(200..210).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
+    let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
+    let (mut t, _) = Translator::against_player(0, [&client, &cpu], cids);
+    t.events(&[json!({ "type": 90, "player": 1, "drawn": [{ "cid": 4200 }, { "cid": 4201 }, { "cid": 4202 }] })]);
+    t.events(&[json!({ "type": 50, "cid": 4200, "from": loc(1, 2, 0, 10), "to": loc(1, 8, 0, 10) })]);
+    t.events(&[json!({ "type": 50, "cid": 4201, "from": loc(1, 2, 0, 10), "to": loc(1, 8, 1, 5) })]);
+    t.events(&[json!({ "type": 50, "cid": 4202, "from": loc(1, 2, 0, 10), "to": loc(1, 8, 2, 10) })]);
+    let target = json!({ "type": 15, "player": 0, "can_cancel": false, "min": 2, "max": 2,
+        "selects": [json!({ "code": 4200, "cid": 4200, "controller": 1, "location": 8, "sequence": 0, "position": 10 }),
+            card_at(1, 8, 1, 4201),
+            json!({ "code": 4202, "cid": 4202, "controller": 1, "location": 8, "sequence": 2, "position": 10 })] });
+    let out = client_commands(t.prompt(&target));
+    assert_eq!(out.last(), Some(&(0x37, [1, 4, 1, 0])), "the card-back kind with the count's message: {out:?}");
+    let begin = out.iter().find(|(id, _)| *id == 0x3EF).expect("the list");
+    assert_eq!(begin.1[..2], [3, 2], "three cards, two picks: {out:?}");
+    // One pick of two: asked again, not answered by the CPU's default.
+    t.pick(0);
+    let again = client_commands(t.dialog_result(1).expect("asked again"));
+    assert_eq!(again.last().map(|&(id, p)| (id, p[1])), Some((0x37, 4)));
+    // Two picks answer it: the list's first (the opponent's zone 2, mirrored) and second (zone 1, the Set card).
+    t.pick(0);
+    t.pick(1);
+    assert_eq!(t.dialog_result(2), Some(Prompt::Answer(json!({ "type": 5, "indicies": [2, 1] }))));
+}
+
+#[test]
 fn a_mixed_list_gives_the_opponents_banished_entries_back() {
     // The list borrows the opponent's banished places 0.. for its flags; once it closes the real entries (uid, row,
     // the open flag) are sent before anything else.

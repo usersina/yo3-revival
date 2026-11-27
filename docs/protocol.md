@@ -2275,14 +2275,16 @@ with max lowered to min. Settled by the client: only `0x4C72D0` reads the kind, 
 getCardInfo `0x4C78A0`), so an opponent's hidden card (row 0) drew nothing and could not be clicked (live: Mystical
 Space Typhoon could not target a Set card). Only kind `0x4A` (all cards, marked the
 opponent's, one pick, no way out) and kind 4 (see Pile views) draw `0000.png`, the card back. Kind 4 draws it only for
-the cards whose table flag is clear, so a list holding a hidden card (a Set card has row 0 for the client) with min ≤ 1
-opens as kind 4 with the list's player (command `0x37` param1, `+0x48`) set to the CPU (1; with 0 the check is skipped
+the cards whose table flag is clear, so a list holding a hidden card (a Set card has row 0 for the client) opens as
+kind 4, whatever its picks (#90: Brionac's "return 2" sent kind 6, the Set cards blank and unclickable), with the list's player (command `0x37` param1, `+0x48`) set to the CPU (1; with 0 the check is skipped
 and every card shows its face, `0x4C7A38`): the flag is read at the banished place of the same index on the side
 `client != player` (`0x523DA0 {side, 0xF, index}`), which is the opponent's. The server sends a table entry (1000) per
 list card there first, with a made-up uid (`0xF00000 + index`), the row and the flag (`1 << 24`) only for the cards
 shown, and sends the opponent's real banished entries again before anything else once the list has closed. Kind 4
 needs no pick (like kind 1), so a click on a card decides at once when picks reach max, a right-click closes with none,
-and a forced choice closed with nothing picked is asked again. Face-up cards keep their faces and ATK/DEF, Set cards
+and a forced choice closed with fewer picks than its minimum is asked again (max is min there, and the count line
+"Select N card(s)." goes with the title). Live (2026-11-27, NPC duel, `--duel-field`): Brionac's "return 2" listed
+Kaiba's two Set cards as backs beside Giant Orc and Brionac; picking both returned Mirror Force and Sakuretsu Armor. Face-up cards keep their faces and ATK/DEF, Set cards
 are backs, all marked the opponent's. Live (Auto Duel, Giant Orc's attack on a Set Witch and a face-up Giant Orc): one
 back, one face; a right-click withdrew the attack; a click on the back attacked the Set card. (Kaiba's MST listing a
 Set Spellbinding Circle was the first use of `0x4A`; it is no longer sent.) EDOPro's hint

@@ -575,8 +575,9 @@ impl Translator {
     /// The card list for a card choice: its rows and marks, the message, then the dialog. The kind gives the picks OK
     /// needs: none for min 0, one for min 1, else exactly min (the list's max is lowered to it). A list holding a
     /// hidden card (a Set card has no row for the client) opens as the card-back kind with a table entry per card
-    /// (flag set for the cards shown), so face-up cards keep their faces and Set cards are backs; no pick is needed
-    /// there, so the list closing with nothing picked asks again when the choice is forced.
+    /// (flag set for the cards shown), so face-up cards keep their faces and Set cards are backs, whatever the picks
+    /// needed (Brionac's several, #90: the other kinds drew a Set card blank and unclickable); no pick is needed to
+    /// close it, so a forced choice closed with fewer than its picks asks again.
     pub(super) fn card_list(&mut self, list: &CardList, text: Option<u32>) -> Vec<Message> {
         let engine_order = &list.selects;
         let mut order: Vec<usize> = (0..engine_order.len()).collect();
@@ -595,7 +596,7 @@ impl Translator {
             _ => (list::PICK_ALL, min),
         };
         let rows: Vec<u32> = selects.iter().map(|loc| self.list_row(loc)).collect();
-        let mixed = rows.contains(&0) && min <= 1;
+        let mixed = rows.contains(&0);
         self.mixed = mixed;
         let (kind, player) = if mixed { (list::PICK_MIXED, CPU) } else { (kind, CLIENT) };
         let marks: Vec<u32> = selects.iter().map(|loc| if self.side(loc.controller) == CPU { list::OPPONENTS } else { 0 }).collect();
@@ -612,7 +613,7 @@ impl Translator {
         out.extend(fours(cmd::LIST_MARKS, &marks));
         // A list that needs several picks says how many (min == max here): the hint alone left a player of Magical Hats
         // with one card marked and no hint that a second one decides.
-        let several = list.min >= 2 && max >= 2 && kind != list::PICK_MIXED;
+        let several = list.min >= 2 && max >= 2;
         let entries: Vec<u32> = match (text, several) {
             (Some(text), true) => vec![entry::TEXT | text, entry::LINE_BREAK, entry::TEXT | text::SELECT_COUNT, entry::NUMBER | max],
             (None, true) => vec![entry::TEXT | text::SELECT_COUNT, entry::NUMBER | max],
@@ -775,8 +776,12 @@ impl Translator {
                 _ if c.forced => cpu_answer(&m),
                 _ => Response::Chain(None).json(),
             },
-            // A mixed list needs no picks to close: a forced choice with nothing picked is asked again.
-            Ask::Card(c) | Ask::Tribute(c) if self.mixed && self.picks.is_empty() && !c.can_cancel && c.min >= 1 => {
+            // A mixed list needs no picks to close: a forced choice with too few picked is asked again (a Tribute's
+            // picks count by their monsters' release values, so there only none).
+            Ask::Card(c) | Ask::Tribute(c)
+                if self.mixed && !c.can_cancel && c.min >= 1
+                    && (self.picks.is_empty() || (matches!(ask, Ask::Card(_)) && self.picks.len() < c.min as usize)) =>
+            {
                 return Some(self.prompt(&m));
             }
             Ask::Card(c) | Ask::Tribute(c) => self.card_choice(&m, matches!(ask, Ask::Tribute(_)), c, count),
