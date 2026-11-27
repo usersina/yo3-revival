@@ -39,6 +39,26 @@ pub(crate) const CHARACTERS: &[(&str, f64, f64, bool)] = &[
     ("Kalin Kessler", 0.5, 0.2, false),
     // Custom NPCs (engine/added/npcs.json). Dartz: patient behind his walls until the Seal is down.
     ("Dartz", 0.3, 0.4, false),
+    // Rafael: stoic, honourable, steady offence with his Guardians
+    ("Rafael", 0.3, 0.3, false),
+    // Valon: a brawler, gets stuck in and equips up
+    ("Valon", 0.6, 0.1, false),
+    // Alister: calculating, patient, builds up to his fortress
+    ("Alister", 0.3, 0.4, false),
+    // Noah Kaiba: bold and playful, overconfident
+    ("Noah Kaiba", 0.5, 0.2, false),
+    // Ishizu Ishtar: patient control, waits on Exodia and her sphinxes
+    ("Ishizu Ishtar", 0.1, 0.5, false),
+    // Weevil Underwood: aggressive, swarms with insects
+    ("Weevil Underwood", 0.6, 0.1, false),
+    // Rex Raptor: reckless, charges in with big dinosaurs
+    ("Rex Raptor", 0.8, 0.0, false),
+    // Zigfried von Schroeder: disciplined and measured
+    ("Zigfried von Schroeder", 0.4, 0.3, false),
+    // Odion: defensive, guards and waits to spring traps
+    ("Odion", -0.3, 0.7, false),
+    // Mako Tsunami: bold and cheerful, steady pressure
+    ("Mako Tsunami", 0.5, 0.2, false),
 ];
 
 /// The Millennium Eye a player can wear: Bakura's Accessories (male 84, female 342 in the item catalogue), a golden

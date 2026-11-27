@@ -346,3 +346,143 @@ win: Your soul belongs to the Orichalcos now, {you}.
 lose: Your heart's light... is stronger than I believed. Remember this duel, {you}.
 trump: The Seal of Orichalcos | The Seal is cast! Your soul is the price, {you}.
 trump: Divine Serpent Geh | Awaken, Divine Serpent! The Leviathan's herald comes.
+
+[Rafael]
+greet: The Guardians stand with me, {you}. Show me your resolve.
+greet: Come. Face the strength of the gods' own guardians.
+turn: The Guardians watch. I draw.
+turn: Patience. Honour is the only thing that wins a duel.
+ace: Stand, {card}! Guardian of the gods!
+ace: {card}, answer my call!
+direct: Your defence is gone. Guardian, strike!
+hurt: A fine blow. But the Guardians do not fall.
+win: The Guardians were with me today, {you}.
+lose: You fought with honour, {you}. I accept this defeat.
+trump: Guardian Eatos | Guardian Eatos, take the field! Show the gods' mercy.
+trump: Guardian Angel Joan | Descend, Joan! Lead the Guardians!
+
+[Valon]
+greet: Oi, {you}! Hope you've got thick skin, mate!
+greet: Ready for a scrap, {you}? Let's get stuck in!
+turn: My turn! Time to armor up.
+turn: Don't blink, mate. I'm just getting started.
+ace: Say hello to {card}! Suit up!
+ace: {card}, get in there and show 'em how it's done!
+direct: Wide open! Take this, mate!
+hurt: Ow! Lucky shot, that. You'll pay for it.
+win: Told ya I wouldn't lose, {you}. Good scrap, though.
+lose: Fair play, {you}. You beat me clean.
+trump: Gearfried the Iron Knight | Gearfried, armor up and show 'em what you've got!
+trump: Mirage Knight | Come on out, Mirage Knight! Let's put on a show!
+
+[Alister]
+greet: So you have come, {you}. Let us see how long you last against my machines.
+greet: The fortress is ready, {you}. Are you?
+turn: Systems online. My turn.
+turn: Everything is going as calculated.
+ace: Behold {card}! Iron and fire, in perfect order!
+ace: Deploy, {card}! Show no mercy!
+direct: No cover left. Open fire!
+hurt: A scratch on the armour. Nothing more.
+win: Calculated, {you}. You never had a chance.
+lose: Your skill is real, {you}. The fortress has fallen.
+trump: Air Fortress Ziggurat | Take to the sky, Air Fortress Ziggurat! Bring down the heavens!
+trump: Machine King | Machine King, rise! Let the iron rain begin.
+
+[Noah Kaiba]
+greet: Welcome to my world, {you}! I hope you like losing!
+greet: Ready to play, {you}? In my world, I make the rules!
+turn: My turn! Let's see what the game gives me.
+turn: This world is mine, and so is this move.
+ace: Appear, {card}! This is my world!
+ace: {card}! Go show them who's in charge here!
+direct: Nothing in the way! Take it!
+hurt: Ow! You'll pay for that one, {you}!
+win: That's game, {you}! This world is mine.
+lose: No way! I lost in my own world... Good game, {you}.
+trump: Shinato, King of a Higher Plane | Shinato! Rule over this world with me!
+trump: Shinato's Ark | The Ark opens! Come forth, king of a higher plane!
+
+[Ishizu Ishtar]
+greet: Fate has brought you here, {you}. Let us see what it intends.
+greet: The tablet foretold your coming, {you}. Let us begin.
+turn: Fate turns another page. I draw.
+turn: As the Millennium Necklace showed me.
+ace: Awaken, {card}! The ancients answer.
+ace: {card}, rise from the sands of time!
+direct: Fate has left you open. Attack.
+hurt: You have changed fate for a moment... but only a moment.
+win: Fate decided it, {you}. It was written.
+lose: You have rewritten fate, {you}. Well fought.
+trump: Exodia the Forbidden One | The Forbidden One is whole! Obliterate!
+trump: Andro Sphinx | Andro Sphinx, rise! Guard the secrets of the ancients.
+
+[Weevil Underwood]
+greet: Hey, {you}! Get ready to be swarmed by my insects!
+greet: Bug off, {you}! I'm gonna squash you flat!
+turn: My turn, loser! Let's squash you.
+turn: Heh heh! My bugs are hungry, {you}.
+ace: Crawl out, {card}! Crush 'em!
+ace: Go get 'em, {card}! Chomp, chomp!
+direct: Nothing in the way! Eat 'em up, my pets!
+hurt: Ow! That's cheating, {you}! You'll pay!
+win: Another bug squashed! Ha ha ha!
+lose: My bugs! No fair, {you}! I'll get you next time!
+trump: Perfectly Ultimate Great Moth | Behold my perfect moth! The strongest insect ever!
+trump: Insect Queen | Insect Queen, swarm the field! Squash them all!
+
+[Rex Raptor]
+greet: Hey, {you}! My dinosaurs are hungry! Let's rumble!
+greet: Roooar! You ready to get stomped, {you}?
+turn: My turn! Let's get wild!
+turn: Come on, {you}, don't just stand there!
+ace: Rawr! Go {card}! Stomp 'em flat!
+ace: Come out, {card}! Show 'em the king of the dinosaurs!
+direct: Wide open! Chomp 'em!
+hurt: Ow! You'll pay for that, {you}!
+win: Dinosaurs rule! Ha ha, nice try, {you}!
+lose: Aw, man! My dinosaurs! You're pretty good, {you}.
+trump: Ultimate Tyranno | Ultimate Tyranno, roar! Crush everything!
+trump: Black Tyranno | Black Tyranno, rise! Show them real power!
+
+[Zigfried von Schroeder]
+greet: Welcome, {you}. Show me you are worthy of this duel.
+greet: I have trained for this, {you}. Let us begin.
+turn: My turn. I will not waste it.
+turn: Discipline wins duels, {you}. I draw.
+ace: Fly, {card}! Bring me victory!
+ace: Rise, {card}! The Nibelung's might is yours!
+direct: Your guard is down. Strike!
+hurt: Not bad. But I am only beginning.
+win: Victory, {you}. Train harder.
+lose: You were stronger, {you}. I must train more.
+trump: Swan Maiden | Swan Maiden, spread your wings! Fly for the Nibelung!
+trump: Guardian Angel Joan | Joan, ascend! Lead the Valkyries into battle!
+
+[Odion]
+greet: You have come, {you}. I must ask you to turn back.
+greet: Forgive me, {you}. I cannot let you pass.
+turn: I draw.
+turn: Please be careful. There are traps here.
+ace: Rise, {card}! Guard my master!
+ace: {card}, protect us!
+direct: Forgive me. I must attack.
+hurt: You are strong. But I cannot yield.
+win: Forgive me, {you}. I had to protect my master.
+lose: You are strong, {you}. I have failed.
+trump: Embodiment of Apophis | Rise, Embodiment of Apophis! Devour the intruder!
+trump: Mirror Force | Mirror Force! Turn their attack on them.
+
+[Mako Tsunami]
+greet: Ahoy, {you}! Time to dive right in!
+greet: The sea is calling, {you}! Let's duel!
+turn: My turn! Let's make a splash!
+turn: Come on, {you}, the sea won't wait!
+ace: Surface, {card}! Make some waves!
+ace: Rise, {card}! Show them the power of the sea!
+direct: Wide open! Wave attack!
+hurt: Ow! The tide will turn, {you}!
+win: Smooth sailing, {you}! Better luck next time!
+lose: I'm washed up! Great duel, {you}!
+trump: Umi | Feel the might of the ocean! The Umi is mine!
+trump: Great White | Great White, bite! Bring them to the deep!
