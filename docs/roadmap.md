@@ -97,6 +97,12 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
 - [ ] The Discord recording's native game exit `0xc0000005` is a separate failure. A crash dump or faulting address from
       a failing machine is still needed; seven fresh native Windows 11 launches did not reproduce it.
 
+**Banlists**
+
+- [ ] A web editor for players' own banlists (#96, after #77): make or change one on the server's pages without a
+      `lflist.conf`, with the import's checks (its own name, the account's cap, cards the game has).
+- [ ] The game's "There are no valid Decks available." popup says why (today the reasons are chat lines).
+
 **Higher resolution**
 
 - [ ] A Japanese or Korean IME, a second monitor.

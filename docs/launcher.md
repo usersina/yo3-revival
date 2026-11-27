@@ -116,7 +116,7 @@ The **Multiplayer** tab signs in to servers with a User ID and password ([accoun
   accepted. You then see a **recovery code** once: **Copy** it or **Save** it as a text file, then **I saved it** signs
   you in.
 - **LOG IN**: the User ID field has the typing when the form opens (the password, when a saved User ID is filled in). **Save User ID** keeps only the name. **Stay signed in** keeps a sign-in token in your system's credential
-  store (Windows Credential Manager, or the Secret Service on Linux), never the password; without such a store the box is greyed out, off, and a line says why. Wrong User ID or password get the same message, and repeated tries wait longer each time.
+  store (Windows Credential Manager, or the Secret Service on Linux), never the password; without such a store the box is greyed out, off, and its **?** says why. Wrong User ID or password get the same message, and repeated tries wait longer each time.
 - **Forgot password?**: your recovery code (or a reset code from the server's moderators, who check it's you first) and
   a new password. A recovery code is replaced by a new one, shown once.
 - **PLAY** starts the game signed in to the server; **CLOSE GAME** and **CANCEL** work as in Singleplayer. Signed in,
@@ -134,11 +134,13 @@ account: type its User ID and password and press **Play**. The password is used 
 doesn't "stay signed in".
 
 **Decks…** beside it lists your account's decks on that server: **Import…** keeps an EDOPro deck
-file (`.ydk`) as one of them, in Load Deck the next time the game lists your decks, and each deck's **Export…** saves
-it as a `.ydk` file. Your player must exist first (the game's Select Player); cards the server doesn't have are left
-out, and cards you don't hold are named, as Edit Deck shows them. Below them, **your banlists on that server**: **Import banlist…** keeps an EDOPro `lflist.conf` as one of your
-own (the game shows it after its next start, in Edit Deck → Change Regulations), each one's **Export…** saves it as an
-`lflist.conf` and **Delete** removes it.
+file (`.ydk`) as one of them, in Load Deck the next time the game lists your decks, and each deck's download button
+saves it as a `.ydk` file. Your player must exist first (the game's Select Player); cards the server doesn't have are left
+out, and cards you don't hold are named, as Edit Deck shows them. Below them, **your banlists**: their **Import…** keeps an EDOPro `lflist.conf` as one of your
+own (the game shows it after its next start, in Edit Deck → Change Regulations), each one's download button saves it as an
+`lflist.conf` and its bin deletes it, after asking in a dialog. **Since Unreleased:** what went wrong (a wrong
+password, a used invite code, a file that couldn't be read) and what was done are toasts at the bottom left, as the
+rest of the launcher's notices, not lines in the server panel; a long form scrolls inside it.
 
 - **Games running** lists every game with its account and server and a **Close** for each. Closing the launcher asks first,
   then closes every game it started. Singleplayer stays at one game, against your own server.

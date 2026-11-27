@@ -204,6 +204,15 @@ impl App {
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
+        let task = self.update_inner(message);
+        // Settings → Accounts' result (a sign-out, a new password, or why not) is Settings' toast, not a line on the page.
+        if let Some(settings) = &mut self.settings && let Some((good, note)) = self.home.multi.take_account_note() {
+            if good { settings.good(note) } else { settings.told(note) }
+        }
+        task
+    }
+
+    fn update_inner(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Home(home::Message::SetUp) => return self.open_setup(setup::Step::Game),
             Message::Home(home::Message::Repair) => self.dialog = Some(Dialog::Repair),
@@ -611,6 +620,11 @@ impl App {
         // own sit bottom right; the main screen's bottom left, over the news panel's empty end, never over PLAY or LOG IN
         // (live on Windows 11 a toast hid the lower half of the button).
         let toast_side = if self.settings.is_some() { iced::alignment::Horizontal::Right } else { iced::alignment::Horizontal::Left };
+        // Setup's own error floats as a toast too, never as a line in the wizard.
+        if let Some(setup) = &self.setup && let Some(toast) = setup.toast() {
+            screen = screen.push(container(toast.map(Message::Setup)).padding(iced::Padding { bottom: 50.0, right: 18.0, left: 22.0, ..iced::Padding::ZERO })
+                .width(Fill).height(Fill).align_x(iced::alignment::Horizontal::Right).align_y(iced::alignment::Vertical::Bottom));
+        }
         if self.setup.is_none() {
             let mut toasts: Vec<Element<'_, Message>> = match &self.settings {
                 Some(settings) => settings.toasts().into_iter().map(|t| t.map(Message::Settings)).collect(),
@@ -628,6 +642,10 @@ impl App {
             screen = screen.push(mouse_area(Space::new().width(Fill).height(Fill)).on_press(Message::Home(home::Message::Bell(false))))
                 .push(container(self.home.inbox_view().map(Message::Home)).padding(iced::Padding { top: 46.0, right: 96.0, ..iced::Padding::ZERO })
                     .width(Fill).align_x(iced::alignment::Horizontal::Right));
+        }
+        // The main screen's own question (Multiplayer's Decks form: deleting a banlist), as a dialog over it.
+        if self.setup.is_none() && self.settings.is_none() && self.home.tab == home::Tab::Multi && let Some((dialog, close)) = self.home.multi.confirm_dialog() {
+            screen = screen.push(yo3_skin::modal_layer(dialog.map(|m| Message::Home(home::Message::Multi(m))), Message::Home(home::Message::Multi(close))));
         }
         // A dialog is one more layer of the same stack, so the screen under it keeps its state (Settings' scroll).
         if let Some(dialog) = self.dialog { screen = screen.push(yo3_skin::modal_layer(self.dialog(dialog), Message::CloseDialog)) }

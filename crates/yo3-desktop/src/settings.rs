@@ -222,7 +222,9 @@ pub fn offer(pictures: Option<(usize, usize)>) -> Option<usize> {
 
 /// One plain sentence, good or not, with the technical text behind Details.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Note { pub good: bool, pub sentence: String, pub details: Option<String>, pub open: bool }
+pub struct Note { pub good: bool, pub sentence: String, pub details: Option<String>, pub open: bool,
+    /// A slip of the player's (a wrong password, the game still open): nothing to report.
+    pub plain: bool }
 
 pub struct State {
     pub section: Section,
@@ -450,13 +452,16 @@ impl State {
         }, Message::DirectChecked)
     }
 
-    fn good(&mut self, sentence: impl Into<String>) { self.note = Some(Note { good: true, sentence: sentence.into(), details: None, open: false }) }
+    /// A sentence already plain (a server's answer), as a red toast with nothing to report.
+    pub fn told(&mut self, sentence: impl Into<String>) { self.note = Some(Note { good: false, sentence: sentence.into(), details: None, open: false, plain: true }) }
+
+    pub fn good(&mut self, sentence: impl Into<String>) { self.note = Some(Note { good: true, sentence: sentence.into(), details: None, open: false, plain: false }) }
 
     /// An error as one sentence, the technical text (paths masked) behind Details.
     pub fn fail(&mut self, ctx: &Ctx, error: &str) {
         if let Some(backend) = &ctx.backend { backend.diagnostics.error(error) }
         let shown = error_presentation::present(error, error_presentation::Hint::General, &crate::app::masks(ctx));
-        self.note = Some(Note { good: false, sentence: shown.summary, details: Some(shown.diagnosis.unwrap_or_default()).filter(|d| !d.is_empty()), open: false });
+        self.note = Some(Note { good: false, sentence: shown.summary, details: Some(shown.diagnosis.unwrap_or_default()).filter(|d| !d.is_empty()), open: false, plain: false });
     }
 
     fn result(&mut self, ctx: &Ctx, result: Result<(), String>, done: &str) {
@@ -498,11 +503,11 @@ impl State {
             }
             Message::Changed(_, Err(error)) => {
                 // A refused value is the player's to fix: its sentence is already plain.
-                self.note = Some(Note { good: false, sentence: error_presentation::plain(error.lines().next().unwrap_or_default()), details: None, open: false });
+                self.note = Some(Note { good: false, sentence: error_presentation::plain(error.lines().next().unwrap_or_default()), details: None, open: false, plain: false });
             }
             Message::Verify => {
                 let Some(backend) = ctx.backend.clone() else { return Task::none() };
-                if playing { self.note = Some(Note { good: false, sentence: "Close the game first.".into(), details: None, open: false }); return Task::none() }
+                if playing { self.note = Some(Note { good: false, sentence: "Close the game first.".into(), details: None, open: false, plain: false }); return Task::none() }
                 let settings = ctx.settings.clone();
                 self.busy = Some("Checking your game and YO3 Revival's files…");
                 self.note = None;
@@ -512,7 +517,7 @@ impl State {
             Message::DirectChecked(direct) => self.direct = direct,
             Message::Direct(on) => {
                 let Some(backend) = ctx.backend.clone() else { return Task::none() };
-                if playing { self.note = Some(Note { good: false, sentence: "Close the game first.".into(), details: None, open: false }); return Task::none() }
+                if playing { self.note = Some(Note { good: false, sentence: "Close the game first.".into(), details: None, open: false, plain: false }); return Task::none() }
                 let settings = ctx.settings.clone();
                 self.busy = Some(if on { "Setting it up (Windows may ask for permission)…" } else { "Taking it out of the game folder…" });
                 // On: set up now, with Windows' permission prompt when the game folder is protected. Off: taken out now.
@@ -653,7 +658,7 @@ impl State {
             Message::ResetData(false) => self.confirm_reset = true,
             Message::ResetData(true) => {
                 let Some(backend) = ctx.backend.clone() else { return Task::none() };
-                if playing { self.note = Some(Note { good: false, sentence: "Close the game first.".into(), details: None, open: false }); return Task::none() }
+                if playing { self.note = Some(Note { good: false, sentence: "Close the game first.".into(), details: None, open: false, plain: false }); return Task::none() }
                 let settings = ctx.settings.clone();
                 self.confirm_reset = false;
                 self.busy = Some("Resetting…");
@@ -809,7 +814,7 @@ impl State {
                             out.unreachable.as_deref().map(|why| format!(" (server not reached: {why})")).unwrap_or_default())) }
                         let mut sentence = sentence;
                         if good || !out.saved.is_empty() { sentence.push_str(if playing { " The open game shows them after you close it and press PLAY again." } else { " They show from the next PLAY." }) }
-                        self.note = Some(Note { good, sentence, details: None, open: false });
+                        self.note = Some(Note { good, sentence, details: None, open: false, plain: false });
                     }
                     Err(error) => self.fail(ctx, &error),
                 }
@@ -834,7 +839,7 @@ impl State {
                     Ok(Some(done)) => {
                         let (good, mut sentence) = pictures::import_sentence(&done);
                         if done.faces + done.minis > 0 { sentence.push_str(if playing { " The open game shows them after you close it and press PLAY again." } else { " They show from the next PLAY." }) }
-                        self.note = Some(Note { good, sentence, details: None, open: false });
+                        self.note = Some(Note { good, sentence, details: None, open: false, plain: false });
                         return self.count_pictures(ctx);
                     }
                     Ok(None) => {}
@@ -863,7 +868,7 @@ impl State {
                 return job(move || { yo3_desktop::foreign::put_back_allowed(&game, &name)?; Ok(yo3_desktop::foreign::moved_aside(&game)) }, Message::PutBackDone);
             }
             Message::PutBackDone(Ok(left)) => { self.moved = left; self.good("Put back: the file is in your game folder again, as before.") }
-            Message::PutBackDone(Err(error)) => if error.contains("declined") { self.note = Some(Note { good: false, sentence: yo3_desktop::foreign::DECLINED_PUT_BACK.into(), details: None, open: false }) } else { self.fail(ctx, &error) },
+            Message::PutBackDone(Err(error)) => if error.contains("declined") { self.note = Some(Note { good: false, sentence: yo3_desktop::foreign::DECLINED_PUT_BACK.into(), details: None, open: false, plain: false }) } else { self.fail(ctx, &error) },
             Message::ToggleDetails => if let Some(note) = &mut self.note { note.open = !note.open },
             Message::Dismiss => self.note = None,
             Message::AutoUpdates(on) => return self.update(Message::Change(Change::AutoUpdates(on)), ctx, playing),
@@ -915,7 +920,7 @@ impl State {
     fn note<'a>(&'a self, note: &'a Note) -> Element<'a, Message> {
         let shade = if note.good { color::GOOD } else { color::BAD };
         let mut links = row![].spacing(14);
-        if !note.good { links = links.push(yo3_skin::link("Report", Message::Report(note.details.clone().unwrap_or_else(|| note.sentence.clone())), false)) }
+        if !note.good && !note.plain { links = links.push(yo3_skin::link("Report", Message::Report(note.details.clone().unwrap_or_else(|| note.sentence.clone())), false)) }
         if note.details.is_some() { links = links.push(yo3_skin::link(if note.open { "Hide details" } else { "Details" }, Message::ToggleDetails, false)) }
         links = links.push(yo3_skin::link("Dismiss", Message::Dismiss, false));
         let mut col = column![row![container(Space::new().width(9).height(9)).style(move |_| dot(shade)), text(&note.sentence).size(14).font(BODY_BOLD).color(color::INK).width(Fill)]

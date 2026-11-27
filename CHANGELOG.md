@@ -22,6 +22,9 @@ Older entries describe their release at the time. For current setup, use the [RE
   folder, restore a backup, save for EDOPro, delete). Your decks and banlists fold under "3 decks" until you open them.
   Questions before something you can't undo (Reset, Unlock all cards, deleting a banlist, Sign out everywhere…) are
   dialogs now. Everything that opens a web page shows the little arrow leaving a box.
+- **Errors are notifications.** A wrong password, a used invite code, a file that couldn't be read: each shows as a toast
+  (with what to do about it, when there is something), on Multiplayer, in Settings and in Setup, instead of a red line
+  that a long form could hide. Long server names fit the server list.
 - **Host for friends: choose where your server listens.** **Listen on** is every interface by default, or one of this
   PC's addresses (your home network's, a VPN's such as NetBird or Tailscale). **Address to share** shows what friends
   get when you leave it empty, and its **?** explains when to type your public address.

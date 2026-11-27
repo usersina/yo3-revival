@@ -41,6 +41,8 @@ pub enum Message {
     /// Handled by the window: explain the repair.
     Repair,
     ErrorDetails,
+    /// The error toast's Dismiss.
+    ErrorDismiss,
 }
 
 pub struct State {
@@ -157,6 +159,7 @@ impl State {
                 self.error_open = false;
             }
             Message::ErrorDetails => self.error_open = !self.error_open,
+            Message::ErrorDismiss => { self.error = None; self.error_details = None; self.error_open = false }
             Message::Saved(Ok(_)) | Message::Cancel | Message::Open(_) | Message::Repair => {}
         }
         Task::none()
@@ -346,6 +349,17 @@ impl State {
         list.into()
     }
 
+    /// What went wrong at the last step, as a toast (the window lays it out): its sentence, Details and Dismiss.
+    pub fn toast(&self) -> Option<Element<'_, Message>> {
+        let error = self.error.as_ref()?;
+        let mut links = row![].spacing(14);
+        if self.error_details.is_some() { links = links.push(yo3_skin::link(if self.error_open { "Hide details" } else { "Details" }, Message::ErrorDetails, false)) }
+        links = links.push(yo3_skin::link("Dismiss", Message::ErrorDismiss, false));
+        let mut col = column![text(error).size(14).font(BODY_BOLD).color(color::INK)].spacing(6);
+        if self.error_open && let Some(details) = &self.error_details { col = col.push(text(details).size(13).color(color::INK_SOFT)) }
+        Some(yo3_skin::toast(col.push(links), yo3_skin::Tone::Bad))
+    }
+
     fn ready(&self) -> Element<'_, Message> {
         let read_only = self.lines.as_deref().is_some_and(read_only);
         let direct = checkbox(self.direct).label("Open the game without the launcher").style(yo3_skin::tick).size(16).text_size(15);
@@ -373,13 +387,6 @@ impl State {
             Some("When a game's connection breaks or it closes with an error, its logs go to the server you played on. \
                 Passwords and keys are never in them. You can turn this off later in Settings, Advanced.".into()),
             "The host of the server you played on sees what went wrong.".into()));
-        if let Some(error) = &self.error {
-            list = list.push(text(error).size(14).font(BODY_BOLD).color(color::BAD));
-            if let Some(details) = &self.error_details {
-                list = list.push(yo3_skin::link(if self.error_open { "Hide details" } else { "Details" }, Message::ErrorDetails, false));
-                if self.error_open { list = list.push(text(details).size(13).color(color::INK_SOFT)) }
-            }
-        }
         list.into()
     }
 }

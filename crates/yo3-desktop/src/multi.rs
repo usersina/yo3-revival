@@ -2,7 +2,7 @@
 //! (`home.rs`) hosts it: its Play button starts the game with the session signed in here.
 use std::collections::HashMap;
 use std::sync::Arc;
-use iced::widget::{Space, checkbox, column, container, pick_list, row, text, text_input};
+use iced::widget::{Space, checkbox, column, container, pick_list, row, scrollable, text, text_input};
 use iced::{Alignment::Center, Element, Length::Fill, Task};
 use yo3_desktop::games::GameInfo;
 use yo3_desktop::multiplayer::{self as mp, Problem, Remedy, Server, SignedIn, Status, Vault};
@@ -53,18 +53,24 @@ fn typeable(text: &str, min: usize) -> bool { (min..=16).contains(&text.len()) &
 fn rule_for(typed: &str, met: bool) -> Rule { if typed.is_empty() { Rule::Pending } else if met { Rule::Met } else { Rule::Broken } }
 
 /// A new password's rules, as lines: 8 to 16 letters or digits, not the User ID, and typed twice the same.
-/// The characters the server picker's line holds (about 290 px of 15 px text) before it cuts the end off.
-const PICKER_CHARS: usize = 38;
+/// How wide the server picker's words can be (between its status dot and its arrow) before they would run under the
+/// arrow, and their size.
+const PICKER_PX: f32 = 222.0;
+const PICKER_TEXT: f32 = 16.0;
 
 /// One line of the server picker: the name and the state. A long name never pushes the state out of sight: the ping
 /// goes first, then the name is cut short with an ellipsis.
 fn choice_label(official: bool, name: &str, status: &str) -> String {
     let star = if official { "★ " } else { "" };
-    let fits = |status: &str| star.chars().count() + name.chars().count() + 5 + status.chars().count() <= PICKER_CHARS;
+    let fits = |label: &str| yo3_skin::text_width(label, PICKER_TEXT, yo3_skin::BODY) <= PICKER_PX;
+    // The ping goes first (the least useful part), then the name's end; the state always stays whole.
     let short = status.split_once(" · ").map_or(status, |(count, _ping)| count);
-    let status = if fits(status) { status } else { short };
-    let room = PICKER_CHARS.saturating_sub(star.chars().count() + 5 + status.chars().count()).max(8);
-    let name = if name.chars().count() <= room { name.to_owned() } else { format!("{}…", name.chars().take(room - 1).collect::<String>().trim_end()) };
+    let status = if fits(&format!("{star}{name}  ·  {status}")) { status } else { short };
+    let mut name = name.to_owned();
+    while !fits(&format!("{star}{name}  ·  {status}")) && name.chars().count() > 8 {
+        let kept: String = name.trim_end_matches('…').chars().collect::<Vec<_>>().split_last().map(|(_, rest)| rest.iter().collect()).unwrap_or_default();
+        name = format!("{}…", kept.trim_end());
+    }
     format!("{star}{name}  ·  {status}")
 }
 
@@ -166,6 +172,8 @@ pub enum Message {
     BanlistsRead(Result<Vec<String>, String>),
     BanlistImport,
     BanlistExport(String),
+    /// The Delete of one of your banlists in the Decks form: Some asks in a dialog, None takes the question back.
+    BanlistDeleteAsk(Option<String>),
     BanlistDelete(String),
     BanlistDone(Result<Option<String>, String>),
     PlayAsStart(Box<Server>, SignedIn),
@@ -228,6 +236,8 @@ pub struct State {
     busy: bool,
     problem: Option<Problem>,
     note: Option<String>,
+    /// A result that went wrong (a file that couldn't be read, a deck refused): a red toast, as `problem` is.
+    trouble: Option<String>,
     /// The sign-in on each server (by key).
     signed_in: HashMap<String, SignedIn>,
     vault: Option<Arc<dyn Vault>>,
@@ -248,6 +258,10 @@ pub struct State {
     decks: Option<Vec<String>>,
     /// The Decks form's banlists of yours (None while reading).
     banlists: Option<Vec<String>>,
+    /// Why the Decks form has no decks to list (no player made in the game yet), said in its decks part.
+    decks_note: Option<String>,
+    /// The banlist whose Delete waits for a yes in a dialog.
+    confirm_banlist: Option<String>,
     account: Option<(String, AccountForm)>,
     account_password: String,
     account_new: String,
@@ -292,6 +306,7 @@ impl State {
     /// What Escape does on the Multiplayer tab: close the server tools, or leave a form for the sign-in, like its Back button. A recovery code
     /// shown once stays until the player says they saved it.
     pub fn escape(&self) -> Option<Message> {
+        if self.confirm_banlist.is_some() { return Some(Message::BanlistDeleteAsk(None)) }
         if self.menu { return Some(Message::Menu(false)) }
         (!matches!(self.form, Form::SignIn | Form::Code(_))).then_some(Message::Show(Form::SignIn))
     }
@@ -450,7 +465,7 @@ impl State {
                         // The token goes to the system's vault, never to a file; Save User ID keeps only the name.
                         if let (Some(token), Some(vault)) = (&signed.device_token, &self.vault) {
                             if vault.set(&mp::vault_account(server), token).is_err() {
-                                self.note = Some("You're signed in, but this PC couldn't keep the sign-in: you'll be asked again next time.".into());
+                                self.trouble = Some("You're signed in, but this PC couldn't keep the sign-in: you'll be asked again next time.".into());
                             } else { self.stays.insert(key.clone()); }
                         }
                         server.saved_user = (self.save_user || signed.device_token.is_some()).then(|| signed.user.clone());
@@ -470,8 +485,8 @@ impl State {
                 }
             }
             Message::DecksRead(result) => match result {
-                Ok(decks) => self.decks = Some(decks),
-                Err(why) => { self.decks = Some(vec![]); self.note = Some(why) }
+                Ok(decks) => { self.decks = Some(decks); self.decks_note = None }
+                Err(why) => { self.decks = Some(vec![]); self.decks_note = Some(why) }
             },
             Message::DeckImport => {
                 let Some((server, signed)) = self.session() else { return Task::none() };
@@ -488,7 +503,7 @@ impl State {
             }
             Message::DeckImported(result) => {
                 self.busy = false;
-                match result { Ok(Some(sentence)) => { self.note = Some(sentence); return self.read_decks() } Ok(None) => {} Err(why) => self.note = Some(why) }
+                match result { Ok(Some(sentence)) => { self.note = Some(sentence); return self.read_decks() } Ok(None) => {} Err(why) => self.trouble = Some(why) }
             }
             Message::DeckExport(deck) => {
                 let Some((server, signed)) = self.session() else { return Task::none() };
@@ -505,11 +520,11 @@ impl State {
             }
             Message::DeckExported(result) => {
                 self.busy = false;
-                match result { Ok(Some(sentence)) => self.note = Some(sentence), Ok(None) => {} Err(why) => self.note = Some(why) }
+                match result { Ok(Some(sentence)) => self.note = Some(sentence), Ok(None) => {} Err(why) => self.trouble = Some(why) }
             }
             Message::BanlistsRead(result) => match result {
                 Ok(lists) => self.banlists = Some(lists),
-                Err(why) => { self.banlists = Some(vec![]); self.note = Some(why) }
+                Err(why) => { self.banlists = Some(vec![]); self.trouble = Some(why) }
             },
             Message::BanlistImport => {
                 let Some((server, signed)) = self.session() else { return Task::none() };
@@ -535,7 +550,9 @@ impl State {
                     Ok(Some(answer["message"].as_str().unwrap_or("Exported.").to_owned()))
                 }, Message::BanlistDone);
             }
+            Message::BanlistDeleteAsk(name) => self.confirm_banlist = name,
             Message::BanlistDelete(name) => {
+                self.confirm_banlist = None;
                 let Some((server, signed)) = self.session() else { return Task::none() };
                 if self.busy { return Task::none() }
                 self.busy = true;
@@ -547,7 +564,7 @@ impl State {
             }
             Message::BanlistDone(result) => {
                 self.busy = false;
-                match result { Ok(Some(sentence)) => { self.note = Some(sentence); return self.read_banlists() } Ok(None) => {} Err(why) => self.note = Some(why) }
+                match result { Ok(Some(sentence)) => { self.note = Some(sentence); return self.read_banlists() } Ok(None) => {} Err(why) => self.trouble = Some(why) }
             }
             Message::PlayAsGo => {
                 let Some((server, signed)) = self.session() else { return Task::none() };
@@ -646,7 +663,7 @@ impl State {
             }
             Message::Saved(result) => if let Err(error) = result {
                 if let Some(backend) = &ctx.backend { backend.diagnostics.error(&format!("Saving a server failed: {error}")) }
-                self.note = Some("YO3 Revival couldn't save this server's details on this PC.".into());
+                self.trouble = Some("YO3 Revival couldn't save this server's details on this PC.".into());
             },
             Message::Retry => {
                 self.problem = None;
@@ -778,12 +795,21 @@ impl State {
                 Some(row_col.into())));
         }
         if !rows.is_empty() { col = col.push(yo3_skin::setting_group("Signed in on this PC", rows)) }
-        if let Some((good, note)) = &self.account_note {
-            let shade = if *good { color::GOOD } else { color::BAD };
-            col = col.push(row![container(Space::new().width(9).height(9)).style(move |_| dot(shade)), text(note).size(14).font(BODY_BOLD).color(color::INK).width(Fill)]
-                .spacing(8).align_y(Center));
-        }
         col.into()
+    }
+
+    /// The question before deleting one of your banlists (the Decks form), as a dialog over the main screen, and the
+    /// message that takes it back.
+    pub fn confirm_dialog(&self) -> Option<(Element<'_, Message>, Message)> {
+        let name = self.confirm_banlist.as_ref()?;
+        let close = Message::BanlistDeleteAsk(None);
+        let body = column![
+            text(format!("\"{name}\" is deleted from this server. Players who picked it are back on the server's banlist.")).size(15).color(color::INK),
+            Space::new().height(Fill),
+            row![Space::new().width(Fill), pill("Cancel", Some(close.clone()), Kind::Secondary, 110, 38),
+                pill("Delete", (!self.busy).then(|| Message::BanlistDelete(name.clone())), Kind::Danger, 120, 38)].spacing(10),
+        ];
+        Some((yo3_skin::dialog("Delete this banlist?", None, close.clone(), 470.0, 210.0, body), close))
     }
 
     /// What closes the Accounts page's open form, when one is open.
@@ -819,7 +845,7 @@ impl State {
                 Space::new().height(Fill),
                 row![Space::new().width(Fill), cancel,
                     pill("Change password", (!busy && !self.account_password.is_empty() && !self.account_new.is_empty()).then_some(Message::AccountSubmit), Kind::Primary, 180, 38)].spacing(10),
-            ].spacing(10).into(), 330.0),
+            ].spacing(10).into(), 300.0),
         };
         Some((yo3_skin::dialog(title, None, close.clone(), 520.0, height, body), close))
     }
@@ -920,21 +946,24 @@ impl State {
             // The selected server's state as a coloured dot inside the picker, so it isn't said twice.
             let shade = Self::row_status(self.selected.as_ref().and_then(|k| self.status.get(k))).0;
             iced::widget::stack![
-                pick_list(choices, selected, Message::Select).style(yo3_skin::choice).menu_style(yo3_skin::choice_menu).width(Fill)
+                pick_list(choices, selected, Message::Select).style(yo3_skin::choice).menu_style(yo3_skin::choice_menu).width(Fill).text_size(PICKER_TEXT)
                     .padding(iced::Padding { top: 7.0, right: 10.0, bottom: 7.0, left: 26.0 }),
                 container(container(Space::new().width(9).height(9)).style(move |_| dot(shade))).padding(iced::Padding { left: 10.0, ..iced::Padding::ZERO }).height(34).center_y(34),
             ].into()
         };
         let tools = yo3_skin::icon_button(Icon::More, Some(Message::Menu(!self.menu)), "Server tools", false);
         let top = row![picker, tools].spacing(6).align_y(Center);
+        // What went wrong and what was done are the screen's toasts (`take_problem`, `take_note`), never lines here.
         let body = match &self.selected {
             Some(_) => column![top, self.form()].spacing(12),
             None if matches!(self.form, Form::Add | Form::Trust(_)) => column![top, self.form()].spacing(12),
             // Nothing to sign in to yet: the way to add one.
-            None => column![top, text("Add a server by its address, or with an invite link a host sent you.").size(14).color(color::INK),
-                pill("Add a server", Some(Message::Show(Form::Add)), Kind::Primary, 160, 34)].spacing(12),
+            None => column![top].push(text("Add a server by its address, or with an invite link a host sent you.").size(14).color(color::INK),
+                ).push(pill("Add a server", Some(Message::Show(Form::Add)), Kind::Primary, 160, 34)).spacing(12),
         };
-        let mut panel = column![body, self.messages(), self.games_list(), Space::new().height(Fill)].spacing(10);
+        // The forms scroll when they don't fit (Create an account with an error above it); the big button stays put.
+        let mut panel = column![scrollable(column![body, self.games_list()].spacing(10).padding(iced::Padding { right: 10.0, ..iced::Padding::ZERO }))
+            .height(Fill)].spacing(10);
         // The forms with their own button (making an account, recovering, adding a server) hide the big one, and so
         // does an empty list: its way forward is Add a server.
         if matches!(self.form, Form::SignIn) && self.selected.is_some() {
@@ -971,22 +1000,26 @@ impl State {
         col.into()
     }
 
-    fn messages(&self) -> Element<'_, Message> {
-        let mut out = column![].spacing(6);
-        // A server that doesn't answer is already said by its row and the RETRY button.
+    /// What went wrong, for the screen's toast: its sentence and its remedy as an action (Retry, Update, Sign in, Remove
+    /// server), taken so it is said once. A server that doesn't answer is already said by its row and the RETRY button.
+    pub fn take_problem(&mut self) -> Option<(String, Option<(&'static str, Message)>)> {
+        let problem = self.problem.take()?;
         let offline = self.selected.as_ref().is_some_and(|k| self.status.get(k) == Some(&Status::Offline));
-        if let Some(problem) = &self.problem && !(offline && *problem == Problem::Unreachable) {
-            let mut line = row![container(Space::new().width(9).height(9)).style(|_| dot(color::BAD)),
-                text(problem.sentence()).size(14).font(BODY_BOLD).color(color::INK).width(Fill)].spacing(8).align_y(Center);
-            if let Some(remedy) = problem.remedy() && !(remedy == Remedy::Retry && matches!(self.form, Form::SignIn)) {
-                let label = match remedy { Remedy::Retry => "Retry", Remedy::Update => "Update", Remedy::SignInAgain => "Sign in", Remedy::RemoveServer => "Remove server" };
-                line = line.push(yo3_skin::link(label, Message::Remedy(remedy), false));
-            }
-            out = out.push(line);
-        }
-        if let Some(note) = &self.note { out = out.push(text(note).size(14).color(color::INK)) }
-        out.into()
+        if offline && problem == Problem::Unreachable { return None }
+        let action = problem.remedy().filter(|r| !(*r == Remedy::Retry && matches!(self.form, Form::SignIn))).map(|remedy| {
+            (match remedy { Remedy::Retry => "Retry", Remedy::Update => "Update", Remedy::SignInAgain => "Sign in", Remedy::RemoveServer => "Remove server" }, Message::Remedy(remedy))
+        });
+        Some((problem.sentence(), action))
     }
+
+    /// A result to say (an import, a sign-out), for the screen's toast, taken so it is said once.
+    pub fn take_note(&mut self) -> Option<String> { self.note.take() }
+
+    /// A result that went wrong, for the screen's red toast, taken so it is said once.
+    pub fn take_trouble(&mut self) -> Option<String> { self.trouble.take() }
+
+    /// Settings → Accounts' result (good or not), for Settings' toast, taken so it is said once.
+    pub fn take_account_note(&mut self) -> Option<(bool, String)> { self.account_note.take() }
 
     fn form(&self) -> Element<'_, Message> {
         let input = |placeholder: &'static str, value: &str, field: Field, secret: bool| {
@@ -1102,29 +1135,36 @@ impl State {
                 ].spacing(8).into()
             }
             Form::Decks => {
-                let mut col = column![
-                    row![heading("Your decks on this server"),
-                        yo3_skin::help_tip("Import an EDOPro deck (.ydk) into the game's Load Deck, or save one of your decks for EDOPro.")].spacing(6).align_y(Center),
-                ].spacing(8);
-                match &self.decks {
-                    None => col = col.push(text("Reading your decks…").size(14).color(color::INK_SOFT)),
-                    Some(decks) => for deck in decks {
-                        col = col.push(row![text(deck.clone()).size(14).color(color::INK).width(Fill),
-                            pill("Export…", (!self.busy).then(|| Message::DeckExport(deck.clone())), Kind::Secondary, 110, 30)].spacing(8).align_y(Center));
+                let idle = !self.busy;
+                // A part: its heading and "?", its Import… on the right, then one line per item with icon buttons.
+                let part = |title: &'static str, tip: &'static str, import: Message| row![heading(title), yo3_skin::help_tip(tip), Space::new().width(Fill),
+                    pill("Import…", idle.then_some(import), Kind::Secondary, 110, 30)].spacing(6).align_y(Center);
+                let line = |name: &str, actions: Vec<Element<'static, Message>>| {
+                    let mut l = row![yo3_skin::icon(Icon::Book, 15.0, color::INK_SOFT), text(name.to_owned()).size(14).color(color::INK).width(Fill)].spacing(8).align_y(Center);
+                    for action in actions { l = l.push(action) }
+                    l
+                };
+                let soft = |words: String| text(words).size(13).color(color::INK_SOFT);
+                let mut col = column![part("Your decks", "Import an EDOPro deck (.ydk) into the game's Load Deck, or save one of your decks for EDOPro.", Message::DeckImport)].spacing(6);
+                match (&self.decks, &self.decks_note) {
+                    (None, _) => col = col.push(soft("Reading your decks…".into())),
+                    (Some(_), Some(why)) => col = col.push(soft(why.clone())),
+                    (Some(decks), None) if decks.is_empty() => col = col.push(soft("No decks yet.".into())),
+                    (Some(decks), None) => for deck in decks {
+                        col = col.push(line(deck, vec![yo3_skin::icon_button(Icon::Save, idle.then(|| Message::DeckExport(deck.clone())), "Save it for EDOPro", false)]));
                     },
                 }
-                col = col.push(actions(if self.busy { "Working…" } else { "Import…" }, (!self.busy).then_some(Message::DeckImport)));
-                col = col.push(row![heading("Your banlists on this server"), yo3_skin::help_tip(crate::settings::BANLISTS_TIP)].spacing(6).align_y(Center));
+                col = col.push(Space::new().height(8)).push(part("Your banlists", crate::settings::BANLISTS_TIP, Message::BanlistImport));
                 match &self.banlists {
-                    None => col = col.push(text("Reading your banlists…").size(14).color(color::INK_SOFT)),
+                    None => col = col.push(soft("Reading your banlists…".into())),
+                    Some(lists) if lists.is_empty() => col = col.push(soft("None yet.".into())),
                     Some(lists) => for list in lists {
-                        col = col.push(row![text(list.clone()).size(14).color(color::INK).width(Fill),
-                            pill("Export…", (!self.busy).then(|| Message::BanlistExport(list.clone())), Kind::Secondary, 110, 30),
-                            pill("Delete", (!self.busy).then(|| Message::BanlistDelete(list.clone())), Kind::Secondary, 100, 30)].spacing(8).align_y(Center));
+                        col = col.push(line(list, vec![
+                            yo3_skin::icon_button(Icon::Save, idle.then(|| Message::BanlistExport(list.clone())), "Save it for EDOPro", false),
+                            yo3_skin::icon_button(Icon::Trash, idle.then(|| Message::BanlistDeleteAsk(Some(list.clone()))), "Delete it", false)]));
                     },
                 }
-                if let Some(note) = &self.note { col = col.push(text(note.clone()).size(13).color(color::INK)) }
-                col.push(actions(if self.busy { "Working…" } else { "Import banlist…" }, (!self.busy).then_some(Message::BanlistImport))).into()
+                col.push(Space::new().height(8)).push(pill("Back", Some(Message::Show(Form::SignIn)), Kind::Secondary, 110, 36)).into()
             }
             Form::Code(code) => {
                 let mut col = column![
@@ -1182,6 +1222,17 @@ mod tests {
     fn ctx() -> Ctx { Ctx { root: std::env::temp_dir(), backend: None, store: None, settings: Default::default() } }
 
     #[test]
+    fn deleting_a_banlist_in_the_decks_form_asks_in_a_dialog_first() {
+        let mut state = State::default();
+        let _ = state.update(Message::BanlistDeleteAsk(Some("My Goat".into())), &ctx());
+        assert!(state.confirm_dialog().is_some(), "asked before anything is deleted");
+        // Escape takes the question back before it leaves the form.
+        assert!(matches!(state.escape(), Some(Message::BanlistDeleteAsk(None))));
+        let _ = state.update(Message::BanlistDeleteAsk(None), &ctx());
+        assert!(state.confirm_dialog().is_none());
+    }
+
+    #[test]
     fn a_refresh_asks_each_server_once_until_it_answers_and_keeps_the_last_status_meanwhile() {
         // The player's request of 2026-11-22: the list kept a status until RETRY. The tab now asks every REFRESH.
         let mut state = tab(Status::Offline, None);
@@ -1224,7 +1275,8 @@ mod tests {
         let _ = state.update(Message::DecksRead(Ok(vec!["Starter Deck".into(), "Dragons".into()])), &ctx());
         assert_eq!(state.decks.as_deref(), Some(&["Starter Deck".to_owned(), "Dragons".to_owned()][..]));
         let _ = state.update(Message::DecksRead(Err("Make your player in the game first (Select Player), then try again.".into())), &ctx());
-        assert_eq!((state.decks.as_deref(), state.note.as_deref()), (Some(&[][..]), Some("Make your player in the game first (Select Player), then try again.")));
+        // Said in the decks part, not as the form's note (which the banlists' results use).
+        assert_eq!((state.decks.as_deref(), state.decks_note.as_deref(), state.note.as_deref()), (Some(&[][..]), Some("Make your player in the game first (Select Player), then try again."), None));
         let _ = state.update(Message::DeckImported(Ok(Some("Imported \"Dragons (2)\" for Yugi: 40 + 0 + 0 cards.".into()))), &ctx());
         assert!(!state.busy && state.note.as_deref().is_some_and(|n| n.starts_with("Imported")));
         assert!(matches!(state.escape(), Some(Message::Show(Form::SignIn))), "Escape goes back");
@@ -1232,13 +1284,15 @@ mod tests {
 
     #[test]
     fn a_long_server_name_never_hides_its_state_in_the_picker() {
-        assert_eq!(choice_label(true, "YO3 Revival", "0 online · 225 ms"), "★ YO3 Revival  ·  0 online · 225 ms");
-        // The ping goes first: it is the least useful part, and the name stays whole.
-        assert_eq!(choice_label(false, "Friends' server (yours)", "0 online · 0 ms"), "Friends' server (yours)  ·  0 online");
-        // A name too long even for that is cut, and the state stays whole.
-        let label = choice_label(false, "The Very Long Name Of A Friends' Duel Server", "12 online · 40 ms");
-        assert!(label.ends_with("  ·  12 online") && label.contains("…") && label.chars().count() <= PICKER_CHARS + 2, "{label}");
-        assert_eq!(choice_label(false, "A server with a pretty long name here", "Offline"), "A server with a pretty lo…  ·  Offline");
+        let fits = |label: &str| yo3_skin::text_width(label, PICKER_TEXT, yo3_skin::BODY) <= PICKER_PX;
+        assert_eq!(choice_label(true, "YO3", "0 online · 225 ms"), "★ YO3  ·  0 online · 225 ms", "a short one stays whole");
+        // The ping goes first: it is the least useful part, then the name's end; the state stays whole.
+        for (name, status, keeps) in [("Friends' server (yours)", "0 online · 0 ms", "0 online"), ("Yu-Gi-Oh! ONLINE 3 server", "0 online · 210 ms", "0 online"),
+            ("The Very Long Name Of A Friends' Duel Server", "12 online · 40 ms", "12 online"), ("A server with a pretty long name here", "Offline", "Offline")] {
+            let label = choice_label(false, name, status);
+            assert!(fits(&label) && label.contains(keeps), "{label}");
+        }
+        assert!(choice_label(false, "The Very Long Name Of A Friends' Duel Server", "12 online").contains('…'));
     }
 
     #[test]

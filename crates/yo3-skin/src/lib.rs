@@ -116,8 +116,9 @@ fn slant(r: Rectangle, lean: f32) -> Path {
         b.line_to(Point::new(r.x + r.width - lean, r.y + r.height)); b.line_to(Point::new(r.x, r.y + r.height)); b.close();
     })
 }
-/// How wide `content` is drawn at `size` in `font`, as the canvas draws it.
-fn text_width(content: &str, size: f32, font: Font) -> f32 {
+/// How wide `content` is drawn at `size` in `font` (as text widgets and the canvas draw it), for fitting words into a
+/// fixed width.
+pub fn text_width(content: &str, size: f32, font: Font) -> f32 {
     use iced::advanced::text::Paragraph as _;
     let paragraph = <<Renderer as iced::advanced::text::Renderer>::Paragraph>::with_text(iced::advanced::text::Text {
         content, bounds: iced::Size::INFINITE, size: Pixels(size), line_height: text::LineHeight::default(), font,

@@ -132,11 +132,13 @@ pub struct Notice { pub summary: String, pub details: Option<String>, pub open: 
     /// Not a problem (a backup put back): no Report, no Help.
     pub good: bool,
     /// Shown on both tabs, not only your own server's panel: a game opened directly may have played either.
-    pub everywhere: bool }
+    pub everywhere: bool,
+    /// A player's own slip (a wrong password, a used invite code): nothing to report.
+    pub plain: bool }
 
 impl Notice {
-    pub fn good(summary: impl Into<String>) -> Self { Self { summary: summary.into(), details: None, open: false, action: None, good: true, everywhere: false } }
-    pub fn problem(summary: impl Into<String>, action: Option<(&'static str, Message)>) -> Self { Self { summary: summary.into(), details: None, open: false, action, good: false, everywhere: false } }
+    pub fn good(summary: impl Into<String>) -> Self { Self { summary: summary.into(), details: None, open: false, action: None, good: true, everywhere: false, plain: false } }
+    pub fn problem(summary: impl Into<String>, action: Option<(&'static str, Message)>) -> Self { Self { summary: summary.into(), details: None, open: false, action, good: false, everywhere: false, plain: false } }
     /// A game opened directly couldn't play (#33): said once, on whichever tab is open.
     pub fn direct(problem: &DirectProblem) -> Self { Self { details: Some(problem.reason.clone()), everywhere: true, ..Self::problem(problem.summary(), None) } }
     /// Another program's `winmm.dll` runs inside the game (#65): said at each Play, in the bell, without stopping it.
@@ -292,6 +294,23 @@ impl State {
     }
 
     pub fn update(&mut self, message: Message, ctx: &mut Ctx) -> Task<Message> {
+        let task = self.update_inner(message, ctx);
+        self.lift_multi_notices();
+        task
+    }
+
+    /// The Multiplayer tab's problem or result becomes the screen's toast, as every other notice: what went wrong never
+    /// sits as a line in the server panel (where a long form would hide it).
+    fn lift_multi_notices(&mut self) {
+        if let Some((problem, action)) = self.multi.take_problem() {
+            let action = action.map(|(label, m)| (label, Message::Multi(m)));
+            self.notice = Some(Notice { plain: action.is_none(), ..Notice::problem(problem, action) });
+        }
+        if let Some(note) = self.multi.take_note() { self.notice = Some(Notice::good(note)) }
+        if let Some(trouble) = self.multi.take_trouble() { self.notice = Some(Notice { plain: true, ..Notice::problem(trouble, None) }) }
+    }
+
+    fn update_inner(&mut self, message: Message, ctx: &mut Ctx) -> Task<Message> {
         match message {
             Message::Tab(tab) => {
                 self.tab = tab;
@@ -755,7 +774,7 @@ fn notice_view(notice: &Notice, details: Message, dismiss: Message) -> Element<'
         let mut links = row![].spacing(14);
         match &notice.action {
             Some((label, action)) => links = links.push(yo3_skin::link(*label, action.clone(), false)),
-            None if !notice.good => links = links.push(yo3_skin::link("Report", Message::Report(notice.details.clone().unwrap_or_else(|| notice.summary.clone())), false)),
+            None if !notice.good && !notice.plain => links = links.push(yo3_skin::link("Report", Message::Report(notice.details.clone().unwrap_or_else(|| notice.summary.clone())), false)),
             None => {}
         }
         if !notice.good { links = links.push(yo3_skin::link("Help", Message::Help(crate::help::topic_for(&notice.summary)), false)) }
@@ -818,6 +837,16 @@ mod tests {
     use super::*;
 
     fn game(readiness: Option<Readiness>) -> Game { Game { readiness, ..Game::default() } }
+
+    #[test]
+    fn a_multiplayer_problem_is_the_screens_toast_not_a_line_in_the_panel() {
+        let mut ctx = Ctx { root: std::env::temp_dir(), backend: None, store: None, settings: Default::default() };
+        let mut home = State { tab: Tab::Multi, ..State::default() };
+        let _ = home.update(Message::Multi(multi::Message::Registered(Err(yo3_desktop::multiplayer::Problem::InviteInvalid))), &mut ctx);
+        let notice = home.notice.clone().expect("a toast");
+        assert!(!notice.good && notice.plain && notice.summary.contains("invite code"), "{notice:?}");
+        assert!(home.multi.take_problem().is_none(), "said once, in the toast");
+    }
     const ALL: [Play; 12] = [Play::Checking, Play::SetUp, Play::Repair, Play::Retry, Play::Ready, Play::StartingServer, Play::StartingGame,
         Play::Waiting, Play::Playing, Play::Stale, Play::Outside, Play::Closing];
 

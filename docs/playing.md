@@ -94,7 +94,7 @@ share: Goat, Edison...) as one of your own, up to 3 on a server: Settings → Si
 own server, **Decks…** under your User ID on a Multiplayer server. Every player there can pick it: it is in Edit Deck →
 Change Regulations from the game's next start, for duels against the computer and the rooms you host. In Desktop's
 Settings, **N banlists** shows yours: the download button writes one back for EDOPro and the bin deletes it (players who
-picked it are back on the host's banlist); **Decks…** has **Export…** and **Delete**.
+picked it are back on the host's banlist); **Decks…** has the same buttons.
 
 **Two accounts on one PC.** Your launcher can run a second game as another account
 ([Play as another account](launcher.md#several-games-at-once)), for example to duel a friend who plays on the same computer.
