@@ -137,7 +137,7 @@
       "Call of the Haunted",
       "Bottomless Trap Hole",
       "Dimensional Prison",
-      "Fissure"
+      "Illusion Gate"
      ],
      "anime_deck": [
       "Orichalcos Gigas",
@@ -151,8 +151,8 @@
       "Vorse Raider",
       "Orichalcos Kyutora",
       "Orichalcos Kyutora",
-      "Exiled Force",
-      "D.D. Warrior Lady",
+      "Orichalcos Dexia",
+      "Orichalcos Aristeros",
       "Orichalcos Shunoros",
       "Cyber Dragon",
       "Cyber Dragon",
@@ -168,7 +168,7 @@
       "Monster Reborn",
       "Dark Hole",
       "Mystical Space Typhoon",
-      "Card Destruction",
+      "Illusion Gate",
       "Pot of Avarice",
       "Mirror Force",
       "Magic Cylinder",
@@ -222,8 +222,8 @@
       "Sakuretsu Armor",
       "Call of the Haunted",
       "Bottomless Trap Hole",
-      "Dimensional Prison",
-      "Ultimate Offering",
+      "Illusion Gate",
+      "Orichalcos Sword of Sealing",
       "Mystical Space Typhoon"
      ],
      "anime_deck": [
@@ -237,10 +237,10 @@
       "Orichalcos Kyutora",
       "Orichalcos Kyutora",
       "Orichalcos Gigas",
-      "Exiled Force",
-      "D.D. Warrior Lady",
+      "Orichalcos Dexia",
+      "Orichalcos Aristeros",
       "Orichalcos Shunoros",
-      "Cyber Dragon",
+      "Orichalcos Malevolence",
       "Cyber Dragon",
       "Sangan",
       "Mystic Tomato",
@@ -254,7 +254,7 @@
       "Monster Reborn",
       "Dark Hole",
       "Mystical Space Typhoon",
-      "Card Destruction",
+      "Orichalcos Mirror",
       "Pot of Avarice",
       "Mirror Force",
       "Orichalcos Sword of Sealing",
@@ -264,7 +264,7 @@
       "Sakuretsu Armor",
       "Call of the Haunted",
       "Bottomless Trap Hole",
-      "Dimensional Prison",
+      "Illusion Gate",
       "Orichalcos Deuteros",
       "Orichalcos Tritos"
      ]
@@ -511,7 +511,7 @@
       "Book of Moon",
       "Book of Moon",
       "Guardian Formation",
-      "Fissure",
+      "Spirit Hunting",
       "Guardian Shield",
       "United We Stand",
       "Guardian Force",
@@ -523,7 +523,7 @@
       "Trap Hole",
       "Waboku",
       "Call of the Haunted",
-      "Dust Tornado"
+      "Crystal Seal"
      ]
     },
     {
@@ -545,7 +545,7 @@
       "Shining Angel",
       "Guardian Tryce",
       "Guardian Grarl",
-      "Mystical Elf",
+      "Guardian Dreadscythe",
       "Sangan",
       "Mystic Tomato",
       "Monster Reborn",
@@ -555,7 +555,7 @@
       "Mystical Space Typhoon",
       "Book of Moon",
       "Book of Moon",
-      "Smashing Ground",
+      "Celestial Sword - Eatos",
       "Fissure",
       "Torrential Tribute",
       "United We Stand",
@@ -583,7 +583,7 @@
       "Guardian Eatos",
       "Guardian Statue",
       "Guardian of the Throne Room",
-      "Shining Angel",
+      "Guardian Dreadscythe",
       "Shining Angel",
       "Guardian Tryce",
       "Guardian Grarl",
@@ -599,7 +599,7 @@
       "Book of Moon",
       "Guardian Formation",
       "Guardian Shield",
-      "Torrential Tribute",
+      "Crystal Seal",
       "United We Stand",
       "Guardian Force",
       "Mirror Force",
@@ -608,9 +608,9 @@
       "Sakuretsu Armor",
       "Bottomless Trap Hole",
       "Trap Hole",
-      "Solemn Warning",
+      "Spirit Hunting",
       "Call of the Haunted",
-      "Gravity Bind"
+      "Celestial Sword - Eatos"
      ]
     },
     {
@@ -632,7 +632,7 @@
       "Shining Angel",
       "Guardian Tryce",
       "Guardian Grarl",
-      "Exiled Force",
+      "Guardian Dreadscythe",
       "Sangan",
       "Mystic Tomato",
       "Monster Reborn",
@@ -642,10 +642,10 @@
       "Mystical Space Typhoon",
       "Pot of Avarice",
       "Book of Moon",
-      "Mind Crush",
+      "Reaper Scythe - Dreadscythe",
       "Dimensional Prison",
       "Torrential Tribute",
-      "United We Stand",
+      "Celestial Sword - Eatos",
       "Mage Power",
       "Mirror Force",
       "Magic Cylinder",
@@ -674,7 +674,7 @@
       "Shining Angel",
       "Guardian Tryce",
       "Guardian Grarl",
-      "Exiled Force",
+      "Guardian Dreadscythe",
       "Backup Gardna (Anime)",
       "Rescuer from the Grave",
       "Monster Reborn",
@@ -682,10 +682,10 @@
       "Swords of Revealing Light",
       "Mystical Space Typhoon",
       "Mystical Space Typhoon",
-      "Pot of Avarice",
+      "Crystal Seal",
       "Guardian Formation",
-      "Mind Crush",
-      "Dimensional Prison",
+      "Reaper Scythe - Dreadscythe",
+      "Spirit Hunting",
       "Torrential Tribute",
       "Guardian Shield",
       "Guardian Force",
@@ -697,7 +697,7 @@
       "Solemn Judgment",
       "Solemn Warning",
       "Call of the Haunted",
-      "Gravity Bind"
+      "Celestial Sword - Eatos"
      ]
     }
    ],
@@ -919,7 +919,7 @@
       "Magic Cylinder",
       "Call of the Haunted",
       "Bottomless Trap Hole",
-      "Trap Hole",
+      "Attack Guidance Armor",
       "Smashing Ground"
      ],
      "anime_deck": [
@@ -961,7 +961,7 @@
       "Magic Cylinder",
       "Call of the Haunted",
       "Bottomless Trap Hole",
-      "Trap Hole",
+      "Attack Guidance Armor",
       "Smashing Ground"
      ],
      "anime_waiting": [
@@ -984,6 +984,14 @@
       {
        "card": "Magnet Armor",
        "instead": "Hard Armor"
+      },
+      {
+       "card": "Over Boost",
+       "instead": "Smashing Ground"
+      },
+      {
+       "card": "Psychic Armor Head",
+       "instead": "Mage Power"
       }
      ]
     },
@@ -1027,7 +1035,7 @@
       "Sakuretsu Armor",
       "Magic Cylinder",
       "Call of the Haunted",
-      "Bottomless Trap Hole",
+      "Attack Guidance Armor",
       "Torrential Tribute",
       "Solemn Warning"
      ],
@@ -1069,7 +1077,7 @@
       "Sakuretsu Armor",
       "Magic Cylinder",
       "Call of the Haunted",
-      "Bottomless Trap Hole",
+      "Attack Guidance Armor",
       "Torrential Tribute",
       "Solemn Warning"
      ],
@@ -1101,6 +1109,14 @@
       {
        "card": "Magnet Armor",
        "instead": "Hard Armor"
+      },
+      {
+       "card": "Over Boost",
+       "instead": "Torrential Tribute"
+      },
+      {
+       "card": "Advanced Shield",
+       "instead": "Mage Power"
       }
      ]
     },
@@ -1144,7 +1160,7 @@
       "Sakuretsu Armor",
       "Magic Cylinder",
       "Call of the Haunted",
-      "Solemn Judgment",
+      "Attack Guidance Armor",
       "Torrential Tribute",
       "Solemn Warning"
      ],
@@ -1186,7 +1202,7 @@
       "Sakuretsu Armor",
       "Magic Cylinder",
       "Call of the Haunted",
-      "Solemn Judgment",
+      "Attack Guidance Armor",
       "Torrential Tribute",
       "Solemn Warning"
      ],
@@ -1226,6 +1242,22 @@
       {
        "card": "Double Cloth Armor",
        "instead": "Armored Zombie"
+      },
+      {
+       "card": "Over Boost",
+       "instead": "Torrential Tribute"
+      },
+      {
+       "card": "Advanced Shield",
+       "instead": "Mage Power"
+      },
+      {
+       "card": "Jet Gauntlet",
+       "instead": "Magic Cylinder"
+      },
+      {
+       "card": "Trap Buster",
+       "instead": "Mirror Force"
       }
      ]
     }
@@ -1486,9 +1518,9 @@
       "Sakuretsu Armor",
       "Magic Cylinder",
       "Call of the Haunted",
+      "Soldier Revolt",
       "Trap Hole",
-      "Trap Hole",
-      "Bottomless Trap Hole",
+      "Contagion of Madness",
       "Sky Union",
       "Tank Corps",
       "Upstart Goblin"
@@ -1570,15 +1602,15 @@
       "Mystical Space Typhoon",
       "Machine Duplication",
       "Tank Corps",
-      "Pot of Duality",
+      "Fire Whip",
       "Mirror Force",
       "Sakuretsu Armor",
       "Sakuretsu Armor",
       "Magic Cylinder",
       "Call of the Haunted",
       "Torrential Tribute",
-      "Trap Hole",
-      "Bottomless Trap Hole",
+      "Soldier Revolt",
+      "Contagion of Madness",
       "Solemn Warning",
       "Polymerization",
       "Toy Robot Box"
@@ -1671,8 +1703,8 @@
       "Magic Cylinder",
       "Call of the Haunted",
       "Torrential Tribute",
-      "Trap Hole",
-      "Solemn Judgment",
+      "Soldier Revolt",
+      "Contagion of Madness",
       "Solemn Warning",
       "Polymerization",
       "Toy Robot Box"
@@ -3232,7 +3264,7 @@
       "Trap Hole",
       "Call of the Haunted",
       "Bottomless Trap Hole",
-      "Waboku"
+      "Double Evolution Pill"
      ],
      "anime_deck": [
       "Two-Headed King Rex",
@@ -3274,7 +3306,7 @@
       "Trap Hole",
       "Call of the Haunted",
       "Bottomless Trap Hole",
-      "Waboku"
+      "Double Evolution Pill"
      ],
      "anime_waiting": [
       {
@@ -3325,7 +3357,7 @@
       "Trap Hole",
       "Call of the Haunted",
       "Bottomless Trap Hole",
-      "Torrential Tribute"
+      "Double Evolution Pill"
      ],
      "anime_deck": [
       "Two-Headed King Rex",
@@ -3367,7 +3399,7 @@
       "Trap Hole",
       "Call of the Haunted",
       "Bottomless Trap Hole",
-      "Torrential Tribute"
+      "Double Evolution Pill"
      ],
      "anime_waiting": [
       {
@@ -3411,7 +3443,7 @@
       "United We Stand",
       "United We Stand",
       "Mage Power",
-      "Mind Crush",
+      "Double Evolution Pill",
       "Axe of Despair",
       "Black Pendant",
       "Mirror Force",
@@ -3453,7 +3485,7 @@
       "United We Stand",
       "United We Stand",
       "Mage Power",
-      "Mind Crush",
+      "Double Evolution Pill",
       "Axe of Despair",
       "Black Pendant",
       "Mirror Force",
@@ -3649,7 +3681,7 @@
   {
    "slot": 33,
    "name": "Zigfried von Schroeder",
-   "help": "The young heir to the Schroeder Corporation, who has trained since childhood to be a master Duelist.\n\nZigfried fights with the noble Fairies and Warriors of the Nibelung, and he waits for the moment to bring his power to bear.",
+   "help": "The young heir to the Schroeder Corporation, who has trained since childhood to be a master Duelist.\n\nZigfried calls on the Valkyries, the Fairy maidens who serve the Goddesses of fate, and waits for the moment to bring their power to bear.",
    "series": 0,
    "body": 5,
    "figure": "mannequin",
@@ -3658,262 +3690,262 @@
     {
      "title": "The Prince of the Nibelung",
      "deck": [
-      "Sacred Knight Joan",
-      "Sacred Knight Joan",
-      "Hysteric Fairy",
-      "Dancing Fairy",
+      "Valkyrie Dritte",
+      "Valkyrie Dritte",
+      "Valkyrie Dritte",
+      "Valkyrie Zweite",
+      "Valkyrie Zweite",
+      "Valkyrie Erste",
+      "Valkyrie Erste",
+      "Valkyrie Brunhilde",
+      "Fortune Chariot",
       "Shining Angel",
-      "Neo the Magic Swordsman",
-      "Neo the Magic Swordsman",
-      "Celtic Guardian",
-      "Hero of the East",
-      "Kanan the Swordmistress",
-      "Masaki the Legendary Swordsman",
-      "Gearfried the Iron Knight",
-      "Marie the Fallen One",
+      "Shining Angel",
+      "Hysteric Fairy",
+      "Marshmallon",
       "The Forgiving Maiden",
-      "Maiden of the Moonlight",
-      "Mystical Elf",
-      "Sangan",
+      "Dancing Fairy",
       "Mystic Tomato",
+      "Sangan",
+      "Ride of the Valkyries",
+      "Ride of the Valkyries",
+      "Mischief of the Time Goddess",
+      "Goddess Skuld's Oracle",
+      "Goddess Verdande's Guidance",
+      "Goddess Urd's Verdict",
+      "Final Light",
+      "Valkyrie's Embrace",
       "Monster Reborn",
-      "Dark Hole",
       "Mystical Space Typhoon",
-      "Mystical Space Typhoon",
-      "Legendary Sword",
-      "Black Pendant",
-      "Axe of Despair",
-      "Mage Power",
-      "United We Stand",
-      "Smashing Ground",
       "Book of Moon",
-      "Book of Moon",
-      "Fissure",
       "Swords of Revealing Light",
+      "Apple of Enlightenment",
       "Mirror Force",
       "Magic Cylinder",
       "Sakuretsu Armor",
       "Sakuretsu Armor",
       "Trap Hole",
-      "Trap Hole",
       "Call of the Haunted",
-      "Waboku"
+      "Waboku",
+      "Dimensional Prison",
+      "Torrential Tribute",
+      "Dark Hole"
      ],
      "anime_deck": [
-      "Sacred Knight Joan",
-      "Sacred Knight Joan",
-      "Swan Maiden",
-      "Dancing Fairy",
+      "Valkyrie Dritte",
+      "Valkyrie Dritte",
+      "Valkyrie Dritte",
+      "Valkyrie Zweite",
+      "Valkyrie Zweite",
+      "Valkyrie Erste",
+      "Valkyrie Erste",
+      "Valkyrie Brunhilde",
+      "Fortune Chariot",
       "Shining Angel",
-      "Neo the Magic Swordsman",
-      "Neo the Magic Swordsman",
-      "Celtic Guardian",
-      "Hero of the East",
-      "Kanan the Swordmistress",
-      "Masaki the Legendary Swordsman",
-      "Gearfried the Iron Knight",
-      "Marie the Fallen One",
+      "Shining Angel",
+      "Hysteric Fairy",
+      "Marshmallon",
       "The Forgiving Maiden",
-      "Maiden of the Moonlight",
-      "Mystical Elf",
-      "Sangan",
-      "Mystic Tomato",
-      "Monster Reborn",
-      "Dark Hole",
-      "Mystical Space Typhoon",
-      "Mystical Space Typhoon",
-      "Legendary Sword",
-      "Black Pendant",
-      "Axe of Despair",
-      "Mage Power",
-      "United We Stand",
-      "Magical Alms",
-      "Nibelung's Ring",
-      "Book of Moon",
+      "Dancing Fairy",
+      "Swan Maiden",
       "Enchanted Sword Nothung",
+      "Ride of the Valkyries",
+      "Ride of the Valkyries",
+      "Mischief of the Time Goddess",
+      "Goddess Skuld's Oracle",
+      "Goddess Verdande's Guidance",
+      "Goddess Urd's Verdict",
+      "Final Light",
+      "Valkyrie's Embrace",
+      "Monster Reborn",
+      "Mystical Space Typhoon",
+      "Magical Alms",
       "Swords of Revealing Light",
+      "Apple of Enlightenment",
       "Mirror Force",
       "Magic Cylinder",
       "Sakuretsu Armor",
       "Sakuretsu Armor",
-      "Trap Hole",
-      "Trap Hole",
+      "Wotan's Judgment",
       "Call of the Haunted",
-      "Nibelung's Treasure"
+      "Nibelung's Ring",
+      "Dimensional Prison",
+      "Torrential Tribute",
+      "Dark Hole"
      ]
     },
     {
      "title": "Wotan's Judgment",
      "deck": [
-      "Sacred Knight Joan",
-      "Sacred Knight Joan",
-      "Hysteric Fairy",
-      "Fairy King Truesdale",
+      "Valkyrie Dritte",
+      "Valkyrie Dritte",
+      "Valkyrie Dritte",
+      "Valkyrie Zweite",
+      "Valkyrie Zweite",
+      "Valkyrie Zweite",
+      "Valkyrie Erste",
+      "Valkyrie Erste",
+      "Valkyrie Erste",
+      "Valkyrie Brunhilde",
+      "Valkyrie Brunhilde",
+      "Fortune Chariot",
+      "Fortune Chariot",
       "Shining Angel",
-      "Neo the Magic Swordsman",
-      "Neo the Magic Swordsman",
-      "Celtic Guardian",
-      "Dark Magician Girl",
-      "Kanan the Swordmistress",
-      "Masaki the Legendary Swordsman",
-      "Gearfried the Iron Knight",
-      "Marie the Fallen One",
-      "The Forgiving Maiden",
-      "Maiden of the Moonlight",
-      "Dragon Seeker",
+      "Marshmallon",
+      "Dancing Fairy",
+      "Hysteric Fairy",
       "Sangan",
-      "Mystic Tomato",
+      "Ride of the Valkyries",
+      "Ride of the Valkyries",
+      "Ride of the Valkyries",
+      "Mischief of the Time Goddess",
+      "Mischief of the Time Goddess",
+      "Goddess Skuld's Oracle",
+      "Goddess Verdande's Guidance",
+      "Goddess Urd's Verdict",
+      "Final Light",
+      "Final Light",
+      "Valkyrie's Embrace",
       "Monster Reborn",
-      "Dark Hole",
       "Mystical Space Typhoon",
-      "Mystical Space Typhoon",
-      "Legendary Sword",
-      "Black Pendant",
-      "Axe of Despair",
-      "Mage Power",
-      "United We Stand",
-      "Smashing Ground",
-      "Book of Moon",
-      "Book of Moon",
-      "Solemn Warning",
       "Swords of Revealing Light",
+      "Apple of Enlightenment",
+      "Apple of Enlightenment",
       "Mirror Force",
-      "Magic Cylinder",
       "Sakuretsu Armor",
       "Sakuretsu Armor",
-      "Bottomless Trap Hole",
-      "Trap Hole",
-      "Call of the Haunted",
-      "Torrential Tribute"
+      "Solemn Warning",
+      "Torrential Tribute",
+      "Call of the Haunted"
      ],
      "anime_deck": [
-      "Sacred Knight Joan",
-      "Sacred Knight Joan",
-      "Swan Maiden",
-      "Fairy King Truesdale",
+      "Valkyrie Dritte",
+      "Valkyrie Dritte",
+      "Valkyrie Dritte",
+      "Valkyrie Zweite",
+      "Valkyrie Zweite",
+      "Valkyrie Zweite",
+      "Valkyrie Erste",
+      "Valkyrie Erste",
+      "Valkyrie Erste",
+      "Valkyrie Brunhilde",
+      "Valkyrie Brunhilde",
+      "Fortune Chariot",
+      "Fortune Chariot",
       "Shining Angel",
-      "Neo the Magic Swordsman",
-      "Neo the Magic Swordsman",
-      "Celtic Guardian",
-      "Dark Magician Girl",
-      "Kanan the Swordmistress",
-      "Masaki the Legendary Swordsman",
-      "Gearfried the Iron Knight",
-      "Marie the Fallen One",
-      "The Forgiving Maiden",
-      "Maiden of the Moonlight",
-      "Dragon Seeker",
-      "Sangan",
-      "Mystic Tomato",
-      "Monster Reborn",
-      "Dark Hole",
-      "Mystical Space Typhoon",
-      "Mystical Space Typhoon",
-      "Legendary Sword",
-      "Black Pendant",
-      "Axe of Despair",
-      "Enchanted Sword Nothung",
-      "Fricka's Mediation",
-      "Magical Alms",
+      "Marshmallon",
+      "Dancing Fairy",
+      "Hysteric Fairy",
+      "Swan Maiden",
+      "Ride of the Valkyries",
+      "Ride of the Valkyries",
+      "Ride of the Valkyries",
+      "Mischief of the Time Goddess",
+      "Mischief of the Time Goddess",
+      "Goddess Skuld's Oracle",
+      "Goddess Verdande's Guidance",
+      "Goddess Urd's Verdict",
+      "Final Light",
+      "Final Light",
+      "Valkyrie's Embrace",
       "Nibelung's Ring",
-      "Nibelung's Treasure",
-      "Solemn Warning",
-      "Swords of Revealing Light",
+      "Mystical Space Typhoon",
+      "Enchanted Sword Nothung",
+      "Apple of Enlightenment",
+      "Apple of Enlightenment",
       "Mirror Force",
-      "Magic Cylinder",
+      "Fricka's Mediation",
       "Sakuretsu Armor",
-      "Sakuretsu Armor",
-      "Bottomless Trap Hole",
-      "Trap Hole",
-      "Call of the Haunted",
-      "Torrential Tribute"
+      "Solemn Warning",
+      "Wotan's Judgment",
+      "Magical Alms"
      ]
     },
     {
      "title": "Valkyrie's Wrath",
      "deck": [
-      "Guardian Angel Joan",
-      "Sacred Knight Joan",
-      "Hysteric Fairy",
-      "Fairy King Truesdale",
+      "Valkyrie Dritte",
+      "Valkyrie Dritte",
+      "Valkyrie Dritte",
+      "Valkyrie Zweite",
+      "Valkyrie Zweite",
+      "Valkyrie Zweite",
+      "Valkyrie Erste",
+      "Valkyrie Erste",
+      "Valkyrie Erste",
+      "Valkyrie Brunhilde",
+      "Valkyrie Brunhilde",
+      "Valkyrie Brunhilde",
+      "Fortune Chariot",
+      "Fortune Chariot",
+      "Fortune Chariot",
       "Marshmallon",
-      "Neo the Magic Swordsman",
-      "Neo the Magic Swordsman",
-      "Gilford the Lightning",
-      "Dark Magician Girl",
-      "Kanan the Swordmistress",
-      "Mirage Knight",
-      "Gearfried the Iron Knight",
-      "Marie the Fallen One",
-      "The Forgiving Maiden",
-      "Gearfried the Swordmaster",
-      "Dragon Seeker",
-      "Sangan",
-      "Mystic Tomato",
+      "Guardian Angel Joan",
+      "Shining Angel",
+      "Ride of the Valkyries",
+      "Ride of the Valkyries",
+      "Ride of the Valkyries",
+      "Mischief of the Time Goddess",
+      "Mischief of the Time Goddess",
+      "Goddess Skuld's Oracle",
+      "Goddess Verdande's Guidance",
+      "Goddess Urd's Verdict",
+      "Final Light",
+      "Final Light",
+      "Valkyrie's Embrace",
+      "Valkyrie's Embrace",
       "Monster Reborn",
-      "Dark Hole",
-      "Mystical Space Typhoon",
-      "Mystical Space Typhoon",
-      "Legendary Sword",
-      "Black Pendant",
-      "Axe of Despair",
-      "Mage Power",
-      "United We Stand",
       "Mind Crush",
-      "Book of Moon",
-      "Book of Moon",
-      "Solemn Warning",
-      "Swords of Revealing Light",
+      "Apple of Enlightenment",
+      "Apple of Enlightenment",
       "Mirror Force",
-      "Magic Cylinder",
-      "Dimensional Prison",
       "Sakuretsu Armor",
-      "Bottomless Trap Hole",
       "Solemn Judgment",
-      "Call of the Haunted",
-      "Torrential Tribute"
+      "Solemn Warning",
+      "Torrential Tribute",
+      "Dimensional Prison"
      ],
      "anime_deck": [
-      "Guardian Angel Joan",
-      "Sacred Knight Joan",
-      "Swan Maiden",
-      "Fairy King Truesdale",
-      "Marshmallon",
-      "Neo the Magic Swordsman",
-      "Neo the Magic Swordsman",
-      "Gilford the Lightning",
-      "Dark Magician Girl",
-      "Kanan the Swordmistress",
-      "Mirage Knight",
-      "Gearfried the Iron Knight",
-      "Marie the Fallen One",
-      "The Forgiving Maiden",
-      "Gearfried the Swordmaster",
-      "Dragon Seeker",
-      "Sangan",
-      "Mystic Tomato",
-      "Monster Reborn",
-      "Dark Hole",
-      "Mystical Space Typhoon",
-      "Mystical Space Typhoon",
+      "Valkyrie Dritte",
+      "Valkyrie Dritte",
+      "Valkyrie Dritte",
+      "Valkyrie Zweite",
+      "Valkyrie Zweite",
+      "Valkyrie Zweite",
+      "Valkyrie Erste",
+      "Valkyrie Erste",
+      "Valkyrie Erste",
+      "Valkyrie Brunhilde",
+      "Valkyrie Brunhilde",
+      "Valkyrie Brunhilde",
+      "Fortune Chariot",
+      "Fortune Chariot",
+      "Fortune Chariot",
       "Magical Alms",
-      "Wotan's Judgment",
+      "Guardian Angel Joan",
+      "Shining Angel",
+      "Ride of the Valkyries",
+      "Ride of the Valkyries",
+      "Ride of the Valkyries",
+      "Mischief of the Time Goddess",
+      "Mischief of the Time Goddess",
+      "Goddess Skuld's Oracle",
+      "Goddess Verdande's Guidance",
+      "Goddess Urd's Verdict",
+      "Final Light",
+      "Final Light",
       "Goddess Erda's Guidance",
-      "Enchanted Sword Nothung",
-      "Fricka's Mediation",
-      "Mind Crush",
-      "Nibelung's Ring",
+      "Valkyrie's Embrace",
+      "Monster Reborn",
       "Nibelung's Treasure",
-      "Solemn Warning",
-      "Swords of Revealing Light",
-      "Mirror Force",
-      "Magic Cylinder",
-      "Dimensional Prison",
+      "Apple of Enlightenment",
+      "Apple of Enlightenment",
+      "Nibelung's Ring",
       "Sakuretsu Armor",
-      "Bottomless Trap Hole",
       "Solemn Judgment",
-      "Call of the Haunted",
-      "Torrential Tribute"
+      "Fricka's Mediation",
+      "Torrential Tribute",
+      "Wotan's Judgment"
      ]
     }
    ],
@@ -6059,7 +6091,7 @@
       "Dimensional Prison",
       "Bottomless Trap Hole",
       "Mirror Wall",
-      "Raigeki Break",
+      "Magnet Force",
       "Raigeki Break"
      ],
      "anime_deck": [
@@ -6101,7 +6133,7 @@
       "Dimensional Prison",
       "Bottomless Trap Hole",
       "Mirror Wall",
-      "Raigeki Break",
+      "Magnet Force",
       "Raigeki Break"
      ],
      "anime_waiting": [
@@ -6135,7 +6167,7 @@
       "Electromagnetic Turtle",
       "Electromagnetic Turtle",
       "Valkyrion the Magna Warrior",
-      "Hydrogeddon",
+      "Conduction Warrior Linear Magnum Plus Minus",
       "Dark Hole",
       "Monster Reborn",
       "Mystical Space Typhoon",
@@ -6157,7 +6189,7 @@
       "Dimensional Prison",
       "Bottomless Trap Hole",
       "Mirror Wall",
-      "Compulsory Evacuation Device"
+      "Magnet Force"
      ],
      "anime_deck": [
       "Alpha The Magnet Warrior",
@@ -6177,7 +6209,7 @@
       "Electromagnetic Turtle",
       "Electromagnetic Turtle",
       "Valkyrion the Magna Warrior",
-      "Hydrogeddon",
+      "Conduction Warrior Linear Magnum Plus Minus",
       "Dark Hole",
       "Monster Reborn",
       "Mystical Space Typhoon",
@@ -6199,7 +6231,7 @@
       "Dimensional Prison",
       "Bottomless Trap Hole",
       "Mirror Wall",
-      "Compulsory Evacuation Device"
+      "Magnet Force"
      ],
      "anime_waiting": [
       {
@@ -6236,9 +6268,9 @@
       "Magnet Warrior Sigma Minus",
       "Valkyrion the Magna Warrior",
       "Valkyrion the Magna Warrior",
+      "Conduction Warrior Linear Magnum Plus Minus",
       "Hydrogeddon",
-      "Hydrogeddon",
-      "Oxygeddon",
+      "Plasma Warrior Eitom",
       "Water Dragon",
       "Electromagnetic Turtle",
       "Electromagnetic Turtle",
@@ -6257,7 +6289,7 @@
       "Mirror Force",
       "Magic Cylinder",
       "Torrential Tribute",
-      "Solemn Judgment",
+      "Magnet Force",
       "Sakuretsu Armor",
       "Call of the Haunted",
       "Dimensional Prison",
@@ -6278,9 +6310,9 @@
       "Magnet Warrior Sigma Minus",
       "Valkyrion the Magna Warrior",
       "Valkyrion the Magna Warrior",
+      "Conduction Warrior Linear Magnum Plus Minus",
       "Hydrogeddon",
-      "Hydrogeddon",
-      "Oxygeddon",
+      "Plasma Warrior Eitom",
       "Water Dragon",
       "Electromagnetic Turtle",
       "Electromagnetic Turtle",
@@ -6299,7 +6331,7 @@
       "Mirror Force",
       "Magic Cylinder",
       "Torrential Tribute",
-      "Solemn Judgment",
+      "Magnet Force",
       "Sakuretsu Armor",
       "Call of the Haunted",
       "Dimensional Prison",
@@ -6563,7 +6595,7 @@
       "Call of the Haunted",
       "Dimensional Prison",
       "Mirror Wall",
-      "Raigeki Break",
+      "Red-Eyes Burn",
       "Raigeki Break",
       "Red-Eyes Spirit"
      ],
@@ -6605,7 +6637,7 @@
       "Call of the Haunted",
       "Dimensional Prison",
       "Mirror Wall",
-      "Raigeki Break",
+      "Red-Eyes Burn",
       "Raigeki Break",
       "Red-Eyes Spirit"
      ],
@@ -6661,7 +6693,7 @@
       "Dimensional Prison",
       "Mirror Wall",
       "Bottomless Trap Hole",
-      "Raigeki Break",
+      "Red-Eyes Burn",
       "Raigeki Break"
      ],
      "anime_deck": [
@@ -6703,7 +6735,7 @@
       "Dimensional Prison",
       "Mirror Wall",
       "Bottomless Trap Hole",
-      "Raigeki Break",
+      "Red-Eyes Burn",
       "Raigeki Break"
      ],
      "anime_waiting": [
@@ -6763,10 +6795,10 @@
       "Sakuretsu Armor",
       "Metalmorph",
       "Red-Eyes Spirit",
-      "Call of the Haunted",
+      "Dark Dragon Ritual",
       "Dimensional Prison",
       "Bottomless Trap Hole",
-      "Raigeki Break",
+      "Lord of the Red",
       "Raigeki Break"
      ],
      "anime_deck": [
@@ -6805,10 +6837,10 @@
       "Sakuretsu Armor",
       "Metalmorph",
       "Red-Eyes Spirit",
-      "Call of the Haunted",
+      "Dark Dragon Ritual",
       "Dimensional Prison",
       "Bottomless Trap Hole",
-      "Raigeki Break",
+      "Lord of the Red",
       "Raigeki Break"
      ],
      "anime_waiting": [
@@ -7074,7 +7106,7 @@
       "Call of the Haunted",
       "Bottomless Trap Hole",
       "Dimensional Prison",
-      "Mirror Wall"
+      "Double Evolution Pill"
      ],
      "anime_deck": [
       "Gilasaurus",
@@ -7116,7 +7148,7 @@
       "Call of the Haunted",
       "Bottomless Trap Hole",
       "Dimensional Prison",
-      "Mirror Wall"
+      "Double Evolution Pill"
      ],
      "anime_waiting": [
       {
@@ -7170,7 +7202,7 @@
       "Trap Hole",
       "Call of the Haunted",
       "Bottomless Trap Hole",
-      "Dimensional Prison",
+      "Double Evolution Pill",
       "Jurassic Impact"
      ],
      "anime_deck": [
@@ -7212,7 +7244,7 @@
       "Trap Hole",
       "Call of the Haunted",
       "Bottomless Trap Hole",
-      "Dimensional Prison",
+      "Double Evolution Pill",
       "Jurassic Impact"
      ],
      "anime_waiting": [
@@ -7275,7 +7307,7 @@
       "Call of the Haunted",
       "Dimensional Prison",
       "Torrential Tribute",
-      "Solemn Judgment",
+      "Double Evolution Pill",
       "Jurassic Impact"
      ],
      "anime_deck": [
@@ -7317,7 +7349,7 @@
       "Call of the Haunted",
       "Dimensional Prison",
       "Torrential Tribute",
-      "Solemn Judgment",
+      "Double Evolution Pill",
       "Jurassic Impact"
      ],
      "anime_waiting": [
@@ -7623,6 +7655,10 @@
       {
        "card": "Fire Trap",
        "instead": "Trap Hole"
+      },
+      {
+       "card": "Anchor Bind",
+       "instead": "Raigeki Break"
       }
      ]
     },
@@ -7732,6 +7768,14 @@
       {
        "card": "Blasting Vein",
        "instead": "Book of Moon"
+      },
+      {
+       "card": "Anchor Bind",
+       "instead": "Raigeki Break"
+      },
+      {
+       "card": "Draw Blast",
+       "instead": "Raigeki Break"
       }
      ]
     },
@@ -7853,6 +7897,18 @@
       {
        "card": "Flaming Barbed Wire",
        "instead": "Pot of Avarice"
+      },
+      {
+       "card": "Buster Trap",
+       "instead": "Solemn Judgment"
+      },
+      {
+       "card": "Draw Blast",
+       "instead": "Torrential Tribute"
+      },
+      {
+       "card": "Switch Off",
+       "instead": "Mirror Force"
       }
      ]
     }
@@ -8625,6 +8681,10 @@
       {
        "card": "Silver Key",
        "instead": "Smashing Ground"
+      },
+      {
+       "card": "Tin Spell Circle",
+       "instead": "Raigeki Break"
       }
      ]
     },
@@ -8730,6 +8790,14 @@
       {
        "card": "White Process - Albedo",
        "instead": "Book of Moon"
+      },
+      {
+       "card": "Lead Compass",
+       "instead": "Raigeki Break"
+      },
+      {
+       "card": "Steel Lamp",
+       "instead": "Compulsory Evacuation Device"
       }
      ]
     },
@@ -8748,7 +8816,7 @@
       "Alchemist of Black Spells",
       "Alchemist of Black Spells",
       "Gemini Elf",
-      "Dark Elf",
+      "Demiurge Ema",
       "Skilled Dark Magician",
       "Skilled White Magician",
       "Chaos Command Magician",
@@ -8790,7 +8858,7 @@
       "Alchemist of Black Spells",
       "Alchemist of Black Spells",
       "Gemini Elf",
-      "Dark Elf",
+      "Demiurge Ema",
       "Skilled Dark Magician",
       "Skilled White Magician",
       "Chaos Command Magician",
@@ -8859,6 +8927,30 @@
       {
        "card": "Black Process - Negledo",
        "instead": "Upstart Goblin"
+      },
+      {
+       "card": "Bronze Scale",
+       "instead": "Raigeki Break"
+      },
+      {
+       "card": "Lead Compass",
+       "instead": "Raigeki Break"
+      },
+      {
+       "card": "Mercury Hourglass",
+       "instead": "Torrential Tribute"
+      },
+      {
+       "card": "Steel Lamp",
+       "instead": "Solemn Judgment"
+      },
+      {
+       "card": "Tin Spell Circle",
+       "instead": "Mirror Force"
+      },
+      {
+       "card": "Yellow Process - Kitolenics",
+       "instead": "Magic Cylinder"
       }
      ]
     }
@@ -9050,8 +9142,8 @@
       "Giant Soldier of Stone",
       "Giant Soldier of Stone",
       "Gigantes",
-      "Medusa Worm",
-      "Stone Statue of the Aztecs",
+      "Weathering Soldier",
+      "Flint Cragger",
       "Gilasaurus",
       "Gilasaurus",
       "Sabersaurus",
@@ -9099,8 +9191,8 @@
       "Giant Soldier of Stone",
       "Giant Soldier of Stone",
       "Gigantes",
-      "Medusa Worm",
-      "Stone Statue of the Aztecs",
+      "Weathering Soldier",
+      "Flint Cragger",
       "Gilasaurus",
       "Gilasaurus",
       "Sabersaurus",
@@ -9161,8 +9253,8 @@
       "Giant Soldier of Stone",
       "Giant Soldier of Stone",
       "Gigantes",
-      "Medusa Worm",
-      "Stone Statue of the Aztecs",
+      "Weathering Soldier",
+      "Flint Cragger",
       "Gilasaurus",
       "Gilasaurus",
       "Sabersaurus",
@@ -9212,8 +9304,8 @@
       "Giant Soldier of Stone",
       "Giant Soldier of Stone",
       "Gigantes",
-      "Medusa Worm",
-      "Stone Statue of the Aztecs",
+      "Weathering Soldier",
+      "Flint Cragger",
       "Gilasaurus",
       "Gilasaurus",
       "Sabersaurus",
@@ -9289,8 +9381,8 @@
       "Giant Soldier of Stone",
       "Gigantes",
       "Gigantes",
-      "Medusa Worm",
-      "Stone Statue of the Aztecs",
+      "Weathering Soldier",
+      "Flint Cragger",
       "Gilasaurus",
       "Gilasaurus",
       "Sabersaurus",
@@ -9341,8 +9433,8 @@
       "Giant Soldier of Stone",
       "Gigantes",
       "Gigantes",
-      "Medusa Worm",
-      "Stone Statue of the Aztecs",
+      "Weathering Soldier",
+      "Flint Cragger",
       "Gilasaurus",
       "Gilasaurus",
       "Sabersaurus",
@@ -10110,7 +10202,7 @@
       "Banisher of the Radiance",
       "Mystic Tomato",
       "Mystic Tomato",
-      "Gemini Elf",
+      "Zaphion, the Timelord",
       "Gemini Elf",
       "Sangan",
       "Spirit Reaper",
@@ -10152,7 +10244,7 @@
       "Banisher of the Radiance",
       "Mystic Tomato",
       "Mystic Tomato",
-      "Gemini Elf",
+      "Zaphion, the Timelord",
       "Gemini Elf",
       "Sangan",
       "Spirit Reaper",
@@ -10204,9 +10296,9 @@
       "Honest",
       "Banisher of the Radiance",
       "Banisher of the Radiance",
-      "Mystic Tomato",
-      "Gemini Elf",
-      "Gemini Elf",
+      "Zaphion, the Timelord",
+      "Sadion, the Timelord",
+      "Michion, the Timelord",
       "Sangan",
       "Spirit Reaper",
       "Sandaion, the Timelord",
@@ -10246,9 +10338,9 @@
       "Honest",
       "Banisher of the Radiance",
       "Banisher of the Radiance",
-      "Mystic Tomato",
-      "Gemini Elf",
-      "Gemini Elf",
+      "Zaphion, the Timelord",
+      "Sadion, the Timelord",
+      "Michion, the Timelord",
       "Sangan",
       "Spirit Reaper",
       "Sandaion, the Timelord",
@@ -10303,11 +10395,11 @@
       "Necrolancer the Timelord",
       "Time Wizard",
       "Time Wizard",
+      "Michion, the Timelord",
       "Time Maiden",
-      "Time Maiden",
-      "Marshmallon",
-      "Honest",
-      "Banisher of the Radiance",
+      "Zaphion, the Timelord",
+      "Metaion, the Timelord",
+      "Sadion, the Timelord",
       "Banisher of the Radiance",
       "Spirit Reaper",
       "Sandaion, the Timelord",
@@ -10345,11 +10437,11 @@
       "Necrolancer the Timelord",
       "Time Wizard",
       "Time Wizard",
+      "Michion, the Timelord",
       "Time Maiden",
-      "Time Maiden",
-      "Marshmallon",
-      "Honest",
-      "Banisher of the Radiance",
+      "Zaphion, the Timelord",
+      "Metaion, the Timelord",
+      "Sadion, the Timelord",
       "Banisher of the Radiance",
       "Spirit Reaper",
       "Sandaion, the Timelord",
@@ -10596,8 +10688,8 @@
       "Earthbound Linewalker",
       "Earthbound Linewalker",
       "Earthbound Linewalker",
-      "Giant Rat",
-      "Giant Rat",
+      "Dark Tuner Nightmare Hand",
+      "Man-Eater Bug",
       "Mystic Tomato",
       "Mystic Tomato",
       "Sangan",
@@ -10638,8 +10730,8 @@
       "Earthbound Linewalker",
       "Earthbound Linewalker",
       "Earthbound Linewalker",
-      "Giant Rat",
-      "Giant Rat",
+      "Dark Tuner Nightmare Hand",
+      "Man-Eater Bug",
       "Mystic Tomato",
       "Mystic Tomato",
       "Sangan",
@@ -10677,7 +10769,17 @@
       {
        "card": "Passion of Baimasse",
        "instead": "Sakuretsu Armor"
+      },
+      {
+       "card": "Dark Tuner - Dark Goddess Witaka",
+       "instead": "Night Assailant"
       }
+     ],
+     "extra": [
+      "Hundred Eyes Dragon"
+     ],
+     "anime_extra": [
+      "Hundred Eyes Dragon"
      ]
     },
     {
@@ -10688,8 +10790,8 @@
       "Earthbound Linewalker",
       "Earthbound Linewalker",
       "Earthbound Linewalker",
-      "Giant Rat",
-      "Giant Rat",
+      "Dark Tuner Nightmare Hand",
+      "Man-Eater Bug",
       "Mystic Tomato",
       "Mystic Tomato",
       "Sangan",
@@ -10730,8 +10832,8 @@
       "Earthbound Linewalker",
       "Earthbound Linewalker",
       "Earthbound Linewalker",
-      "Giant Rat",
-      "Giant Rat",
+      "Dark Tuner Nightmare Hand",
+      "Man-Eater Bug",
       "Mystic Tomato",
       "Mystic Tomato",
       "Sangan",
@@ -10770,7 +10872,17 @@
       {
        "card": "Passion of Baimasse",
        "instead": "Sakuretsu Armor"
+      },
+      {
+       "card": "Dark Tuner - Dark Goddess Witaka",
+       "instead": "Night Assailant"
       }
+     ],
+     "extra": [
+      "Hundred Eyes Dragon"
+     ],
+     "anime_extra": [
+      "Hundred Eyes Dragon"
      ]
     },
     {
@@ -10781,8 +10893,8 @@
       "Earthbound Linewalker",
       "Earthbound Linewalker",
       "Earthbound Linewalker",
-      "Giant Rat",
-      "Giant Rat",
+      "Dark Tuner Nightmare Hand",
+      "Man-Eater Bug",
       "Mystic Tomato",
       "Sangan",
       "Spirit Reaper",
@@ -10823,8 +10935,8 @@
       "Earthbound Linewalker",
       "Earthbound Linewalker",
       "Earthbound Linewalker",
-      "Giant Rat",
-      "Giant Rat",
+      "Dark Tuner Nightmare Hand",
+      "Man-Eater Bug",
       "Mystic Tomato",
       "Sangan",
       "Spirit Reaper",
@@ -10867,7 +10979,17 @@
       {
        "card": "Passion of Baimasse",
        "instead": "Mystical Space Typhoon"
+      },
+      {
+       "card": "Dark Tuner - Dark Goddess Witaka",
+       "instead": "Night Assailant"
       }
+     ],
+     "extra": [
+      "Hundred Eyes Dragon"
+     ],
+     "anime_extra": [
+      "Hundred Eyes Dragon"
      ]
     }
    ],
@@ -11076,7 +11198,7 @@
       "Mystical Space Typhoon",
       "Machine Duplication",
       "Machine Duplication",
-      "Smashing Ground",
+      "Chaos Infinity",
       "Upstart Goblin",
       "Pot of Avarice",
       "Foolish Burial",
@@ -11118,7 +11240,7 @@
       "Mystical Space Typhoon",
       "Machine Duplication",
       "Machine Duplication",
-      "Smashing Ground",
+      "Chaos Infinity",
       "Upstart Goblin",
       "Pot of Avarice",
       "Foolish Burial",
@@ -11174,7 +11296,7 @@
       "Mystical Space Typhoon",
       "Machine Duplication",
       "Machine Duplication",
-      "Smashing Ground",
+      "Fortissimo the Mobile Fortress",
       "Upstart Goblin",
       "Pot of Avarice",
       "Foolish Burial",
@@ -11216,7 +11338,7 @@
       "Mystical Space Typhoon",
       "Machine Duplication",
       "Machine Duplication",
-      "Smashing Ground",
+      "Fortissimo the Mobile Fortress",
       "Upstart Goblin",
       "Pot of Avarice",
       "Foolish Burial",
@@ -11288,13 +11410,13 @@
       "Mystical Space Typhoon",
       "Machine Duplication",
       "Machine Duplication",
-      "Smashing Ground",
+      "Fortissimo the Mobile Fortress",
       "Upstart Goblin",
       "Pot of Avarice",
       "Foolish Burial",
       "Card Destruction",
       "Mirror Force",
-      "Torrential Tribute",
+      "Chaos Infinity",
       "Solemn Judgment",
       "Sakuretsu Armor"
      ],
@@ -11330,13 +11452,13 @@
       "Mystical Space Typhoon",
       "Machine Duplication",
       "Machine Duplication",
-      "Smashing Ground",
+      "Fortissimo the Mobile Fortress",
       "Upstart Goblin",
       "Pot of Avarice",
       "Foolish Burial",
       "Card Destruction",
       "Mirror Force",
-      "Torrential Tribute",
+      "Chaos Infinity",
       "Solemn Judgment",
       "Sakuretsu Armor"
      ],
@@ -11588,7 +11710,7 @@
       "Mystical Space Typhoon",
       "Machine Duplication",
       "Machine Duplication",
-      "Smashing Ground",
+      "Chaos Infinity",
       "Upstart Goblin",
       "Pot of Avarice",
       "Foolish Burial",
@@ -11630,7 +11752,7 @@
       "Mystical Space Typhoon",
       "Machine Duplication",
       "Machine Duplication",
-      "Smashing Ground",
+      "Chaos Infinity",
       "Upstart Goblin",
       "Pot of Avarice",
       "Foolish Burial",
@@ -11690,7 +11812,7 @@
       "Mystical Space Typhoon",
       "Machine Duplication",
       "Machine Duplication",
-      "Smashing Ground",
+      "Fortissimo the Mobile Fortress",
       "Upstart Goblin",
       "Pot of Avarice",
       "Foolish Burial",
@@ -11732,7 +11854,7 @@
       "Mystical Space Typhoon",
       "Machine Duplication",
       "Machine Duplication",
-      "Smashing Ground",
+      "Fortissimo the Mobile Fortress",
       "Upstart Goblin",
       "Pot of Avarice",
       "Foolish Burial",
@@ -11805,13 +11927,13 @@
       "Mystical Space Typhoon",
       "Machine Duplication",
       "Machine Duplication",
-      "Smashing Ground",
+      "Fortissimo the Mobile Fortress",
       "Upstart Goblin",
       "Pot of Avarice",
       "Foolish Burial",
       "Card Destruction",
       "Mirror Force",
-      "Torrential Tribute",
+      "Chaos Infinity",
       "Solemn Judgment",
       "Sakuretsu Armor",
       "Sakuretsu Armor",
@@ -11847,13 +11969,13 @@
       "Mystical Space Typhoon",
       "Machine Duplication",
       "Machine Duplication",
-      "Smashing Ground",
+      "Fortissimo the Mobile Fortress",
       "Upstart Goblin",
       "Pot of Avarice",
       "Foolish Burial",
       "Card Destruction",
       "Mirror Force",
-      "Torrential Tribute",
+      "Chaos Infinity",
       "Solemn Judgment",
       "Sakuretsu Armor",
       "Sakuretsu Armor",
@@ -12107,7 +12229,7 @@
       "Mystical Space Typhoon",
       "Book of Moon",
       "Book of Moon",
-      "Smashing Ground",
+      "Sonic Stun",
       "Upstart Goblin",
       "Pot of Avarice",
       "Foolish Burial",
@@ -12157,7 +12279,7 @@
       "Mystical Space Typhoon",
       "Book of Moon",
       "Book of Moon",
-      "Smashing Ground",
+      "Sonic Stun",
       "Upstart Goblin",
       "Pot of Avarice",
       "Foolish Burial",
@@ -12212,7 +12334,7 @@
       "Mystical Space Typhoon",
       "Book of Moon",
       "Book of Moon",
-      "Smashing Ground",
+      "Sonic Stun",
       "Upstart Goblin",
       "Pot of Avarice",
       "Foolish Burial",
@@ -12266,7 +12388,7 @@
       "Mystical Space Typhoon",
       "Book of Moon",
       "Book of Moon",
-      "Smashing Ground",
+      "Sonic Stun",
       "Upstart Goblin",
       "Pot of Avarice",
       "Foolish Burial",
@@ -12323,7 +12445,7 @@
       "Mystical Space Typhoon",
       "Book of Moon",
       "Book of Moon",
-      "Smashing Ground",
+      "Sonic Stun",
       "Upstart Goblin",
       "Pot of Avarice",
       "Foolish Burial",
@@ -12379,7 +12501,7 @@
       "Mystical Space Typhoon",
       "Book of Moon",
       "Book of Moon",
-      "Smashing Ground",
+      "Sonic Stun",
       "Upstart Goblin",
       "Pot of Avarice",
       "Foolish Burial",
@@ -13121,8 +13243,8 @@
       "Mother Spider",
       "Man-Eater Bug",
       "Man-Eater Bug",
-      "Giant Flea",
-      "Giant Flea",
+      "Dark Tuner Nightmare Hand",
+      "Dark Tuner Catastrogue",
       "Hercules Beetle",
       "Insect Knight",
       "Fire Ant Ascator",
@@ -13166,8 +13288,8 @@
       "Mother Spider",
       "Man-Eater Bug",
       "Man-Eater Bug",
-      "Giant Flea",
-      "Giant Flea",
+      "Dark Tuner Nightmare Hand",
+      "Dark Tuner Catastrogue",
       "Hercules Beetle",
       "Insect Knight",
       "Fire Ant Ascator",
@@ -13202,6 +13324,10 @@
       {
        "card": "Destiny Activator",
        "instead": "Card Destruction"
+      },
+      {
+       "card": "Dark Tuner Spider Cocoon",
+       "instead": "Fire Ant Ascator"
       }
      ]
     },
@@ -13224,8 +13350,8 @@
       "Mother Spider",
       "Mother Spider",
       "Insect Knight",
-      "Neo Bug",
-      "Hercules Beetle",
+      "Dark Tuner Nightmare Hand",
+      "Dark Tuner Catastrogue",
       "Fire Ant Ascator",
       "Scrap Worm",
       "Naturia Butterfly",
@@ -13251,7 +13377,8 @@
      ],
      "extra": [
       "Underground Arachnid",
-      "Underground Arachnid"
+      "Underground Arachnid",
+      "Dark Diviner"
      ],
      "anime_deck": [
       "Spyder Spider",
@@ -13270,8 +13397,8 @@
       "Mother Spider",
       "Mother Spider",
       "Insect Knight",
-      "Neo Bug",
-      "Hercules Beetle",
+      "Dark Tuner Nightmare Hand",
+      "Dark Tuner Catastrogue",
       "Fire Ant Ascator",
       "Scrap Worm",
       "Naturia Butterfly",
@@ -13297,7 +13424,8 @@
      ],
      "anime_extra": [
       "Underground Arachnid",
-      "Underground Arachnid"
+      "Underground Arachnid",
+      "Dark Diviner"
      ],
      "anime_waiting": [
       {
@@ -13315,6 +13443,10 @@
       {
        "card": "Altar of the Bound Deity",
        "instead": "Sakuretsu Armor"
+      },
+      {
+       "card": "Dark Tuner Spider Cocoon",
+       "instead": "Fire Ant Ascator"
       }
      ]
     },
@@ -13336,9 +13468,9 @@
       "Mother Spider",
       "Mother Spider",
       "Doom Dozer",
-      "Great Moth",
+      "Dark Tuner Catastrogue",
       "Insect Knight",
-      "Neo Bug",
+      "Dark Tuner Nightmare Hand",
       "Fire Ant Ascator",
       "Fire Ant Ascator",
       "Scrap Worm",
@@ -13364,7 +13496,8 @@
      ],
      "extra": [
       "Underground Arachnid",
-      "Underground Arachnid"
+      "Underground Arachnid",
+      "Dark Diviner"
      ],
      "anime_deck": [
       "Spyder Spider",
@@ -13382,9 +13515,9 @@
       "Mother Spider",
       "Mother Spider",
       "Doom Dozer",
-      "Great Moth",
+      "Dark Tuner Catastrogue",
       "Insect Knight",
-      "Neo Bug",
+      "Dark Tuner Nightmare Hand",
       "Fire Ant Ascator",
       "Fire Ant Ascator",
       "Scrap Worm",
@@ -13410,7 +13543,8 @@
      ],
      "anime_extra": [
       "Underground Arachnid",
-      "Underground Arachnid"
+      "Underground Arachnid",
+      "Dark Diviner"
      ],
      "anime_waiting": [
       {
@@ -13428,6 +13562,10 @@
       {
        "card": "Altar of the Bound Deity",
        "instead": "Mystical Space Typhoon"
+      },
+      {
+       "card": "Dark Tuner Spider Cocoon",
+       "instead": "Fire Ant Ascator"
       }
      ]
     }
@@ -13627,8 +13765,8 @@
       "Twilight Rose Knight",
       "Twilight Rose Knight",
       "Witch of the Black Rose",
-      "Mystic Tomato",
-      "Mystic Tomato",
+      "Noble Knight's Spearholder",
+      "Horse of the Floral Knights",
       "Rose, Warrior of Revenge",
       "Gemini Elf",
       "Gemini Elf",
@@ -13673,8 +13811,8 @@
       "Twilight Rose Knight",
       "Twilight Rose Knight",
       "Witch of the Black Rose",
-      "Mystic Tomato",
-      "Mystic Tomato",
+      "Noble Knight's Spearholder",
+      "Horse of the Floral Knights",
       "Rose, Warrior of Revenge",
       "Gemini Elf",
       "Gemini Elf",
@@ -13733,10 +13871,10 @@
       "Twilight Rose Knight",
       "Twilight Rose Knight",
       "Witch of the Black Rose",
-      "Mystic Tomato",
+      "Horse of the Floral Knights",
       "Rose, Warrior of Revenge",
       "Gemini Elf",
-      "Dark Dust Spirit",
+      "Noble Knight's Shield-Bearer",
       "Dark Dust Spirit",
       "Monster Reborn",
       "Dark Hole",
@@ -13782,10 +13920,10 @@
       "Twilight Rose Knight",
       "Twilight Rose Knight",
       "Witch of the Black Rose",
-      "Mystic Tomato",
+      "Horse of the Floral Knights",
       "Rose, Warrior of Revenge",
       "Gemini Elf",
-      "Dark Dust Spirit",
+      "Noble Knight's Shield-Bearer",
       "Dark Dust Spirit",
       "Monster Reborn",
       "Dark Hole",
@@ -13852,14 +13990,14 @@
       "Nettles",
       "Nettles",
       "Nettles",
-      "Copy Plant",
+      "Horse of the Floral Knights",
       "Copy Plant",
       "Twilight Rose Knight",
       "Twilight Rose Knight",
       "Witch of the Black Rose",
       "Rose, Warrior of Revenge",
-      "Dark Dust Spirit",
-      "Dark Dust Spirit",
+      "Noble Knight's Shield-Bearer",
+      "Noble Knight's Spearholder",
       "Gemini Elf",
       "Monster Reborn",
       "Dark Hole",
@@ -13904,14 +14042,14 @@
       "Nettles",
       "Nettles",
       "Nettles",
-      "Copy Plant",
+      "Horse of the Floral Knights",
       "Copy Plant",
       "Twilight Rose Knight",
       "Twilight Rose Knight",
       "Witch of the Black Rose",
       "Rose, Warrior of Revenge",
-      "Dark Dust Spirit",
-      "Dark Dust Spirit",
+      "Noble Knight's Shield-Bearer",
+      "Noble Knight's Spearholder",
       "Gemini Elf",
       "Monster Reborn",
       "Dark Hole",
@@ -14165,7 +14303,7 @@
       "Earthbound Linewalker",
       "Earthbound Linewalker",
       "Earthbound Linewalker",
-      "Giant Rat",
+      "Dark Tuner Catastrogue",
       "Giant Rat",
       "Sangan",
       "Spirit Reaper",
@@ -14207,7 +14345,7 @@
       "Earthbound Linewalker",
       "Earthbound Linewalker",
       "Earthbound Linewalker",
-      "Giant Rat",
+      "Dark Tuner Catastrogue",
       "Giant Rat",
       "Sangan",
       "Spirit Reaper",
@@ -14250,7 +14388,17 @@
       {
        "card": "Basara",
        "instead": "Bottomless Trap Hole"
+      },
+      {
+       "card": "Dark Tuner Doom Submarine",
+       "instead": "Night Assailant"
       }
+     ],
+     "extra": [
+      "Frozen Fitzgerald"
+     ],
+     "anime_extra": [
+      "Frozen Fitzgerald"
      ]
     },
     {
@@ -14262,8 +14410,8 @@
       "Earthbound Linewalker",
       "Earthbound Linewalker",
       "Earthbound Linewalker",
-      "Giant Rat",
-      "Giant Rat",
+      "Dark Tuner Catastrogue",
+      "Dark Tuner Nightmare Hand",
       "Sangan",
       "Spirit Reaper",
       "Night Assailant",
@@ -14304,8 +14452,8 @@
       "Earthbound Linewalker",
       "Earthbound Linewalker",
       "Earthbound Linewalker",
-      "Giant Rat",
-      "Giant Rat",
+      "Dark Tuner Catastrogue",
+      "Dark Tuner Nightmare Hand",
       "Sangan",
       "Spirit Reaper",
       "Night Assailant",
@@ -14359,7 +14507,19 @@
       {
        "card": "Ultimate Flare",
        "instead": "Sakuretsu Armor"
+      },
+      {
+       "card": "Dark Tuner Doom Submarine",
+       "instead": "Night Assailant"
       }
+     ],
+     "extra": [
+      "Frozen Fitzgerald",
+      "Dark Highlander"
+     ],
+     "anime_extra": [
+      "Frozen Fitzgerald",
+      "Dark Highlander"
      ]
     },
     {
@@ -14371,8 +14531,8 @@
       "Earthbound Linewalker",
       "Earthbound Linewalker",
       "Earthbound Linewalker",
-      "Giant Rat",
-      "Giant Rat",
+      "Dark Tuner Catastrogue",
+      "Dark Tuner Nightmare Hand",
       "Spirit Reaper",
       "Night Assailant",
       "Armageddon Knight",
@@ -14413,8 +14573,8 @@
       "Earthbound Linewalker",
       "Earthbound Linewalker",
       "Earthbound Linewalker",
-      "Giant Rat",
-      "Giant Rat",
+      "Dark Tuner Catastrogue",
+      "Dark Tuner Nightmare Hand",
       "Spirit Reaper",
       "Night Assailant",
       "Armageddon Knight",
@@ -14476,7 +14636,19 @@
       {
        "card": "Diving Exploder",
        "instead": "Spirit Reaper"
+      },
+      {
+       "card": "Dark Tuner Doom Submarine",
+       "instead": "Night Assailant"
       }
+     ],
+     "extra": [
+      "Frozen Fitzgerald",
+      "Dark Highlander"
+     ],
+     "anime_extra": [
+      "Frozen Fitzgerald",
+      "Dark Highlander"
      ]
     }
    ],
@@ -14674,7 +14846,7 @@
       "Robotic Knight",
       "Guardian of the Throne Room",
       "Guardian of the Throne Room",
-      "Blast Sphere",
+      "Assault Dog",
       "Cyber Phoenix",
       "Cyber Phoenix",
       "Nitro Synchron",
@@ -14699,7 +14871,7 @@
       "Dimensional Prison",
       "Bottomless Trap Hole",
       "Magic Jammer",
-      "Horn of Heaven"
+      "Scarlet Security"
      ],
      "extra": [
       "Armory Arm",
@@ -14720,7 +14892,7 @@
       "Robotic Knight",
       "Guardian of the Throne Room",
       "Guardian of the Throne Room",
-      "Blast Sphere",
+      "Assault Dog",
       "Cyber Phoenix",
       "Cyber Phoenix",
       "Nitro Synchron",
@@ -14745,7 +14917,7 @@
       "Dimensional Prison",
       "Bottomless Trap Hole",
       "Magic Jammer",
-      "Horn of Heaven"
+      "Scarlet Security"
      ],
      "anime_extra": [
       "Armory Arm",
@@ -14759,6 +14931,10 @@
       {
        "card": "Defender's Mind",
        "instead": "Dimensional Prison"
+      },
+      {
+       "card": "Dark Tuner Chaos Rogue",
+       "instead": "Patrol Robo"
       }
      ]
     },
@@ -14779,7 +14955,7 @@
       "Robotic Knight",
       "Robotic Knight",
       "Guardian of the Throne Room",
-      "Blast Sphere",
+      "Assault Dog",
       "Cyber Phoenix",
       "Nitro Synchron",
       "Turbo Synchron",
@@ -14792,7 +14968,7 @@
       "Mystical Space Typhoon",
       "Smashing Ground",
       "Upstart Goblin",
-      "Pot of Avarice",
+      "Scarlet Security",
       "Foolish Burial",
       "Card Destruction",
       "Machine Duplication",
@@ -14826,7 +15002,7 @@
       "Robotic Knight",
       "Robotic Knight",
       "Guardian of the Throne Room",
-      "Blast Sphere",
+      "Assault Dog",
       "Cyber Phoenix",
       "Nitro Synchron",
       "Turbo Synchron",
@@ -14839,7 +15015,7 @@
       "Mystical Space Typhoon",
       "Smashing Ground",
       "Upstart Goblin",
-      "Pot of Avarice",
+      "Scarlet Security",
       "Foolish Burial",
       "Card Destruction",
       "Machine Duplication",
@@ -14878,6 +15054,10 @@
       {
        "card": "Climactic Barricade",
        "instead": "Bottomless Trap Hole"
+      },
+      {
+       "card": "Dark Tuner Chaos Rogue",
+       "instead": "Patrol Robo"
       }
      ]
     },
@@ -14895,12 +15075,12 @@
       "Machina Defender",
       "Machina Defender",
       "Machina Defender",
-      "Robotic Knight",
+      "Dark Tuner Catastrogue",
       "Gate Guardian",
       "Sanga of the Thunder",
       "Kazejin",
       "Suijin",
-      "Blast Sphere",
+      "Assault Dog",
       "Nitro Synchron",
       "Turbo Synchron",
       "Hyper Synchron",
@@ -14912,7 +15092,7 @@
       "Mystical Space Typhoon",
       "Smashing Ground",
       "Upstart Goblin",
-      "Pot of Avarice",
+      "Scarlet Security",
       "Foolish Burial",
       "Card Destruction",
       "Machine Duplication",
@@ -14931,7 +15111,8 @@
       "Combat Wheel",
       "Combat Wheel",
       "Power Tool Dragon",
-      "Power Tool Dragon"
+      "Power Tool Dragon",
+      "Dark Diviner"
      ],
      "anime_deck": [
       "Gate Blocker",
@@ -14945,12 +15126,12 @@
       "Machina Defender",
       "Machina Defender",
       "Machina Defender",
-      "Robotic Knight",
+      "Dark Tuner Catastrogue",
       "Gate Guardian",
       "Sanga of the Thunder",
       "Kazejin",
       "Suijin",
-      "Blast Sphere",
+      "Assault Dog",
       "Nitro Synchron",
       "Turbo Synchron",
       "Hyper Synchron",
@@ -14962,7 +15143,7 @@
       "Mystical Space Typhoon",
       "Smashing Ground",
       "Upstart Goblin",
-      "Pot of Avarice",
+      "Scarlet Security",
       "Foolish Burial",
       "Card Destruction",
       "Machine Duplication",
@@ -14981,7 +15162,8 @@
       "Combat Wheel",
       "Combat Wheel",
       "Power Tool Dragon",
-      "Power Tool Dragon"
+      "Power Tool Dragon",
+      "Dark Diviner"
      ],
      "anime_waiting": [
       {
@@ -15015,6 +15197,10 @@
       {
        "card": "Discord Counter",
        "instead": "Mystical Space Typhoon"
+      },
+      {
+       "card": "Dark Tuner Chaos Rogue",
+       "instead": "Patrol Robo"
       }
      ]
     }
