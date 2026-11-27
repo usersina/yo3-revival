@@ -9,6 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-27 — Black Brutdrago's crash (#87) and Unlock all cards (#89)](#2026-11-27--black-brutdragos-crash-87-and-unlock-all-cards-89)
   - [2026-11-21 — Player website pages and pack contents (#74, #73), anime Ra's text](#2026-11-21--player-website-pages-and-pack-contents-74-73-anime-ras-text)
   - [2026-11-21 — Problem reports: a broken game's logs go to the host](#2026-11-21--problem-reports-a-broken-games-logs-go-to-the-host)
   - [2026-11-21 — Network review: whole frames to the game, and its disconnect reasons logged (#65)](#2026-11-21--network-review-whole-frames-to-the-game-and-its-disconnect-reasons-logged-65)
@@ -92,6 +93,22 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   one PC are "linked accounts": the first duel counted nothing until `set linked-accounts off`.
 - **Guesses** (roadmap): the Special Pack's contents, tiers and cap, the artwork odds (1 in 20), the theme decks' price, the
   champion rule and THE ANNIVERSARIAN's win.
+
+## 2026-11-27 — Black Brutdrago's crash (#87) and Unlock all cards (#89)
+
+- **#87.** The reporter's materials were Tuned Magician (they wrote "Tuning Magician", a card the game doesn't have), a
+  Level 4 Gemini that is a Tuner only while it has its effect, and Evocator Chevalier, both given their effects by Unleash
+  Your Power!. On v0.1.19 the server tuned both as non-Tuners, and the game's Synchro animation crashes on sums without
+  a Tuner first (0x5165A0). v0.1.26's fix (ecb42b9, a Tuner by its type on the field) already covers it: with that line
+  undone, `card_scenarios.rs` `black_brutdrago_from_a_tuned_magician_unleash_your_power_made_a_tuner_issue_87` fails
+  with "a Synchro animation with no Tuner tuned"; with it, the test and its going-second twin pass. Live under Wine
+  (NPC duel against Seto Kaiba, Kaiba first, `--duel-field` and `--duel-extra`, `--duel-check`): Unleash Your Power!,
+  then Black Brutdrago from the Extra Deck with Tuned Magician offered first, the tuning and summon animations, Black
+  Brutdrago 3000/2600 on the field; no crash, no drift. (A test build with the line undone also rebuilds
+  `target/release/yo3-server`: rebuild before a live check.)
+- **#89.** Not reproduced: after `unlock-cards` (15,699 cards for the scratch player) and a fresh start of the game, NPC
+  duels against Seto Kaiba (going first) and Yugi Muto (going second, his first turn played with Enemy Controller
+  asked of the player) opened and played with the Starter Deck; no warning in the server's log.
 
 ## 2026-11-21 — Player website pages and pack contents (#74, #73), anime Ra's text
 

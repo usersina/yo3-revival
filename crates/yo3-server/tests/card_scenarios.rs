@@ -592,3 +592,37 @@ fn black_brutdrago_is_synchro_summoned_from_a_tuner_and_a_gemini_issue_87() {
     assert!(s.problems.is_empty(), "{:#?}", s.problems);
     assert_eq!(s.attack_of(0, BLACK_BRUTDRAGO), Some(3000), "Black Brutdrago is on the field");
 }
+
+// The reporter's own materials (#87): Tuned Magician (a Level 4 Gemini, a Tuner only while it has its effect) and
+// Evocator Chevalier (a Level 4 Gemini), both given their effects by Unleash Your Power!, then Black Brutdrago.
+// Tuned Magician is a Tuner by an effect, which the client's card data doesn't say.
+#[test]
+fn black_brutdrago_from_a_tuned_magician_unleash_your_power_made_a_tuner_issue_87() {
+    use yo3_server::duelcheck::scenario::card;
+    use yo3_server::engine::{Spawn, SpawnPlace::*};
+    let Some(dir) = engine_dir() else { return };
+    let (tuned, chevalier, unleash) = (card("Tuned Magician"), card("Evocator Chevalier"), card("Unleash Your Power!"));
+    let field = [Spawn { team: 0, place: Monster, cid: tuned }, Spawn { team: 0, place: Monster, cid: chevalier },
+        Spawn { team: 0, place: Hand, cid: unleash }];
+    let mut s = Scenario::start_field(&dir, 7, 8000, [(&[WARWOLF; 40], &[BLACK_BRUTDRAGO]), (&[WARWOLF; 40], &[])], &field).unwrap();
+    assert!(s.problems.is_empty(), "{:#?}", s.problems);
+    s.run(&[Activate(unleash), SpSummon(BLACK_BRUTDRAGO)]).unwrap();
+    assert!(s.problems.is_empty(), "{:#?}", s.problems);
+    assert_eq!(s.attack_of(0, BLACK_BRUTDRAGO), Some(3000), "Black Brutdrago is on the field");
+}
+
+// The same going second (engine team 1), as in the live NPC duel where Kaiba went first.
+#[test]
+fn black_brutdrago_from_a_tuned_magician_going_second_issue_87() {
+    use yo3_server::duelcheck::scenario::card;
+    use yo3_server::engine::{Spawn, SpawnPlace::*};
+    let Some(dir) = engine_dir() else { return };
+    let (tuned, chevalier, unleash) = (card("Tuned Magician"), card("Evocator Chevalier"), card("Unleash Your Power!"));
+    let field = [Spawn { team: 1, place: Monster, cid: tuned }, Spawn { team: 1, place: Monster, cid: chevalier },
+        Spawn { team: 1, place: Hand, cid: unleash }];
+    let mut s = Scenario::start_field(&dir, 7, 8000, [(&[WARWOLF; 40], &[]), (&[WARWOLF; 40], &[BLACK_BRUTDRAGO])], &field).unwrap();
+    assert!(s.problems.is_empty(), "{:#?}", s.problems);
+    s.run_both([&[EndTurn], &[Activate(unleash), SpSummon(BLACK_BRUTDRAGO)]]).unwrap();
+    assert!(s.problems.is_empty(), "{:#?}", s.problems);
+    assert_eq!(s.attack_of(1, BLACK_BRUTDRAGO), Some(3000), "Black Brutdrago is on the field");
+}
