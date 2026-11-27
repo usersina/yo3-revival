@@ -63,6 +63,11 @@ def risks(text):
     widening = [i + 1 for i, l in enumerate(lines) if WIDENING.search(l)]
     if widening:
         out.append(("widens materials", widening))
+    # EVENT_BATTLE_END: deprecated in constant.lua, never raised by the core, so the effect never happens (Attack Cannon,
+    # Dizzy Tiger: anime batch 24's scenarios).
+    dead = [i + 1 for i, l in enumerate(lines) if re.search(r"\bEVENT_BATTLE_END\b", l)]
+    if dead:
+        out.append(("never raised", dead))
     return out
 
 

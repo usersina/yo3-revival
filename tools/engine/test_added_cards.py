@@ -206,6 +206,13 @@ class AddedCards(unittest.TestCase):
         self.assertIsNone(added.anime_problem(511001319, {'type': 0x11}))
         self.assertIn('no script', added.anime_problem(511001319, {'type': 0x21}))
 
+    def test_an_anime_card_aliasing_an_anime_only_one_is_anime_only(self):
+        # The anime's Scab Scar Knight (513000140) aliases the video game's (100000224), never printed: an anime-only card.
+        # Dark Renewal (Anime) aliases the printed Dark Renewal: that card's anime version, not one to add.
+        ctx = added.load()
+        self.assertTrue(added.anime_only_alias(ctx['anime'][513000140], ctx))
+        self.assertFalse(added.anime_only_alias(ctx['anime'][100000073], ctx))
+
     def test_a_card_needing_speed_counters_waits(self):
         # Speed Spell - Defense Buster counts Speed World's Speed Counters, a Riding Duel's: the game never had them.
         self.assertIn('Speed Counters', added.anime_problem(511000093, {'type': 0x2}))

@@ -46,6 +46,11 @@ class ScriptRisks(unittest.TestCase):
         self.assertEqual(risks.risks(text), [("widens materials", [2])])
         self.assertEqual(risks.risks("--EFFECT_HAND_SYNCHRO in a comment\n"), [])
 
+    def test_a_timing_the_core_never_raises(self):
+        # Attack Cannon and Dizzy Tiger waited for EVENT_BATTLE_END: deprecated, so their effects never happened.
+        self.assertEqual(risks.risks("\te1:SetCode(EVENT_BATTLE_END)\n"), [("never raised", [1])])
+        self.assertEqual(risks.risks("\te1:SetCode(EVENT_DAMAGE_STEP_END)\n"), [])
+
 
 if __name__ == "__main__":
     unittest.main()

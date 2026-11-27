@@ -280,7 +280,9 @@ def risk_hints(line, ctx):
     rel = os.path.relpath(script_path(code), ROOT)
     advice = {'first card unchecked': 'if its cost can leave nothing to choose, the effect stops on a Lua error: read them, '
                                       'and write an override with a check (engine/overrides/) when it can happen',
-              'widens materials': 'tests/material_search.rs puts it on a crowded board: run it (`task check:added` does)'}
+              'widens materials': 'tests/material_search.rs puts it on a crowded board: run it (`task check:added` does)',
+              'never raised': 'EVENT_BATTLE_END is a timing the core no longer raises, so this effect never happens: write an '
+                              'override with EVENT_DAMAGE_STEP_END (engine/overrides/c100000444.lua)'}
     return [f'{what}: {rel} lines {", ".join(map(str, lines))}; {advice[what]}' for what, lines in risky.risks(text)]
 
 
@@ -465,6 +467,13 @@ def load():
 ANIME_TAG = '[Anime]'  # crates/yo3-server/src/profile.rs ANIME_TAG: an anime card's text starts with it
 
 
+def anime_only_alias(d, ctx):
+    """Whether an anime card's alias leaves it an anime-only card: none, or another card never printed (the anime's Scab Scar
+    Knight 513000140 aliases the video game's 100000224, both anime-only). An alias to a printed card makes it that card's
+    anime version instead (engine/anime-cards.json)."""
+    return not d['alias'] or (d['alias'] in ctx['anime'] and d['alias'] not in ctx['data'])
+
+
 def anime_problem(code, d):
     """Why an anime-only card's script can't be played, or None: it must exist in unofficial/ and register effects unless
     the card is a Normal Monster."""
@@ -560,7 +569,7 @@ def build():
                 continue
         elif anime_code is not None:
             code, d = anime_code, ctx['anime'].get(anime_code)
-            if d is None or d['alias']:
+            if d is None or not anime_only_alias(d, ctx):
                 problems.append(f'{line["name"]}: {anime_code} is no anime card (ot 4, no alias) in the pinned unofficial database')
                 continue
             problem = anime_problem(code, d)
@@ -720,7 +729,7 @@ def find(names, ctx=None):
         if code is None:
             text = name.strip()
             anime_code = int(text[6:]) if text.lower().startswith('anime:') and text[6:].strip().isdigit() else anime_by_name.get(text.casefold())
-            if anime_code not in ctx['anime'] or ctx['anime'][anime_code]['alias']:
+            if anime_code not in ctx['anime'] or not anime_only_alias(ctx['anime'][anime_code], ctx):
                 anime_code = None
         if anime_code is not None:
             d = ctx['anime'][anime_code]
