@@ -159,7 +159,8 @@ const MAIL_TO_TEAM: u32 = 3;
 /// 0x2B14's error_code: the player has no team.
 const NO_TEAM: u32 = 404;
 
-/// The npcbin's size: the client reads up to NPC id 197 (8 bytes each) without a check.
+/// The npcbin's size: 8 bytes for each NPC id 1-256, as far as the client reads it (0x51C680 refuses an offset of
+/// `4 * (id - 1)` u16s at 0x400 or more). Custom NPCs' ids reach 248 (slot 42's last level).
 const NPCBIN_LEN: usize = 2048;
 
 /// Speech lines and comments a player has (CharMake's update 0x51C960).

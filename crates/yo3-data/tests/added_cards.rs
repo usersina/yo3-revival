@@ -130,3 +130,31 @@ fn the_anime_collection_pack_holds_the_anime_only_cards_and_names_itself_in_ever
         assert_eq!(texts.get(&23000), before.get(&23000), "{name}: pack 1's name unchanged");
     }
 }
+
+/// The custom NPC slots (`CUSTOM_NPC_SLOTS`, 25-42) have their texts to themselves in every language: the name and help
+/// (`0x5208 + 2 * slot`), each level's deck title (`0x5FB4 + 2 * id`) and the 300 lines (`62000 + 300 * slot`). The next
+/// slot's last deck title would be a text the game has (a player title), which `with_texts` would overwrite.
+#[test]
+fn the_custom_npc_slots_texts_are_free_in_every_language() {
+    use yo3_data::added::{AddedNpc, AddedNpcLevel, CUSTOM_NPC_SLOTS, LANGUAGES};
+    let Some(ypk) = game() else { return };
+    let npc = |slot: u32| AddedNpc { slot, name: "N".into(), help: "H".into(), series: 0, body: 0, figure: None, cutin_bg: None,
+        levels: (0..3).map(|_| AddedNpcLevel { title: "T".into(), deck: vec![], extra: vec![], anime_deck: vec![], anime_extra: vec![] }).collect(),
+        lines: (0..300).map(|n| (n.to_string(), "L".into())).collect() };
+    for lang in LANGUAGES {
+        let texts = yo3_data::parse_texts(&ypk.read(&format!("data/text/txttbl_{lang}.bin")).unwrap().unwrap());
+        let taken = |id: &u32| texts.get(id).is_some_and(|t| !t.is_empty());
+        // The game's unlisted 26th NPC's texts, which no screen shows (the roster leaves it out; Dartz has taken them
+        // since he came): its name and help (21050-21051, "メインNPC名前" in J and K, empty elsewhere), its deck titles
+        // (ids 195-197, 24890-24894) and a placeholder after them (24896, "NPCデッキ名" in J, "레시피" in K). Neither the
+        // client's code nor its Flash screens name any of them (checked 2026-11-27).
+        let placeholder = |id: u32| matches!(id, 21050 | 21051 | 24890 | 24892 | 24894 | 24896);
+        for slot in CUSTOM_NPC_SLOTS {
+            for (id, _) in npc(slot).texts().into_iter().filter(|(id, _)| !placeholder(*id)) {
+                assert!(!taken(&id), "{lang}: slot {slot}'s text {id} is the game's {:?}", texts[&id]);
+            }
+        }
+        let next = npc(CUSTOM_NPC_SLOTS.end() + 1).texts();
+        assert!(next.iter().any(|(id, _)| taken(id)), "{lang}: the slot after the last has free texts too");
+    }
+}
