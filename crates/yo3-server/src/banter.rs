@@ -409,7 +409,7 @@ mod tests {
                 assert!(said.len() <= 90, "{name}: too long for the chat window: {said}");
             }
         }
-        for hero in crate::npc::HEROES {
+        for hero in crate::npc::HEROES.iter().chain(crate::npc::SEERS) {
             assert!(table[hero].contains_key("heart"), "{hero} has no Heart of the Cards");
         }
         assert!(table["Maximillion Pegasus"].contains_key("eye_hand"));

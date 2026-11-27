@@ -1207,8 +1207,8 @@ series: NPCs 0–8 on tab 0, 9–16 on tab 1, 17–24 on tab 2 (**guess** from t
 preset (`deck_type` 3) carries that title id as `name_id`, which is how the server finds the ids: 25 NPCs (a 26th,
 ids 195–197, has decks but no name and would be a blank row, so it is left out). Hovering an NPC computes
 `sum(min(ex, need_ex)) * 1000 / sum(need_ex)` over its levels (`0x4BFDC4`, the Friendship Level bar): all-zero
-`need_ex` divides by zero. **Custom NPCs** ([custom NPCs](custom-npcs.md)) take slot 25 on (first id 195, Dartz): the server adds their
-levels to the roster with their tab, and the launcher and DLL supply their texts, body, portrait and faces; live
+`need_ex` divides by zero. **Custom NPCs** ([custom NPCs](custom-npcs.md)) take slots 25-99 (first ids 195 to 417; Dartz is slot 25): the server adds their
+levels to the roster with their tab (any tab: the list takes any character on any of its three), and the launcher and DLL supply their texts, body, portrait and faces (from id 250 the deck title is text `200000 + 2 * id`: the DLL moves the three lookups, as `0x5FB4 + 2 * id` is a player title there); live
 2026-11-26. Seto Kaiba, Yami Marik, Alexis Rhodes and Jack Atlas (first ids 123, 141, 153, 174) refuse
 to duel ("Who the hell are you?", speech kind 36) unless the record's `pbin` has bits `0x250`–`0x253` (`pbin[74]`
 bits 0–3, `0x4BDAB0` state 2); the server sets them in every record.
@@ -1217,7 +1217,9 @@ bits 0–3, `0x4BDAB0` state 2); the server sets them in every record.
 little-endian at `8 * (id - 1) + 2k`: k 0 wins, 1 losses, 2 draws (the info panel's "Wins %d / Losses %d" sums the
 three ids', `0x4BFBA0`), 3 experience. No request reports an NPC duel's result; the server keeps it against the
 `cpu_id` (the duel records, keyed by player and opponent) and counts experience 100 a win, 50 a draw, 10 a loss
-(**guess**). The client reads it unchecked up to id 197, so the blob is 2048 bytes; it comes with the player list
+(**guess**). The client reads it up to id 256 (`0x51C680` refuses `4 * (id - 1)` at `0x400` or more, `0x51C68F`; past it
+the stars and the record read 0); the connection DLL raises that to id 512, so the blob is 4096 bytes, which covers the
+custom NPCs' levels (to id 419, slot 99); it comes with the player list
 (`0x2260`) and the refresh (`0x2CF3`), which the client asks for after a duel. Live: after Yugi beat Seto Kaiba
 (level 1, `--duel-lp 1000`), the list showed him with two stars, the Friendship Level bar a sixth full and "Wins 1 /
 Losses 0".

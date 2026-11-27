@@ -140,7 +140,9 @@ fn the_login_says_when_duelist_premium_ends() {
 #[test]
 fn the_record_carries_the_experience_with_each_npc() {
     // npcbin (0x51C680): per NPC level id, u16 little-endian at 8 * (id - 1) + 2k: k 0 wins, 1 losses, 2 draws, 3
-    // experience (compared with the roster's need_ex). The client reads it unchecked up to id 197 (1576 bytes).
+    // experience (compared with the roster's need_ex). The client reads it up to id 256 (0x51C68F refuses a u16 index
+    // `4 * (id - 1)` of 0x400 or more), which the connection DLL raises to id 512 (4096 bytes): custom NPCs to slot 99
+    // (ids 417-419).
     // The server keeps each result against the NPC's id and counts experience 100 a win, 50 a draw, 10 a loss
     // (**guess**); the client sees it at its next refresh (0x2CEE -> 0x2CF3).
     let hub = Arc::new(Mutex::new(Hub::default()));
@@ -154,12 +156,16 @@ fn the_record_carries_the_experience_with_each_npc() {
     for result in [1, 1, 2, 3] {
         hub.lock().unwrap().record_result(1001, 121, result);
     }
+    hub.lock().unwrap().record_result(1001, 248, 1);
+    hub.lock().unwrap().record_result(1001, 419, 1);
     let r = one(s.handle(&req(0x2CEE)));
     let Some(Value::Bin(npcbin)) = r.items[0].get("npcbin") else { panic!("npcbin") };
-    assert!(npcbin.len() >= 8 * 197);
+    assert_eq!(npcbin.len(), 8 * 512);
     let at = |id: usize, k: usize| u16::from_le_bytes([npcbin[8 * (id - 1) + 2 * k], npcbin[8 * (id - 1) + 2 * k + 1]]);
     assert_eq!([at(121, 0), at(121, 1), at(121, 2), at(121, 3)], [2, 1, 1, 260]);
     assert_eq!(at(120, 3), 0);
+    assert_eq!([at(248, 0), at(248, 3)], [1, 100], "slot 42's last level, a custom NPC's");
+    assert_eq!([at(419, 0), at(419, 3)], [1, 100], "slot 99's last level, past the game's bound");
 }
 
 #[test]

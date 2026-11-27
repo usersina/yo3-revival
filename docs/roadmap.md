@@ -30,6 +30,22 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
       alert destinations. Completed provisioning, recovery and protocol checks: [VPS record](history.md#2026-11-17--public-vps-deployment-and-recovery).
 - [ ] Normalize SQLite domains incrementally after deployment validation; keep the generated API unchanged.
 
+**Kaiba Corporation's characters**
+
+- [ ] The 30 characters of slots 26-55 in more duels: only Valon, Yubel and Antinomy were played live. The owner's art
+      for any of them.
+- [ ] The duel bot with the custom NPCs' decks (`task check:npcs`, 2026-11-27): it rarely plays the bosses that need a
+      combo (Great Moth's evolution, Yubel's forms, Valkyrion, Water Dragon with Bonding - H2O, Neo-Daedalus with Umi,
+      Volcanic Doomfire, Exodia's five pieces). A deeper look-ahead (`Style` depth 4, firsts 3 for Weevil, Bastion, Mako,
+      Axel and Yubel) brought out no more of them in 120 measured duels: they need plans over several turns. Bot work,
+      not the decks'.
+- [ ] Their later-batch anime-only cards (`anime_waiting`, [the list](custom-npcs.md#the-characters)) play by themselves
+      once batches 7-34 are on `main`: run `custom_npc.rs` then, as a swap can change a deck's legality.
+- [ ] More characters: slots 56-99 are free. Past 99 ([the limits](custom-npcs.md#how-many)): the names' base
+      (`0x51CC56`, `0x4BFE45`) or skipping slots 100-102; past 126 the cut-in's signed-byte limit needs a stub.
+- [ ] A visible scrollbar on Kaiba Corporation's list (the wheel scrolls it; its scrollbar is hidden and unwired):
+      `kaiba_main.swf` changed by the launcher from the player's own copy and served by the DLL, as other files are.
+
 **Duels**
 
 - [ ] The manga Gods and the added cards in more places: as a spectator, and the Gods' Soul Energy Max and the added

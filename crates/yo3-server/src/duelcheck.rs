@@ -903,6 +903,10 @@ pub mod selfplay {
         pub resolved: BTreeMap<u16, u32>,
         pub visible: BTreeMap<u16, u32>,
         pub negated: BTreeMap<u16, u32>,
+        /// The engine team that won (MSG_WIN), when the duel ended with a winner.
+        pub winner: Option<u64>,
+        /// The duel bot's longest answer, in milliseconds ([`play_bots`]).
+        pub longest_thought_ms: u64,
     }
 
     /// Follows the chain to the card whose effect resolves, for the effect coverage. A result is visible when, while a
@@ -1013,6 +1017,9 @@ pub mod selfplay {
         /// The card under test (the per-card fuzz, [`play_card`]): the random player takes an action with it, when one is
         /// on offer, three times in four.
         pub focus: Option<u16>,
+        /// The duel bot answers for each engine team with this style (an NPC's, `crate::npc::style`; null the default)
+        /// instead of the random player: the custom NPCs' self-play ([`play_bots`]).
+        pub bots: Option<[Json; 2]>,
     }
 
     /// The cards the reviewed anime map approves, by what a deck keeps them in (Konami ids), for self-play with the
@@ -1148,6 +1155,7 @@ pub mod selfplay {
             expect: HashMap::new(),
             lp: None,
             focus: None,
+            bots: None,
         };
         play_with(dir, seed, decks, &data, [&[], &[]], client_team, hidden)
     }
@@ -1166,6 +1174,7 @@ pub mod selfplay {
             expect: HashMap::new(),
             lp: None,
             focus: None,
+            bots: None,
         };
         play_with(dir, seed, decks, &data, [&[], &[]], client_team, hidden)
     }
@@ -1276,6 +1285,7 @@ pub mod selfplay {
             },
             lp,
             focus: None,
+            bots: None,
         })
     }
 
@@ -1287,7 +1297,7 @@ pub mod selfplay {
         } else {
             let (cards, tokens) = plain_cards(dir, &decks);
             CardData { cards, tokens, names: HashMap::new(), tuners: tuners(dir, &decks, false)?, anime: false,
-                revival: crate::engine::Revival::Official, expect: HashMap::new(), lp: None, focus: None }
+                revival: crate::engine::Revival::Official, expect: HashMap::new(), lp: None, focus: None, bots: None }
         };
         data.focus = Some(card);
         play_with(dir, seed, decks, &data, [&[card], &[]], (seed % 2) as usize, false)
@@ -1417,6 +1427,10 @@ pub mod selfplay {
             // The client's own side has Destiny Draw (#71): its question and card choice go through the translator's
             // windows, the chosen card moves to the Deck's top without a message.
             vec![(1 - client_team as u32, "heart_of_the_cards".into()), (client_team as u32, "destiny_draw".into())]
+        } else if let Some(styles) = &data.bots {
+            // The bots' skills, as the NPC duel gives the NPC its style's (duel.rs).
+            (0..2u32).flat_map(|team| styles[team as usize]["skills"].as_array().into_iter().flatten()
+                .filter_map(move |s| s.as_str().map(|s| (team, s.to_string())))).collect()
         } else {
             vec![]
         };
@@ -1456,6 +1470,9 @@ pub mod selfplay {
             for m in &a.messages {
                 if let Some(kind) = m["type"].as_u64() {
                     *played.kinds.entry(kind).or_default() += 1;
+                    if kind == msg::WIN {
+                        played.winner = m["player"].as_u64();
+                    }
                 }
             }
             for e in &events {
@@ -1575,11 +1592,56 @@ pub mod selfplay {
                 actions += 1;
                 data.focus.and_then(|card| focused_answer(&last, &mut rng, card)).unwrap_or_else(|| random_answer(&last, &mut rng, actions > ACTIONS_PER_TURN))
             };
-            t.answered(&last, &response);
-            asked = std::time::Instant::now();
-            answer = engine.respond(response.json());
+            // The bot, when it plays (not for a refused answer: the safe one then).
+            let style = data.bots.as_ref().filter(|_| retries == 0)
+                .and_then(|styles| Ask::lenient(&last).ok().flatten().map(|a| styles[(a.player() as usize).min(1)].clone()));
+            let thought = match style {
+                Some(style) => {
+                    let started = std::time::Instant::now();
+                    let json = engine.think(style).map_err(|e| format!("seed {seed}, step {}: the bot: {e}", played.steps))?;
+                    played.longest_thought_ms = played.longest_thought_ms.max(started.elapsed().as_millis() as u64);
+                    Some(json)
+                }
+                None => None,
+            };
+            match thought {
+                Some(json) => {
+                    // The translator follows the client's attacks (`Translator::answered`): the bot's, when it chose one.
+                    if json["type"].as_u64() == Some(crate::ocg::resp::BATTLECMD)
+                        && let Some(action) = json["action"].as_u64()
+                    {
+                        t.answered(&last, &Response::BattleCmd { action, index: json["index"].as_u64().map(|i| i as usize) });
+                    }
+                    asked = std::time::Instant::now();
+                    answer = engine.respond(json);
+                }
+                None => {
+                    t.answered(&last, &response);
+                    asked = std::time::Instant::now();
+                    answer = engine.respond(response.json());
+                }
+            }
         }
         Ok(played)
+    }
+
+    /// A duel the bot plays on both sides, each with its own style (`styles`, by engine team; team 0 goes first), under
+    /// the duel check, at 8000 LP; `decks` by Konami id; `anime`: with the anime card versions on. The custom NPCs'
+    /// self-play (`tests/custom_npc_selfplay.rs`).
+    pub fn play_bots(dir: &Path, seed: u64, decks: [(&[u16], &[u16]); 2], anime: bool, styles: [Json; 2], client_team: usize)
+        -> Result<Played, String> {
+        let mut data = if anime {
+            anime_data(dir, &decks, |_| {}, Some(8000))?
+        } else {
+            // Every token card the client has, as with anime cards on: the NPCs' decks make more kinds than the pool's.
+            let (mut cards, mut tokens) = plain_cards(dir, &decks);
+            let (token_cards, token_names) = client_tokens(dir)?;
+            cards.extend(token_cards);
+            tokens.extend(token_names);
+            CardData { cards, tokens, tuners: tuners(dir, &decks, false)?, lp: Some(8000), ..CardData::default() }
+        };
+        data.bots = Some(styles);
+        play_with(dir, seed, decks, &data, [&[], &[]], client_team, false)
     }
 
     /// One engine message in a few words, for failure reports.

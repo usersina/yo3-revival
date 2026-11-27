@@ -47,7 +47,7 @@ pub mod problems;
 pub mod sources;
 mod teams;
 mod trade;
-mod deckcheck;
+pub mod deckcheck;
 mod rental;
 mod events;
 pub mod championship;
@@ -465,7 +465,9 @@ pub fn add_custom_npcs(world: &mut World, data: &yo3_data::GameData) {
             let deck = |main: &[String], extra: &[String]| Deck { id: id * 100, name: String::new(), main: rows(main), extra: rows(extra), side: vec![] };
             world.npc_decks.insert(id, deck(&level.deck, &level.extra));
             if !level.anime_deck.is_empty() {
-                world.npc_anime_decks.insert(id, deck(&level.anime_deck, &level.anime_extra));
+                // A later batch's card plays once the server has it (`anime_waiting`), its stand-in until then.
+                let (main, extra) = level.anime_cards(|name| row_of.contains_key(name));
+                world.npc_anime_decks.insert(id, deck(&main, &extra));
             }
         }
     }
@@ -577,6 +579,12 @@ fn add_host_banlists(world: &mut World, data: &yo3_data::GameData, dir: &std::pa
         added.banlists = custom;
         world.added = Arc::new(added);
     }
+}
+
+/// The world a server with `cfg` starts with (no listeners: duel and HTTP ports 0), for tests that need the game's
+/// whole data as the server sees it (the custom NPCs' decks under the login banlist).
+pub fn game_world(cfg: &Config) -> anyhow::Result<World> {
+    world(cfg, 0, 0)
 }
 
 fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> {

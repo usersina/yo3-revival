@@ -8,6 +8,8 @@ This guide covers adding one, the art it can have, and authoring a 3D body; the 
 **Contents**
 
 - [How it works](#how-it-works)
+- [How many](#how-many)
+- [The characters](#the-characters)
 - [Adding a character](#adding-a-character)
 - [Lines](#lines)
 - [Art](#art)
@@ -24,13 +26,89 @@ This guide covers adding one, the art it can have, and authoring a 3D body; the 
 | The roster | `yo3_server::add_custom_npcs` (`lib.rs`) | the levels' ids join the `0x2711` roster on their tab; their decks (each card by its English name) and bot style (`npc.rs` `CHARACTERS`) |
 | The decks | `World::npc_deck` | the anime deck while the server has `anime-cards` on, else the printed one |
 | The game's files | `yo3_data::added::text_files`, `npc_files` (the launcher writes them with the added cards) | the UI texts (name, help, deck titles, lines), the body (`model/np025/`), the portrait (`npc/npcsel025.png`) and the faces (`face/np025f0-4.png`) |
-| The duel's cut-ins | the connection DLL | the game's cut-in loads a body only for slots below 25 (`0x4E3C1D`) and times its sounds from a 25-row table (`0x78BBF8`): raised to 30, the custom slots' rows their donor's (`model/npNNN/donor.txt`) |
-| Serving them | the connection DLL (`tools/mod/card-profile.h`, `added-cards-logic.h` `yo3_added_npc_path`) | redirects the game's opens of `data/npc/npcsel025.png` and `data/face/np025f*.png`; gives the game's 25-entry model table room for 30 (`npc_models_install`, the read at `0x4E430F`) and points slots 25-29 at the launcher folder's bodies by their full path (the resource manager looks in the archives before opening anything, so a relative path never reaches the file hook) |
+| The duel's cut-ins | the connection DLL | the game's cut-in loads a body only for slots below 25 (`0x4E3C1D`), times its sounds from a 25-row table (`0x78BBF8`) and picks its background swf from a 26-entry table (`0x788C40`): raised to 100, the custom slots' timing rows their donor's and their background their own `cutin_bg` or the donor's (`model/npNNN/donor.txt`) |
+| Serving them | the connection DLL (`tools/mod/card-profile.h`, `added-cards-logic.h` `yo3_added_npc_path`) | redirects the game's opens of `data/npc/npcsel025.png` and `data/face/np025f*.png`; gives the game's 25-entry model table room for 100 (`npc_models_install`, the read at `0x4E430F`) and points slots 25-99 at the launcher folder's bodies by their full path (the resource manager looks in the archives before opening anything, so a relative path never reaches the file hook) |
 
 Kaiba Corporation's NPCs are the slots `k` = 0, 1, 2...: slot `k`'s three levels are NPC ids `120 + 3k` to `122 + 3k`.
-The game has 25 (0-24, Yami Yugi to Kalin Kessler); custom ones take **slots 25-29** (the duel cut-ins' table at
-`0x788C40` has 30 entries; the players' NPC experience reaches id 197, slot 25's last level, so slots 26-29 also need
-`npcbin` widened before their levels count experience).
+The game has 25 (0-24, Yami Yugi to Kalin Kessler); custom ones take **slots 25-99**, 75 characters
+([how many](#how-many)).
+
+## How many
+
+What bounds a custom slot `k` (its levels are ids `120 + 3k` to `122 + 3k`), from the client (2026-11-27), and what
+the connection DLL does about it:
+
+| What | Where | The game's bound | Now |
+| --- | --- | --- | --- |
+| Names and help, text `0x5208 + 2k` | `txttbl_*.bin` | free up to slot 99 (slot 25's are placeholders: "main NPC name" in J and K, empty elsewhere); slots 100-102 are other texts | **the limit: slot 99**. Past it, move the base at `0x51CC56` and `0x4BFE45` (`lea [r+r+imm32]`), or skip 100-102 (free again to 499) |
+| Deck titles, text `0x5FB4 + 2·id` | lookups at `0x4BB299`, `0x4BFE05`, `0x5174A8` | free up to id 248 (slot 42), but for slot 25's (ids 195-197: the game's unlisted 26th NPC's) and 24896 (a placeholder in J and K); id 250's text is a player title | each lookup's `lea` is a call to the DLL's stub: the game's text below id 250, `200000 + 2·id` from there (`yo3_data::added::deck_title_text`) |
+| The players' experience (`npcbin`) | `0x51C680` (`cmp esi,0x400` at `0x51C68F`, `esi = 4·(id − 1)`) | id 256 (slot 44); past it the stars and the record read 0 (no crash) | raised to id 512 (`NPC_MAX_ID`); the server sends 4096 bytes |
+| Lines, text `50000 + 100·id + kind` (slot k's from `62000 + 300k`) | `txttbl_*.bin` | free above 69486, so every slot from 25 | |
+| Bodies (`0x7F5B48`), cut-in timing (`0x78BBF8`), the cut-in's limit (`0x4E3C1D`), its background (`0x788C40`) | the connection DLL's own tables | 25 (the background table 26 entries) | `NPC_SLOTS` (100) in `tools/mod/card-profile.h`; the limit is a signed byte (127 without a stub) |
+| Kaiba Corporation's list | `kaiba_main.swf`, a CLIK ScrollingList | 10 rows show; the mouse wheel scrolls it a row a tick (live: 17 rows on one tab). Its scrollbar is placed but hidden and unwired, and the keyboard is off (`handleInput` returns false) | none, though nothing on screen says there is more: a scrollbar needs a changed `kaiba_main.swf` |
+| The tabs | `0x4BFBA0` (tab > 2 refused: the tab indexes three vectors), the Flash's three | three; any character on any tab | |
+| NPC ids | every `npc_id`, `npc_type`, `cpu_id`, `need_ex` read (`0x409020`) and `0x17AC`'s `cpu_id` | 32 bits | |
+
+The server and the launcher take slots in `yo3_data::added::CUSTOM_NPC_SLOTS` (25-99): `Added::parse` refuses a slot
+outside it, a slot two characters share, a body past 24, a character without three levels and a `cutin_bg` outside
+1-10. No other per-slot bound was found: the duel start (`0x4BE390`), `Duel_createCutins` (`0x50F450`), the faces
+(`0x4F8080`), the talk's gate (`0x4BDAB0`), the free NPCs (`0x79039C`: never a custom id, they need `premium`, which
+every account has) and the NPC texts take any slot. Characters past slot 29 need a launcher and DLL of this version:
+an older launcher refuses them when it writes the added files.
+
+## The characters
+
+31 so far, each on the mannequin with its portrait and faces, three levels (titles easiest first), printed and anime
+decks that pass the server's deck check in both modes (`tests/custom_npc.rs`), talk, chat lines and a bot style.
+"Waiting" counts the later-batch anime-only cards their anime decks list (`anime_waiting`): each plays its stand-in
+until the server has the card.
+
+| Slot | Name | Tab | Decks | Waiting |
+| --- | --- | --- | --- | --- |
+| 25 | Dartz | Yu-Gi-Oh! | The Seal of Orichalcos / The Soldiers of Atlantis / The Great Leviathan Awakens |  |
+| 26 | Rafael | Yu-Gi-Oh! | Guardians of the Gods / The Guardian Assault / The Ultimate Guardian |  |
+| 27 | Valon | Yu-Gi-Oh! | The Armor of a Street Fighter / Knuckles and Armor / The Full Armor Duelist | 29 |
+| 28 | Alister | Yu-Gi-Oh! | The Machines of the Sky / Tanks and Fortresses / The Air Fortress Ziggurat |  |
+| 29 | Noah Kaiba | Yu-Gi-Oh! | The Virtual World / Noah's Phantom Army / Shinato, King of a Higher Plane |  |
+| 30 | Ishizu Ishtar | Yu-Gi-Oh! | The Tablet's Secret / The Millennium Sphinx / The Forbidden One |  |
+| 31 | Weevil Underwood | Yu-Gi-Oh! | The Insect Swarm / Lair of the Parasites / Perfectly Ultimate Great Moth | 2 |
+| 32 | Rex Raptor | Yu-Gi-Oh! | Primal Instinct / Jurassic Rampage / The Tyranno Pride | 5 |
+| 33 | Zigfried von Schroeder | Yu-Gi-Oh! | The Prince of the Nibelung / Wotan's Judgment / Valkyrie's Wrath |  |
+| 34 | Odion | Yu-Gi-Oh! | The Tomb Keeper / The Sealed Soul / Embodiment of Apophis |  |
+| 35 | Mako Tsunami | Yu-Gi-Oh! | The Rage of the Sea / Fishermen of the Deep / Legendary Ocean's Fury | 3 |
+| 36 | Yubel | GX | The Gaze of the Spirit / Love Beyond Rebirth / The Ultimate Nightmare | 17 |
+| 37 | Sartorius | GX | The First Card of Fortune / Reading the Arcana / The Destiny of the Light Ruler | 16 |
+| 38 | Bastion Misawa | GX | Magnetic Attraction / Polarity of the Warriors / The Magna Warrior and the Water Dragon | 15 |
+| 39 | Nightshroud | GX | A Spotlight in the Dark / Red-Eyes in the Night / The Darkness Takes the Stage | 16 |
+| 40 | Tyranno Hassleberry | GX | Dino Rush / Jurassic Ambush / Rise of the Ultimate Tyranno | 13 |
+| 41 | Axel Brodie | GX | Burning Streets / Volcanic Eruption / Doomfire of the Volcano King | 21 |
+| 42 | Camula | GX | Bloodline of the Night / The Vampire Court / Genesis of the Vampire Queen | 13 |
+| 43 | Lyman Banner | GX | The Alchemist's Laboratory / Transmutation of Gold / The Great Work of Amnael | 25 |
+| 44 | Jim Crocodile Cook | GX | Fossil Dig Site / Fossil Fusion Awakened / The Skull Convoy Rolls Out | 13 |
+| 45 | Blair Flannigan | GX | Love at First Sight / The Maidens' Charm / The Mystic Dragon's Promise | 15 |
+| 46 | Z-one | 5D's | Echoes of Tomorrow / Sandaion's Standby / The Last of the Timelords | 12 |
+| 47 | Rex Goodwin | 5D's | Spirits of the Bound Land / The Immortals Rise / The Wrath of Wiraqocha Rasca | 7 |
+| 48 | Aporia | 5D's | Armies of the Meklords / Emperors of the Machine World / The Meklord Emperors ∞ | 17 |
+| 49 | Primo | 5D's | Wisel's Vanguard / Carriers of the Meklord Army / Primo, Guardian of the Future | 18 |
+| 50 | Antinomy | 5D's | Genus Trials / Technical Genus Strike / Halberd Cannon, the Final Genus |  |
+| 51 | Misty Tredwell | 5D's | Cold Gaze of the Reptilianne / Sad Stories of the Serpent / The Gaze That Turns to Stone | 12 |
+| 52 | Roman Goodwin | 5D's | Webs in the Dark / The Bound Deity Stirs / Roman Goodwin, the Weaver of Fate | 13 |
+| 53 | Sherry LeBlanc | 5D's | The Garden of Fleur-de-lis / Thorns of the Noble Rose / Chevalier de Fleur, Knight of the Lily | 15 |
+| 54 | Greiger | 5D's | Spirits in the Quake / The Earth Cries Out / Chacu Challhua, the Fury of Earth | 17 |
+| 55 | Tetsu Trudge | 5D's | Sector Security Patrol / The Security Barricade / Gate Guardian, Sector Security's Pride | 18 |
+
+Ishizu Ishtar, Sartorius and Z-one have the heroes' Heart of the Cards (`npc.rs` `SEERS`): before each draw the bot
+puts the card it needs most on top of their Deck. Measured in self-play before it was kept (24 duels each, the same
+seeds): wins 13 to 16, 10 to 19 and 4 to 21.
+
+The Dark Signers (Rex Goodwin, Roman Goodwin, Greiger, and Trudge's last level) play Dark Tuner Nightmare Hand and
+Catastrogue: their effect Tributes the Dark Tuner and a lower non-Tuner to bring any Synchro Monster of the Levels'
+difference (Underground Arachnid, Hundred Eyes Dragon, Dark Diviner, which with anime cards on are Dark Synchro Monsters,
+and the printed Frozen Fitzgerald and Dark Highlander; `tests/dark_synchro.rs`). A true Dark Synchro Summon needs an
+anime Dark Tuner (setcode 0x600, batches 32-34), whose Level minus the non-Tuner's is the Dark Synchro's: Roman's
+Spider Cocoon (5) makes Dark Diviner with a Level 1, Greiger's Doom Submarine (9) Underground Arachnid with a Level 3,
+Trudge's Chaos Rogue (8) Dark Diviner with a Level 4. Rex's Dark Goddess Witaka (3) takes a Synchro Monster's
+Level for 1000 LP: at Hundred Eyes Dragon's 8 she makes Dark Diviner with a Level 4, or Underground Arachnid with Man-Eater Bug (2).
 
 ## Adding a character
 
@@ -55,12 +133,14 @@ Add an entry to `engine/added/npcs.json`:
 
 | Field | Meaning |
 | --- | --- |
-| `slot` | 25-29, one per character |
+| `slot` | 25-99, one per character |
 | `name`, `help` | Kaiba Corporation's list and info panel (text ids `0x5208 + 2·slot` and `+1`). Keep the help in the character's world (no "anime cards") |
 | `series` | the tab: 0 Yu-Gi-Oh!, 1 GX, 2 5D's |
 | `body` | the game NPC (0-24) whose skeleton and 53 animations it moves with |
 | `figure` | `"mannequin"` for our clothes-store mannequin on that skeleton; absent: the game NPC's own body and skins |
-| `levels` | three, easiest first: a deck `title` (text `0x5FB4 + 2·id`), the printed `deck` (and optional `extra`), and an `anime_deck` (and `anime_extra`) played while `anime-cards` is on; 40-60 cards, each by its exact English name as the server knows it (the game's cards and the added ones) |
+| `cutin_bg` | the duel cut-in's background, `data/gfx/cutin_bg_npc01.swf` to `10` (optional; absent: the body's) |
+| `levels[].anime_waiting` | anime-only cards of a later batch the anime deck wants (optional): `[{"card": "…", "instead": "…"}]`, each in place of one copy of `instead` (in `anime_deck`, or `anime_extra` for an Extra Deck card) until the server has the card, then swapped in by itself (`AddedNpcLevel::anime_cards`) |
+| `levels` | three, easiest first: a deck `title` (text `0x5FB4 + 2·id`, from id 250 `200000 + 2·id`), the printed `deck` (and optional `extra`), and an `anime_deck` (and `anime_extra`) played while `anime-cards` is on; 40-60 cards, each by its exact English name as the server knows it (the game's cards and the added ones) |
 | `lines` | what they say, by line number (below) |
 
 Then run `python3 tools/engine/added-cards.py` (writes `added-cards.json`), add the character's bot style to
@@ -176,7 +256,10 @@ than 256 or not a power of two, a mesh with no visibility track (shown by defaul
 
 ## Checking it
 
-- `cargo nextest run -p yo3-server --test custom_npc` (roster, tab, both decks complete), `-p yo3-data --test models`
+- `cargo nextest run -p yo3-server --test custom_npc` (roster, tab, every character's decks known and legal in both
+  modes, a bot style each), `task check:npcs` (`tests/custom_npc_selfplay.rs`: each level's deck in duels the bot plays
+  on both sides against a hero of its series, anime cards off and on, under the duel check; a report of results, stalls
+  and the bosses summoned), `-p yo3-data --test models`
   (every game model round-trips; the mannequin builds and keeps its 53 animations).
 - Live, with a scratch server (`task dev:server`, `scratch-server.py admin set anime-cards on|off`) and the headless
   client: Kaiba Corporation (765, 275), click through the greeting to the list, select the character (its portrait and

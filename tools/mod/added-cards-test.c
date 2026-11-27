@@ -36,6 +36,14 @@ int main(void) {
     assert(!yo3_added_npc_path("C:/x", "data/npc/npcsel024.png", out, sizeof out));
     assert(!yo3_added_npc_path("C:/x", "data/model/np02.mdl", out, sizeof out));
     assert(!yo3_added_npc_path("C:/x", "data/model/../np025.mdl", out, sizeof out));
+    /* A custom NPC's donor.txt: the donor's animations, then its cut-in background (else the donor's: 0). */
+    int donor, bg;
+    yo3_npc_donor("5", &donor, &bg); assert(donor == 5 && bg == 0);
+    yo3_npc_donor("12\n7", &donor, &bg); assert(donor == 12 && bg == 7);
+    yo3_npc_donor("3 10\r\n", &donor, &bg); assert(donor == 3 && bg == 10);
+    yo3_npc_donor("25 11", &donor, &bg); assert(donor == 0 && bg == 0);     /* no such NPC or background */
+    yo3_npc_donor("4 0", &donor, &bg); assert(donor == 4 && bg == 0);
+    yo3_npc_donor("", &donor, &bg); assert(donor == 0 && bg == 0);
     /* The Anime Collection pack: its file, the text tables and its picture, however Flash names the folder. */
     assert(yo3_added_pack_path("C:/x", "data/pack/300.y3a", out, sizeof out) && !strcmp(out, "C:/x/pack/300.y3a"));
     assert(!yo3_added_pack_path("C:/x", "data/pack/300.y3d", out, sizeof out));

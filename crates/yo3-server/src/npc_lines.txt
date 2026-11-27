@@ -346,3 +346,426 @@ win: Your soul belongs to the Orichalcos now, {you}.
 lose: Your heart's light... is stronger than I believed. Remember this duel, {you}.
 trump: The Seal of Orichalcos | The Seal is cast! Your soul is the price, {you}.
 trump: Divine Serpent Geh | Awaken, Divine Serpent! The Leviathan's herald comes.
+
+[Rafael]
+greet: The Guardians stand with me, {you}. Show me your resolve.
+greet: Come. Face the strength of the gods' own guardians.
+turn: The Guardians watch. I draw.
+turn: Patience. Honour is the only thing that wins a duel.
+ace: Stand, {card}! Guardian of the gods!
+ace: {card}, answer my call!
+direct: Your defence is gone. Guardian, strike!
+hurt: A fine blow. But the Guardians do not fall.
+win: The Guardians were with me today, {you}.
+lose: You fought with honour, {you}. I accept this defeat.
+trump: Guardian Eatos | Guardian Eatos, take the field! Show the gods' mercy.
+trump: Guardian Angel Joan | Descend, Joan! Lead the Guardians!
+
+[Valon]
+greet: Oi, {you}! Hope you've got thick skin, mate!
+greet: Ready for a scrap, {you}? Let's get stuck in!
+turn: My turn! Time to armor up.
+turn: Don't blink, mate. I'm just getting started.
+ace: Say hello to {card}! Suit up!
+ace: {card}, get in there and show 'em how it's done!
+direct: Wide open! Take this, mate!
+hurt: Ow! Lucky shot, that. You'll pay for it.
+win: Told ya I wouldn't lose, {you}. Good scrap, though.
+lose: Fair play, {you}. You beat me clean.
+trump: Gearfried the Iron Knight | Gearfried, armor up and show 'em what you've got!
+trump: Mirage Knight | Come on out, Mirage Knight! Let's put on a show!
+
+[Alister]
+greet: So you have come, {you}. Let us see how long you last against my machines.
+greet: The fortress is ready, {you}. Are you?
+turn: Systems online. My turn.
+turn: Everything is going as calculated.
+ace: Behold {card}! Iron and fire, in perfect order!
+ace: Deploy, {card}! Show no mercy!
+direct: No cover left. Open fire!
+hurt: A scratch on the armour. Nothing more.
+win: Calculated, {you}. You never had a chance.
+lose: Your skill is real, {you}. The fortress has fallen.
+trump: Air Fortress Ziggurat | Take to the sky, Air Fortress Ziggurat! Bring down the heavens!
+trump: Machine King | Machine King, rise! Let the iron rain begin.
+
+[Noah Kaiba]
+greet: Welcome to my world, {you}! I hope you like losing!
+greet: Ready to play, {you}? In my world, I make the rules!
+turn: My turn! Let's see what the game gives me.
+turn: This world is mine, and so is this move.
+ace: Appear, {card}! This is my world!
+ace: {card}! Go show them who's in charge here!
+direct: Nothing in the way! Take it!
+hurt: Ow! You'll pay for that one, {you}!
+win: That's game, {you}! This world is mine.
+lose: No way! I lost in my own world... Good game, {you}.
+trump: Shinato, King of a Higher Plane | Shinato! Rule over this world with me!
+trump: Shinato's Ark | The Ark opens! Come forth, king of a higher plane!
+
+[Ishizu Ishtar]
+greet: Fate has brought you here, {you}. Let us see what it intends.
+greet: The tablet foretold your coming, {you}. Let us begin.
+turn: Fate turns another page. I draw.
+turn: As the Millennium Necklace showed me.
+ace: Awaken, {card}! The ancients answer.
+ace: {card}, rise from the sands of time!
+direct: Fate has left you open. Attack.
+hurt: You have changed fate for a moment... but only a moment.
+win: Fate decided it, {you}. It was written.
+lose: You have rewritten fate, {you}. Well fought.
+trump: Exodia the Forbidden One | The Forbidden One is whole! Obliterate!
+trump: Andro Sphinx | Andro Sphinx, rise! Guard the secrets of the ancients.
+heart: The Necklace has shown me this card. It comes now.
+heart: I have seen this draw before, in the light of the Millennium Necklace.
+
+[Weevil Underwood]
+greet: Hey, {you}! Get ready to be swarmed by my insects!
+greet: Bug off, {you}! I'm gonna squash you flat!
+turn: My turn, loser! Let's squash you.
+turn: Heh heh! My bugs are hungry, {you}.
+ace: Crawl out, {card}! Crush 'em!
+ace: Go get 'em, {card}! Chomp, chomp!
+direct: Nothing in the way! Eat 'em up, my pets!
+hurt: Ow! That's cheating, {you}! You'll pay!
+win: Another bug squashed! Ha ha ha!
+lose: My bugs! No fair, {you}! I'll get you next time!
+trump: Perfectly Ultimate Great Moth | Behold my perfect moth! The strongest insect ever!
+trump: Insect Queen | Insect Queen, swarm the field! Squash them all!
+
+[Rex Raptor]
+greet: Hey, {you}! My dinosaurs are hungry! Let's rumble!
+greet: Roooar! You ready to get stomped, {you}?
+turn: My turn! Let's get wild!
+turn: Come on, {you}, don't just stand there!
+ace: Rawr! Go {card}! Stomp 'em flat!
+ace: Come out, {card}! Show 'em the king of the dinosaurs!
+direct: Wide open! Chomp 'em!
+hurt: Ow! You'll pay for that, {you}!
+win: Dinosaurs rule! Ha ha, nice try, {you}!
+lose: Aw, man! My dinosaurs! You're pretty good, {you}.
+trump: Ultimate Tyranno | Ultimate Tyranno, roar! Crush everything!
+trump: Black Tyranno | Black Tyranno, rise! Show them real power!
+
+[Zigfried von Schroeder]
+greet: Welcome, {you}. Show me you are worthy of this duel.
+greet: I have trained for this, {you}. Let us begin.
+turn: My turn. I will not waste it.
+turn: Discipline wins duels, {you}. I draw.
+ace: Fly, {card}! Bring me victory!
+ace: Rise, {card}! The Nibelung's might is yours!
+direct: Your guard is down. Strike!
+hurt: Not bad. But I am only beginning.
+win: Victory, {you}. Train harder.
+lose: You were stronger, {you}. I must train more.
+trump: Swan Maiden | Swan Maiden, spread your wings! Fly for the Nibelung!
+trump: Guardian Angel Joan | Joan, ascend! Lead the Valkyries into battle!
+
+[Odion]
+greet: You have come, {you}. I must ask you to turn back.
+greet: Forgive me, {you}. I cannot let you pass.
+turn: I draw.
+turn: Please be careful. There are traps here.
+ace: Rise, {card}! Guard my master!
+ace: {card}, protect us!
+direct: Forgive me. I must attack.
+hurt: You are strong. But I cannot yield.
+win: Forgive me, {you}. I had to protect my master.
+lose: You are strong, {you}. I have failed.
+trump: Embodiment of Apophis | Rise, Embodiment of Apophis! Devour the intruder!
+trump: Mirror Force | Mirror Force! Turn their attack on them.
+
+[Mako Tsunami]
+greet: Ahoy, {you}! Time to dive right in!
+greet: The sea is calling, {you}! Let's duel!
+turn: My turn! Let's make a splash!
+turn: Come on, {you}, the sea won't wait!
+ace: Surface, {card}! Make some waves!
+ace: Rise, {card}! Show them the power of the sea!
+direct: Wide open! Wave attack!
+hurt: Ow! The tide will turn, {you}!
+win: Smooth sailing, {you}! Better luck next time!
+lose: I'm washed up! Great duel, {you}!
+trump: Umi | Feel the might of the ocean! The Umi is mine!
+trump: Great White | Great White, bite! Bring them to the deep!
+
+[Yubel]
+greet: You came to me at last, {you}. Do not expect mercy.
+greet: Pain brought us here, {you}. Let it end in this duel.
+turn: I will protect what I love.
+turn: Do not look away from me.
+ace: Awaken, {card}! Show them my sorrow!
+ace: {card}, come forth! Bear my pain!
+direct: Feel the pain I have carried!
+hurt: You hurt me... but I will not fall.
+win: Stay with me, {you}. You will never be alone again.
+lose: Your heart is stronger than my pain, {you}... I am free.
+trump: Yubel | Yubel awakens. No harm shall come to me.
+trump: Yubel - Terror Incarnate | My love has become terror. Run, if you can.
+trump: Yubel - The Ultimate Nightmare | This is the end of my sorrow... and yours.
+
+[Sartorius]
+greet: I foresaw your coming, {you}. Let the cards judge you.
+greet: Fate brought you here, {you}. Show me yours.
+turn: The cards have spoken. I draw.
+turn: Fate turns, as it was written.
+ace: Behold {card}! Destiny itself fights for me!
+ace: {card}, rise! The Arcana's will is absolute!
+direct: Fate leaves you no shield.
+hurt: A blow the cards did not show... but fate bends back.
+win: The cards never lie, {you}. This was always written.
+lose: The cards... were wrong. You have my respect, {you}.
+trump: Arcana Force EX - The Light Ruler | The Light Ruler descends! Fate is sealed.
+trump: Arcana Force EX - The Dark Ruler | The Dark Ruler comes! The coin falls where it must.
+trump: Arcana Knight Joker | The three knights unite as the Joker! Fate cannot touch him.
+heart: The cards told me this draw long ago. Destiny cannot be avoided.
+heart: As I foretold. Fate has dealt me exactly what I need.
+
+[Bastion Misawa]
+greet: Let me calculate your odds, {you}. The numbers favour me.
+greet: A new test subject, {you}? The experiment begins.
+turn: My turn. The formula is ready.
+turn: Calculated, as always.
+ace: By my formula, {card}! The experiment succeeds!
+ace: Behold {card}! Perfect science!
+direct: Your defence is zero. The math is simple.
+hurt: A blow outside my calculations. I will adjust.
+win: As calculated, {you}. The data was in my favour.
+lose: My formula failed. Fascinating work, {you}.
+trump: Valkyrion the Magna Warrior | Alpha, Beta, Gamma unite! Valkyrion, the Magna Warrior!
+trump: Water Dragon | The Water formula is complete! Water Dragon, appear!
+trump: Bonding - H2O | Two parts hydrogen, one part oxygen. Bonding - H2O!
+
+[Nightshroud]
+greet: The curtain rises, {you}. Step into the dark.
+greet: I am Nightshroud. Let the darkness judge you, {you}.
+turn: The show goes on.
+turn: Darkness gathers around you.
+ace: Shroud the stage, {card}!
+ace: {card}, rise from the dark!
+direct: No light shields you from the dark.
+hurt: A sharp blow... but the dark only grows deeper.
+win: The curtain falls on you, {you}.
+lose: You carried the light through the dark, {you}. Well played.
+trump: Red-Eyes Darkness Dragon | Darkness is born! Red-Eyes Darkness Dragon, rise!
+trump: Red-Eyes B. Dragon | Rise from the shadows, Red-Eyes!
+
+[Tyranno Hassleberry]
+greet: Yo, {you}! Get ready for a dino-mite duel, sir!
+greet: Time for a stampede, {you}! Ya ready?
+turn: My turn, sir! I'm chargin' in!
+turn: Ya can't outrun a Tyranno!
+ace: Roar, {card}! Show 'em who rules!
+ace: {card}, charge! Squash 'em flat!
+direct: Nothin' left to stop me! Direct attack, sir!
+hurt: Ya got me good, sir! But a dino never quits!
+win: Dino-mite victory! Good duel, {you}, sir!
+lose: I got stomped, {you}! Ya fought like a true soldier!
+trump: Ultimate Tyranno | Ultimate Tyranno! Nobody stands up to this king!
+trump: Jurassic World | Welcome to Jurassic World, sir! The dinos get stronger!
+
+[Axel Brodie]
+greet: Let's turn up the heat, {you}!
+greet: Hey {you}, ready to get burned?
+turn: My turn! Time to light it up!
+turn: The volcano's still hot, kid!
+ace: Erupt, {card}! Burn it all down!
+ace: {card}, fire it up!
+direct: Nothing to stop me! Burn, {you}!
+hurt: Ow! Hot stuff... but I'm still burnin'!
+win: Another one burned! Good duel, {you}!
+lose: You took the heat and beat me, {you}. Respect.
+trump: Volcanic Doomfire | Doomfire! Come burn it all to the ground!
+trump: Volcanic Queen | Volcanic Queen! Take 'em down, her fire never goes out!
+
+[Camula]
+greet: Welcome to the night, {you}. Come closer.
+greet: Do you taste of fear, {you}? Let us see.
+turn: The night grows longer.
+turn: Do not worry, darling. It will be quick.
+ace: Rise, {card}! Feast on the living!
+ace: {card}, my pet! Drink deep!
+direct: You have no guard, darling. Sweet.
+hurt: A bite from the living... how rude.
+win: Sleep now, {you}. The night belongs to me.
+lose: Your blood is too strong, {you}. I yield.
+trump: Vampire Genesis | Vampire Genesis! The queen's child awakens!
+trump: Vampire Lord | The Vampire Lord rises to feast!
+trump: Zombie World | The world turns to my court of the dead!
+
+[Lyman Banner]
+greet: Welcome to my laboratory, {you}. The experiment begins.
+greet: A new subject, {you}? Fascinating.
+turn: My turn. Let us transmute.
+turn: Observe the reaction.
+ace: Behold the Great Work, {card}!
+ace: {card}, transmuted from lead to gold!
+direct: No defence. The reaction is complete.
+hurt: A reaction I did not expect... fascinating.
+win: The experiment is a success, {you}.
+lose: A failed formula... well done, {you}.
+trump: Alchemy Cycle | The cycle of alchemy spins! Nothing is lost, only changed.
+trump: Dimensional Alchemist | Dimensional Alchemist, turn the void to gold!
+
+[Jim Crocodile Cook]
+greet: G'day {you}! Ready for a dig, mate?
+greet: Crikey, a fresh opponent! Let's go, {you}!
+turn: My turn, mate! Time to dig!
+turn: Fossils never sleep for long!
+ace: Wake up, {card}! Show 'em what the ages made!
+ace: {card}! Crikey, what a beauty!
+direct: No guard, mate! Chomp!
+hurt: Crikey, that stung! But old ones don't die easy!
+win: Good duel, {you}, mate! The old ones win again!
+lose: Crikey, ya beat me, {you}! Top duel, mate!
+trump: Fossil Fusion | Fossil Fusion! Wake up, old ones!
+trump: Fossil Machine Skull Convoy | Skull Convoy, roll out, mate!
+
+[Blair Flannigan]
+greet: Hi, {you}! Let's have a fun duel!
+greet: I'm Blair! Ready to lose your heart, {you}?
+turn: My turn! Let's go!
+turn: Isn't this fun?
+ace: Go, {card}! Win it for love!
+ace: {card}, show them what you've got!
+direct: Direct attack! Take that, {you}!
+hurt: Ouch! That hurt, {you}! Now I'm mad!
+win: Yay! I won, {you}! Let's duel again!
+lose: Aww, you won, {you}! You're really strong!
+trump: Maiden in Love | Maiden in Love! Your monsters can't resist her charm!
+trump: Mystic Dragon | Mystic Dragon, I believe in you!
+
+[Z-one]
+greet: Four hundred years I have watched, {you}. Show me what your bonds are worth.
+greet: A new hour begins, {you}. Let time judge you.
+turn: Time moves forward. So must you.
+turn: Each turn is a grain of sand, {you}. Yours are running low.
+ace: Come, {card}, a keeper of the hours!
+ace: Rise, {card}! Time itself answers!
+direct: There is no future where this attack misses.
+hurt: A strong blow... but time is not so easily broken.
+win: The future ends here, {you}. I am sorry.
+lose: Perhaps... there is hope after all, {you}. Take it with you.
+trump: Sandaion, the Timelord | The Timelord of time's beginning! Stand with me, Sandaion!
+trump: Sephylon, the Ultimate Timelord | Sephylon! Judge the end of time!
+heart: I have seen this moment in the future. The card I need is here.
+heart: Every draw was decided before your time began.
+
+[Rex Goodwin]
+greet: Neo Domino answers to me, {you}. Let the Immortals judge your worth.
+greet: Another challenger, {you}. Kneel now and spare yourself.
+turn: The Earth does not hurry. Neither do I.
+turn: Every turn brings you closer to the ground.
+ace: Awake, {card}, god of the Nazca lines!
+ace: Rise, {card}! The Earth is yours to break!
+direct: Nothing stands between you and the Immortals.
+hurt: A tremor... the Earth has barely stirred.
+win: The Earth claims you, {you}. Kneel.
+lose: You have shaken the Immortals, {you}. Remember it well.
+trump: Earthbound Immortal Wiraqocha Rasca | Wiraqocha Rasca, the Earthbound god, awakens!
+
+[Aporia]
+greet: I carry the end of the world, {you}. Forgive me.
+greet: The future must be saved, {you}. I cannot afford to lose.
+turn: There is no time left. I will end this.
+turn: Each turn is a step toward the end, {you}.
+ace: Rise, {card}! Emperor of the machines!
+ace: {card}! Carry my despair!
+direct: Forgive me, {you}. This ends now.
+hurt: A heavy blow... but I must not fall.
+win: Forgive me, {you}. The future needed this.
+lose: Perhaps you can change what I could not, {you}.
+trump: Meklord Emperor Wisel ∞ | Wisel, Emperor of the machines, descend!
+trump: Meklord Emperor Granel ∞ | Granel! Crush the world's hope!
+
+[Primo]
+greet: Aporia is not alone, {you}. I fight beside him.
+greet: Stand aside, {you}, or the Meklord Army will move you.
+turn: The Army marches on. Keep up, {you}.
+turn: One more step toward the future.
+ace: Come, {card}! For the future!
+ace: Form up, {card}! The Army answers!
+direct: Nothing stops the Meklord Army!
+hurt: That hurt... but we do not retreat.
+win: Forgive me, {you}. The future comes first.
+lose: Aporia... forgive me. Well fought, {you}.
+trump: Meklord Army of Wisel | Meklord Army of Wisel, take your place!
+
+[Antinomy]
+greet: Hello, {you}. I have been expecting you.
+greet: Let us compare our results, {you}. Please begin.
+turn: Turn recorded. Proceed, {you}.
+turn: The data is gathering nicely.
+ace: Synchro Summon! Appear, {card}!
+ace: Technical Genus, assemble! {card}!
+direct: The result is as calculated.
+hurt: An unexpected value. Noted.
+win: The data was clear, {you}. Thank you for the match.
+lose: My numbers were wrong, {you}. I will learn from this.
+trump: T.G. Halberd Cannon | Halberd Cannon! The final Technical Genus!
+trump: T.G. Blade Blaster | Blade Blaster, cut through!
+
+[Misty Tredwell]
+greet: Do not look away, {you}. Look at me.
+greet: Another sad story begins, {you}. Please, sit.
+turn: How sad. It is my turn again.
+turn: The story goes on, {you}.
+ace: Look into the gaze of {card}!
+ace: Come, {card}. Turn them to stone.
+direct: Do not close your eyes, {you}.
+hurt: That hurt... but my gaze does not blink.
+win: How sad it ends, {you}. Goodnight.
+lose: Your story is the stronger, {you}. I am glad.
+
+[Roman Goodwin]
+greet: Welcome, {you}. Please, step into my web.
+greet: A new thread, {you}. Let us see how long it holds.
+turn: The web is patient, and so am I.
+turn: Another thread is spun, {you}.
+ace: Weave, {card}! Bind them in fate!
+ace: Come, {card}. The web is yours.
+direct: There is nowhere left to struggle.
+hurt: A thread snapped... but the web remains.
+win: The web holds, {you}. Rest now.
+lose: You broke my web, {you}. My brother will not be pleased.
+trump: Spider Web | The web closes. Do not struggle, {you}.
+
+[Sherry LeBlanc]
+greet: Bonjour, {you}. Do try to entertain me.
+greet: The Fleur-de-lis blooms for me, {you}. Show me your pride.
+turn: How dull. My turn already.
+turn: Another petal falls, {you}.
+ace: Bloom, {card}! Show them the thorns!
+ace: Synchro Summon! Come forth, {card}!
+direct: Wilt before me, {you}.
+hurt: How dare you wound a LeBlanc!
+win: You have wilted, {you}. Magnifique.
+lose: Magnifique, {you}. You have more spirit than I thought.
+trump: Chevalier de Fleur | Chevalier de Fleur! Knight of the Lily, ride!
+trump: Sorciere de Fleur | Sorciere de Fleur! Bloom into darkness!
+
+[Greiger]
+greet: You will not leave here alive, {you}.
+greet: Another fool, {you}. Come, then.
+turn: My turn. Do not blink.
+turn: Run if you want, {you}. The Earth will catch you.
+ace: Dive, {card}! Tear them apart!
+ace: Rise, {card}! Crush them!
+direct: Die, {you}!
+hurt: That hurt... you will pay for it.
+win: Rex's will is done. Crawl away, {you}.
+lose: You are strong, {you}. Rex will hear of this.
+trump: Earthbound Immortal Chacu Challhua | Dive, Chacu Challhua! Tear them apart!
+
+[Tetsu Trudge]
+greet: Halt, {you}! In the name of Security, you are under arrest!
+greet: Hands where I can see them, {you}! This is Sector Security!
+turn: My turn, citizen. No sudden moves.
+turn: The law moves slowly, {you}, but it moves!
+ace: Go, {card}! In the name of Security!
+ace: Block the road, {card}!
+direct: You are under arrest, {you}!
+hurt: Ow! That is assault on an officer!
+win: Case closed, {you}! Come along quietly.
+lose: Good duel, {you}. I will put it in the file.
+trump: Gate Guardian | Gate Guardian! The pride of Sector Security!

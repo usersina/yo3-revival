@@ -15,6 +15,20 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- **30 new opponents at Kaiba Corporation.** From Duel Monsters: Rafael, Valon, Alister, Noah Kaiba, Ishizu Ishtar,
+  Weevil Underwood, Rex Raptor, Zigfried von Schroeder, Odion and Mako Tsunami. From GX: Yubel, Sartorius, Bastion
+  Misawa, Nightshroud, Tyranno Hassleberry, Axel Brodie, Camula, Lyman Banner, Jim Crocodile Cook and Blair Flannigan.
+  From 5D's: Z-one, Rex Goodwin, Aporia, Primo, Antinomy, Misty Tredwell, Roman Goodwin, Sherry LeBlanc, Greiger and
+  Tetsu Trudge. Each has three decks to beat, their own words in the talk and the duel, and their own style of play.
+  Scroll the list with the mouse wheel to find them.
+- **Room for 75 of Kaiba Corporation's own characters.** Their duels count towards their stars and Friendship Level,
+  their deck names show, and their bodies appear in the duel's cut-ins over a background of their own.
+- **Dartz's decks follow the banlist.** One Swords of Revealing Light, one Magic Cylinder and no Heavy Storm.
+- **Ishizu, Sartorius and Z-one see what is coming:** like the heroes, they draw the card they need.
+- **Zigfried calls his Valkyries,** and the Dark Signers Rex Goodwin, Roman Goodwin and Greiger bring their Dark
+  Synchro Monsters with their Dark Tuners.
+- **Earthbound Release works with anime cards on.** It used to break the duel when an Earthbound Immortal was on the
+  field.
 - **Every anime-only card of Duel Monsters, GX and 5D's that can be played.** 28 more batches, about 930 cards: the
   last Duel Monsters decks (Valon's Armor monsters, Tristan, Rebecca, Rex Raptor, Mako), all of GX (Jaden's Neos cards,
   Chazz's Ojamas, Sartorius' Arcana Force, Camula, Dr. Eisenstein, Bastion's formulas, the Dark World, Yubel) and all of
@@ -26,7 +40,6 @@ Older entries describe their release at the time. For current setup, use the [RE
 - **What can't be added yet is written down.** Riding Duel cards (Speed Spells and the cards that count Speed
   Counters), cards ProjectIgnis has only placeholders for and the 42 it lacks: the list, with why and what each would take,
   is in the docs (Anime cards left out).
-
 - **Anime-only cards, sixth batch: Battle City's and the Big Five's.** 33 more (Duke Devlin's Diamond Head Dragon and
   Adamantine Sword Revival, Odion's Seal of Serket, Gansley's Ruklamba The Spirit King, Umbra's Masked Doll and
   Masquerade, the Big Five's Dragon Revival Ritual for the anime Five-Headed Dragon, Gurimo's Bronze Knights and Shield

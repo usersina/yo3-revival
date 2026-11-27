@@ -62,6 +62,14 @@ tasks:
     env:
       YO3_CHECK_DUELS: "300"
 
+  check:npcs:
+    desc: "The custom NPCs in self-played duels: every level, anime cards off and on, the bot on both sides, under the duel check (YO3_NPC_ONLY=Name to pick)"
+    cmds:
+      - cargo nextest run --release -p yo3-server --test custom_npc_selfplay --no-capture
+    env:
+      YO3_NPC_SELFPLAY: "2"
+      YO3_NPC_JOBS: "6"
+
   check:added:
     desc: "After adding cards: the generated card files, then every added card's tests (smoke, scenarios, self-played duels)"
     cmds:

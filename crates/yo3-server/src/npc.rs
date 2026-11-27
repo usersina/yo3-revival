@@ -8,6 +8,11 @@ use serde_json::{Value as Json, json};
 
 /// The heroes: they draw the card they need (`heart_of_the_cards`).
 pub(crate) const HEROES: &[&str] = &["Yami Yugi", "Yugi Muto", "Jaden Yuki", "Yusei Fudo"];
+/// Custom NPCs who see what is coming and draw it as the heroes do: Ishizu (the Millennium Necklace), Sartorius (his
+/// fortune telling), Z-one (the future he comes from). Measured in `tests/custom_npc_selfplay.rs` before it was kept
+/// (2026-11-27, 24 duels each, the same seeds: wins 13 to 16, 10 to 19 and 4 to 21). A deeper look-ahead for the decks
+/// whose bosses need a combo (`Style` depth 4, firsts 3) was measured too and left out: no more bosses, slower answers.
+pub(crate) const SEERS: &[&str] = &["Ishizu Ishtar", "Sartorius", "Z-one"];
 
 /// (name, aggression, caution, sees)
 pub(crate) const CHARACTERS: &[(&str, f64, f64, bool)] = &[
@@ -39,6 +44,66 @@ pub(crate) const CHARACTERS: &[(&str, f64, f64, bool)] = &[
     ("Kalin Kessler", 0.5, 0.2, false),
     // Custom NPCs (engine/added/npcs.json). Dartz: patient behind his walls until the Seal is down.
     ("Dartz", 0.3, 0.4, false),
+    // Rafael: stoic, honourable, steady offence with his Guardians
+    ("Rafael", 0.3, 0.3, false),
+    // Valon: a brawler, gets stuck in and equips up
+    ("Valon", 0.6, 0.1, false),
+    // Alister: calculating, patient, builds up to his fortress
+    ("Alister", 0.3, 0.4, false),
+    // Noah Kaiba: bold and playful, overconfident
+    ("Noah Kaiba", 0.5, 0.2, false),
+    // Ishizu Ishtar: patient control, waits on Exodia and her sphinxes
+    ("Ishizu Ishtar", 0.4, 0.3, false),
+    // Weevil Underwood: aggressive, swarms with insects
+    ("Weevil Underwood", 0.6, 0.1, false),
+    // Rex Raptor: reckless, charges in with big dinosaurs
+    ("Rex Raptor", 0.8, 0.0, false),
+    // Zigfried von Schroeder: disciplined and measured
+    ("Zigfried von Schroeder", 0.4, 0.3, false),
+    // Odion: defensive, guards and waits to spring traps
+    ("Odion", -0.3, 0.7, false),
+    // Mako Tsunami: bold and cheerful, steady pressure
+    ("Mako Tsunami", 0.5, 0.2, false),
+    // Custom NPCs, GX (engine/added/npcs.json). Yubel: her best monster is untouchable, so she holds the board and waits.
+    ("Yubel", 0.1, 0.6, false),
+    // Sartorius: a patient fate-reader, balanced.
+    ("Sartorius", 0.2, 0.4, false),
+    // Bastion Misawa: a calculating scientist, careful and exact.
+    ("Bastion Misawa", 0.0, 0.7, false),
+    // Nightshroud: a showman of the dark, aggressive with his dragons.
+    ("Nightshroud", 0.5, 0.2, false),
+    // Tyranno Hassleberry: charges in with his dinosaurs, barely guards.
+    ("Tyranno Hassleberry", 0.8, 0.1, false),
+    // Axel Brodie: a hothead, all-out aggression.
+    ("Axel Brodie", 0.9, 0.1, false),
+    // Camula: bites when she can, patient between.
+    ("Camula", 0.3, 0.4, false),
+    // Lyman Banner: experimenter, cautious until the reaction is ready.
+    ("Lyman Banner", 0.1, 0.5, false),
+    // Jim Crocodile Cook: steady, builds his Fossil Fusion before striking.
+    ("Jim Crocodile Cook", 0.4, 0.3, false),
+    // Blair Flannigan: lures with her Maidens, then takes what she wants.
+    ("Blair Flannigan", 0.2, 0.5, false),
+    // Z-one: custom NPC, slot 46
+    ("Z-one", 0.5, 0.2, false),
+    // Rex Goodwin: custom NPC, slot 47
+    ("Rex Goodwin", 0.4, 0.3, false),
+    // Aporia: custom NPC, slot 48
+    ("Aporia", 0.6, 0.1, false),
+    // Primo: custom NPC, slot 49
+    ("Primo", 0.4, 0.3, false),
+    // Antinomy: custom NPC, slot 50
+    ("Antinomy", 0.2, 0.5, false),
+    // Misty Tredwell: custom NPC, slot 51
+    ("Misty Tredwell", 0.4, 0.3, false),
+    // Roman Goodwin: custom NPC, slot 52
+    ("Roman Goodwin", 0.3, 0.4, false),
+    // Sherry LeBlanc: custom NPC, slot 53
+    ("Sherry LeBlanc", 0.5, 0.2, false),
+    // Greiger: custom NPC, slot 54
+    ("Greiger", 0.8, 0.0, false),
+    // Tetsu Trudge: custom NPC, slot 55
+    ("Tetsu Trudge", 0.4, 0.3, false),
 ];
 
 /// The Millennium Eye a player can wear: Bakura's Accessories (male 84, female 342 in the item catalogue), a golden
@@ -64,7 +129,7 @@ pub fn against(style: &Json, avatar: &[u8]) -> Json {
 
 /// The style of the NPC named `name`; an NPC not listed plays the default (null).
 pub fn style(name: &str) -> Json {
-    let skills: &[&str] = if HEROES.contains(&name) { &["heart_of_the_cards"] } else { &[] };
+    let skills: &[&str] = if HEROES.contains(&name) || SEERS.contains(&name) { &["heart_of_the_cards"] } else { &[] };
     CHARACTERS.iter().find(|(n, ..)| *n == name).map_or(Json::Null, |(_, aggression, caution, sees)| {
         json!({ "aggression": aggression, "caution": caution, "sees": sees, "skills": skills })
     })
@@ -73,6 +138,15 @@ pub fn style(name: &str) -> Json {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_seers_draw_what_they_need() {
+        for seer in SEERS {
+            assert!(CHARACTERS.iter().any(|(n, ..)| n == seer), "{seer} has a style");
+            assert_eq!(style(seer)["skills"], json!(["heart_of_the_cards"]), "{seer}");
+        }
+        assert_eq!(style("Dartz")["skills"], json!([]));
+    }
 
     #[test]
     fn pegasus_sees_and_kaiba_attacks() {

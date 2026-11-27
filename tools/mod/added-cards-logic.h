@@ -105,6 +105,19 @@ static int yo3_added_npc_path(const char *folder, const char *path, char *out, s
     }
     return 0;
 }
+/* A custom NPC's `model/npNNN/donor.txt` (yo3_data::added::npc_files): the game NPC (0-24) whose animations and cut-in
+ * timing it uses, then, optionally after a space or a line break, its duel cut-in background (`cutin_bg_npc01.swf` to 10).
+ * A donor out of range is 0 (Yami Yugi); a missing or out-of-range background is 0, "the donor's". */
+static void yo3_npc_donor(const char *text, int *donor, int *bg) {
+    int n[2] = {0, 0}, k = 0, digits = 0;
+    *donor = 0; *bg = 0;
+    for (const char *c = text; c && *c && k < 2; ++c) {
+        if (*c >= '0' && *c <= '9') { if (n[k] < 1000) n[k] = n[k] * 10 + (*c - '0'); digits = 1; }
+        else if (digits) { ++k; digits = 0; }
+    }
+    if (n[0] < 25) *donor = n[0];
+    if (n[1] >= 1 && n[1] <= 10) *bg = n[1];
+}
 /* An added card's picture: the game's open of `data/card/<id>_<art>.png` (the face), `data/mini/<id>_<art>.png` (the
  * thumbnail) or `data/field/<id>_1.png` (a Field Spell's duel field) becomes `folder/card/<id>.png`, `folder/mini/<id>.png`
  * or `folder/field/<id>.png`. The launcher puts only added cards' pictures in its folder, so a game card's picture is

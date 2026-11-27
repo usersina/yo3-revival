@@ -139,8 +139,9 @@ impl AddedBanlist {
     }
 }
 
-/// A custom NPC: slot 25 on (ids `120 + 3 * slot` to `+ 2`, one per level), on a body the game has (`body`, one of its
-/// 25 NPCs: the launcher copies that NPC's model, portrait and faces until the character has its own pictures).
+/// A custom NPC: a slot in [`CUSTOM_NPC_SLOTS`] (ids `120 + 3 * slot` to `+ 2`, one per level), on a body the game has
+/// (`body`, one of its 25 NPCs: the launcher copies that NPC's model, portrait and faces until the character has its own
+/// pictures).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AddedNpc {
     pub slot: u32,
@@ -155,6 +156,10 @@ pub struct AddedNpc {
     /// own body and skins.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub figure: Option<String>,
+    /// The duel cut-in's background, `data/gfx/cutin_bg_npc01.swf` to `10` (the connection DLL's table for 0x788C40);
+    /// absent: the body's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cutin_bg: Option<u32>,
     /// Three, the easiest first: each a deck by card names (the anime deck plays while the server has anime cards on).
     pub levels: Vec<AddedNpcLevel>,
     /// What they say, by line number in their block of the UI texts (`62000 + 300 * slot + n`): per level a hundred,
@@ -176,6 +181,33 @@ pub struct AddedNpcLevel {
     pub anime_deck: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub anime_extra: Vec<String>,
+    /// Anime-only cards this level's anime deck wants that the server doesn't have yet (a later batch's): each plays
+    /// in place of one copy of `instead` (in `anime_deck` or `anime_extra`) until the server knows the card.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub anime_waiting: Vec<AnimeWaiting>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AnimeWaiting {
+    pub card: String,
+    pub instead: String,
+}
+
+impl AddedNpcLevel {
+    /// The anime deck as it plays now (main, extra): each waiting card the server knows (`known`) replaces one copy of
+    /// its stand-in, the others wait.
+    pub fn anime_cards(&self, known: impl Fn(&str) -> bool) -> (Vec<String>, Vec<String>) {
+        let (mut main, mut extra) = (self.anime_deck.clone(), self.anime_extra.clone());
+        for w in self.anime_waiting.iter().filter(|w| known(&w.card)) {
+            for list in [&mut main, &mut extra] {
+                if let Some(at) = list.iter().position(|n| *n == w.instead) {
+                    list[at] = w.card.clone();
+                    break;
+                }
+            }
+        }
+        (main, extra)
+    }
 }
 
 /// The first NPC id (0x4BFE34): NPC k's levels are `FIRST_NPC_ID + 3k` to `+ 2`.
@@ -185,6 +217,43 @@ pub const NPC_NAME_TEXT: u32 = 0x5208;
 pub const NPC_DECK_TITLE_TEXT: u32 = 0x5FB4;
 /// NPC k's lines: texts `62000 + 300k` on (Pegasus's "My turn now!" is 63501).
 pub const NPC_LINES_TEXT: u32 = 62000;
+/// The Kaiba Corporation slots a custom NPC can take: past the game's 25 (0-24), up to 99, the last whose name
+/// (`NPC_NAME_TEXT + 2 * slot`) is a free text (slot 100's is another of the game's). The connection DLL makes room for
+/// as many (`NPC_SLOTS` in tools/mod/card-profile.h), moves the deck titles from id 250 ([`deck_title_text`]) and reads
+/// the players' NPC experience (the record's `npcbin`, 0x51C680) up to id 512. docs/custom-npcs.md has the limits.
+pub const CUSTOM_NPC_SLOTS: std::ops::RangeInclusive<u32> = 25..=99;
+/// The first NPC id whose deck title the connection DLL looks up at [`NPC_HIGH_DECK_TITLE_TEXT`]: the game's
+/// `NPC_DECK_TITLE_TEXT + 2 * id` is a player title from there (text 25000, "THE AFRO KAISER").
+pub const FIRST_HIGH_TITLE_ID: u32 = 250;
+pub const NPC_HIGH_DECK_TITLE_TEXT: u32 = 200_000;
+
+/// NPC id `id`'s deck title text: the game's below [`FIRST_HIGH_TITLE_ID`], the DLL's moved one from there
+/// (tools/mod/card-profile.h `npc_ids_install`, at the three lookups 0x4BB299, 0x4BFE05, 0x5174A8).
+pub fn deck_title_text(id: u32) -> u32 {
+    if id < FIRST_HIGH_TITLE_ID { NPC_DECK_TITLE_TEXT + 2 * id } else { NPC_HIGH_DECK_TITLE_TEXT + 2 * id }
+}
+
+/// Checks the custom NPCs: each in [`CUSTOM_NPC_SLOTS`], one per slot, on a game body (0-24), three levels, a cut-in
+/// background of 1-10.
+pub fn check_npcs(npcs: &[AddedNpc]) -> Result<(), String> {
+    let mut seen = std::collections::HashSet::new();
+    for npc in npcs {
+        let (first, last) = (CUSTOM_NPC_SLOTS.start(), CUSTOM_NPC_SLOTS.end());
+        if !CUSTOM_NPC_SLOTS.contains(&npc.slot) || npc.body >= 25 {
+            return Err(format!("{}: slot {} ({first}-{last}) on body {} (0-24)", npc.name, npc.slot, npc.body));
+        }
+        if !seen.insert(npc.slot) {
+            return Err(format!("{}: slot {} is another NPC's", npc.name, npc.slot));
+        }
+        if npc.levels.len() != 3 {
+            return Err(format!("{}: {} levels, not 3", npc.name, npc.levels.len()));
+        }
+        if npc.cutin_bg.is_some_and(|bg| !(1..=10).contains(&bg)) {
+            return Err(format!("{}: cut-in background {:?} (1-10)", npc.name, npc.cutin_bg));
+        }
+    }
+    Ok(())
+}
 
 impl AddedNpc {
     /// Its three NPC ids, one per level.
@@ -196,7 +265,7 @@ impl AddedNpc {
     /// Its UI texts: name, help and each level's deck title.
     pub fn texts(&self) -> Vec<(u32, String)> {
         let mut out = vec![(NPC_NAME_TEXT + 2 * self.slot, self.name.clone()), (NPC_NAME_TEXT + 2 * self.slot + 1, self.help.clone())];
-        out.extend(self.ids().iter().zip(&self.levels).map(|(id, level)| (NPC_DECK_TITLE_TEXT + 2 * id, level.title.clone())));
+        out.extend(self.ids().iter().zip(&self.levels).map(|(id, level)| (deck_title_text(*id), level.title.clone())));
         out.extend(self.lines.iter().filter_map(|(n, text)| Some((NPC_LINES_TEXT + 300 * self.slot + n.parse::<u32>().ok().filter(|&n| n < 300)?, text.clone()))));
         out
     }
@@ -226,6 +295,7 @@ impl Added {
                 return Err(format!("added cards: {}'s row doesn't hold its Konami id {}", card.name, card.cid));
             }
         }
+        check_npcs(&added.npcs).map_err(|e| format!("added cards: custom NPC {e}"))?;
         Ok(added)
     }
 
@@ -505,11 +575,9 @@ fn skins(mesh: &[u8]) -> Vec<String> {
 /// `data/model/np025.mdl`, `data/npc/npcsel025.png`, `data/face/np025f0.png`...): the model names its skins relatively,
 /// so it wears the borrowed NPC's.
 pub fn npc_files(read: &impl Fn(&str) -> Option<Vec<u8>>, added: &Added) -> Result<Vec<(String, Vec<u8>)>, String> {
+    check_npcs(&added.npcs)?;
     let mut out = vec![];
     for npc in &added.npcs {
-        if !(25..30).contains(&npc.slot) || npc.body >= 25 {
-            return Err(format!("{}: slot {} (25-29) on body {} (0-24)", npc.name, npc.slot, npc.body));
-        }
         let (from, to) = (npc.body, npc.slot);
         let model = format!("data/model/np{from:03}.mdl");
         let mut mesh = read(&model).ok_or_else(|| format!("the game has no {model}"))?;
@@ -527,8 +595,10 @@ pub fn npc_files(read: &impl Fn(&str) -> Option<Vec<u8>>, added: &Added) -> Resu
             }
         }
         out.push((format!("data/model/np{to:03}/np{to:03}.mdl"), mesh));
-        // Which game NPC's animations it plays, for the DLL's cut-in timing (tools/mod/card-profile.h).
-        out.push((format!("data/model/np{to:03}/donor.txt"), from.to_string().into_bytes()));
+        // Which game NPC's animations it plays, for the DLL's cut-in timing, then its cut-in background when it has its
+        // own (tools/mod/card-profile.h, `yo3_npc_donor`; an older DLL reads only the first number).
+        let donor = match npc.cutin_bg { Some(bg) => format!("{from}\n{bg}"), None => from.to_string() };
+        out.push((format!("data/model/np{to:03}/donor.txt"), donor.into_bytes()));
         // Its portrait and duel faces: the mannequin's own pictures, else the borrowed NPC's.
         let mannequin = npc.figure.as_deref() == Some("mannequin");
         let portrait = if mannequin { Some(crate::doll::portrait_png()) } else { read(&format!("data/npc/npcsel{from:03}.png")) };
@@ -737,4 +807,64 @@ mod tests {
         db.add(&spell).unwrap();
         assert_eq!(db.by_row(3).map(|c| (c.cid, c.extra_deck())), Some((11, false)));
     }
+
+    fn npc(slot: u32) -> AddedNpc {
+        AddedNpc { slot, name: format!("N{slot}"), help: "H".into(), series: 0, body: 3, figure: None, cutin_bg: None,
+            levels: (0..3).map(|_| AddedNpcLevel { title: "T".into(), deck: vec![], extra: vec![], anime_deck: vec![], anime_extra: vec![], anime_waiting: vec![] }).collect(),
+            lines: Default::default() }
+    }
+
+    #[test]
+    fn custom_npcs_take_slots_25_to_99_one_each() {
+        assert!(check_npcs(&[npc(25), npc(42), npc(99)]).is_ok());
+        for bad in [24, 100, 250] {
+            assert!(check_npcs(&[npc(bad)]).unwrap_err().contains("(25-99)"), "slot {bad}");
+        }
+        assert!(check_npcs(&[npc(30), npc(30)]).unwrap_err().contains("another NPC's"));
+        assert!(check_npcs(&[AddedNpc { body: 25, ..npc(26) }]).is_err());
+        assert!(check_npcs(&[AddedNpc { levels: vec![], ..npc(26) }]).is_err());
+        for (bg, ok) in [(Some(1), true), (Some(10), true), (Some(0), false), (Some(11), false), (None, true)] {
+            assert_eq!(check_npcs(&[AddedNpc { cutin_bg: bg, ..npc(26) }]).is_ok(), ok, "{bg:?}");
+        }
+    }
+
+    #[test]
+    fn a_custom_npcs_donor_file_names_its_body_then_its_own_cut_in_background() {
+        // tools/mod/added-cards-logic.h `yo3_npc_donor` reads it: the donor, then the background when the NPC has one.
+        let read = |name: &str| name.starts_with("data/model/np003").then(|| b"mesh .\\np0030.png".to_vec());
+        let donor = |npc: AddedNpc| {
+            let added = Added { npcs: vec![npc], ..Added::default() };
+            let files = npc_files(&read, &added).unwrap();
+            files.into_iter().find(|(n, _)| n.ends_with("donor.txt")).map(|(n, b)| (n, String::from_utf8(b).unwrap())).unwrap()
+        };
+        assert_eq!(donor(npc(42)), ("data/model/np042/donor.txt".into(), "3".into()));
+        assert_eq!(donor(AddedNpc { cutin_bg: Some(7), ..npc(31) }), ("data/model/np031/donor.txt".into(), "3\n7".into()));
+        let added = Added { npcs: vec![npc(100)], ..Added::default() };
+        assert!(npc_files(&read, &added).is_err(), "no slot past 99");
+    }
+
+
+    #[test]
+    fn deck_titles_move_from_id_250() {
+        // Below 250 the game's own (0x5FB4 + 2 * id: Dartz's first level, id 195, is 24890); from 250 the DLL's.
+        assert_eq!((deck_title_text(195), deck_title_text(249)), (24890, 24998));
+        assert_eq!((deck_title_text(250), deck_title_text(419)), (200_500, 200_838));
+        let titles: Vec<u32> = npc(99).texts().into_iter().map(|(id, _)| id).filter(|&id| id >= NPC_HIGH_DECK_TITLE_TEXT).collect();
+        assert_eq!(titles, [200_834, 200_836, 200_838], "slot 99's levels, ids 417-419");
+    }
+
+
+    #[test]
+    fn a_waiting_anime_card_plays_once_the_server_has_it() {
+        let level = AddedNpcLevel { title: "T".into(), deck: vec![], extra: vec![],
+            anime_deck: vec!["A".into(), "Stand-in".into(), "Stand-in".into()], anime_extra: vec!["Fusion".into()],
+            anime_waiting: vec![AnimeWaiting { card: "New".into(), instead: "Stand-in".into() },
+                AnimeWaiting { card: "New Fusion".into(), instead: "Fusion".into() },
+                AnimeWaiting { card: "Later".into(), instead: "A".into() }] };
+        let (main, extra) = level.anime_cards(|n| n != "Later");
+        assert_eq!(main, ["A", "New", "Stand-in"], "one copy replaced, the card not yet known waits");
+        assert_eq!(extra, ["New Fusion"]);
+        assert_eq!(level.anime_cards(|_| false), (level.anime_deck.clone(), level.anime_extra.clone()));
+    }
+
 }

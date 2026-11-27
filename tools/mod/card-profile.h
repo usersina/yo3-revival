@@ -131,28 +131,45 @@ static char card_art_folder[MAX_PATH * 2];
  * suspended until then). */
 static char card_added_folder[MAX_PATH * 2];
 static int card_added_read;
-/* The NPC bodies' table (npc_models_install): the game's 25 paths, then slots 25-29. A custom NPC's body is a file the
- * launcher wrote, which the resource manager's load (vtable +0x58, which looks in the archives before any open) can
+/* Kaiba Corporation's slots the DLL makes room for: the game's 25 (0-24), then custom NPCs in 25 to NPC_SLOTS - 1.
+ * 99 is the last custom slot: slot 100's name (text 0x5208 + 2 * slot) is another text of the game's. Past slot 42 the
+ * deck titles move (npc_titles_install) and the players' NPC experience reaches further (NPC_MAX_ID) (docs/custom-npcs.md). */
+#define NPC_SLOTS 100
+/* The highest NPC id the experience blob (npcbin, 0x51C680) covers: the game's bound is 256 (`cmp esi,0x400` at 0x51C68F,
+ * esi = 4 * (id - 1)); slot 99's last level is id 419. The server sends 8 * NPC_MAX_ID bytes (front.rs NPCBIN_LEN). */
+#define NPC_MAX_ID 512
+/* An NPC deck's title is text 0x5FB4 + 2 * id (read at 0x4BB299, 0x4BFE05, 0x5174A8); from id 250 those are player
+ * titles, so higher ids' titles are NPC_HIGH_TITLE + 2 * id (yo3_data::added::deck_title_text). */
+#define NPC_FIRST_HIGH_TITLE_ID 250
+#define NPC_HIGH_TITLE 200000
+#define NPC_CUSTOM (NPC_SLOTS - 25)
+/* The NPC bodies' table (npc_models_install): the game's 25 paths, then the custom slots. A custom NPC's body is a file
+ * the launcher wrote, which the resource manager's load (vtable +0x58, which looks in the archives before any open) can
  * only find by its full path on disk: once the folder is known, each slot whose model is there gets that path. */
-static const char *npc_model_paths[30];
-static char npc_model_names[5][MAX_PATH * 2 + 32];
+static const char *npc_model_paths[NPC_SLOTS];
+static char npc_model_names[NPC_CUSTOM][MAX_PATH * 2 + 32];
 /* The cut-in's sound timing choices, ten per NPC (0x78BBF8, read once at 0x4E3EB3 by the NPC index at +0xE4): the game's
  * 25 rows, then a custom slot's donor's row (the animations it plays are the donor's), from `model/npNNN/donor.txt`. */
-static int32_t npc_cutin_timing[30 * 10];
+static int32_t npc_cutin_timing[NPC_SLOTS * 10];
+/* The duel cut-in's background, `data/gfx/cutin_bg_npc%02d.swf` (01-10), by slot + 1 (0x788C40, read at 0x50627E and
+ * 0x51789E): the game's 25 slots' entries, then each custom slot's, the second number of its `donor.txt` (1-10), else
+ * its donor's. The game's table has 26 entries; past them sit other tables' numbers (0x788CA8 on). */
+static int32_t npc_cutin_bg[NPC_SLOTS + 1];
 static void npc_models_point(const char *folder) {
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < NPC_CUSTOM; ++i) {
         char file[MAX_PATH * 2 + 32];
         snprintf(file, sizeof file, "%s/model/np%03d/np%03d.mdl", folder, 25 + i, 25 + i);
         if (GetFileAttributesA(file) == INVALID_FILE_ATTRIBUTES) continue;
         memcpy(npc_model_names[i], file, sizeof file);
         npc_model_paths[25 + i] = npc_model_names[i];
-        char donor_file[MAX_PATH * 2 + 32], text[8] = {0}; DWORD n = 0; int donor = 0;
+        char donor_file[MAX_PATH * 2 + 32], text[16] = {0}; DWORD n = 0; int donor = 0, bg = 0;
         snprintf(donor_file, sizeof donor_file, "%s/model/np%03d/donor.txt", folder, 25 + i);
         HANDLE f = CreateFileA(donor_file, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        if (f != INVALID_HANDLE_VALUE) { ReadFile(f, text, sizeof text - 1, &n, NULL); CloseHandle(f); donor = atoi(text); }
-        if (donor < 0 || donor >= 25) donor = 0;
+        if (f != INVALID_HANDLE_VALUE) { ReadFile(f, text, sizeof text - 1, &n, NULL); CloseHandle(f); yo3_npc_donor(text, &donor, &bg); }
         memcpy(&npc_cutin_timing[(25 + i) * 10], &npc_cutin_timing[donor * 10], 10 * sizeof npc_cutin_timing[0]);
-        card_profile_log("[YO3 MOD] custom NPC: slot %d's body %s (moves as NPC %d)", 25 + i, file, donor);
+        npc_cutin_bg[25 + i + 1] = bg ? bg : npc_cutin_bg[donor + 1];
+        card_profile_log("[YO3 MOD] custom NPC: slot %d's body %s (moves as NPC %d, cut-in background %d)", 25 + i, file, donor,
+                         (int)npc_cutin_bg[25 + i + 1]);
     }
 }
 static void card_added_learn(void) {
@@ -241,8 +258,8 @@ static int card_exists_install(void) {
 }
 /* The NPC bodies: FUN_004E4180 reads the k-th NPC's model path from a 25-entry table (`mov ecx,[eax*4+0x7F5B48]` at
  * 0x4E430F, its only reader), past which sit unrelated pointers ("bad allocation"). The read takes a table of our own:
- * the game's 25 paths, then `data/model/np025.mdl` to np029 for custom NPCs (the duel cut-in table at 0x788C40 has 30
- * entries). A slot with no body in the launcher's folder loads nothing, as slot 25 always did. */
+ * the game's 25 paths, then `data/model/np025.mdl` on for the custom slots. A slot with no body in the launcher's folder
+ * loads nothing, as slot 25 always did. */
 /* Patches a `[reg*4 + disp32]` read at `at` (its disp32 at `at + 3`, after the 3 opcode bytes `code`) from the game's
  * table `table` to `ours`: 1 when the code was as expected. */
 static int npc_patch_table(uintptr_t at, const unsigned char code[3], uintptr_t table, const void *ours) {
@@ -255,25 +272,32 @@ static int npc_patch_table(uintptr_t at, const unsigned char code[3], uintptr_t 
     FlushInstructionCache(GetCurrentProcess(), site, 7); VirtualProtect(site + 3, 4, previous, &ignored);
     return 1;
 }
+static int npc_ids_install(void);
 static int npc_models_install(void) {
     /* The cut-in (CutinForNPC, constructor 0x4E3B90) loads a body only for an NPC index below 25 (`cmp edi,0x19` at
-     * 0x4E3C1D): 30, the model table's room. Its sound timing table gets rows for the custom slots too. */
+     * 0x4E3C1D, then a signed jge): NPC_SLOTS, the model table's room. Its sound timing table gets rows for the custom
+     * slots too, and its background table (0x788C40) entries for them. */
     static const unsigned char below25[] = { 0x83, 0xff, 0x19 }, timing_read[] = { 0x8b, 0x04, 0x8d };
+    static const unsigned char bg_read_eax[] = { 0x8b, 0x04, 0x85 }, bg_read_ecx[] = { 0x8b, 0x0c, 0x85 };
     unsigned char *limit = (unsigned char *)game_address(0x4E3C1D);
     memcpy(npc_cutin_timing, (const void *)game_address(0x78BBF8), 25 * 10 * sizeof npc_cutin_timing[0]);
+    memcpy(npc_cutin_bg, (const void *)game_address(0x788C40), 26 * sizeof npc_cutin_bg[0]);
+    for (int k = 25; k < NPC_SLOTS; ++k) npc_cutin_bg[k + 1] = npc_cutin_bg[1];
     if (!memcmp(limit, below25, sizeof below25) && npc_patch_table(0x4E3EB3, timing_read, 0x78BBF8, npc_cutin_timing)) {
         DWORD previous, ignored;
         if (VirtualProtect(limit + 2, 1, PAGE_EXECUTE_READWRITE, &previous)) {
-            limit[2] = 30;
+            limit[2] = NPC_SLOTS;
             FlushInstructionCache(GetCurrentProcess(), limit, 3); VirtualProtect(limit + 2, 1, previous, &ignored);
         }
     } else card_profile_log("[YO3 MOD] custom NPC: the cut-in's code is not the expected code, custom NPCs get no cut-in");
+    if (!npc_patch_table(0x50627E, bg_read_eax, 0x788C40, npc_cutin_bg) | !npc_patch_table(0x51789E, bg_read_ecx, 0x788C40, npc_cutin_bg))
+        card_profile_log("[YO3 MOD] custom NPC: a cut-in background read is not the expected code, left alone");
     static const unsigned char read[] = { 0x8b, 0x0c, 0x85 };                     /* mov ecx,[eax*4+disp32] */
     unsigned char *site = (unsigned char *)game_address(0x4E430F);
     uint32_t table = (uint32_t)(uintptr_t)game_address(0x7F5B48);
-    if (memcmp(site, read, sizeof read) || memcmp(site + 3, &table, 4)) { card_profile_log("[YO3 MOD] custom NPC: the model read is not the expected code, left alone"); return 1; }
+    if (memcmp(site, read, sizeof read) || memcmp(site + 3, &table, 4)) { card_profile_log("[YO3 MOD] custom NPC: the model read is not the expected code, left alone"); return npc_ids_install(); }
     memcpy(npc_model_paths, (const void *)(uintptr_t)table, 25 * sizeof npc_model_paths[0]);
-    for (int i = 0; i < 5; ++i) if (!npc_model_paths[25 + i]) {
+    for (int i = 0; i < NPC_CUSTOM; ++i) if (!npc_model_paths[25 + i]) {
         snprintf(npc_model_names[i], sizeof npc_model_names[i], "data/model/np%03d.mdl", 25 + i);
         npc_model_paths[25 + i] = npc_model_names[i];
     }
@@ -282,7 +306,44 @@ static int npc_models_install(void) {
     if (!VirtualProtect(site + 3, 4, PAGE_EXECUTE_READWRITE, &previous)) return 1;
     memcpy(site + 3, &to, 4);
     FlushInstructionCache(GetCurrentProcess(), site, 7); VirtualProtect(site + 3, 4, previous, &ignored);
-    card_profile_log("[YO3 MOD] custom NPC: room for 30 NPC bodies");
+    card_profile_log("[YO3 MOD] custom NPC: room for %d NPC bodies", NPC_SLOTS);
+    return npc_ids_install();
+}
+/* The three deck title lookups: `lea R,[S+S+0x5FB4]` (7 bytes) becomes `call stub; nop; nop`, the stub keeping the
+ * game's text below id 250 and NPC_HIGH_TITLE + 2 * id from there. lea leaves the flags alone, the stubs don't: each
+ * site's next instruction is a call, which doesn't read them. */
+#define YO3_NPC_TITLE(name, in, out) __asm__(".text\n.globl _" #name "\n_" #name ":\n cmp $250,%" #in "\n jge 1f\n" \
+    " lea 0x5fb4(%" #in ",%" #in "),%" #out "\n ret\n1:\n lea 200000(%" #in ",%" #in "),%" #out "\n ret\n")
+void npc_title_edi_edi(void); void npc_title_ebx_esi(void); void npc_title_eax_esi(void);
+YO3_NPC_TITLE(npc_title_edi_edi, edi, edi); YO3_NPC_TITLE(npc_title_ebx_esi, ebx, esi); YO3_NPC_TITLE(npc_title_eax_esi, eax, esi);
+_Static_assert(NPC_FIRST_HIGH_TITLE_ID == 250 && NPC_HIGH_TITLE == 200000, "the stubs' numbers");
+static int npc_call_patch(uintptr_t at, const unsigned char was[7], void (*stub)(void)) {
+    unsigned char *site = (unsigned char *)game_address(at);
+    if (memcmp(site, was, 7)) return 0;
+    DWORD previous, ignored;
+    if (!VirtualProtect(site, 7, PAGE_EXECUTE_READWRITE, &previous)) return 0;
+    int32_t rel = (int32_t)((uintptr_t)stub - ((uintptr_t)site + 5));
+    site[0] = 0xE8; memcpy(site + 1, &rel, 4); site[5] = 0x90; site[6] = 0x90;
+    FlushInstructionCache(GetCurrentProcess(), site, 7); VirtualProtect(site, 7, previous, &ignored);
+    return 1;
+}
+/* Past slot 42: the deck titles' lookups (above) and the experience blob's bound (the imm32 of `cmp esi,0x400` at
+ * 0x51C68F) to NPC_MAX_ID. */
+static int npc_ids_install(void) {
+    static const unsigned char edi_edi[] = { 0x8d, 0xbc, 0x3f, 0xb4, 0x5f, 0x00, 0x00 }, ebx_esi[] = { 0x8d, 0xb4, 0x1b, 0xb4, 0x5f, 0x00, 0x00 },
+        eax_esi[] = { 0x8d, 0xb4, 0x00, 0xb4, 0x5f, 0x00, 0x00 }, bound[] = { 0x81, 0xfe, 0x00, 0x04, 0x00, 0x00 };
+    int titles = npc_call_patch(0x4BB299, edi_edi, npc_title_edi_edi) + npc_call_patch(0x4BFE05, ebx_esi, npc_title_ebx_esi)
+        + npc_call_patch(0x5174A8, eax_esi, npc_title_eax_esi);
+    unsigned char *cmp = (unsigned char *)game_address(0x51C68F);
+    int experience = 0; DWORD previous, ignored;
+    if (!memcmp(cmp, bound, sizeof bound) && VirtualProtect(cmp + 2, 4, PAGE_EXECUTE_READWRITE, &previous)) {
+        uint32_t to = 4 * NPC_MAX_ID;
+        memcpy(cmp + 2, &to, 4);
+        FlushInstructionCache(GetCurrentProcess(), cmp, 6); VirtualProtect(cmp + 2, 4, previous, &ignored);
+        experience = 1;
+    }
+    if (experience) card_profile_log("[YO3 MOD] custom NPC: %d of 3 deck title lookups moved, experience to id %d", titles, NPC_MAX_ID);
+    else card_profile_log("[YO3 MOD] custom NPC: %d of 3 deck title lookups moved, experience left at id 256 (not the expected code)", titles);
     return 1;
 }
 static int card_art_install(void) {
