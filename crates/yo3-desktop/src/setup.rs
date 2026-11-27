@@ -352,21 +352,27 @@ impl State {
         let direct = if read_only || self.asking || self.saving { direct } else { direct.on_toggle(Message::Direct) };
         let explain = if read_only { "The game folder is read-only, so the game opens only from YO3 Revival." }
             else if self.asking { "Setting it up… Windows may ask for permission." }
-            else { "" };
+            else { "Start yo3.exe itself and still be signed in." };
+        // A tick, its "?" when there is more to say, and one short line under it, lined up with its label.
+        let item = |tick: Element<'static, Message>, tip: Option<String>, line: String| -> Element<'static, Message> {
+            let mut head = row![tick].spacing(6).align_y(Center);
+            if let Some(tip) = tip { head = head.push(yo3_skin::help_tip(tip)) }
+            column![head, iced::widget::container(text(line).size(13).color(color::INK_SOFT)).padding(iced::Padding { left: 26.0, ..iced::Padding::ZERO })].spacing(2).into()
+        };
         let mut list = column![
             text("YO3 Revival is ready.").font(DISPLAY_ITALIC).size(26).color(color::NAVY),
-            row![direct, yo3_skin::help_tip("Start yo3.exe on its own and it still signs you in. Optional: ticking it may ask Windows for permission once.")].spacing(6).align_y(Center),
-        ].spacing(10).padding([10, 0]);
-        if !explain.is_empty() { list = list.push(text(explain).size(13).color(color::INK_SOFT)) }
+            item(direct.into(), Some("Optional: ticking it may ask Windows for permission once.".into()), explain.into()),
+        ].spacing(14).padding([10, 0]);
         if let Some(note) = &self.direct_note { list = list.push(text(note).size(13).color(color::INK)) }
-        list = list.push(checkbox(self.shortcut).label("Put a YO3 Revival shortcut on the desktop").on_toggle(Message::Shortcut).style(yo3_skin::tick).size(16).text_size(15));
-        list = list.push(row![checkbox(self.pictures).label("Download card pictures").on_toggle(Message::Pictures).style(yo3_skin::tick).size(16).text_size(15),
-            yo3_skin::help_tip(format!("Pictures for the anime cards and the cards added to the game, from ProjectIgnis ({}). \
-                They download in the background after setup; the game's own cards keep their artwork. Change it later in Settings, Game, Card pictures.",
-                yo3_desktop::pictures::SIZE_NOTE))].spacing(6).align_y(Center));
-        list = list.push(row![checkbox(self.logs).label("Send logs when something breaks, to help fix it").on_toggle(Message::Logs).style(yo3_skin::tick).size(16).text_size(15),
-            yo3_skin::help_tip("When a game's connection breaks or it closes with an error, its logs go to the server you played on. \
-                Passwords and keys are never in them. You can turn this off later in Settings, Advanced.")].spacing(6).align_y(Center));
+        list = list.push(item(checkbox(self.shortcut).label("Put a YO3 Revival shortcut on the desktop").on_toggle(Message::Shortcut).style(yo3_skin::tick).size(16).text_size(15).into(),
+            None, "Opens YO3 Revival from your desktop.".into()));
+        list = list.push(item(checkbox(self.pictures).label("Download card pictures").on_toggle(Message::Pictures).style(yo3_skin::tick).size(16).text_size(15).into(),
+            Some("From ProjectIgnis, in the background after setup; the game's own cards keep their artwork. Change it later in Settings, Game, Card pictures.".into()),
+            format!("Pictures of the anime cards and the added ones ({}).", yo3_desktop::pictures::SIZE_NOTE)));
+        list = list.push(item(checkbox(self.logs).label("Send logs when something breaks, to help fix it").on_toggle(Message::Logs).style(yo3_skin::tick).size(16).text_size(15).into(),
+            Some("When a game's connection breaks or it closes with an error, its logs go to the server you played on. \
+                Passwords and keys are never in them. You can turn this off later in Settings, Advanced.".into()),
+            "The host of the server you played on sees what went wrong.".into()));
         if let Some(error) = &self.error {
             list = list.push(text(error).size(14).font(BODY_BOLD).color(color::BAD));
             if let Some(details) = &self.error_details {

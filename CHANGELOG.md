@@ -15,9 +15,13 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
-- **Desktop says less, and explains on request.** Each setting is one line: its name and its control. What it does
-  waits behind the small **?** beside its name: rest the pointer on it. The same goes for Setup's last step, Host for
+- **Desktop says less, and explains on request.** Each setting has one short sentence; when there is more to know, a
+  small **?** beside its name shows it while you rest the pointer on it. The same goes for Setup's last step, Host for
   friends and Multiplayer's dialogs. The data and logs folders open from a folder button beside Backups and Export logs….
+  Your decks and banlists rows keep **Import…** in the same place as every other row's button.
+- **Host for friends: one Address box.** It is every interface by default; type to search this PC's addresses and pick
+  one (your home network's, a VPN's such as NetBird or Tailscale) to take friends only there, or type your public
+  address or a name for friends on the internet. Invite links carry the address you chose.
 
 ## v0.1.27 (2026-11-27)
 

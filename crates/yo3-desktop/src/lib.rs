@@ -73,6 +73,12 @@ pub struct Settings {
     pub host_share: String,
     /// Host for friends: the server's name in friends' lists ("" for the default).
     pub host_name: String,
+    /// Host for friends: the address the server listens on, "0.0.0.0" (every interface) by default, else one of this
+    /// PC's addresses (`hosting::listen_choices`).
+    pub host_bind: String,
+    /// Host for friends: the interface `host_bind` belongs to, when it is one interface's address; its address may
+    /// change (DHCP), and the server then listens on the interface's new one, never on every interface.
+    pub host_bind_interface: Option<String>,
     /// When a game breaks, its logs go to the server it played on, for the host (problem reports). Asked in setup; on
     /// unless the player turns it off.
     pub problem_reports: bool,
@@ -90,7 +96,8 @@ impl Default for Settings {
             host_address: "localhost".into(), data_dir: String::new(), bind_address: "0.0.0.0".into(), bind_interface: None, listen_port: 7443,
             player_name: "Duelist".into(), local_account: String::new(), resolution: String::new(),
             banlist: String::new(), setup_complete: false, game_fingerprint: String::new(), direct_start: true,
-            wine_binary: String::new(), log_level: String::new(), host_port: 7443, host_share: String::new(), host_name: String::new(), problem_reports: true, card_pictures: false, auto_updates: false }
+            wine_binary: String::new(), log_level: String::new(), host_port: 7443, host_share: String::new(), host_name: String::new(),
+            host_bind: "0.0.0.0".into(), host_bind_interface: None, problem_reports: true, card_pictures: false, auto_updates: false }
     }
 }
 

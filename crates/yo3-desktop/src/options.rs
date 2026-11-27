@@ -34,6 +34,8 @@ pub enum Change {
     HostShare(String),
     /// Host for friends: the server's name, as friends see it in their list.
     HostName(String),
+    /// Host for friends: the address the server listens on ("0.0.0.0" for every interface) and its interface.
+    HostBind(String, Option<String>),
 }
 
 impl Change {
@@ -80,6 +82,12 @@ impl Change {
                     ensure!(!own, "Friends can't reach this computer's own loopback address: type its network address.");
                 }
                 settings.host_share = value.into();
+            }
+            Change::HostBind(address, interface) => {
+                let ip: std::net::IpAddr = address.trim().parse().map_err(|_| anyhow::anyhow!("Choose one of the addresses to listen on."))?;
+                ensure!(!ip.is_loopback(), "Friends can't reach this computer's own loopback address: choose a network address.");
+                settings.host_bind = ip.to_string();
+                settings.host_bind_interface = if ip.is_unspecified() { None } else { interface.clone() };
             }
             Change::HostName(value) => {
                 let value: String = value.trim().into();
@@ -174,6 +182,11 @@ mod tests {
         assert_eq!(saved(Change::HostShare(" play.example.com ".into())).unwrap().host_share, "play.example.com");
         assert_eq!(saved(Change::HostShare("203.0.113.7".into())).unwrap().host_share, "203.0.113.7");
         assert_eq!(saved(Change::HostShare("".into())).unwrap().host_share, "");
+        let bound = saved(Change::HostBind("192.168.1.20".into(), Some("eth0".into()))).unwrap();
+        assert_eq!((bound.host_bind.as_str(), bound.host_bind_interface.as_deref()), ("192.168.1.20", Some("eth0")));
+        assert_eq!(saved(Change::HostBind("0.0.0.0".into(), Some("eth0".into()))).unwrap().host_bind_interface, None, "every interface has none");
+        assert!(saved(Change::HostBind("127.0.0.1".into(), None)).is_err(), "friends can't reach loopback");
+        assert!(saved(Change::HostBind("nope".into(), None)).is_err());
         for bad in ["localhost", "127.0.0.1", "0.0.0.0", "a/b", "play.example.com:7443"] { assert!(saved(Change::HostShare(bad.into())).is_err(), "{bad}") }
         assert_eq!(saved(Change::HostName(" Friday duels ".into())).unwrap().host_name, "Friday duels");
         assert!(saved(Change::HostName("".into())).is_err());

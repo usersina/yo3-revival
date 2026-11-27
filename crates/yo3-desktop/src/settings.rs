@@ -335,29 +335,30 @@ impl State {
     }
 
     /// Banlists: Import… an EDOPro lflist.conf as one of yours, or pick one of yours and Export… or Delete it.
+    /// Your banlists: pick one to Export… or delete it (the bin); Import… stays in the column of the rows' buttons.
     fn banlists_control(&self) -> Element<'_, Message> {
         let idle = self.busy.is_none();
-        let mut controls = row![pill("Import…", idle.then_some(Message::ImportBanlist), Kind::Secondary, 120, 32)].spacing(10).align_y(Center);
+        let mut controls = row![].spacing(8).align_y(Center);
         if !self.banlists.is_empty() {
-            controls = controls.push(pick_list(&self.banlists[..], self.banlist_pick.as_ref(), Message::BanlistPick).style(yo3_skin::choice)
-                .menu_style(yo3_skin::choice_menu).width(180).padding([6, 10]));
             let picked = idle && self.banlist_pick.is_some();
+            controls = controls.push(pick_list(&self.banlists[..], self.banlist_pick.as_ref(), Message::BanlistPick).style(yo3_skin::choice)
+                .menu_style(yo3_skin::choice_menu).width(200).padding([6, 10]));
+            controls = controls.push(yo3_skin::icon_button(Icon::Trash, picked.then_some(Message::DeleteBanlist), "Delete this banlist", false));
             controls = controls.push(pill("Export…", picked.then_some(Message::ExportBanlist), Kind::Secondary, 110, 32));
-            controls = controls.push(pill("Delete", picked.then_some(Message::DeleteBanlist), Kind::Secondary, 100, 32));
         }
-        controls.into()
+        controls.push(pill("Import…", idle.then_some(Message::ImportBanlist), Kind::Secondary, 120, 32)).into()
     }
 
-    /// EDOPro decks: Import… a .ydk file into Load Deck, or pick one of your decks and Export… it.
+    /// EDOPro decks: pick one of your decks and Export… it, or Import… a .ydk file into Load Deck.
     fn decks_control(&self) -> Element<'_, Message> {
         let idle = self.busy.is_none();
-        let mut controls = row![pill("Import…", idle.then_some(Message::ImportDeck), Kind::Secondary, 120, 32)].spacing(10).align_y(Center);
+        let mut controls = row![].spacing(8).align_y(Center);
         if !self.decks.is_empty() {
             controls = controls.push(pick_list(&self.decks[..], self.export_pick.as_ref(), Message::ExportPick).style(yo3_skin::choice)
                 .menu_style(yo3_skin::choice_menu).width(200).padding([6, 10]));
-            controls = controls.push(pill("Export…", (idle && self.export_pick.is_some()).then_some(Message::ExportDeck), Kind::Secondary, 120, 32));
+            controls = controls.push(pill("Export…", (idle && self.export_pick.is_some()).then_some(Message::ExportDeck), Kind::Secondary, 110, 32));
         }
-        controls.into()
+        controls.push(pill("Import…", idle.then_some(Message::ImportDeck), Kind::Secondary, 120, 32)).into()
     }
 
     fn read_revival(&self, ctx: &Ctx) -> Task<Message> {
@@ -868,7 +869,8 @@ impl State {
         let chosen = size.iter().find(|s| s.value == if ctx.settings.resolution.is_empty() { "off" } else { ctx.settings.resolution.as_str() }).cloned();
         let direct_line = match &self.direct {
             Direct::Unknown => "Checking…".to_owned(),
-            Direct::Off | Direct::On => String::new(),
+            Direct::Off => "The game opens only from YO3 Revival.".to_owned(),
+            Direct::On => "Starting yo3.exe itself signs you in to Singleplayer.".to_owned(),
             Direct::NextPlay => "Set up at the next PLAY.".to_owned(),
             Direct::Repair => "Needs repair: the next PLAY puts it right.".to_owned(),
             Direct::Conflict(_) => "Off: another program's file is in its place.".to_owned(),
@@ -881,15 +883,15 @@ impl State {
         column![
             yo3_skin::setting_group("Installation", vec![
                 yo3_skin::setting("Game folder", folder_line, Some(pill("Change…", (!playing).then_some(Message::ChangeGame), Kind::Secondary, 120, 32)), None),
-                yo3_skin::setting_tip("Check files", "Finds what isn't right with the game and YO3 Revival's files, and how to fix it.", "",
+                yo3_skin::setting("Check files", "Finds what isn't right with the game's files, and how to fix it.",
                     Some(pill("Verify", (self.busy.is_none() && !playing).then_some(Message::Verify), Kind::Secondary, 120, 32)), None),
             ]),
             yo3_skin::setting_group("Playing", vec![
-                yo3_skin::setting_tip("Screen size", "The game draws its picture larger. From the next PLAY.", "",
+                yo3_skin::setting("Screen size", "The game draws its picture larger. From the next PLAY.",
                     Some(pick_list(size, chosen, |s: Size| Message::Change(Change::Resolution(s.value))).style(yo3_skin::choice).menu_style(yo3_skin::choice_menu).width(230).padding([6, 10]).into()), None),
-                yo3_skin::setting_tip("Open the game without the launcher", "Starting yo3.exe from its own shortcut signs you in to Singleplayer.", direct_line,
+                yo3_skin::setting("Open the game without the launcher", direct_line,
                     Some(toggler(ctx.settings.direct_start).on_toggle_maybe((!playing && self.busy.is_none()).then_some(Message::Direct)).style(yo3_skin::switch).size(22).into()), direct_below),
-                yo3_skin::setting_tip("Desktop shortcut", if self.shortcut { "A shortcut to YO3 Revival on your desktop. Make it again if it no longer opens YO3 Revival." } else { "A shortcut to YO3 Revival on your desktop." }, "",
+                yo3_skin::setting("Desktop shortcut", if self.shortcut { "On your desktop. Make it again if it stops working." } else { "A shortcut to YO3 Revival on your desktop." },
                     Some(pill(if self.shortcut { "Make again" } else { "Add" }, self.busy.is_none().then_some(Message::Shortcut), Kind::Secondary, 120, 32)), None),
             ]),
             self.card_pictures_view(ctx, playing),
@@ -916,9 +918,9 @@ impl State {
     fn anime_cards_view(&self, playing: bool) -> Element<'_, Message> {
         // A picture download (often the automatic one) never holds the switch.
         let idle = self.busy.is_none();
-        let line = if self.anime.is_none() { UNREAD } else { "" };
-        let tip = if playing { "Some cards play and look as they did in the anime. With the game open, changing it offers RESTART THE GAME." }
-            else { "Some cards play and look as they did in the anime. From the next game start." };
+        let line = if self.anime.is_none() { UNREAD } else { "Some cards play and look as they did in the anime." };
+        let tip = if playing { "With the game open, changing it offers RESTART THE GAME. Their pictures are under Settings → Game → Card pictures." }
+            else { "From the next game start. Their pictures are under Settings → Game → Card pictures." };
         let switch = toggler(self.anime == Some(true)).on_toggle_maybe((idle && self.anime.is_some()).then_some(Message::AnimeCards)).style(yo3_skin::switch).size(22);
         // Their pictures are Settings → Game's Card pictures (with the added cards'): a short way there while some are missing.
         let below: Option<Element<'_, Message>> = (self.anime == Some(true) && offer(self.pictures).is_some() && self.getting.is_none()).then(|| row![
@@ -930,23 +932,25 @@ impl State {
     /// The Destiny Draw switch of Settings → Singleplayer (#71): your own server's value, which the server owns.
     fn destiny_draw_view(&self) -> Element<'_, Message> {
         let idle = self.busy.is_none() && self.getting.is_none();
-        let line = if self.destiny.is_none() { UNREAD } else { "" };
+        let line = if self.destiny.is_none() { UNREAD } else { "Pick your draw once, when you are losing." };
         let switch = toggler(self.destiny == Some(true)).on_toggle_maybe((idle && self.destiny.is_some()).then_some(Message::DestinyDraw)).style(yo3_skin::switch).size(22);
-        yo3_skin::setting_tip("Destiny Draw", "Once a duel against the computer, at your Draw Phase with 1000 LP or less, you may pick the card you draw. From your next duel.",
+        yo3_skin::setting_tip("Destiny Draw", "Once a duel against the computer, at your Draw Phase with 1000 LP or less, you may pick the card you draw from your Deck. From your next duel.",
             line, Some(switch.into()), None)
     }
 
     /// The Revival rule choice of Settings → Singleplayer: your own server's `revival-rule`, which the server owns.
     fn revival_view(&self) -> Element<'_, Message> {
         let idle = self.busy.is_none() && self.getting.is_none();
-        let line = if self.revival.is_none() { UNREAD } else { "" };
+        let line = if self.revival.is_none() { UNREAD } else { "Which monsters can come back from the Graveyard." };
         let selected = self.revival.as_deref().and_then(|v| REVIVAL_CHOICES.iter().find(|c| c.value == v)).copied();
         let choices: Element<'_, Message> = if idle && self.revival.is_some() {
             pick_list(&REVIVAL_CHOICES[..], selected, Message::Revival).style(yo3_skin::choice).menu_style(yo3_skin::choice_menu).width(230).padding([6, 10]).into()
         } else {
             text(selected.map_or("Anime: any revival", |c| c.label)).size(15).color(color::INK).into()
         };
-        yo3_skin::setting_tip("Revival", "Whether Fusion, Synchro and Ritual monsters that were never properly summoned can come back from the Graveyard. From your next duel.",
+        yo3_skin::setting_tip("Revival", "Whether a monster never properly Summoned (a discarded Ritual Monster, a Synchro never Synchro Summoned) can be revived. \
+            Official rules never allow it. Ignoring conditions lets the cards that ignore Summoning conditions (Illusion Gate) do it. \
+            Anime lets every revival do it, Monster Reborn too. From your next duel.",
             line, Some(choices), None)
     }
 
@@ -984,7 +988,7 @@ impl State {
                 (idle && !all && self.pictures.is_some()).then_some(Message::GetPictures), Kind::Primary, 150, 32),
         };
         let auto = toggler(ctx.settings.card_pictures).on_toggle_maybe(self.busy.is_none().then_some(Message::AutoPictures)).style(yo3_skin::switch).size(22);
-        let tip = format!("Pictures of the anime cards and of the cards added to the game, from ProjectIgnis ({}). Until then, an added card shows a stand-in. {}",
+        let tip = format!("From ProjectIgnis ({}); the game's own cards keep their artwork. Until then, an added card shows a stand-in. {}",
             pictures::SIZE_NOTE, if playing { "New pictures show from the game's next PLAY." } else { "They show from the next PLAY." });
         let (bar, words) = self.pictures_bar();
         let below: Element<'_, Message> = column![
@@ -993,7 +997,7 @@ impl State {
                 pill("Save to a file…", idle.then_some(Message::SavePictures), Kind::Secondary, 170, 32)].spacing(10),
         ].spacing(8).into();
         yo3_skin::setting_group("Card pictures", vec![
-            yo3_skin::setting_tip("Download automatically", tip, "", Some(auto.into()), Some(below)),
+            yo3_skin::setting_tip("Download automatically", tip, "Pictures of the anime cards and the added ones.", Some(auto.into()), Some(below)),
         ])
     }
 
@@ -1021,21 +1025,21 @@ impl State {
                 self.anime_cards_view(playing),
                 self.destiny_draw_view(),
                 self.revival_view(),
-                yo3_skin::setting_tip("Banlist", "Your own server checks decks against it. One of your own banlists, picked in the game's Edit Deck → Change Regulations, replaces it for your duels against the computer.",
-                    if playing { "Change it while the game is closed." } else { "" }, Some(banlist), None),
+                yo3_skin::setting_tip("Banlist", "One of your own banlists, picked in the game's Edit Deck → Change Regulations, replaces it for your duels against the computer. From the next PLAY.",
+                    if playing { "Change it while the game is closed." } else { "Your own server checks decks against it." }, Some(banlist), None),
             ]),
             yo3_skin::setting_group("Your data", vec![
-                yo3_skin::setting_tip("Backups", "Your server keeps a backup from each of its last starts. Restore puts one back.", "",
+                yo3_skin::setting("Backups", "One from each of your server's last starts.",
                     Some(row![yo3_skin::icon_button(Icon::Folder, Some(Message::OpenData), "Open the data folder", false),
                         pill("Restore…", (!playing).then_some(Message::Restore), Kind::Secondary, 120, 32),
                         pill("Back up now", self.busy.is_none().then_some(Message::BackUp), Kind::Secondary, 140, 32)].spacing(8).align_y(Center).into()), None),
-                yo3_skin::setting_tip("EDOPro decks", "Import an EDOPro deck (.ydk) into the game's Load Deck, or save one of your decks for EDOPro. Cards your server doesn't have are left out.", "",
+                yo3_skin::setting_tip("EDOPro decks", "Import an EDOPro deck (.ydk) into the game's Load Deck, or save one of your decks for EDOPro. Cards your server doesn't have are left out.", "Bring decks in, or save yours for EDOPro.",
                     Some(self.decks_control()), None),
-                yo3_skin::setting_tip("Your banlists", BANLISTS_TIP, "",
+                yo3_skin::setting_tip("Your banlists", BANLISTS_TIP, "For your duels against the computer.",
                     Some(self.banlists_control()), None),
-                yo3_skin::setting_tip("Unlock all cards", "Three of every card, in every artwork, for every player of your own server: once, and again only for cards an update adds.", "",
+                yo3_skin::setting_tip("Unlock all cards", "In every artwork, for every player of your own server: once, and again only for cards an update adds.", "Three of every card.",
                     Some(self.unlock_control()), unlock_below),
-                yo3_skin::setting_tip("Reset", "Starts your singleplayer collection, decks and duel record again. The old data is kept beside it.", "",
+                yo3_skin::setting("Reset", "Start your collection, decks and duel record again.",
                     Some(pill("Reset…", (self.busy.is_none() && !playing).then_some(Message::ResetData(false)), Kind::Secondary, 120, 32)), reset_below),
             ]),
         ].spacing(18).into()
@@ -1049,22 +1053,23 @@ impl State {
                     pill("Browse…", Some(Message::Browse(which)), Kind::Secondary, 110, 32), pill("Save", Some(Message::Save(which)), Kind::Primary, 90, 32)].spacing(8).align_y(Center).into()
             };
             col = col.push(yo3_skin::setting_group("Wine", vec![
-                yo3_skin::setting_tip("Wine prefix", "Empty for Wine's default. From the next PLAY.", "", None, Some(field(&self.prefix, Field::Prefix, "Wine's default prefix"))),
-                yo3_skin::setting_tip("Wine program", "Empty for the wine on your system. From the next PLAY.", "", None, Some(field(&self.wine, Field::Wine, "wine, from your system"))),
+                yo3_skin::setting("Wine prefix", "Empty for Wine's default. From the next PLAY.", None, Some(field(&self.prefix, Field::Prefix, "Wine's default prefix"))),
+                yo3_skin::setting("Wine program", "Empty for the wine on your system. From the next PLAY.", None, Some(field(&self.wine, Field::Wine, "wine, from your system"))),
             ]));
         }
         col = col.push(yo3_skin::setting_group("Logs", vec![
-            yo3_skin::setting_tip("Detailed logs", "Your servers write more about what they do, for a problem report. From their next start.", "",
+            yo3_skin::setting("Detailed logs", "Your servers write more, for a problem report. From their next start.",
                 Some(toggler(options::detailed(&ctx.settings)).on_toggle(|on| Message::Change(Change::DetailedLogs(on))).style(yo3_skin::switch).size(22).into()), None),
             yo3_skin::setting_tip("Send logs when something breaks", "When a game's connection breaks or it closes with an error, its logs go to the \
-                server you played on, so the host can see what went wrong. Report a problem then needs no file.", "",
+                server you played on, so the host can see what went wrong. Report a problem then needs no file. Passwords and keys are never in them.",
+                "The host sees what went wrong.",
                 Some(toggler(ctx.settings.problem_reports).on_toggle(|on| Message::Change(Change::ProblemReports(on))).style(yo3_skin::switch).size(22).into()), None),
-            yo3_skin::setting_tip("Your logs", "Export them as one file for a problem report.", "",
+            yo3_skin::setting("Your logs", "Export them for a problem report.",
                 Some(row![yo3_skin::icon_button(Icon::Folder, Some(Message::OpenLogs), "Open the logs folder", false),
                     pill("Export logs…", Some(Message::ExportLogs), Kind::Secondary, 140, 32)].spacing(8).align_y(Center).into()), None),
         ]));
         if !self.moved.is_empty() {
-            let rows = self.moved.iter().map(|name| yo3_skin::setting_tip(name.as_str(), "Renamed so Windows doesn't load it with the game.", "",
+            let rows = self.moved.iter().map(|name| yo3_skin::setting(name.as_str(), "Renamed so Windows doesn't load it with the game.",
                 Some(pill("Put back", Some(Message::PutBack(name.clone())), Kind::Secondary, 120, 32)), None)).collect();
             col = col.push(yo3_skin::setting_group("Files moved aside", rows));
         }
@@ -1075,7 +1080,7 @@ impl State {
                 yo3_skin::link("Cancel", Message::ResetGame(None), false)].spacing(10).align_y(Center),
         ].spacing(8).into());
         col.push(yo3_skin::setting_group("The game's own data", vec![
-            yo3_skin::setting_tip("Reset local game data", "When the game's screen or saved login settings are stuck, it can start from fresh ones.", "",
+            yo3_skin::setting("Reset local game data", "When the game's screen or saved login is stuck.",
                 Some(pill("Reset…", Some(Message::ResetGame(None)), Kind::Secondary, 120, 32)), reset_below),
         ])).into()
     }
@@ -1092,9 +1097,9 @@ impl State {
             text(format!("YO3 Revival {} (beta)", yo3_tunnel::BUILD_VERSION.trim_start_matches('v'))).font(DISPLAY).size(22).color(color::NAVY),
             text("A private server and launcher to play Yu-Gi-Oh! ONLINE 3 again, with your own copy of the game.").size(15).color(color::INK),
             yo3_skin::setting_group("This version", vec![
-                yo3_skin::setting_tip("Updates", "YO3 Revival checks by itself and says when a new version is out.", "", Some(updates.into()), None),
-                yo3_skin::setting_tip("Download updates automatically", "It downloads in the background. When this is off, you choose when, in its window. Either way it installs only when you restart.", "", Some(auto.into()), None),
-                yo3_skin::setting("More about it", "", Some(links.into()), licences),
+                yo3_skin::setting("Updates", "Checked by itself; you hear when one is out.", Some(updates.into()), None),
+                yo3_skin::setting_tip("Download updates automatically", "It downloads in the background. When this is off, you choose when, in its window.", "It installs only when you restart.", Some(auto.into()), None),
+                yo3_skin::setting("More about it", "What changed, and who made what it uses.", Some(links.into()), licences),
             ]),
         ].spacing(14).into()
     }

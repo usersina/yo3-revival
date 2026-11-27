@@ -80,7 +80,7 @@ fn a_banlist_is_imported_exported_and_deleted_on_a_stopped_server() {
     let file = root.join("lflist.conf");
     std::fs::write(&file, "#[Goat]\n!Goat Format\n55144522 0 --Pot of Greed\n83764718 1 --Monster Reborn\n").unwrap();
     let sentence = backend.import_banlist(&settings, &file).unwrap();
-    assert!(sentence.starts_with("Imported \"Goat Format\": 2 card(s) listed."), "{sentence}");
+    assert!(sentence.starts_with("Imported \"Goat Format\": 2 cards listed."), "{sentence}");
     assert_eq!(backend.banlists(&settings).unwrap(), ["Goat Format"]);
     let out = root.join("out.conf");
     backend.export_banlist(&settings, "Goat Format", &out).unwrap();

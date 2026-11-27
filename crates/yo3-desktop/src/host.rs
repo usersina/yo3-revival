@@ -1,20 +1,45 @@
 //! Host for friends (#37), the window side: a dialog from the Multiplayer tab that starts your hosted server, shows the
 //! address and invite link to share, makes invite codes, opens the admin panel and stops hosting.
 use std::time::Duration;
-use iced::widget::{Space, column, container, row, text, text_input};
+use iced::widget::{Space, column, combo_box, container, row, text, text_input};
 use iced::{Alignment::Center, Element, Length::Fill, Subscription, Task};
 use yo3_desktop::hosting::{self, Activity, Hosted};
+use yo3_desktop::network::BindAddress;
 use yo3_desktop::options::Change;
 use yo3_skin::{BODY_BOLD, Icon, Kind, Rule, color, pill};
 use crate::app::{Ctx, dot, job};
 use crate::error_presentation;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Field { Name, Port, Share, Admin }
+pub enum Field { Name, Port, Admin }
+
+/// Where friends reach your server, as the Address box offers it: one of this PC's addresses (every interface, the
+/// default, shares this PC's network address), or an address the host typed (a public address or a name: the server
+/// then listens on every interface, and invites carry the typed one).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Reach { Own(BindAddress), Typed(String) }
+impl std::fmt::Display for Reach {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self { Reach::Own(b) => b.fmt(f), Reach::Typed(text) => f.write_str(text) }
+    }
+}
+impl Reach {
+    /// The settings this choice saves: where to listen and what to share ("" for the chosen or network address).
+    fn changes(&self) -> [Change; 2] {
+        match self {
+            Reach::Own(b) => [Change::HostBind(b.address.to_string(), b.interface_id.clone()), Change::HostShare(String::new())],
+            Reach::Typed(text) => [Change::HostBind("0.0.0.0".into(), None), Change::HostShare(text.trim().into())],
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub enum Message {
     Edit(Field, String),
+    /// The Address box: an address of this PC picked, text typed, the box left (typed text becomes the choice).
+    AddressPick(Reach),
+    AddressTyped(String),
+    AddressLeft,
     Start,
     Started(Result<Box<(yo3_desktop::Settings, Hosted)>, String>),
     Stop,
@@ -50,7 +75,10 @@ pub struct State {
     pub activity: Activity,
     name: String,
     port: String,
-    share: String,
+    /// The Address box's list (`hosting::listen_choices`), the choice and what is being typed.
+    reaches: combo_box::State<Reach>,
+    reach: Option<Reach>,
+    typed: String,
     busy: Option<&'static str>,
     note: Option<Note>,
     /// The invites made this time, newest first: each a code for one friend and the link that carries it.
@@ -67,8 +95,27 @@ impl State {
         let s = &ctx.settings;
         self.name = if s.host_name.is_empty() { hosting::DEFAULT_NAME.into() } else { s.host_name.clone() };
         self.port = s.host_port.to_string();
-        self.share = s.host_share.clone();
+        let own = hosting::listen_choices();
+        // A typed address wins; else the saved address, by its interface (its address may have changed) or itself;
+        // else every interface.
+        self.reach = if !s.host_share.trim().is_empty() { Some(Reach::Typed(s.host_share.trim().into())) } else {
+            own.iter().find(|b| s.host_bind_interface.is_some() && b.interface_id == s.host_bind_interface
+                    && b.address.is_ipv4() == s.host_bind.parse::<std::net::IpAddr>().map_or(true, |ip| ip.is_ipv4()))
+                .or_else(|| own.iter().find(|b| b.interface_id.is_none() && b.address.to_string() == s.host_bind))
+                .or_else(|| own.first()).cloned().map(Reach::Own)
+        };
+        self.reaches = combo_box::State::new(own.into_iter().map(Reach::Own).collect());
+        self.typed.clear();
         if self.hosted.is_none() { self.note = None }
+    }
+
+    /// Text typed in the Address box and left there is the choice: an option's own words pick that option.
+    fn take_typed(&mut self) {
+        let typed = std::mem::take(&mut self.typed);
+        let typed = typed.trim();
+        if typed.is_empty() { return }
+        self.reach = Some(self.reaches.options().iter().find(|r| r.to_string() == typed || matches!(r, Reach::Own(b) if b.address.to_string() == typed))
+            .cloned().unwrap_or_else(|| Reach::Typed(typed.into())));
     }
 
     fn fail(&mut self, ctx: &Ctx, error: &str) {
@@ -84,12 +131,17 @@ impl State {
         match message {
             Message::Edit(field, value) => {
                 let value: String = value.chars().filter(|c| !c.is_control()).take(64).collect();
-                match field { Field::Name => self.name = value, Field::Port => self.port = value.chars().filter(char::is_ascii_digit).take(5).collect(), Field::Share => self.share = value, Field::Admin => self.admin = value }
+                match field { Field::Name => self.name = value, Field::Port => self.port = value.chars().filter(char::is_ascii_digit).take(5).collect(), Field::Admin => self.admin = value }
             }
+            Message::AddressPick(choice) => { self.reach = Some(choice); self.typed.clear() }
+            Message::AddressTyped(text) => self.typed = text.chars().filter(|c| !c.is_control()).take(253).collect(),
+            Message::AddressLeft => self.take_typed(),
             Message::Start => {
                 let (Some(store), Some(backend)) = (ctx.store.clone(), ctx.backend.clone()) else { return Task::none() };
                 let Ok(port) = self.port.parse::<u16>() else { self.good("Choose a port from 1024 to 65535."); if let Some(n) = &mut self.note { n.good = false } return Task::none() };
-                let changes = [Change::HostName(self.name.clone()), Change::HostPort(port), Change::HostShare(self.share.clone())];
+                self.take_typed();
+                let [bind, share] = self.reach.as_ref().map_or_else(|| [Change::HostBind("0.0.0.0".into(), None), Change::HostShare(String::new())], Reach::changes);
+                let changes = [Change::HostName(self.name.clone()), Change::HostPort(port), bind, share];
                 self.busy = Some("Starting your server…");
                 self.note = None;
                 return Task::perform(async move {
@@ -204,7 +256,9 @@ impl State {
             Some(_) => pill("Stop hosting", self.busy.is_none().then_some(Message::Stop), Kind::Danger, 150, 38),
             None => pill("Start hosting", self.busy.is_none().then_some(Message::Start), Kind::Primary, 170, 38),
         };
-        let height = if self.hosted.is_some() { 500.0 } else { 310.0 };
+        // As tall as what it shows: each invite and the note (with its details open) add their lines.
+        let note = self.note.as_ref().map_or(0.0, |n| if n.open { 170.0 } else { 40.0 });
+        let height = if self.hosted.is_some() { 440.0 + 34.0 * self.invites.len() as f32 + note } else { 300.0 + note }.min(590.0);
         yo3_skin::dialog("Host for friends", Some(Message::Help("host")), Message::Close, 600.0, height,
             column![col, Space::new().height(Fill), row![Space::new().width(Fill), action]])
     }
@@ -214,13 +268,20 @@ impl State {
             row![text(label).size(14).font(BODY_BOLD).color(color::INK)].extend(tip.map(yo3_skin::help_tip)).spacing(6).align_y(Center).width(140),
             text_input(placeholder, value).on_input(move |v| Message::Edit(field, v)).on_submit(Message::Start).style(yo3_skin::field).padding(7).size(15),
         ].align_y(Center);
-        let lan = hosting::lan_address().map_or_else(|| "this PC's network address".to_owned(), |ip| ip.to_string());
+        let address = row![
+            row![text("Address").size(14).font(BODY_BOLD).color(color::INK), yo3_skin::help_tip("Where friends reach your server. Every interface \
+                by default, with this PC's network address in their invites. Pick one of this PC's addresses (your network's, a VPN's as NetBird \
+                or Tailscale) to take friends only there. For friends on the internet, type your public address or a name such as \
+                play.example.com, with the port forwarded on your router.")].spacing(6).align_y(Center).width(140),
+            combo_box(&self.reaches, "Search, or type a public address", self.reach.as_ref(), Message::AddressPick)
+                .on_input(Message::AddressTyped).on_close(Message::AddressLeft)
+                .input_style(yo3_skin::field).menu_style(yo3_skin::choice_menu).width(Fill).padding(7).size(15),
+        ].align_y(Center);
         column![
             text("A server on this PC for your friends, with its own cards and accounts. It runs while YO3 Revival is open.").size(15).color(color::INK),
             input("Server name", hosting::DEFAULT_NAME, &self.name, Field::Name, None),
             input("Port", "7443", &self.port, Field::Port, None),
-            input("Address to share", &lan, &self.share, Field::Share, Some("Empty: your network address, for friends on your network. \
-                Friends elsewhere need your public address, with the port forwarded on your router.")),
+            address,
         ].spacing(10).into()
     }
 
@@ -288,6 +349,33 @@ mod tests {
     fn hosted() -> Hosted {
         let server = hosting::hosted_server("Friday duels", "192.168.1.20", 7443, &"ab".repeat(32)).unwrap();
         Hosted { link: yo3_desktop::multiplayer::link_for(&server), server, local_network: true }
+    }
+
+    #[test]
+    fn the_address_box_is_one_of_this_pcs_addresses_or_a_typed_one() {
+        let mut ctx = ctx();
+        let mut state = State::default();
+        state.open(&ctx);
+        let Some(Reach::Own(all)) = state.reach.clone() else { panic!("every interface by default: {:?}", state.reach) };
+        assert_eq!(all.address.to_string(), "0.0.0.0");
+        assert_eq!(Reach::Own(all.clone()).changes(), [Change::HostBind("0.0.0.0".into(), None), Change::HostShare(String::new())]);
+        // Typed and left: a public name is shared, and the server listens on every interface.
+        let _ = state.update(Message::AddressTyped(" play.example.com ".into()), &mut ctx);
+        let _ = state.update(Message::AddressLeft, &mut ctx);
+        assert_eq!(state.reach, Some(Reach::Typed("play.example.com".into())));
+        assert_eq!(state.reach.as_ref().unwrap().changes(), [Change::HostBind("0.0.0.0".into(), None), Change::HostShare("play.example.com".into())]);
+        // An option's own address picks the option; picking one clears what was typed.
+        let _ = state.update(Message::AddressTyped("0.0.0.0".into()), &mut ctx);
+        let _ = state.update(Message::AddressLeft, &mut ctx);
+        assert_eq!(state.reach, Some(Reach::Own(all.clone())));
+        let _ = state.update(Message::AddressTyped("half typed".into()), &mut ctx);
+        let _ = state.update(Message::AddressPick(Reach::Own(all.clone())), &mut ctx);
+        assert_eq!((state.reach, state.typed.as_str()), (Some(Reach::Own(all)), ""));
+        // A saved typed address opens as the choice.
+        ctx.settings.host_share = "203.0.113.7".into();
+        let mut again = State::default();
+        again.open(&ctx);
+        assert_eq!(again.reach, Some(Reach::Typed("203.0.113.7".into())));
     }
 
     #[test]

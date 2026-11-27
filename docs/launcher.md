@@ -169,9 +169,14 @@ YO3 Revival is open.
 ![Host for friends: an invite link for a friend, the address and a friend online](../screenshots/host-friends.png)
 
 1. On the Multiplayer tab, open the server tools (**⋯**) and click **Host for friends**.
-2. Give your server a name. Keep port **7443** unless something else uses it. Leave **Address to share** empty for
-   this PC's network address (friends on your home network reach it), or type your public address or a name such as
-   `play.example.com` for friends elsewhere (see [Friends can't connect](#troubleshooting)).
+2. Give your server a name. Keep port **7443** unless something else uses it. **Address** is where friends reach you,
+   and what their invite links carry. It is every interface (`0.0.0.0`) by default, with this PC's network address in
+   the invites (friends on your home network reach it). Type in the box to search this PC's addresses and pick one to
+   take friends only there, as your home network's or a VPN's (NetBird, Tailscale); the list leaves out loopback and the
+   bridges of containers and virtual machines, which friends can't reach. For friends elsewhere, type your public
+   address or a name such as `play.example.com` instead: your server then listens on every interface, and the invites
+   carry what you typed (see [Friends can't connect](#troubleshooting)). **Since Unreleased:** one box; it was **Address to
+   share**.
 3. Click **Start hosting**. Then, for each friend, click **Copy an invite link** and send them what it copied. Each
    friend gets their own link: it carries a single-use invite code that works for a week. The dialog lists the links
    made this time, with a copy button each, and the **Address** with its own.
@@ -197,7 +202,7 @@ For a server that runs without the launcher (an always-on PC or a VPS), use the 
 
 ## Settings
 
-**Settings** at the bottom right opens **Settings**; **Back**, **Settings** again or Escape returns to the main screen. **Since v0.1.6 (2026-11-20):** it moved there from the title bar, and each section is grouped rows: a setting's name on the left, its control (a switch for on and off) on the right. **Since Unreleased:** what a setting does is behind the **?** beside its name (rest the pointer on it); a line under the name only says its state when it needs you (as **Set up at the next PLAY.**).
+**Settings** at the bottom right opens **Settings**; **Back**, **Settings** again or Escape returns to the main screen. **Since v0.1.6 (2026-11-20):** it moved there from the title bar, and each section is grouped rows: a setting's name and a short sentence on the left, its control (a switch for on and off) on the right. **Since Unreleased:** a setting with more to say has a **?** beside its name: rest the pointer on it for the details.
 Every change is saved at once and applies at the next PLAY (or your server's next start), without restarting YO3 Revival.
 
 **Escape** closes the topmost thing first (**Since v0.1.5 (2026-11-20)**): an open dialog, then the bell's list or the server tools, then a
@@ -519,7 +524,7 @@ Help in the footer has these topics too; an error's **Help** opens its own.
 | PLAY says "YO3 Revival can't start the game safely" | Another program has taken over the game's network connection (or a file known to break it is present). Close that program or move its file out of the game folder. There is no Continue anyway for this one. |
 | The game closes at once with `0xc0000139` or "waveInGetDevCapsW could not be located" | Update YO3 Revival, then PLAY. Versions up to v0.0.24 put a `winmm.dll` beside `yo3.exe` that Windows 10 version 1809 (LTSC 2019) couldn't use; PLAY replaces it with the current one. |
 | Another program is using the port | Close the other server (a Scripts server, another YO3 Revival), or for hosting use **Change port**. |
-| Friends can't connect to your hosted server | Friends elsewhere need your public address as the address to share and your router forwarding the port to this PC (look for Port forwarding in its settings). When Windows asks whether `yo3-server.exe` may use the network, allow it; if you clicked Cancel once, allow it in Windows Defender Firewall (**Allow an app through firewall**), again after each update. Some providers share one public address between homes (CGNAT): forwarding can't work then; ask for a public address, or use a VPN you both join. |
+| Friends can't connect to your hosted server | Friends elsewhere need your public address typed in the **Address** box and your router forwarding the port to this PC (look for Port forwarding in its settings). When Windows asks whether `yo3-server.exe` may use the network, allow it; if you clicked Cancel once, allow it in Windows Defender Firewall (**Allow an app through firewall**), again after each update. Some providers share one public address between homes (CGNAT): forwarding can't work then; ask for a public address, or use a VPN you both join. |
 | Can't connect to a server | Check its row: Offline means it didn't answer. **Retry**, and ask the host whether it runs. Identity changed: don't sign in; ask the host. |
 | "You have been disconnected from the Duel Server." in a duel, then the title | The server stopped answering for about a minute (it hung, or the host's network went away), so the launcher closed the game's connections instead of leaving the duel waiting. Ask the host to check the server, then sign in again. |
 | Old game preferences or saved login details | [Reset local game data](#reset-local-game-data), display and login settings first. |

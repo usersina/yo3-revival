@@ -242,8 +242,9 @@ pub fn live(world: &crate::front::World, owner: u32, owner_name: &str, request: 
 /// The sentence for an import.
 pub fn imported_sentence(list: &PlayerList, unknown: usize) -> String {
     let cards: usize = list.lists.iter().map(Vec::len).sum();
-    let left = if unknown > 0 { format!(" ({unknown} card(s) the game doesn't have left out)") } else { String::new() };
-    format!("Imported \"{}\": {cards} card(s) listed{left}. Pick it in the game's Edit Deck → Change Regulations after its next start.", list.name)
+    let plural = |n: usize| if n == 1 { "card" } else { "cards" };
+    let left = if unknown > 0 { format!(" ({unknown} {} the game doesn't have left out)", plural(unknown)) } else { String::new() };
+    format!("Imported \"{}\": {cards} {} listed{left}. Pick it in the game's Edit Deck → Change Regulations after its next start.", list.name, plural(cards))
 }
 
 /// Shared store's lock, for callers holding the `Shared`.

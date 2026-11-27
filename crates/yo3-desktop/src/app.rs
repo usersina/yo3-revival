@@ -857,7 +857,7 @@ impl App {
             ].spacing(14).align_y(Center)).padding([10, 12]).width(Fill).style(|_| container::Style { background: Some(color::ROW.into()),
                 border: iced::Border { color: color::CHROME, width: 1.0, radius: 4.0.into() }, ..container::Style::default() })
         };
-        yo3_skin::dialog("Need a hand?", None, Message::CloseDialog, 600.0, 350.0, column![
+        yo3_skin::dialog("Need a hand?", None, Message::CloseDialog, 600.0, 320.0, column![
             text("YO3 Revival is a small fan project made by players. We read every question and report.").size(15).color(color::INK),
             way(Icon::Book, "Read the guide", "Setup, playing, hosting, and fixes for common problems.", "Open guide", Message::OpenHelp(None)),
             way(Icon::Chat, "Ask the community", "Questions, ideas and servers to join, on GitHub.", "Discussions", Message::OpenLink(DISCUSSIONS.into())),

@@ -28,9 +28,13 @@ pub fn bindings() -> anyhow::Result<Vec<BindAddress>> {
     Ok(choices)
 }
 pub fn resolve_bind(settings: &Settings, available: &[BindAddress]) -> anyhow::Result<IpAddr> {
-    let requested: IpAddr = settings.bind_address.parse().context("Choose a valid listening IP address")?;
-    if let Some(id) = &settings.bind_interface {
-        let candidates: Vec<_> = available.iter().filter(|b| b.interface_id.as_ref() == Some(id) && b.address.is_ipv4() == requested.is_ipv4()).collect();
+    resolve(&settings.bind_address, settings.bind_interface.as_deref(), available)
+}
+/// `requested` on this PC: the address itself, or the current address of `interface` (of the same family).
+pub fn resolve(requested: &str, interface: Option<&str>, available: &[BindAddress]) -> anyhow::Result<IpAddr> {
+    let requested: IpAddr = requested.parse().context("Choose a valid listening IP address")?;
+    if let Some(id) = interface {
+        let candidates: Vec<_> = available.iter().filter(|b| b.interface_id.as_deref() == Some(id) && b.address.is_ipv4() == requested.is_ipv4()).collect();
         return candidates.iter().find(|b| b.address == requested).or_else(|| candidates.first()).map(|b| b.address)
             .context("The selected interface is unavailable. Refresh and choose an interface before starting; the server was not exposed on another interface.");
     }

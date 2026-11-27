@@ -1,6 +1,6 @@
 //! Host for friends (#37): a server of your own that friends join, like a game's "Open to LAN". It is the same
-//! `yo3-server` as Singleplayer's, with its own data folder (`<app data>/hosting/`), listening on every interface on
-//! the hosting port, with password accounts made with invite codes. It lives while the launcher is open (`--owned`).
+//! `yo3-server` as Singleplayer's, with its own data folder (`<app data>/hosting/`), listening on every interface (or
+//! the one the host chose) on the hosting port, with password accounts made with invite codes. It lives while the launcher is open (`--owned`).
 //! Friends get an invite link that carries the address and the server's identity (`multiplayer::invite_link`).
 use std::net::IpAddr;
 use std::path::PathBuf;
@@ -31,10 +31,46 @@ pub struct Hosted {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Activity { pub online: usize, pub players: Vec<String> }
 
-/// The address friends dial, without the port: the one the host typed, else this PC's network address.
+/// The address friends dial, without the port: the one the host typed, else the address the server listens on when
+/// the host chose one, else this PC's network address.
 pub fn share_host(settings: &Settings) -> Option<(String, bool)> {
     if !settings.host_share.trim().is_empty() { return Some((settings.host_share.trim().to_string(), false)) }
+    if let Ok(ip) = listen_address(settings) && !ip.is_unspecified() { return Some((ip.to_string(), true)) }
     lan_address().map(|ip| (ip.to_string(), true))
+}
+
+/// What the host can listen on: every interface (the first, the default) or one of this PC's addresses, the likely
+/// ones first (a home network's, then a VPN's). Loopback addresses and the bridges of containers and virtual machines
+/// are left out: friends can't reach them.
+pub fn listen_choices() -> Vec<crate::network::BindAddress> {
+    const BRIDGES: [&str; 9] = ["br-", "docker", "veth", "virbr", "cni", "podman", "lxcbr", "flannel", "vEthernet (WSL"];
+    let all = crate::network::bindings().unwrap_or_else(|_| crate::network::defaults());
+    let mut choices: Vec<_> = all.into_iter().filter(|b| !b.address.is_loopback())
+        .filter(|b| b.interface_id.is_none() || !BRIDGES.iter().any(|p| b.label.starts_with(p))).collect();
+    choices.sort_by_key(|b| (listen_rank(b.address), b.label.clone()));
+    choices
+}
+
+/// Where an address goes in the list: every IPv4 interface, a home network, other private networks, a VPN's shared
+/// range (100.64.0.0/10, as NetBird and Tailscale), the rest of IPv4, then IPv6.
+fn listen_rank(ip: IpAddr) -> u8 {
+    match ip {
+        IpAddr::V4(v4) if v4.is_unspecified() => 0,
+        IpAddr::V4(v4) if v4.octets()[..2] == [192, 168] => 1,
+        IpAddr::V4(v4) if v4.octets()[0] == 10 => 2,
+        IpAddr::V4(v4) if v4.octets()[0] == 100 && (64..128).contains(&v4.octets()[1]) => 3,
+        IpAddr::V4(v4) if v4.is_private() => 4,
+        IpAddr::V4(_) => 5,
+        IpAddr::V6(v6) if v6.is_unspecified() => 6,
+        IpAddr::V6(_) => 7,
+    }
+}
+
+/// The address the hosted server listens on now: the host's choice, its interface's current address.
+pub fn listen_address(settings: &Settings) -> anyhow::Result<IpAddr> {
+    let chosen = if settings.host_bind.trim().is_empty() { "0.0.0.0" } else { settings.host_bind.trim() };
+    if chosen.parse::<IpAddr>().is_ok_and(|ip| ip.is_unspecified()) { return Ok(chosen.parse()?) }
+    crate::network::resolve(chosen, settings.host_bind_interface.as_deref(), &listen_choices())
 }
 
 /// This PC's address on its local network: the first private IPv4 address of an interface that is up.
@@ -114,11 +150,12 @@ impl Backend {
         Ok(Hosted { link: multiplayer::link_for(&server), server, local_network })
     }
 
-    /// The hosted server's command: every interface on the hosting port, no packet files or traces (friends' chat lines
-    /// stay out of every log, #39).
+    /// The hosted server's command: the chosen address (every interface by default) on the hosting port, no packet
+    /// files or traces (friends' chat lines stay out of every log, #39).
     pub fn hosting_command(&self, settings: &Settings) -> anyhow::Result<Command> {
+        let bind = listen_address(settings)?.to_string();
         let mut cmd = Command::new(&self.runtime.server);
-        cmd.args(["--bind", "0.0.0.0", "--auth-port", &settings.host_port.to_string(), "--http-port", "0", "--no-packet-log", "--no-packet-trace"])
+        cmd.args(["--bind", &bind, "--auth-port", &settings.host_port.to_string(), "--http-port", "0", "--no-packet-log", "--no-packet-trace"])
             .arg("--data-dir").arg(self.hosting_dir()).arg("--game-dir").arg(&settings.game_dir).arg("--log-dir").arg(self.root.join("logs/hosting"))
             .arg("--diagnostics-dir").arg(self.root.join("logs/sessions")).arg("--diagnostic-parent").arg(self.diagnostics.id())
             .env("YO3_ENGINE_DIR", &self.runtime.engine).env("YO3_ENGINE", &self.runtime.engine_program).env("NO_COLOR", "1")
@@ -212,6 +249,25 @@ mod tests {
             assert!(local && lan.parse::<IpAddr>().is_ok_and(|ip| matches!(ip, IpAddr::V4(v4) if v4.is_private())));
         }
         assert_eq!(name_of(&Settings::default()), DEFAULT_NAME);
+        // A chosen address is shared when none is typed; every interface leaves it to the network address.
+        let chosen = Settings { host_bind: "203.0.113.9".into(), ..Settings::default() };
+        if listen_choices().iter().all(|b| b.address.to_string() != "203.0.113.9") { assert!(listen_address(&chosen).is_err(), "not this PC's") }
+        if let Some(own) = listen_choices().into_iter().find(|b| b.interface_id.is_some() && b.address.is_ipv4()) {
+            let on = Settings { host_bind: own.address.to_string(), host_bind_interface: own.interface_id.clone(), ..Settings::default() };
+            assert_eq!(share_host(&on), Some((own.address.to_string(), true)));
+        }
+        assert_eq!(listen_address(&Settings::default()).unwrap().to_string(), "0.0.0.0");
+    }
+
+    #[test]
+    fn the_listen_choices_start_with_every_interface_and_leave_out_loopback() {
+        let choices = listen_choices();
+        assert_eq!(choices[0].address.to_string(), "0.0.0.0");
+        assert!(choices.iter().all(|b| !b.address.is_loopback()), "{choices:?}");
+        assert!(choices.iter().all(|b| !b.label.starts_with("br-") && !b.label.starts_with("docker")), "{choices:?}");
+        let ranks: Vec<u8> = ["0.0.0.0", "192.168.1.2", "10.0.0.4", "100.80.1.2", "172.18.0.1", "203.0.113.7", "::", "2001:db8::1"]
+            .iter().map(|ip| listen_rank(ip.parse().unwrap())).collect();
+        assert!(ranks.is_sorted(), "{ranks:?}");
     }
 
     #[test]
