@@ -69,13 +69,20 @@ code from the host.
 
 ![Auto Duel in the duel menu](../screenshots/auto-duel.png)
 
-The chosen banlist applies to Create Duel. The banlist used for Auto Duel and computer duels is the one you log in
-with: the host's (**Season 16** unless they chose another; **Unlimited** on your own Singleplayer server) until you pick
-your own with [`banlist` in the chat](#chat-commands). The Yugi, Jaden and Yusei character decks hold cards Season 16 forbids or
-limits (Heavy Storm, Premature Burial...), so either edit them or choose `unlimited` (or another list that allows
-them) and log in again; your starter deck is fine. Auto Duel only matches players on the same banlist, so nobody
-brings a deck the other's list forbids. When you pick your deck for a duel, the chat window says which banlist the duel uses (a
-room on **Unlimited** allows any card, three copies each).
+**Banlists.** There are three, and the chat window always says which one a duel uses when you pick your deck:
+
+- **Auto Duel and official events** use the host's banlist (**Season 16** unless they chose another; **Unlimited** on
+  your own Singleplayer server), so everyone meets everyone. An event under its own banlist checks decks against that
+  one, and says so when you enter.
+- **Your banlist**, for duels against the computer: choose it in **Edit Deck → Change Regulations** (the fifth button on
+  the left), or with [`banlist` in the chat](#chat-commands). It applies at once, no need to log in again; Edit Deck
+  shows its limits, and Create Duel starts on it (Detailed Rules → Customize → Regulations).
+- **A room** uses the banlist its host picks in Create Duel (Customize → Regulations); challengers see it in Duel
+  Conditions.
+
+The Yugi, Jaden and Yusei character decks hold cards Season 16 forbids or limits (Heavy Storm, Premature Burial...):
+edit them, or choose `unlimited` (or another list that allows them) as your banlist for the computer. When no deck of
+yours can be used ("There are no valid Decks available."), the chat window says what breaks each one.
 
 **EDOPro decks.** Desktop imports an EDOPro deck file (`.ydk`) into your decks and exports yours for EDOPro: Settings →
 Singleplayer → Your data → EDOPro decks for your own server, **Decks…** under your User ID on a Multiplayer server
@@ -263,8 +270,8 @@ Anything else, such as `!lol`, is ordinary chat.
 | Command | What it does |
 | --- | --- |
 | `help` | Lists these commands. Any word the server doesn't know does the same. |
-| `banlist` | Shows the banlist your Auto Duel and computer duels use, and the choices. |
-| `banlist NAME` | Chooses one, by name (`unlimited`, `season 16`, any case) or number. It is kept for your account and applies **at your next login**: log out of the game and in again. Select Deck's check and Auto Duel follow it. |
+| `banlist` | Shows your banlist for duels against the computer (and the host's, which Auto Duel uses), and the choices. |
+| `banlist NAME` | Chooses it, by name (`unlimited`, `season 16`, any case) or number, as Edit Deck → Change Regulations does. It is kept for your account and applies **at once** to duels against the computer, Edit Deck and Create Duel's default. Auto Duel always uses the host's. |
 | `banlist default` | Goes back to the host's banlist. |
 | `draw` or `draw5` | Draws 5 random cards from your newest deck (the one you last saved in Edit Deck or picked for a duel; the starter deck before that), to see what an opening hand could look like. `draw 7` draws 7 (up to 10); add part of a deck's name to use another: `draw 5 starter`. |
 | `where CARD` | Where a card comes from: which booster packs hold it, a structure deck, Blister's Trade Card, the shop's Rental, the Special Pack an Official Event win earns, or a deck every player starts with. A part of the name is enough (`where red-eyes`); a few cards at most are listed, so be specific. The game's chat filter hides some words as stars (`red-eyes black` arrives as `red-eyes *****`): stars match anything, so `where red-eyes` and `where red-eyes *****` both work. "No normal route" means nothing on the server gives it (only Obelisk, Ra and the three cards no deck may hold). |
@@ -369,8 +376,8 @@ plays you instead: one duel that counts as the match); after each duel you are m
 Your score for the event shows in the lobby and the result screen. Every win (a duel, or a match) also earns a **Special
 Pack**, up to 10 in one event: five of the promo cards no other pack gives (the Malefic monsters, Dragunity Arma Leyvaten,
 the Blackwing and Masked Heroes and more), which arrives as a present you open from the map, with a D-Mail from the Host.
-When an event ends your host's prize (BP) arrives as a D-Mail, and Tournament Points (My Profile) add up from the events you played. If an event needs a particular banlist, Ready
-tells you in the chat: use `/p Server banlist NAME` and log in again. Main Menu → Leaderboard and the team ranking open
+When an event ends your host's prize (BP) arrives as a D-Mail, and Tournament Points (My Profile) add up from the events you played. If an event is played under its own banlist, Ready
+says so in the chat, and your deck is checked against it. Main Menu → Leaderboard and the team ranking open
 your host's pages with everyone's wins and losses against other players.
 
 ### Website pages

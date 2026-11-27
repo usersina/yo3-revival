@@ -112,7 +112,7 @@ while the server runs or stopped, and each applies at its own moment:
 | `headline` | (none) | At once | A line of news under the name in the server list |
 | `registration` | `invite` | At once | How accounts are made: `invite`, `open` or `closed` ([accounts](authentication.md#accounts)) |
 | `min-launcher` | Server release | At once | Raise the minimum launcher version; it cannot be lower than the server release. Older launchers are told to update |
-| `login-regulation` | Season 16 | At each player's next login | The banlist for Auto Duel and NPC duels, by id or name, for players who haven't chosen their own with `/banlist` in the chat ([playing](playing.md#chat-commands); `set-banlist` overrides one account). Players already online keep theirs; Auto Duel pairs only the same banlist |
+| `login-regulation` | Season 16 | At each player's next login | The banlist everyone logs in with, by id or name: Auto Duel, "Latest Regulation" and official events without their own use it, and it is the default for duels against the computer. A player's own banlist for those (Edit Deck → Change Regulations or `/banlist`, [playing](playing.md#chat-commands); `set-banlist` sets one account's) applies at once and never changes Auto Duel |
 | `start-lp` | 8000 | At the next duel | LP at the start of an Auto Duel or NPC duel; a hosted duel has its own |
 | `anime-cards` | `off` | At the next duel | `on`: cards with a reviewed anime version play by their anime effects in NPC and player duels and show as the anime cards (the card profile, fetched when a game starts: after a change an open game is refused every duel until it is restarted); the others, and every card the profile does not cover yet, keep the game's ([playing](playing.md#anime-card-versions)) |
 | `destiny-draw` | `off` | At the next duel | `on`: in NPC duels (casual duels against the computer; not duels between players, events or the Ultimate Match) the player may, once per duel at the start of their Draw Phase with 1000 LP or less, pick any card left in their Deck as the card they draw ([playing](playing.md#destiny-draw)) |
@@ -251,7 +251,7 @@ bracket ends it with no winner.
 ## Player reports and banlists
 
 Players send reports from the game's chat (`/p Server report PLAYER reason`, [playing](playing.md#chat-commands)), and
-choose their own banlist with `/p Server banlist NAME`. The commands below work while the server runs, and the ones
+choose their own banlist for duels against the computer with `/p Server banlist NAME` or Edit Deck → Change Regulations. The commands below work while the server runs, and the ones
 that change something also with it stopped. They are admin API operations like the rest: audited, and open to a moderator
 (`--by NAME`). The [dashboard](dashboard.md) has a Reports page and shows each account's banlist.
 
@@ -260,7 +260,7 @@ that change something also with it stopped. They are admin API operations like t
 ./yo3-server --by Anna handle-report 3 --note "warned"  # marks report 3 handled
 ./yo3-server --by Anna handle-report 4 --dismiss         # or dismissed
 ./yo3-server banlists                                  # the game's banlists and the server's default
-./yo3-server --by Anna set-banlist Yugi unlimited       # WHO's next login uses it (an id or a name); `default` is the server's
+./yo3-server --by Anna set-banlist Yugi unlimited       # WHO's banlist against the computer (an id or a name); `default` is the server's
 ```
 
 **Your own banlists (#77).** Put EDOPro banlist files (`lflist.conf`, the same format EDOPro uses: `!Name`, then

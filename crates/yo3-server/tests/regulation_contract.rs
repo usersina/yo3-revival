@@ -460,6 +460,24 @@ fn a_refused_duel_deck_is_explained_card_by_card_in_the_chat() {
 }
 
 #[test]
+fn no_valid_deck_is_explained_deck_by_deck() {
+    // The game says only "There are no valid Decks available." when no deck passes its check before a duel (0x4A0E90);
+    // the connection DLL then sends REVIVAL_DECKCHECK {regulation_id} (0x7A16), and the chat says what breaks each deck.
+    let mut w = world(5);
+    w.banlists = vec![(3, "Unlimited".into()), (5, "Season 16".into())];
+    w.card_names = (1..=100u16).map(|row| (1000 + row, format!("Card {row}"))).collect();
+    let server = Server::with_world(w);
+    let mut c = server.join(1001, "Yugi");
+    c.pushed();
+    assert!(c.send(req_with(0x7A16, &[("regulation_id", Value::U32(5))])).is_empty());
+    assert_eq!(chat(&mut c), ["No deck of yours can be used under Season 16:", "\"Starter Deck\": Card 2: 2 copies, but Season 16 allows 1. (and 1 more)",
+        "Fix one in Edit Deck, or pick another banlist there (Change Regulations)."]);
+    // An unknown banlist id is the server's.
+    c.send(req_with(0x7A16, &[("regulation_id", Value::U32(99))]));
+    assert_eq!(chat(&mut c)[0], "No deck of yours can be used under Season 16:");
+}
+
+#[test]
 fn a_duels_banlist_is_said_when_its_deck_is_picked() {
     // A room on "Unlimited" let an opponent bring three Morphing Jar and Heavy Storm, which a player reported as cheating
     // (Discord, 2026-11-27): Select Deck for a duel says the banlist the duel is played under, Unlimited with what it

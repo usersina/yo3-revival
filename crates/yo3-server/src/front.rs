@@ -22,6 +22,15 @@ pub const REVIVAL_BP: u32 = 0x7A11;
 /// An early rental return {rental_id} (Revival, issue #13; for the connection DLL, which has no button to send it from
 /// yet).
 pub const REVIVAL_RETURN: u32 = 0x7A14;
+/// A player's own banlist for their NPC duels (Revival, #77): pushed by the server as `{revival_regulation}` (0: the
+/// server's) at login and when it changes, and sent by the connection DLL as `{regulation_id}` when Edit Deck's Change
+/// Regulations is confirmed (tools/mod/banlist.h). Auto Duel and "Latest Regulation" stay the server's list.
+pub const REVIVAL_BANLIST: u32 = 0x7A15;
+/// The game found no valid deck for a duel (Revival): `{regulation_id}` the banlist it checked against, sent by the
+/// connection DLL (tools/mod/banlist.h); the server explains in the chat.
+pub const REVIVAL_DECKCHECK: u32 = 0x7A16;
+/// `official_participate`'s code for a line that informs and lets the player in (the event's own banlist).
+const EVENT_BANLIST_NOTE: u32 = u32::MAX;
 pub const VERSION_VALID: u32 = 0x219F;
 /// The default banlist every account logs in with (0x2201 regulation_id), which Auto Duel's and the NPC duel's deck
 /// check uses (the `login-regulation` setting's default, settings.rs): 20, "Season 16", the newest list this client ships, as
@@ -1050,7 +1059,8 @@ impl Hub {
             let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64);
             let npc = npcs[((nanos ^ u64::from(duel_id).wrapping_mul(0x9E37_79B9_7F4A_7C15)) % npcs.len() as u64) as usize];
             let name = world.npc_names.get(&npc).cloned().unwrap_or_else(|| "CPU".into());
-            let rule = vec![("match_type".to_string(), Value::U32(SINGLE_MODE))];
+            let mut rule = vec![("match_type".to_string(), Value::U32(SINGLE_MODE))];
+            rule.extend(self.event_regulation(me.event).map(|r| ("regulation_id".to_string(), Value::U32(r))));
             let data = rule.iter().fold(Message::record().with("name", Value::text("duelData")), |m, (k, v)| m.with(k, v.clone()));
             let vs = Player::new(npc, &name).record().with("name", Value::text("vsPlayerData"));
             let push = Message::reply(0x1978).item(vs).item(data.with("duel_id", Value::U32(duel_id)));
@@ -1275,7 +1285,7 @@ impl Hub {
             Some(needed) => {
                 let name = banlists.iter().find(|(id, _)| *id == needed).map_or_else(|| format!("banlist {needed}"), |(_, n)| n.clone());
                 let _ = player;
-                Some((0, format!("This event is played under the {name} banlist: type /banlist {name} in the chat, then log in again.")))
+                Some((EVENT_BANLIST_NOTE, format!("This event is played under the {name} banlist: your deck is checked against it.")))
             }
             None => None,
         }
@@ -2929,6 +2939,12 @@ impl Hub {
     }
 
     /// A new Auto Duel between `other` (waiting first) and `me`: its id and both match pushes (`other`'s first).
+    /// The banlist an official event's duels are played under (#77: its match rule's `regulation_id`, which the game's
+    /// Select Deck and the server's check read; entrants log in with the server's banlist like everyone).
+    fn event_regulation(&self, event: Option<u32>) -> Option<u32> {
+        event.and_then(|e| self.official.get(e)).and_then(|e| e.regulation).filter(|&r| r > 0)
+    }
+
     fn pair(&mut self, other: Waiting, me: Waiting) -> (u32, [(u32, Message); 2]) {
         self.last_duel += 1;
         let duel_id = self.last_duel;
@@ -2936,7 +2952,8 @@ impl Hub {
             (EITHER_MODE, EITHER_MODE) => SINGLE_MODE,
             (EITHER_MODE, kind) | (kind, _) => kind,
         };
-        let rule = vec![("match_type".to_string(), Value::U32(match_type))];
+        let mut rule = vec![("match_type".to_string(), Value::U32(match_type))];
+        rule.extend(self.event_regulation(other.event).map(|r| ("regulation_id".to_string(), Value::U32(r))));
         let push = |vs: &Message| {
             let data = rule.iter().fold(Message::record().with("name", Value::text("duelData")), |m, (k, v)| m.with(k, v.clone()));
             Message::reply(0x1978).item(vs.clone().with("name", Value::text("vsPlayerData"))).item(data.with("duel_id", Value::U32(duel_id)))
@@ -3152,12 +3169,80 @@ impl FrontSession {
         self.login_regulation.unwrap_or_default()
     }
 
-    /// The banlist this account logs in with now: the one it chose with `/banlist` (while the client still has it),
-    /// else the server's `login-regulation` (#63).
+    /// The banlist every account logs in with: the server's `login-regulation` (#24). Auto Duel, "Latest Regulation" and
+    /// official play use it; a player's own choice is for their NPC duels (`personal_regulation`, #77).
     fn chosen_regulation(&self) -> u32 {
+        self.world.settings.now().login_regulation
+    }
+
+    /// The banlist this account chose for its NPC duels (`/banlist`, Edit Deck's Change Regulations through the DLL),
+    /// while the server still has it; None: the server's.
+    pub(crate) fn personal_regulation(&self) -> Option<u32> {
         let own = self.directory.as_ref().and_then(|d| d.locked().account_of(self.account.user_id)).map_or(self.account.banlist, |a| a.banlist);
         own.filter(|id| self.world.banlists.is_empty() || self.world.banlists.iter().any(|(known, _)| known == id))
-            .unwrap_or_else(|| self.world.settings.now().login_regulation)
+    }
+
+    /// The NPC roster (0x2711, kept by the global dispatcher in slot 4 whenever it arrives, so a push replaces it): each
+    /// level's tab, id and needed experience, and the player's own banlist (#77) as `regulation_id`, which the duel's deck
+    /// check before the janken reads from the opponent's item (0x4A0E90; none: the login one).
+    pub(crate) fn npc_roster(&self) -> Message {
+        let own = self.personal_regulation();
+        self.world.npcs.iter().fold(Message::reply(0x2711), |m, &id| {
+            let tab = self.world.npc_series.get(&id).copied().unwrap_or(match id.saturating_sub(120) / 3 {
+                0..=8 => 0,
+                9..=16 => 1,
+                _ => 2,
+            });
+            let item = Message::record().with("npc_type", Value::U32(tab)).with("npc_id", Value::U32(id)).with("need_ex", Value::U32(100 * (id % 3 + 1)));
+            m.item(match own { Some(r) => item.with("regulation_id", Value::U32(r)), None => item })
+        })
+    }
+
+    /// The account's decks that can't be used under `regulation`, each with what is wrong (`deckcheck::explain`), for a
+    /// game that found no valid deck (REVIVAL_DECKCHECK): it says only "There are no valid Decks available.".
+    fn explain_no_deck(&self, regulation: u32) -> Vec<String> {
+        let (_, owned) = self.deck_terms(None);
+        let name = self.world.banlists.iter().find(|(id, _)| *id == regulation).map_or_else(|| format!("banlist {regulation}"), |(_, n)| n.clone());
+        let mut decks: Vec<Deck> = self.starter().into_iter().cloned().collect();
+        decks.extend(self.uploaded_decks());
+        let mut lines = vec![format!("No deck of yours can be used under {name}:")];
+        for deck in decks.iter().take(4) {
+            let problems = crate::deckcheck::explain(&self.world, regulation, &owned, deck);
+            if let Some(first) = problems.first() {
+                let more = if problems.len() > 1 { format!(" (and {} more)", problems.len() - 1) } else { String::new() };
+                lines.push(format!("\"{}\": {first}{more}", deck.name));
+            }
+        }
+        if decks.len() > 4 {
+            lines.push(format!("...and {} more deck(s). Fix one in Edit Deck, or pick another banlist there (Change Regulations).", decks.len() - 4));
+        } else {
+            lines.push("Fix one in Edit Deck, or pick another banlist there (Change Regulations).".into());
+        }
+        lines
+    }
+
+    /// The push that tells the connection DLL the account's own banlist (`REVIVAL_BANLIST`; 0: the server's).
+    pub(crate) fn banlist_push(&self) -> Message {
+        Message::reply(REVIVAL_BANLIST).with("revival_regulation", Value::U32(self.personal_regulation().unwrap_or(0)))
+    }
+
+    /// Keeps `chosen` as the account's own banlist (None or the server's: none), and tells the DLL. The lines for the chat.
+    pub(crate) fn set_personal_regulation(&mut self, chosen: Option<u32>) -> Result<Vec<String>, String> {
+        let server = self.world.settings.now().login_regulation;
+        let chosen = chosen.filter(|&id| id != server);
+        let directory = self.directory.clone().ok_or("Your banlist can't be saved on this server.")?;
+        directory.locked().set_banlist_of(self.account.user_id, chosen).map_err(|e| {
+            tracing::warn!("banlist not saved: {e}");
+            "Your banlist could not be saved: try again.".to_string()
+        })?;
+        self.account.banlist = chosen;
+        let _ = self.outbox.send(self.banlist_push());
+        let _ = self.outbox.send(self.npc_roster());
+        let name_of = |id: u32| self.world.banlists.iter().find(|(k, _)| *k == id).map_or_else(|| format!("banlist {id}"), |(_, n)| n.clone());
+        Ok(vec![
+            format!("Your banlist for duels against the computer is now {}.", name_of(chosen.unwrap_or(server))),
+            format!("Auto Duel always uses the server's, {}; a room uses the one its host picks.", name_of(server)),
+        ])
     }
 
     /// The regulation a duel is played under (its rule's `regulation_id`; 0 means the login one).
@@ -3711,6 +3796,29 @@ impl FrontSession {
                 self.hub().return_rental(id, me, chrono::Utc::now().timestamp());
                 return vec![];
             }
+            // The game found no valid deck for a duel (Revival, the DLL's tools/mod/banlist.h): it says only "There are no
+            // valid Decks available.", so the chat says what breaks each deck under that banlist.
+            REVIVAL_DECKCHECK => {
+                let regulation = msg.get("regulation_id").and_then(Value::as_u32).filter(|id| self.world.regulations.contains_key(id))
+                    .unwrap_or_else(|| self.world.settings.now().login_regulation);
+                for line in self.explain_no_deck(regulation) {
+                    let _ = self.outbox.send(chat_note("Server", &line));
+                }
+                return vec![];
+            }
+            // Edit Deck's Change Regulations confirmed (Revival, #77, the DLL's tools/mod/banlist.h): the account's own banlist
+            // for its NPC duels. No reply; the chat says what changed.
+            REVIVAL_BANLIST => {
+                let id = msg.get("regulation_id").and_then(Value::as_u32).unwrap_or(0);
+                if !self.world.banlists.iter().any(|(known, _)| *known == id) || self.personal_regulation().unwrap_or(self.world.settings.now().login_regulation) == id {
+                    return vec![];
+                }
+                let lines = self.set_personal_regulation(Some(id)).unwrap_or_else(|e| vec![e]);
+                for line in lines {
+                    let _ = self.outbox.send(chat_note("Server", &line));
+                }
+                return vec![];
+            }
             // A BOOSTERPASS code (BpInputWindow, 0x40F7B0): one the host made (`add-code`), once per account, gives its
             // BP (result 0 adds dpGetPoints to the shown BP); anything else is refused (the "ng" frame: "Incorrect
             // BOOSTERPASS CODE."). Konami's own codes are gone. The global dispatcher keeps premium from it (0x4F5349),
@@ -3878,19 +3986,10 @@ impl FrontSession {
             // (the record's npcbin) reaches its need_ex (0: mastered from the start; 0x4BFDC4 divides by the three
             // summed). npc_type is the series tab: NPCs 0-8 Yu-Gi-Oh!, 9-16 GX, 17-25 5D's. need_ex 100/200/300 and
             // the tabs are guesses.
-            0x2710 => self.world.npcs.iter().fold(Message::reply(0x2711), |m, &id| {
-                let tab = self.world.npc_series.get(&id).copied().unwrap_or(match id.saturating_sub(120) / 3 {
-                    0..=8 => 0,
-                    9..=16 => 1,
-                    _ => 2,
-                });
-                m.item(
-                    Message::record()
-                        .with("npc_type", Value::U32(tab))
-                        .with("npc_id", Value::U32(id))
-                        .with("need_ex", Value::U32(100 * (id % 3 + 1))),
-                )
-            }),
+            // The main screen's roster poll, once the player is in: the player's own banlist again for the connection DLL
+            // (#77), which now finds Edit Deck's and Create Duel's saved settings (the selected player's profile, not loaded
+            // yet at the login's push). After the roster, so no game reads it as the roster's answer.
+            0x2710 => return vec![self.npc_roster(), self.banlist_push()],
             // Duel entry (DuelMatchingAgent step 0x4A1090): join_id comes back in 0x17AC.
             // The global dispatcher (0x4F4AE7) keeps the reply's event_id, which a user event's lobby then asks with. Only
             // a user event's goes back: with Auto Duel's (2) the client queued itself again after every match (live).
@@ -3951,9 +4050,12 @@ impl FrontSession {
                 let regulation = self.login_regulation();
                 let mut event = None;
                 let banlists = self.world.banlists.clone();
-                if let Some(refusal) = self.hub().official_participate(event_id, player_id, regulation, &banlists) {
-                    let _ = self.outbox.send(chat_note("Server", &refusal.1));
-                    return vec![Message::reply(0x179A).with("error_code", Value::U32(refusal.0))];
+                if let Some((code, line)) = self.hub().official_participate(event_id, player_id, regulation, &banlists) {
+                    let _ = self.outbox.send(chat_note("Server", &line));
+                    // An event under another banlist than the server's is joined all the same: its duels carry it.
+                    if code != EVENT_BANLIST_NOTE {
+                        return vec![Message::reply(0x179A).with("error_code", Value::U32(code))];
+                    }
                 }
                 if let Some(kind) = self.hub().official.get(event_id).map(|e| e.kind) {
                     (event, match_type) = (Some(event_id), if kind.is_match() { MATCH_MODE } else { SINGLE_MODE });
@@ -4139,7 +4241,9 @@ impl FrontSession {
         // The login also fills the client's premium_expire (only a 0x23F0 with result 0 does, 0x4F5349), which the eagle
         // at the top left parses: empty, it crashed the client (0x485CA1).
         if id == 0x1F48 {
-            return vec![reply, premium(0, self.account.dpoint, 0)];
+            // The player's own banlist for the connection DLL (#77), after the login's replies (an unsolicited message
+            // before them could be read as the login's answer).
+            return vec![reply, premium(0, self.account.dpoint, 0), self.banlist_push()];
         }
         vec![reply]
     }

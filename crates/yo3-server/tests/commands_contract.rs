@@ -116,40 +116,75 @@ fn a_whisper_to_the_server_is_answered_to_the_sender_alone() {
     assert_eq!(b.pushed().len(), 1);
 }
 
+/// The `REVIVAL_BANLIST` pushes (0x7A15) the connection DLL got: their `revival_regulation`.
+fn banlist_pushes(c: &mut Client) -> Vec<u32> {
+    c.pushed().iter().filter(|m| m.request() == Some(0x7A15)).filter_map(|m| m.get("revival_regulation").and_then(Value::as_u32)).collect()
+}
+
 #[test]
-fn a_banlist_is_chosen_kept_and_sent_at_the_next_login() {
+fn a_players_banlist_is_for_their_npc_duels_and_changes_at_once() {
+    // #77: the login banlist (0x219A/0x2201 regulation_id) is always the server's: Auto Duel and "Latest Regulation"
+    // use it. A player's own choice (`banlist NAME`, or Edit Deck's Change Regulations through the DLL) is for their NPC
+    // duels: kept for the account and pushed to the DLL at once (REVIVAL_BANLIST {revival_regulation}, 0 the server's),
+    // and at every login after 0x2201. No log-in again.
     let s = Server::with_world(world());
     let d = directory();
     let mut c = s.join_from(&d, addr(1));
     let user = d.lock().unwrap().account_for(addr(1)).user_id;
-    assert_eq!(login_regulation(&mut c), 5, "the server's login-regulation until the player picks");
+    let login = c.send(req_with(0x1F48, &[("lang", Value::U32(1))]));
+    assert_eq!(login[0].get("regulation_id"), Some(&Value::U32(5)));
+    assert_eq!(login.iter().filter(|m| m.request() == Some(0x7A15)).filter_map(|m| m.get("revival_regulation").cloned()).collect::<Vec<_>>(),
+        [Value::U32(0)], "the DLL told, after the login's replies: none of its own");
+    assert_eq!(login.last().and_then(Message::request), Some(0x7A15));
     let shown = ask(&mut c, "banlist");
     assert!(shown.contains("Season 16 (the server's)") && shown.contains("Unlimited") && shown.contains("Season 17"), "{shown}");
 
     let done = ask(&mut c, "banlist unlimited");
-    assert!(done.contains("Unlimited") && done.contains("next log in"), "applies at the next login, and says so: {done}");
+    assert!(done.contains("computer is now Unlimited") && done.contains("Auto Duel always uses the server's, Season 16"), "{done}");
+    let pushed = c.pushed();
+    assert_eq!(pushed.iter().filter(|m| m.request() == Some(0x7A15)).filter_map(|m| m.get("revival_regulation").cloned()).collect::<Vec<_>>(),
+        [Value::U32(3)], "the DLL told at once");
+    // The NPC roster again, each NPC with it: the game's deck check before an NPC duel reads it there (0x4A0E90).
+    let roster = pushed.iter().find(|m| m.request() == Some(0x2711)).expect("the roster pushed");
+    assert!(roster.items.iter().all(|i| i.get("regulation_id") == Some(&Value::U32(3))), "{roster:?}");
+    let polled = c.send(req(0x2710));
+    assert!(polled[0].items.iter().all(|i| i.get("regulation_id") == Some(&Value::U32(3))));
+    assert_eq!(polled.iter().map(Message::request).collect::<Vec<_>>(), [Some(0x2711), Some(0x7A15)], "the banlist again once the player is in");
     assert_eq!(d.lock().unwrap().account_of(user).unwrap().banlist, Some(3));
-    assert!(ask(&mut c, "banlist").contains("Unlimited (your choice)"));
-    // Names the way login-regulation reads them: any case, or an id.
+    assert!(ask(&mut c, "banlist").contains("Unlimited (your choice; Auto Duel uses Season 16)"));
+    // Names the way login-regulation reads them: any case, or an id; the server's own is no choice of one's own.
     assert!(ask(&mut c, "banlist SEASON 17").contains("now Season 17"));
     assert_eq!(d.lock().unwrap().account_of(user).unwrap().banlist, Some(20));
+    ask(&mut c, "banlist season 16");
+    assert_eq!(d.lock().unwrap().account_of(user).unwrap().banlist, None);
     ask(&mut c, "banlist 3");
-    assert_eq!(d.lock().unwrap().account_of(user).unwrap().banlist, Some(3));
-
+    banlist_pushes(&mut c);
     // An unknown name is refused, and what was kept stays.
     let refused = ask(&mut c, "banlist season 99");
     assert!(refused.contains("no banlist") && refused.contains("Unlimited"), "{refused}");
     assert_eq!(d.lock().unwrap().account_of(user).unwrap().banlist, Some(3));
 
-    // The next login (a new session of the same account) carries it, in both login replies.
+    // Edit Deck's Change Regulations, confirmed (the DLL's REVIVAL_BANLIST {regulation_id}): kept, pushed back, said.
+    let r = c.send(req_with(0x7A15, &[("regulation_id", Value::U32(20))]));
+    assert!(r.is_empty(), "no reply: {r:?}");
+    assert_eq!(d.lock().unwrap().account_of(user).unwrap().banlist, Some(20));
+    let pushed = c.pushed();
+    assert!(pushed.iter().any(|m| m.request() == Some(0x7A15) && m.get("revival_regulation") == Some(&Value::U32(20))));
+    assert!(pushed.iter().any(|m| m.items.iter().any(|i| i.get("chat_str").and_then(Value::as_str).is_some_and(|t| t.contains("now Season 17")))));
+    // An unknown id is ignored.
+    c.send(req_with(0x7A15, &[("regulation_id", Value::U32(99))]));
+    assert_eq!(d.lock().unwrap().account_of(user).unwrap().banlist, Some(20));
+
+    // The next login: the server's banlist, and the player's own pushed after it.
     let mut again = s.join_saved(&d, user);
     let auth = one(again.send(req(0x1F47)));
-    assert_eq!((auth.request(), auth.get("regulation_id")), (Some(0x219A), Some(&Value::U32(3))));
-    assert_eq!(login_regulation(&mut again), 3);
+    assert_eq!((auth.request(), auth.get("regulation_id")), (Some(0x219A), Some(&Value::U32(5))));
+    let login = again.send(req_with(0x1F48, &[("lang", Value::U32(1))]));
+    assert_eq!(login[0].get("regulation_id"), Some(&Value::U32(5)));
+    assert!(login.iter().any(|m| m.request() == Some(0x7A15) && m.get("revival_regulation") == Some(&Value::U32(20))));
     // `default` goes back to the server's.
-    assert!(ask(&mut again, "banlist default").contains("the server's"));
+    assert!(ask(&mut again, "banlist default").contains("computer is now Season 16"));
     assert_eq!(d.lock().unwrap().account_of(user).unwrap().banlist, None);
-    assert_eq!(login_regulation(&mut s.join_saved(&d, user)), 5);
     // Another account is unaffected.
     assert_eq!(login_regulation(&mut s.join_from(&d, addr(2))), 5);
 }
@@ -177,23 +212,26 @@ fn pick(c: &mut Client, duel_id: u32, name: &str, main: &[u16]) -> u32 {
 }
 
 #[test]
-fn select_deck_follows_the_players_banlist() {
+fn select_deck_follows_the_banlist_the_npc_duel_names() {
+    // An NPC duel's request (0x17AC) names its banlist: the connection DLL makes the game's NPC screen put the player's
+    // own there (#77), and the server checks the deck against it. A request with none (a game without the DLL's change)
+    // is checked against the server's.
     let s = Server::with_world(world());
     let d = directory();
-    let user = d.lock().unwrap().account_for(addr(1)).user_id;
     let starter: Vec<u16> = (1..=20).chain(1..=20).collect();
     // Under Season 16 the starter deck's third card is forbidden: refused (0x22CB). Under Unlimited it is accepted.
     let mut c = s.join_from(&d, addr(1));
     let id = npc_duel(&mut c);
     assert_eq!(pick(&mut c, id, "Mine", &starter), 0x22CB);
     ask(&mut c, "banlist unlimited");
-    let mut c = s.join_saved(&d, user);
-    let id = npc_duel(&mut c);
-    assert_eq!(pick(&mut c, id, "Mine", &starter), 0x22CA);
-    // A player on the server's list still meets it, whatever this one chose.
-    let mut other = s.join_from(&d, addr(2));
-    let id = npc_duel(&mut other);
-    assert_eq!(pick(&mut other, id, "Mine", &starter), 0x22CB);
+    let id = npc_duel_under(&mut c, 3);
+    assert_eq!(pick(&mut c, id, "Mine", &starter), 0x22CA, "at once, no log-in again");
+}
+
+fn npc_duel_under(c: &mut Client, regulation: u32) -> u32 {
+    let rule = Message::record().with("cpu_id", Value::U32(124)).with("match_type", Value::U32(4)).with("regulation_id", Value::U32(regulation));
+    let duel = Message::reply(0x17AC).with("event_id", Value::U32(1)).with("join_id", Value::U32(1)).item(rule);
+    one(c.send(Packet::Message(duel))).get("duel_id").and_then(Value::as_u32).unwrap()
 }
 
 fn auto_match(c: &mut Client) -> Vec<Message> {
@@ -203,7 +241,9 @@ fn auto_match(c: &mut Client) -> Vec<Message> {
 }
 
 #[test]
-fn auto_duel_pairs_only_players_on_the_same_banlist() {
+fn auto_duel_pairs_players_whatever_their_own_banlists() {
+    // #77: everyone logs in with the server's banlist, which the game checks Auto Duel decks against, so the queue is one:
+    // a player's own banlist (for NPC duels) doesn't split it.
     let s = Server::with_world(World { duel_server: ("10.0.0.5".into(), 4321), ..world() });
     let d = directory();
     let ua = d.lock().unwrap().account_for(addr(1)).user_id;
@@ -213,21 +253,14 @@ fn auto_duel_pairs_only_players_on_the_same_banlist() {
     auto_match(&mut a);
     auto_match(&mut b);
     s.hub.lock().unwrap().match_waiting();
-    assert!(a.pushed().is_empty() && b.pushed().is_empty(), "Unlimited and Season 16 are not paired");
-    // A third on Unlimited meets the first; the Season 16 player keeps waiting.
-    let uc = d.lock().unwrap().account_for(addr(3)).user_id;
-    d.lock().unwrap().set_banlist_of(uc, Some(3)).unwrap();
-    let mut c = s.join_saved(&d, uc);
-    auto_match(&mut c);
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
-    let (mut got_a, mut got_c) = (false, false);
-    while std::time::Instant::now() < deadline && !(got_a && got_c) {
+    let (mut got_a, mut got_b) = (false, false);
+    while std::time::Instant::now() < deadline && !(got_a && got_b) {
         got_a |= a.pushed().iter().any(|m| m.request() == Some(0x1978));
-        got_c |= c.pushed().iter().any(|m| m.request() == Some(0x1978));
+        got_b |= b.pushed().iter().any(|m| m.request() == Some(0x1978));
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
-    assert!(got_a && got_c, "the two on Unlimited are matched");
-    assert!(b.pushed().iter().all(|m| m.request() != Some(0x1978)), "the Season 16 player is not");
+    assert!(got_a && got_b, "an Unlimited chooser and a Season 16 player are matched");
 }
 
 #[test]

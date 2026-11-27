@@ -21,7 +21,7 @@ fn the_npc_roster_lists_every_level_of_every_npc() {
     // becomes the agent's record and the opponent's PlayerData. NPC names are text 0x5208 + 2 *
     // ((npc_id - 120) / 3) (0x4BFE34), so the first id of a triple is 120 + 3k.
     let mut c = Server::with_world(world()).join(1001, "Yugi");
-    let r = one(c.send(req(0x2710)));
+    let r = c.send(req(0x2710)).remove(0);
     assert_eq!(r.request(), Some(0x2711));
     let ids: Vec<_> = r.items.iter().map(|i| i.get("npc_id").and_then(Value::as_u32)).collect();
     assert_eq!(ids, (120..126).map(Some).collect::<Vec<_>>());
@@ -46,7 +46,7 @@ fn the_npcs_are_on_their_series_tab() {
     // 17-25 tab 2 (**guess** from the names).
     let world = World { npcs: (120..198).collect(), ..world() };
     let mut c = Server::with_world(world).join(1001, "Yugi");
-    let r = one(c.send(req(0x2710)));
+    let r = c.send(req(0x2710)).remove(0);
     let tab = |id: u32| r.items.iter().find(|i| i.get("npc_id") == Some(&Value::U32(id))).and_then(|i| i.get("npc_type")).cloned();
     for (id, expected) in [(120, 0), (144, 0), (147, 1), (168, 1), (171, 2), (195, 2)] {
         assert_eq!(tab(id), Some(Value::U32(expected)), "npc_id {id}");
@@ -56,7 +56,7 @@ fn the_npcs_are_on_their_series_tab() {
 #[test]
 fn without_game_data_the_roster_is_empty() {
     let mut c = Server::new().join(1001, "Yugi");
-    let r = one(c.send(req(0x2710)));
+    let r = c.send(req(0x2710)).remove(0);
     assert_eq!(r.request(), Some(0x2711));
     assert!(r.items.is_empty());
 }

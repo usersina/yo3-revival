@@ -333,6 +333,34 @@ id, `name_id` 23180 + n and the four lists) beside UI texts naming them; the DLL
 Blade Rabbit chosen with `banlist Test Format`, at the next login Edit Deck greyed out both Giant Orc with the
 Forbidden mark, marked Blade Rabbit 1 and left Heavy Storm unmarked.
 
+**A player's own banlist (#77).** The login's `regulation_id` (`0x219A`, `0x2201`) is always the server's
+`login-regulation`: Auto Duel's own check, "Latest Regulation" and Auto Duel's pairing use it, so the queue is one. A
+player's own banlist, for duels against the computer, is kept for the account (`/banlist`, `set-banlist`) and goes to the
+connection DLL (`tools/mod/banlist.h`) as `REVIVAL_BANLIST 0x7A15 {revival_regulation}` (0: the server's) after the
+login's replies and after the main screen's roster (`0x2710`, once the selected player's local profile is loaded),
+and whenever it changes. Evidence and what the DLL does with it:
+- Edit Deck's **Change Regulations** (the left toolbar's fifth button) lists every banlist with its tabs; Confirm loads
+  the chosen one (`0x440900`: `push eax; call 0x41A320`) and saves it as deckInfo `cursor_regulation`, which Edit Deck
+  opens with (`0x43EAEF`). Stock, it sends nothing and changes no duel (live: Select Deck still checked "Latest
+  Regulation"). The DLL wraps that call to send `0x7A15 {regulation_id}`; the server keeps it and says so in the chat.
+- The NPC screen's duel start (`0x4BE390`) gives the duel the login banlist (`mov eax,[edx+0xC8]` at `0x4BE4AB`; 3 for
+  a mastered NPC), which the duel request `0x17AC` names; the DLL makes it the player's own. The matching agent's deck
+  check (`0x4A0E90`) reads `regulation_id` (or `duel_regulation_id`) from the opponent's roster item first, else the
+  login one (front connection `+0xC8`): the server puts the player's own on every `0x2711` item and pushes a new roster
+  when it changes (the global dispatcher keeps it in slot 4 whenever it arrives).
+- Create Duel (`0x49E210`) opens on duelMaking's `regulation`, under Detailed Rules' Customize (`detail` 1; Standard
+  always names the login banlist, live: a Standard room's `0x17AC` named 20): the DLL sets both.
+- An official event under its own banlist no longer refuses entrants on another: its matches' `duelData` and rule carry
+  `regulation_id`, which Select Deck and the server's check read.
+- When no deck passes `0x4A0E90`'s check, the game shows only "There are no valid Decks available." (`0x4A1031`, call
+  `0x4A0C30` at `0x4A103D`): the DLL sends `REVIVAL_DECKCHECK 0x7A16 {regulation_id}` (as the agent chose it) and the
+  server lists each deck's first problem in the chat.
+Live (2026-11-27, `scratch-server.py --banlist`, Test Format forbidding Giant Orc): Change Regulations → Test Format,
+Confirm: the chat said "Your banlist for duels against the computer is now Test Format."; Kaiba's Start Duel then
+refused the Starter Deck (legal under Season 16) and the chat said '"Starter Deck": Giant Orc is Forbidden in Test
+Format.'; `!banlist default` and the same duel started (`0x17AC` regulation 20); after a restart, Create Duel opened on
+Customize, and its Confirm hit the same refusal and explanation.
+
 ### Info and chat windows
 
 | Request                                                                                                                                                                                   | Reply (error)       | Fields                                                                                                                | Evidence                                                                                                              | Status                                                                                                                                                                                                                                                                                     |

@@ -29,7 +29,7 @@ fn dartz_joins_the_roster_with_printed_and_anime_decks() {
     assert!(world.npc_deck(195).unwrap().main.contains(&gigas), "anime deck with them on");
     // The roster (0x2711): Dartz's three levels on tab 0.
     let mut c = common::Server::with_world(world).join(1001, "Yugi");
-    let roster = common::one(c.send(common::req(0x2710)));
+    let roster = c.send(common::req(0x2710)).remove(0);
     let dartz: Vec<_> = roster.items.iter().filter(|i| matches!(i.get("npc_id").and_then(Value::as_u32), Some(195..=197))).collect();
     assert_eq!(dartz.len(), 3);
     assert!(dartz.iter().all(|i| i.get("npc_type").and_then(Value::as_u32) == Some(0)));

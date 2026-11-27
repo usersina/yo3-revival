@@ -127,7 +127,7 @@ impl FrontSession {
         let arg = arg.trim();
         if arg.is_empty() {
             let shown = match own {
-                Some(id) => format!("Your banlist is {} (your choice).", name_of(id)),
+                Some(id) => format!("Your banlist for duels against the computer is {} (your choice; Auto Duel uses {}).", name_of(id), name_of(server_default)),
                 None => format!("Your banlist is {} (the server's).", name_of(server_default)),
             };
             return usage(shown);
@@ -142,14 +142,8 @@ impl FrontSession {
                 Err(_) => return usage(format!("There is no banlist \"{}\".", arg.chars().take(40).collect::<String>())),
             }
         };
-        if let Err(e) = directory.locked().set_banlist_of(self.account.user_id, chosen) {
-            tracing::warn!("[chat] banlist not saved: {e}");
-            return vec!["Your banlist could not be saved: try again.".into()];
-        }
-        self.account.banlist = chosen;
-        let now = name_of(chosen.unwrap_or(server_default));
-        let kind = if chosen.is_some() { "your choice" } else { "the server's" };
-        vec![format!("Your banlist is now {now} ({kind})."), "It applies when you next log in: log out of the game and back in, then Select Deck and Auto Duel follow it.".into()]
+        let _ = directory;
+        self.set_personal_regulation(chosen).unwrap_or_else(|e| vec![e])
     }
 
     /// `flag CODE` chooses the country flag others see (#81): the game has no place to choose it (its Detailed Search only

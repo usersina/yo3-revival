@@ -182,11 +182,13 @@ static void starter_reply(void *message, void *connection) {
     game_delete(job.check.collection); game_delete(job.check.regulation);
 }
 #include "bp.h"
+#include "banlist.h"
 #include "chat-lobby.h"
 static void __attribute__((fastcall)) starter_dispatch(void *message, void *unused, void *connection) {
     (void)unused;
     ((void (__attribute__((thiscall)) *)(void *,void *))game_address(0x4f4a00))(message,connection);
     bp_reply(message);
+    banlist_reply(message,connection);
     chat_lobby_reply(message);
     starter_reply(message,connection);
 }
@@ -200,6 +202,8 @@ static int starter_install(void) {
     DWORD previous; if(!VirtualProtect(site,5,PAGE_EXECUTE_READWRITE,&previous)) return 0;
     LONG offset=(BYTE *)starter_dispatch-(site+5); memcpy(site+1,&offset,4);
     FlushInstructionCache(GetCurrentProcess(),site,5);
-    DWORD ignored; return VirtualProtect(site,5,previous,&ignored)!=0;
+    DWORD ignored; if(!VirtualProtect(site,5,previous,&ignored)) return 0;
+    banlist_install();
+    return 1;
 }
 #endif

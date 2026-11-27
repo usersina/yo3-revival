@@ -22,9 +22,10 @@ fn one(replies: Vec<Message>) -> Message {
     replies.into_iter().next().unwrap()
 }
 
-/// The login's replies: 0x2201, then the 0x23F0 push that fills premium_expire.
+/// The login's replies: 0x2201, then the 0x23F0 push that fills premium_expire, then the player's own banlist for the
+/// connection DLL (REVIVAL_BANLIST 0x7A15, #77), after them so no game reads it as the login's answer.
 fn login(replies: Vec<Message>) -> Message {
-    assert_eq!(replies.iter().map(Message::request).collect::<Vec<_>>(), [Some(0x2201), Some(0x23F0)], "{replies:?}");
+    assert_eq!(replies.iter().map(Message::request).collect::<Vec<_>>(), [Some(0x2201), Some(0x23F0), Some(0x7A15)], "{replies:?}");
     replies.into_iter().next().unwrap()
 }
 
@@ -236,9 +237,11 @@ fn player_refresh_matches_the_selected_player() {
 fn main_screen_polls_are_answered() {
     let mut s = in_world();
     // Without a team, 0x2AFB and 0x2AFD get their error twins (see team_contract.rs).
-    for (req_id, reply) in [(0x271A, 0x271B), (0x2710, 0x2711), (0x2AFB, 0x2B14), (0x2AFD, 0x2B18)] {
+    for (req_id, reply) in [(0x271A, 0x271B), (0x2AFB, 0x2B14), (0x2AFD, 0x2B18)] {
         assert_eq!(one(s.handle(&req(req_id))).request(), Some(reply), "{req_id:#x}");
     }
+    // The roster, then the player's own banlist for the connection DLL (#77), which finds the player's saved settings now.
+    assert_eq!(s.handle(&req(0x2710)).iter().map(Message::request).collect::<Vec<_>>(), [Some(0x2711), Some(0x7A15)]);
     assert_eq!(one(s.handle(&req(0x2583))).get("count"), Some(&Value::U32(0)));
 }
 

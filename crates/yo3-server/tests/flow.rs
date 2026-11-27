@@ -46,6 +46,7 @@ async fn client_reaches_the_main_screen() {
         assert_eq!(rpc(&mut front, Message::reply(req)).await.request(), Some(reply));
         if req == 0x1F48 {
             assert_eq!(recv(&mut front).await.request(), Some(0x23F0), "the premium push after the login");
+            assert_eq!(recv(&mut front).await.request(), Some(0x7A15), "the player's banlist for the connection DLL");
         }
     }
     let select = Message::reply(0x1F4C).with("player_id", Value::U32(1001));

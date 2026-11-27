@@ -206,17 +206,25 @@ fn cancel_and_leaving_take_the_player_out_of_the_queue() {
 }
 
 #[test]
-fn an_event_under_another_banlist_asks_for_it_instead_of_matching() {
+fn an_event_under_another_banlist_is_joined_and_its_duels_carry_it() {
+    // #77: everyone logs in with the server's banlist, so an event under another one no longer asks the entrant to change
+    // theirs: they wait as usual, the chat says the event's banlist, and the match's duelData (and rule) carries it as
+    // regulation_id, which the game's Select Deck and the server's deck check read.
     let server = Server::new();
-    let mut a = server.join(1001, "Yugi");
+    let (mut a, mut b) = (server.join(1001, "Yugi"), server.join(1002, "Kaiba"));
     let new = NewEvent { kind: Kind::DuelistTrial, name: "Banlist".into(), start: now() - 60, end: now() + 3600, regulation: Some(77), prize: Prize::default() };
     let id = server.hub.lock().unwrap().official.create(new).unwrap().id;
-    let joined = join(&mut a, id);
-    let join_id = int(&joined, "join_id").unwrap();
-    let r = one(a.send(req_with(0x1798, &[("event_id", Value::U32(id)), ("join_id", Value::U32(join_id))])));
-    assert_eq!(r.request(), Some(0x179A), "the error twin of 0x1799");
-    let said = a.pushed();
-    assert!(said.iter().flat_map(|m| &m.items).any(|i| i.get("chat_str").and_then(Value::as_str).is_some_and(|t| t.contains("/banlist"))), "{said:?}");
+    for c in [&mut a, &mut b] {
+        let joined = join(c, id);
+        let join_id = int(&joined, "join_id").unwrap();
+        let r = one(c.send(req_with(0x1798, &[("event_id", Value::U32(id)), ("join_id", Value::U32(join_id))])));
+        assert_eq!(r.request(), Some(0x1799), "waiting, not refused");
+    }
+    server.hub.lock().unwrap().match_waiting();
+    let said = pushed_within(&mut a, Duration::from_secs(3));
+    assert!(said.iter().flat_map(|m| &m.items).any(|i| i.get("chat_str").and_then(Value::as_str).is_some_and(|t| t.contains("played under the banlist 77"))), "{said:?}");
+    let to_a = said.iter().find(|m| m.request() == Some(0x1978)).expect("the match");
+    assert_eq!(int(named(to_a, "duelData"), "regulation_id"), Some(77));
 }
 
 /// Two entrants matched, and the duel id of their match.

@@ -54,6 +54,13 @@ Older entries describe their release at the time. For current setup, use the [RE
 - **Dartz hails his trump cards.** He calls out the Seal of Orichalcos and Divine Serpent Geh in the chat when he
   plays them.
 
+- **Your banlist, chosen in Edit Deck.** Edit Deck → Change Regulations is no longer a preview: the banlist you confirm
+  there is yours for duels against the computer, at once, without logging in again, and Create Duel starts on it.
+  `/p Server banlist NAME` does the same. Auto Duel always uses the host's banlist, so everyone meets everyone, and
+  an event under its own banlist checks your deck against it without asking you to change yours.
+- **"There are no valid Decks available." now says why.** The chat window lists what breaks each of your decks under
+  that duel's banlist.
+
 ## v0.1.26 (2026-11-26)
 
 - **EDOPro decks.** Desktop imports an EDOPro deck file (`.ydk`) into your decks, and exports yours for EDOPro: Settings →
