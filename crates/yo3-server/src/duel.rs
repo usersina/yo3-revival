@@ -621,6 +621,7 @@ impl DuelSession {
         let view = self.world.card_view();
         let (mut translator, mut table) = npc_translator(first, [&entry.deck.main, &npc.main], view.cards.clone());
         translator.field_pictures = self.world.field_pictures.clone();
+        translator.card_names = std::sync::Arc::new(self.world.card_names.clone());
         translator.lang = self.player_id.and_then(|id| self.hub.locked().lang_of(id)).unwrap_or(1);
         if self.world.duel_check {
             // The NPC's hidden cards' rows, from a translator that hides nothing (the same uids in the same order).

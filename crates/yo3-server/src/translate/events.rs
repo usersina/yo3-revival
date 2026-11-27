@@ -1,6 +1,9 @@
 //! The engine's messages as the client's commands: draws, moves, summons, chains, battles, counters, reveals.
 use super::*;
 
+/// The most Deck cards a reveal turns over one at a time (Ancient Telescope's five); more is a whole Deck (#94).
+const MAX_DECK_REVEAL: usize = 5;
+
 impl Translator {
     /// The client commands for the engine's events (prompts excluded).
     pub fn events(&mut self, messages: &[Json]) -> Vec<Message> {
@@ -849,6 +852,16 @@ impl Translator {
         let mut out = vec![];
         // A Deck's top cards shown to the client (Ancient Telescope): turned over on the pile, as MSG_CONFIRM_DECKTOP.
         let deck_cards: Vec<Loc> = c.cards.iter().filter(|c| c.location == loc::DECK).cloned().collect();
+        // A whole Deck shown (Nobleman of Crossout shows each player the other's, #94): turned over one card at a time it
+        // took minutes, so the chat window lists it, and none of its cards waits to be shown when it reaches the hand.
+        if deck_cards.len() > MAX_DECK_REVEAL && deck_cards.len() == c.cards.len() {
+            let owner = self.side(deck_cards[0].controller);
+            if viewer == CLIENT && owner != CLIENT {
+                let line = self.deck_line(&deck_cards);
+                self.note(line);
+            }
+            return out;
+        }
         if viewer == CLIENT && !deck_cards.is_empty() && deck_cards.len() == c.cards.len() {
             let owner = deck_cards[0].controller;
             let size = self.sides[self.side(owner) as usize].zones.get(&zone::DECK).map_or(0, Vec::len) as u64;
@@ -875,6 +888,23 @@ impl Translator {
             }
         }
         out
+    }
+
+    /// "Your opponent's Deck (N cards): 3 Giant Orc, 2 ...", the names in the Deck's order of first appearance.
+    pub(super) fn deck_line(&self, cards: &[Loc]) -> String {
+        let mut counts: Vec<(u16, usize)> = vec![];
+        for card in cards {
+            let cid = card.cid.unwrap_or(0) as u16;
+            match counts.iter_mut().find(|(c, _)| *c == cid) {
+                Some((_, n)) => *n += 1,
+                None => counts.push((cid, 1)),
+            }
+        }
+        let names: Vec<String> = counts.iter().map(|&(cid, n)| {
+            let name = self.card_names.get(&cid).cloned().unwrap_or_else(|| format!("card {cid}"));
+            if n > 1 { format!("{n} {name}") } else { name }
+        }).collect();
+        format!("Your opponent's Deck ({} cards): {}", cards.len(), names.join(", "))
     }
 
     /// A face-down field card the client can't see, shown to it and hidden again, as Konami's server did (Stern Mystic in

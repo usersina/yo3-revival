@@ -1953,6 +1953,26 @@ fn a_searched_card_shows_when_it_reaches_the_hand() {
     assert!(!again.iter().any(|(id, _)| *id == 0x13), "{again:?}");
 }
 
+#[test]
+fn a_whole_deck_shown_is_a_chat_line_not_a_card_by_card_reveal() {
+    // Nobleman of Crossout (#94) shows each player the other's Deck (Duel.ConfirmCards on it): turned over one card at a
+    // time like Ancient Telescope's five it took minutes. More than five Deck cards: the chat window lists them by
+    // name, nothing is turned over, and the client's own Deck shown to the opponent leaves no card waiting to be shown
+    // when it is drawn.
+    let (mut t, _) = translator();
+    t.card_names = std::sync::Arc::new([(4200, "Giant Orc".to_string()), (4201, "Witch".to_string())].into_iter().collect());
+    let deck = |player: u64, cids: &[u32]| json!({ "type": 31, "player": 1 - player, "cards": cids.iter().enumerate()
+        .map(|(i, cid)| json!({ "code": cid, "cid": cid, "controller": player, "location": 1, "sequence": i, "position": 10 }))
+        .collect::<Vec<_>>() });
+    assert!(t.events(&[deck(1, &[4200, 4201, 4200, 4200, 4201, 4209])]).is_empty());
+    assert_eq!(t.take_notes(), ["Your opponent's Deck (6 cards): 3 Giant Orc, 2 Witch, card 4209"]);
+    // The client's Deck shown to the opponent: no line, and drawing one of its cards shows nothing.
+    assert!(t.events(&[deck(0, &[4100, 4101, 4102, 4103, 4104, 4105])]).is_empty());
+    assert!(t.take_notes().is_empty());
+    let drawn: Vec<_> = t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4100 }] })]).iter().map(cmd).collect();
+    assert!(!drawn.iter().any(|(id, _)| *id == 0x13), "{drawn:?}");
+}
+
 /// The chain commands among `out` (0x33, 0x34).
 fn links(out: &[Message]) -> Vec<(u32, [u32; 4])> {
     out.iter().map(cmd).filter(|(id, _)| matches!(id, 0x33 | 0x34)).collect()

@@ -37,6 +37,9 @@ Older entries describe their release at the time. For current setup, use the [RE
   the other lines the game has no text for are now in Japanese, German, French, Italian, Spanish and Korean too (#92).
   A card's own options (Enemy Controller's, Elemental HERO Stratos') are still in English.
 
+- **Nobleman of Crossout no longer takes minutes.** When it banishes a Flip monster each Deck is shown to the other
+  player; instead of turning every card over one at a time, the chat window lists your opponent's Deck in one line (#94).
+
 ## v0.1.26 (2026-11-26)
 
 - **EDOPro decks.** Desktop imports an EDOPro deck file (`.ydk`) into your decks, and exports yours for EDOPro: Settings →

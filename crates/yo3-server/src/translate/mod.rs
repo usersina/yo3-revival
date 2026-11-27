@@ -529,6 +529,8 @@ pub struct Translator {
     pub field_pictures: std::sync::Arc<std::collections::HashSet<u16>>,
     /// The player's game language (0x1F48 lang: 0 Japanese, 1 English...): the server's own texts are in it (#92).
     pub lang: u32,
+    /// The cards' English names by Konami id (`World::card_names`), for the chat lines the duel windows can't say.
+    pub card_names: std::sync::Arc<HashMap<u16, String>>,
     /// The values each monster zone's record last went with (level, ATK, DEF, base ATK, base DEF), by player and zone.
     records: HashMap<(u32, u32), [u32; 5]>,
     /// A monster zone's Type and Attribute (the client's numbers) where an effect changed them from CARD_Prop's.
@@ -739,6 +741,7 @@ impl Translator {
             hidden,
             field_pictures: Default::default(),
             lang: 1,
+            card_names: Default::default(),
             records: HashMap::new(),
             kinds: HashMap::new(),
             deck_tops: [None; 2],

@@ -2108,7 +2108,9 @@ off its new place) and DeckReset. A face-up Deck (Convulsion of Nature: MSG_REVE
 reversed Deck's top is public whatever the position): the top card's entry at index 0 with the public flag (uid top
 byte) and its row, then DeckReset, as a Graveyard shows its top card; turned back, the flag goes. Live (2026-11-13):
 Ancient Telescope turned two of Yami Bakura's cards over on his pile in turn; Convulsion of Nature showed both Decks'
-tops. Extra Deck reveals (CONFIRM_EXTRATOP 42) are not sent: no card of the client's makes them.
+tops. More than five Deck cards confirmed at once is a whole Deck (Nobleman of Crossout's, #94: turned over one at a time
+it took minutes): nothing is turned over, and the opponent's goes to the chat window as one line, "Your opponent's Deck
+(N cards): 3 Giant Orc, ...", by the cards' English names (**shape**: how the original showed it is unknown). Extra Deck reveals (CONFIRM_EXTRATOP 42) are not sent: no card of the client's makes them.
 
 **The card info panel** (`0x453740`) reads a field monster from its record (above), but a monster in a hand or a
 Graveyard from two maps the server fills. In the hand (case `0xB`) its level is the uid's entry in the `+0xD8` map
