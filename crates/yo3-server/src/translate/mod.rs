@@ -595,6 +595,10 @@ pub struct Translator {
     materials: Vec<(Card, Place)>,
     /// Cards an effect revealed (MSG_CONFIRM_CARDS) that wait to reach a hand, by Konami id.
     revealing: Vec<u16>,
+    /// Cards the core holds in no place between two moves (`SendtoDeck(..., -2, ...)` then `SendtoGrave`, Cemetery Change's
+    /// swap of the Graveyards: MSG_MOVE to location 0, then from it): each one's Konami id, the place it left and its
+    /// mirror card's uid, which the mirror still holds it by until the second move.
+    limbo: Vec<(u16, Place, u32)>,
     /// The card list open is a mixed one (see `card_list`), and how many table entries it staged.
     mixed: bool,
     /// The card list open stands for SELECT_OPTION's options (the client has no labels for them).
@@ -771,6 +775,7 @@ impl Translator {
             counters: HashMap::new(),
             declared: 0,
             revealing: vec![],
+            limbo: vec![],
             materials: vec![],
             mixed: false,
             option_cards: false,

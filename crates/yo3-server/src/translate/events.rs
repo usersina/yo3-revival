@@ -598,6 +598,21 @@ impl Translator {
             return self.engine_place(&mv.to).map(|to| self.detach(cid, to)).unwrap_or_default();
         }
         if mv.from.location == 0 {
+            // A card out of limbo (see `limbo`): the move from the place it left, as the mirror still holds it there.
+            if let Some(at) = self.limbo.iter().position(|(c, _, _)| *c == cid && cid != 0)
+                && let Some(to) = self.engine_place(&mv.to)
+            {
+                let (_, from, uid) = self.limbo.remove(at);
+                // The cards that left before this one, and those that arrived in its pile, moved it: it is found by the
+                // mirror's own card, not by the index it left (the swap of two Graveyards holding copies of one card).
+                let from = match self.sides[from.player as usize].zone(from.zone).iter().position(|c| c.uid == uid) {
+                    Some(index) => Place { index, ..from },
+                    None => from,
+                };
+                let kind = move_kind(mv.reason, from, to);
+                let moved = self.relocate_as(cid, from, to, kind);
+                return if moved.is_empty() { moved } else { self.presented(moved, cid, from, to, kind) };
+            }
             return self.engine_place(&mv.to).map(|to| self.token(mv, to)).unwrap_or_default();
         }
         if let Some(from) = self.engine_place(&mv.from).filter(|f| f.zone <= zone::FIELD_SPELL)
@@ -639,6 +654,14 @@ impl Translator {
                 }
                 let vanish = command(cmd::CARD_VANISH, [from.player, from.zone | (from.index as u32) << 8, 0, 0]);
                 dropped.into_iter().chain(std::iter::once(vanish)).chain(moved).collect()
+            }
+            // A card the core sets down in no place (location 0) waits there for its next move; the client sees nothing yet.
+            (Some(from), None) if mv.to.location == 0 && cid != 0 && from.zone > zone::FIELD_SPELL => {
+                let source = self.sides[from.player as usize].zone(from.zone);
+                let uid = source.get(from.index).filter(|c| self.cards.get(&c.row).map(|s| s.cid) == Some(cid))
+                    .or_else(|| source.iter().find(|c| self.cards.get(&c.row).map(|s| s.cid) == Some(cid))).map_or(0, |c| c.uid);
+                self.limbo.push((cid, from, uid));
+                vec![]
             }
             // Tokens and Xyz materials have no client place yet.
             _ => vec![],
