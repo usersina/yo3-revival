@@ -422,6 +422,44 @@ impl Backend {
         std::fs::write(file, done["ydk"].as_str().unwrap_or_default()).with_context(|| format!("{}", file.display()))?;
         Ok(done["message"].as_str().unwrap_or("Exported.").to_owned())
     }
+    /// Your account's own banlists on your own server (#77, Settings → Singleplayer → Your data → Banlists): a
+    /// `player_banlists::operate` request, through the running server, else on its stopped data folder.
+    pub fn player_banlist(&self, settings: &Settings, request: Value) -> anyhow::Result<Value> {
+        let op = Op::PlayerBanlist { player: Some(settings.player_name.clone()), request: request.clone() };
+        if let Some(live) = self.live(settings) { return api::call(&live, &op).map_err(anyhow::Error::msg) }
+        let data = self.data_dir(settings);
+        let changes = request["op"].as_str().is_some_and(|op| op == "banlist_import" || op == "banlist_delete");
+        let _lock = if changes { Some(yo3_server::store::lock(&data)?) } else { None };
+        if changes { yo3_server::store::initialize(&data)?; }
+        let directory = yo3_server::accounts::Directory::open(vec![], &data.join("accounts.json"))?;
+        let player = directory.player_id_named(&settings.player_name).ok_or_else(|| anyhow::anyhow!("Make your player in the game first (Select Player), then try again."))?;
+        let owner = directory.entries().find(|(_, _, a)| a.players.iter().any(|p| p.player_id == player)).map(|(_, _, a)| a.user_id)
+            .ok_or_else(|| anyhow::anyhow!("Make your player in the game first (Select Player), then try again."))?;
+        drop(directory);
+        yo3_server::player_banlists::offline(&data, Path::new(&settings.game_dir), owner, &settings.player_name, &request).map_err(anyhow::Error::msg)
+    }
+    /// Your banlists' names on your own server.
+    pub fn banlists(&self, settings: &Settings) -> anyhow::Result<Vec<String>> {
+        let read = self.player_banlist(settings, serde_json::json!({ "op": "banlists" }))?;
+        Ok(read["banlists"].as_array().into_iter().flatten().filter_map(|b| b["name"].as_str().map(str::to_owned)).collect())
+    }
+    /// An EDOPro banlist file (`lflist.conf`) kept as one of your banlists on your own server: the server's sentence.
+    pub fn import_banlist(&self, settings: &Settings, file: &Path) -> anyhow::Result<String> {
+        let conf = std::fs::read(file).with_context(|| format!("{}", file.display()))?;
+        let done = self.player_banlist(settings, serde_json::json!({ "op": "banlist_import", "conf": String::from_utf8_lossy(&conf) }))?;
+        Ok(done["message"].as_str().unwrap_or("Imported.").to_owned())
+    }
+    /// One of your banlists written as an EDOPro `lflist.conf`.
+    pub fn export_banlist(&self, settings: &Settings, name: &str, file: &Path) -> anyhow::Result<String> {
+        let done = self.player_banlist(settings, serde_json::json!({ "op": "banlist_export", "name": name }))?;
+        std::fs::write(file, done["conf"].as_str().unwrap_or_default()).with_context(|| format!("{}", file.display()))?;
+        Ok(done["message"].as_str().unwrap_or("Exported.").to_owned())
+    }
+    /// Deletes one of your banlists: the server's sentence.
+    pub fn delete_banlist(&self, settings: &Settings, name: &str) -> anyhow::Result<String> {
+        let done = self.player_banlist(settings, serde_json::json!({ "op": "banlist_delete", "name": name }))?;
+        Ok(done["message"].as_str().unwrap_or("Deleted.").to_owned())
+    }
     /// What Unlock all cards shows (Settings → Singleplayer → Your data): how many cards (each artwork) your player holds,
     /// starting cards included, out of every card, and how many an unlock would give now (all of them before the first
     /// unlock, then only those an update added). Asked of the running server, else read from its stopped data folder.

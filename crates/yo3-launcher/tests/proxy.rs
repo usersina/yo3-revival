@@ -69,7 +69,10 @@ async fn a_modded_client_logs_in_and_its_duel_is_bound_to_that_launcher() {
     let duel = rpc(&mut front, Message::reply(0x17AC).item(Message::record().with("cpu_id", Value::U32(124)))).await;
     let id = duel.get("duel_id").cloned().unwrap();
     assert_eq!(rpc(&mut front, Message::reply(0x1F4F).with("duel_id", id.clone()).with("update_type", Value::U32(1)).item(deck)).await.request(), Some(0x22CA));
-    rpc(&mut front, Message::reply(0x17D4).with("duel_id", id)).await;
+    // The server's chat notes (0x2455, the duel's banlist) may follow Select Deck's answer: past them, the report's.
+    let mut answered = rpc(&mut front, Message::reply(0x17D4).with("duel_id", id)).await;
+    while answered.request() == Some(0x2455) { answered = read(&mut front).await; }
+    assert_eq!(answered.request(), Some(0x17D5));
     let handoff = read(&mut front).await;
     assert_eq!(handoff.items[0].get("host"), Some(&Value::text("127.0.0.1")));
     assert_eq!(handoff.items[0].get("port"), Some(&Value::U32(p.ports.duel as u32)));

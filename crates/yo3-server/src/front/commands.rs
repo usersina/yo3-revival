@@ -113,9 +113,9 @@ impl FrontSession {
     /// reaches the game at its next login, which is when the game checks its decks against it.
     fn banlist_command(&mut self, arg: &str) -> Vec<String> {
         let world = self.world.clone();
-        let name_of = |id: u32| world.banlists.iter().find(|(k, _)| *k == id).map_or_else(|| format!("banlist {id}"), |(_, n)| n.clone());
+        let name_of = |id: u32| world.banlist_names().iter().find(|(k, _)| *k == id).map_or_else(|| format!("banlist {id}"), |(_, n)| n.clone());
         let server_default = world.settings.now().login_regulation;
-        let choices: Vec<String> = world.banlists.iter().map(|(_, n)| n.clone()).collect();
+        let choices: Vec<String> = world.banlist_names().iter().map(|(_, n)| n.clone()).collect();
         let usage = |lead: String| {
             let mut lines = vec![lead];
             lines.extend(wrap("Choices: ", &choices, ", "));
@@ -137,7 +137,7 @@ impl FrontSession {
         } else if choices.is_empty() {
             return vec!["This server doesn't know the game's banlists yet: ask the host.".into()];
         } else {
-            match crate::regulation_by(arg, &world.banlists) {
+            match crate::regulation_by(arg, &world.banlist_names()) {
                 Ok(id) => Some(id),
                 Err(_) => return usage(format!("There is no banlist \"{}\".", arg.chars().take(40).collect::<String>())),
             }

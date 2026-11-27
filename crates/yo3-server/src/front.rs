@@ -672,6 +672,9 @@ pub struct World {
     /// The cards the game never had (#75, `engine/added-cards.json`): already in `cards` and the other tables; served to
     /// the launcher at `/web/added-cards`, which extends the game's card files with them before the game loads them.
     pub added: Arc<yo3_data::added::Added>,
+    /// The banlists players keep on the server (#77, `crate::player_banlists`), changed while it runs: read with
+    /// `regulation`, `banlist_names` and `regulation_list`, which add them to the game's and the host's.
+    pub player_banlists: crate::player_banlists::Shared,
 }
 
 /// The Information list (0x21FC, read by the global dispatcher `0x4F4700` whenever it arrives, so the server may push
@@ -724,6 +727,39 @@ pub const DUELS_UNAVAILABLE: (&str, &str) = (
 );
 
 impl World {
+    /// A banlist by id: the game's, the host's or a player's (#77).
+    pub fn regulation(&self, id: u32) -> Option<yo3_data::Regulation> {
+        self.regulations.get(&id).cloned().or_else(|| crate::player_banlists::locked(&self.player_banlists).regulation(id))
+    }
+
+    /// Every banlist's id and name: the game's, the host's, then the players'.
+    pub fn banlist_names(&self) -> Vec<(u32, String)> {
+        let mut names = self.banlists.clone();
+        names.extend(crate::player_banlists::locked(&self.player_banlists).all().iter().map(|l| (l.id, l.name.clone())));
+        names
+    }
+
+    /// Every banlist's id, as Create Duel lists them (0x2398).
+    pub fn regulation_list(&self) -> Vec<u16> {
+        let mut ids = self.regulation_ids.clone();
+        ids.extend(crate::player_banlists::locked(&self.player_banlists).all().iter().map(|l| l.id as u16));
+        ids
+    }
+
+    /// The added-cards file the launcher reads (anime cards on or off), with the players' banlists after the host's,
+    /// each with its name's text id.
+    pub fn added_render(&self, anime: bool) -> String {
+        let store = crate::player_banlists::locked(&self.player_banlists);
+        if store.all().is_empty() {
+            return self.added.render_for(anime);
+        }
+        let mut added = (*self.added).clone();
+        let first = yo3_data::added::BANLIST_NAME_TEXT + added.banlists.len() as u32;
+        let room = yo3_data::added::MAX_BANLISTS.saturating_sub(added.banlists.len());
+        added.banlists.extend(store.all().iter().take(room).enumerate().map(|(i, l)| l.added(first + i as u32)));
+        added.render_for(anime)
+    }
+
     /// The deck NPC level `id` plays now: a custom NPC's anime deck while the server has anime cards on, else its deck.
     pub fn npc_deck(&self, id: u32) -> Option<&Deck> {
         self.settings.now().anime_cards.then(|| self.npc_anime_decks.get(&id)).flatten().or_else(|| self.npc_decks.get(&id))
@@ -774,6 +810,7 @@ impl World {
     pub fn new(regulation_ids: Vec<u16>) -> World {
         World {
             regulation_ids,
+            player_banlists: Default::default(),
             regulations: HashMap::new(),
             settings: Arc::new(crate::settings::Live::open(None, vec![]).expect("the default settings are valid")),
             banlists: vec![],
@@ -3179,7 +3216,7 @@ impl FrontSession {
     /// while the server still has it; None: the server's.
     pub(crate) fn personal_regulation(&self) -> Option<u32> {
         let own = self.directory.as_ref().and_then(|d| d.locked().account_of(self.account.user_id)).map_or(self.account.banlist, |a| a.banlist);
-        own.filter(|id| self.world.banlists.is_empty() || self.world.banlists.iter().any(|(known, _)| known == id))
+        own.filter(|id| self.world.banlist_names().is_empty() || self.world.banlist_names().iter().any(|(known, _)| known == id))
     }
 
     /// The NPC roster (0x2711, kept by the global dispatcher in slot 4 whenever it arrives, so a push replaces it): each
@@ -3202,7 +3239,7 @@ impl FrontSession {
     /// game that found no valid deck (REVIVAL_DECKCHECK): it says only "There are no valid Decks available.".
     fn explain_no_deck(&self, regulation: u32) -> Vec<String> {
         let (_, owned) = self.deck_terms(None);
-        let name = self.world.banlists.iter().find(|(id, _)| *id == regulation).map_or_else(|| format!("banlist {regulation}"), |(_, n)| n.clone());
+        let name = self.world.banlist_names().iter().find(|(id, _)| *id == regulation).map_or_else(|| format!("banlist {regulation}"), |(_, n)| n.clone());
         let mut decks: Vec<Deck> = self.starter().into_iter().cloned().collect();
         decks.extend(self.uploaded_decks());
         let mut lines = vec![format!("No deck of yours can be used under {name}:")];
@@ -3238,7 +3275,7 @@ impl FrontSession {
         self.account.banlist = chosen;
         let _ = self.outbox.send(self.banlist_push());
         let _ = self.outbox.send(self.npc_roster());
-        let name_of = |id: u32| self.world.banlists.iter().find(|(k, _)| *k == id).map_or_else(|| format!("banlist {id}"), |(_, n)| n.clone());
+        let name_of = |id: u32| self.world.banlist_names().iter().find(|(k, _)| *k == id).map_or_else(|| format!("banlist {id}"), |(_, n)| n.clone());
         Ok(vec![
             format!("Your banlist for duels against the computer is now {}.", name_of(chosen.unwrap_or(server))),
             format!("Auto Duel always uses the server's, {}; a room uses the one its host picks.", name_of(server)),
@@ -3281,7 +3318,7 @@ impl FrontSession {
         let owned = crate::trade::usable(&self.world, saved.as_ref().unwrap_or(me), &lent, &borrowed);
         // A duel that names no banlist, or one the client doesn't have, uses the one this player logged in with.
         let login = self.login_regulation.unwrap_or_else(|| self.chosen_regulation());
-        let regulation = Some(self.duel_regulation(duel_id)).filter(|id| self.world.regulations.contains_key(id)).unwrap_or(login);
+        let regulation = Some(self.duel_regulation(duel_id)).filter(|id| self.world.regulation(*id).is_some()).unwrap_or(login);
         (regulation, owned)
     }
 
@@ -3289,7 +3326,7 @@ impl FrontSession {
     /// knows the game's banlists.
     fn banlist_line(&self, duel_id: Option<u32>) -> Option<String> {
         let (regulation, _) = self.deck_terms(duel_id);
-        let name = self.world.banlists.iter().find(|(id, _)| *id == regulation).map(|(_, name)| name.clone())?;
+        let name = self.world.banlist_names().iter().find(|(id, _)| *id == regulation).map(|(_, name)| name.clone())?;
         let unlimited = if regulation == UNLIMITED_REGULATION { " (any card, three copies each)" } else { "" };
         Some(format!("This duel's banlist: {name}{unlimited}."))
     }
@@ -3799,7 +3836,7 @@ impl FrontSession {
             // The game found no valid deck for a duel (Revival, the DLL's tools/mod/banlist.h): it says only "There are no
             // valid Decks available.", so the chat says what breaks each deck under that banlist.
             REVIVAL_DECKCHECK => {
-                let regulation = msg.get("regulation_id").and_then(Value::as_u32).filter(|id| self.world.regulations.contains_key(id))
+                let regulation = msg.get("regulation_id").and_then(Value::as_u32).filter(|id| self.world.regulation(*id).is_some())
                     .unwrap_or_else(|| self.world.settings.now().login_regulation);
                 for line in self.explain_no_deck(regulation) {
                     let _ = self.outbox.send(chat_note("Server", &line));
@@ -3810,7 +3847,7 @@ impl FrontSession {
             // for its NPC duels. No reply; the chat says what changed.
             REVIVAL_BANLIST => {
                 let id = msg.get("regulation_id").and_then(Value::as_u32).unwrap_or(0);
-                if !self.world.banlists.iter().any(|(known, _)| *known == id) || self.personal_regulation().unwrap_or(self.world.settings.now().login_regulation) == id {
+                if !self.world.banlist_names().iter().any(|(known, _)| *known == id) || self.personal_regulation().unwrap_or(self.world.settings.now().login_regulation) == id {
                     return vec![];
                 }
                 let lines = self.set_personal_regulation(Some(id)).unwrap_or_else(|e| vec![e]);
@@ -3941,6 +3978,7 @@ impl FrontSession {
                     tracing::info!("player {player_id}: a deck update for duel {duel_id:?} fails the check; ignored");
                     return vec![Message::reply(0x22CA)];
                 }
+                let mut said: Option<String> = None;
                 // Select Deck (update_type 1) sends the whole deck: keep it for the player's other machines.
                 if msg.get("update_type").and_then(Value::as_u32) == Some(1)
                     && let Some(item) = msg.items.first()
@@ -3948,9 +3986,8 @@ impl FrontSession {
                     self.keep_deck(self.world.place_deck(&Deck::from_record(item)));
                     // The duel's banlist, said before it starts: a room on "Unlimited" let an opponent bring three Morphing
                     // Jar and Heavy Storm, which read as cheating (a Discord report, 2026-11-27).
-                    if duel_id.is_some() && let Some(line) = self.banlist_line(duel_id) {
-                        let _ = self.outbox.send(chat_note("Server", &line));
-                    }
+                    // After the reply, so nothing comes between Select Deck and its answer.
+                    said = duel_id.and_then(|_| self.banlist_line(duel_id));
                 }
                 if let (Some(id), Some(item)) = (duel_id, msg.items.first()) {
                     let deck = self.world.place_deck(&Deck::from_record(item));
@@ -3971,6 +4008,9 @@ impl FrontSession {
                         let no_surrender = rule("surrender") == Some(0);
                         hub.enter_duel(player_id, DuelEntry { deck, duel_id: Some(id), opponent, lp, best_of, times, no_surrender, identity: self.identity, peer: self.peer, ..DuelEntry::default() });
                     }
+                }
+                if let Some(line) = said {
+                    return vec![Message::reply(0x22CA), chat_note("Server", &line)];
                 }
                 Message::reply(0x22CA)
             }
@@ -4049,7 +4089,7 @@ impl FrontSession {
                 let event_id = msg.get("event_id").and_then(Value::as_u32).unwrap_or(0);
                 let regulation = self.login_regulation();
                 let mut event = None;
-                let banlists = self.world.banlists.clone();
+                let banlists = self.world.banlist_names();
                 if let Some((code, line)) = self.hub().official_participate(event_id, player_id, regulation, &banlists) {
                     let _ = self.outbox.send(chat_note("Server", &line));
                     // An event under another banlist than the server's is joined all the same: its duels carry it.
@@ -4113,7 +4153,7 @@ impl FrontSession {
                 }
                 Message::reply(0x17AD).with("duel_id", Value::U32(duel_id))
             }
-            0x2072 => Message::reply(0x2398).with("regulations", Value::u16_be_array(&self.world.regulation_ids)),
+            0x2072 => Message::reply(0x2398).with("regulations", Value::u16_be_array(&self.world.regulation_list())),
             0x27D8 => Message::reply(0x27D9).item(Message::record()),
             0x2CEE => {
                 // The client reads its player again after a duel: the accounts' copy, with any titles the duel earned.

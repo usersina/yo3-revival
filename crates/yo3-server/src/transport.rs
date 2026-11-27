@@ -42,8 +42,17 @@ impl Gate {
     fn deck_request(&self, session: &yo3_tunnel::Token, body: &[u8]) -> serde_json::Value {
         let refused = |e: &str| serde_json::json!({ "ok": false, "error": e });
         let Some(user_id) = self.sessions.locked().user_of(session, Instant::now()) else { return refused("session") };
-        let Some(request) = crate::deck_ops::inflate(body).filter(|r| matches!(r["op"].as_str(), Some("decks" | "import" | "export"))) else { return refused("bad_request") };
+        let Some(request) = crate::deck_ops::inflate(body)
+            .filter(|r| matches!(r["op"].as_str(), Some("decks" | "import" | "export" | "banlists" | "banlist_import" | "banlist_export" | "banlist_delete"))) else { return refused("bad_request") };
         let Some(world) = &self.world else { return refused("unavailable") };
+        // A player's own banlists (#77): the account's, by its first player's name.
+        if request["op"].as_str().is_some_and(|op| op.starts_with("banlist")) {
+            let owner_name = self.accounts.locked().player_names(user_id).first().cloned().unwrap_or_else(|| format!("#{user_id}"));
+            return match crate::player_banlists::live(world, user_id, &owner_name, &request) {
+                Ok(mut v) => { v["ok"] = serde_json::json!(true); v }
+                Err(message) => serde_json::json!({ "ok": false, "error": "refused", "message": message }),
+            };
+        }
         match self.decks.get_or_init(|| crate::deck_ops::DeckData::from_world(world).map(Arc::new)) {
             Ok(data) => crate::deck_ops::handle(&request, user_id, &self.accounts, data),
             Err(e) => { tracing::warn!("[decks] the card data is unavailable: {e}"); refused("unavailable") }
@@ -335,7 +344,7 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
                         }
                         // The added cards (#75): the launcher extends the game's card files with them before releasing the game.
                         if path.split('?').next() == Some(ADDED_CARDS_PATH) {
-                            let body = world.added.render_for(world.settings.now().anime_cards);
+                            let body = world.added_render(world.settings.now().anime_cards);
                             tracing::info!(peer = %peer, user = identity.user_id, "[tls] read the added cards ({})", world.added.cards.len());
                             let head = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
                             tls.write_all(head.as_bytes()).await?;

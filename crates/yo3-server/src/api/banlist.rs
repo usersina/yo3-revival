@@ -49,7 +49,7 @@ impl Api {
     pub(super) fn banlist_names_for_ops(&self) -> Vec<(u32, String)> { self.banlist_names() }
 
     fn banlist_names(&self) -> Vec<(u32, String)> {
-        if let Some(world) = &self.world { return world.banlists.clone() }
+        if let Some(world) = &self.world { return world.banlist_names() }
         match yo3_data::GameData::load(&self.game_dir) {
             Ok(data) => data.regulations.iter().map(|r| (r.id, data.text(r.name_id).unwrap_or_default().to_string())).collect(),
             Err(_) => vec![],
@@ -62,7 +62,7 @@ impl Api {
 
     /// The banlist account `user_id` logs in with now.
     pub(super) fn account_banlist(&self, own: Option<u32>) -> AccountBanlist {
-        let names = self.world.as_ref().map(|w| w.banlists.clone()).unwrap_or_default();
+        let names = self.world.as_ref().map(|w| w.banlist_names()).unwrap_or_default();
         let known = own.filter(|id| names.is_empty() || names.iter().any(|(k, _)| k == id));
         match known {
             Some(id) => AccountBanlist { banlist: Self::choice(&names, id), chosen: true },

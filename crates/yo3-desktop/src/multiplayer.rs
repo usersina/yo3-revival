@@ -473,7 +473,7 @@ pub async fn decks(server: &Server, session: &yo3_tunnel::Token, request: &serde
             "session" => "Your sign-in ended. Sign in again.".to_owned(),
             "player" => "Make your player in the game first (Select Player), then try again.".to_owned(),
             "refused" => answer["message"].as_str().unwrap_or("The server didn't take the deck.").to_owned(),
-            _ => "This server can't import or export decks right now.".to_owned(),
+            _ => "This server can't do that right now (an older server, or the card data is missing).".to_owned(),
         });
     }
     Err(unreachable)

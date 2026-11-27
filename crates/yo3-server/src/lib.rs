@@ -32,6 +32,7 @@ pub mod engine;
 pub mod npc;
 pub mod profile;
 pub mod banlists;
+pub mod player_banlists;
 pub mod banter;
 pub mod translate;
 mod card_options;
@@ -548,19 +549,29 @@ pub fn game_data(game_dir: &std::path::Path) -> anyhow::Result<(yo3_data::GameDa
 /// The host's banlists (#77, `banlists/*.conf` in the data folder, `crate::banlists`): checked like the game's own, in
 /// Create Duel's list and the `banlist` names, and served to the launcher, which writes them as the game's files.
 fn add_host_banlists(world: &mut World, data: &yo3_data::GameData, dir: &std::path::Path) {
-    let Some(template) = data.regulations.iter().find(|r| r.id == front::LOGIN_REGULATION).map(|r| r.record.clone()) else { return };
+    let template = data.regulations.iter().find(|r| r.id == front::LOGIN_REGULATION).map(|r| r.record.clone());
+    // The players' own (#77, kept in server.db): open first, so the host's new lists are numbered after theirs too.
+    let mut players = player_banlists::Store::open(Some(dir), banlists::FIRST_ID, template.clone());
+    let Some(template) = template else { world.player_banlists = players.shared(); return };
     let passcodes = engine::Engine::dir().map(|d| ydk::Passcodes::load(&d)).transpose().unwrap_or_else(|e| {
         tracing::warn!("host banlists: no card passcodes ({e})");
         None
     });
-    let Some(passcodes) = passcodes else { return };
-    let taken: Vec<String> = world.banlists.iter().map(|(_, n)| n.clone()).collect();
-    let custom = banlists::load(dir, &taken, |code| passcodes.cid(code).filter(|cid| world.cards.values().any(|c| c.cid == *cid)));
+    let custom = match passcodes {
+        Some(passcodes) => {
+            let taken: Vec<String> = world.banlists.iter().map(|(_, n)| n.clone()).collect();
+            banlists::load(dir, &taken, players.next_free(), |code| passcodes.cid(code).filter(|cid| world.cards.values().any(|c| c.cid == *cid)))
+        }
+        None => vec![],
+    };
     for b in &custom {
         world.regulations.insert(b.id, banlists::regulation(b, &template));
         world.banlists.push((b.id, b.name.clone()));
         world.regulation_ids.push(b.id as u16);
     }
+    // The players' next ones come after every number the host's ever took.
+    players.raise_floor(banlists::numbers_taken(dir));
+    world.player_banlists = players.shared();
     if !custom.is_empty() {
         let mut added = (*world.added).clone();
         added.banlists = custom;

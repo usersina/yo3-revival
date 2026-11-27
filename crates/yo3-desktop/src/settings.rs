@@ -148,6 +148,15 @@ pub enum Message {
     ExportPick(String),
     ExportDeck,
     DeckExported(Result<Option<String>, String>),
+    /// Banlists (#77): your own on your own server, Import… (an EDOPro lflist.conf), the one to export or delete.
+    BanlistsRead(Result<Vec<String>, String>),
+    ImportBanlist,
+    BanlistImported(Result<Option<String>, String>),
+    BanlistPick(String),
+    ExportBanlist,
+    BanlistExported(Result<Option<String>, String>),
+    DeleteBanlist,
+    BanlistDeleted(Result<String, String>),
     /// Handled by the window: open a web page or a folder.
     Open(String),
     ToggleDetails,
@@ -219,6 +228,8 @@ pub struct State {
     collection: Option<yo3_desktop::Collection>,
     /// Your player's decks on your own server, and the one Export… writes.
     decks: Vec<String>,
+    banlists: Vec<String>,
+    banlist_pick: Option<String>,
     export_pick: Option<String>,
     licences: bool,
     update: Option<String>,
@@ -267,7 +278,7 @@ The full licences come with YO3 Revival, in its notices folder.";
 impl State {
     pub fn new(ctx: &Ctx, section: Section) -> Self {
         Self { section, note: None, busy: None, direct: Direct::Unknown, prefix: ctx.settings.wine_prefix.clone(), wine: ctx.settings.wine_binary.clone(),
-            confirm_reset: false, confirm_game_reset: false, confirm_unlock: false, collection: None, decks: vec![], export_pick: None, licences: false, update: None, shortcut: yo3_desktop::shortcut::exists(),
+            confirm_reset: false, confirm_game_reset: false, confirm_unlock: false, collection: None, decks: vec![], banlists: vec![], banlist_pick: None, export_pick: None, licences: false, update: None, shortcut: yo3_desktop::shortcut::exists(),
             moved: yo3_desktop::foreign::moved_aside(std::path::Path::new(&ctx.settings.game_dir)), pictures: None, getting: None, art_problem: None, art_busy: None, anime: None, destiny: None, revival: None, dialog: None, offer_when_counted: false }
     }
 
@@ -282,7 +293,7 @@ impl State {
     pub fn has_dialog(&self) -> bool { self.dialog.is_some() }
 
     /// The first tasks: what direct start is like now, and how many anime pictures there are.
-    pub fn start(&self, ctx: &Ctx) -> Task<Message> { Task::batch([self.check_direct(ctx), self.count_pictures(ctx), self.read_anime(ctx), self.read_destiny(ctx), self.read_revival(ctx), self.read_collection(ctx), self.read_decks(ctx)]) }
+    pub fn start(&self, ctx: &Ctx) -> Task<Message> { Task::batch([self.check_direct(ctx), self.count_pictures(ctx), self.read_anime(ctx), self.read_destiny(ctx), self.read_revival(ctx), self.read_collection(ctx), self.read_decks(ctx), self.read_banlists(ctx)]) }
 
     /// Unlock all cards' count (your cards out of all) and its button: Unlock… until every card was unlocked once, then
     /// All cards unlocked (greyed out) until an update adds cards, which Unlock N new gives.
@@ -310,6 +321,26 @@ impl State {
         let Some(backend) = ctx.backend.clone() else { return Task::none() };
         let settings = ctx.settings.clone();
         Task::perform(async move { tokio::task::spawn_blocking(move || backend.decks(&settings).map_err(|e| format!("{e:#}"))).await.unwrap_or_else(|e| Err(e.to_string())) }, Message::DecksRead)
+    }
+
+    fn read_banlists(&self, ctx: &Ctx) -> Task<Message> {
+        let Some(backend) = ctx.backend.clone() else { return Task::none() };
+        let settings = ctx.settings.clone();
+        Task::perform(async move { tokio::task::spawn_blocking(move || backend.banlists(&settings).map_err(|e| format!("{e:#}"))).await.unwrap_or_else(|e| Err(e.to_string())) }, Message::BanlistsRead)
+    }
+
+    /// Banlists: Import… an EDOPro lflist.conf as one of yours, or pick one of yours and Export… or Delete it.
+    fn banlists_control(&self) -> Element<'_, Message> {
+        let idle = self.busy.is_none();
+        let mut controls = row![pill("Import…", idle.then_some(Message::ImportBanlist), Kind::Secondary, 120, 32)].spacing(10).align_y(Center);
+        if !self.banlists.is_empty() {
+            controls = controls.push(pick_list(&self.banlists[..], self.banlist_pick.as_ref(), Message::BanlistPick).style(yo3_skin::choice)
+                .menu_style(yo3_skin::choice_menu).width(180).padding([6, 10]));
+            let picked = idle && self.banlist_pick.is_some();
+            controls = controls.push(pill("Export…", picked.then_some(Message::ExportBanlist), Kind::Secondary, 110, 32));
+            controls = controls.push(pill("Delete", picked.then_some(Message::DeleteBanlist), Kind::Secondary, 100, 32));
+        }
+        controls.into()
     }
 
     /// EDOPro decks: Import… a .ydk file into Load Deck, or pick one of your decks and Export… it.
@@ -492,6 +523,52 @@ impl State {
             Message::DeckImported(result) => {
                 self.busy = None;
                 match result { Ok(Some(sentence)) => { self.good(sentence); return self.read_decks(ctx) } Ok(None) => {} Err(error) => self.fail(ctx, &format!("Couldn't import the deck.\n{error}")) } // → Details
+            }
+            Message::BanlistsRead(Ok(lists)) => {
+                if self.banlist_pick.as_ref().is_none_or(|p| !lists.contains(p)) { self.banlist_pick = lists.last().cloned() }
+                self.banlists = lists;
+            }
+            Message::BanlistsRead(Err(_)) => self.banlists.clear(),
+            Message::ImportBanlist => {
+                let Some(backend) = ctx.backend.clone() else { return Task::none() };
+                let settings = ctx.settings.clone();
+                self.busy = Some("Importing the banlist…");
+                return Task::perform(async move {
+                    let Some(file) = rfd::AsyncFileDialog::new().set_title("Import an EDOPro banlist").add_filter("EDOPro banlist", &["conf"]).pick_file().await else { return Ok(None) };
+                    let path = file.path().to_path_buf();
+                    tokio::task::spawn_blocking(move || backend.import_banlist(&settings, &path).map_err(|e| format!("{e:#}"))).await.map_err(|e| e.to_string())?.map(Some)
+                }, Message::BanlistImported);
+            }
+            Message::BanlistImported(result) => {
+                self.busy = None;
+                match result { Ok(Some(sentence)) => { self.good(sentence); return self.read_banlists(ctx) } Ok(None) => {} Err(error) => self.fail(ctx, &format!("Couldn't import the banlist.\n{error}")) } // → Details
+            }
+            Message::BanlistPick(name) => self.banlist_pick = Some(name),
+            Message::ExportBanlist => {
+                let (Some(backend), Some(name)) = (ctx.backend.clone(), self.banlist_pick.clone()) else { return Task::none() };
+                let settings = ctx.settings.clone();
+                self.busy = Some("Exporting the banlist…");
+                return Task::perform(async move {
+                    let Some(file) = rfd::AsyncFileDialog::new().set_title("Save the banlist for EDOPro").set_file_name("lflist.conf").save_file().await else { return Ok(None) };
+                    let path = file.path().to_path_buf();
+                    tokio::task::spawn_blocking(move || backend.export_banlist(&settings, &name, &path).map_err(|e| format!("{e:#}"))).await.map_err(|e| e.to_string())?.map(Some)
+                }, Message::BanlistExported);
+            }
+            Message::BanlistExported(result) => {
+                self.busy = None;
+                match result { Ok(Some(sentence)) => self.good(sentence), Ok(None) => {} Err(error) => self.fail(ctx, &format!("Couldn't export the banlist.\n{error}")) } // → Details
+            }
+            Message::DeleteBanlist => {
+                let (Some(backend), Some(name)) = (ctx.backend.clone(), self.banlist_pick.clone()) else { return Task::none() };
+                let settings = ctx.settings.clone();
+                self.busy = Some("Deleting the banlist…");
+                return Task::perform(async move {
+                    tokio::task::spawn_blocking(move || backend.delete_banlist(&settings, &name).map_err(|e| format!("{e:#}"))).await.unwrap_or_else(|e| Err(e.to_string()))
+                }, Message::BanlistDeleted);
+            }
+            Message::BanlistDeleted(result) => {
+                self.busy = None;
+                match result { Ok(sentence) => { self.good(sentence); return self.read_banlists(ctx) } Err(error) => self.fail(ctx, &format!("Couldn't delete the banlist.\n{error}")) } // → Details
             }
             Message::ExportPick(deck) => self.export_pick = Some(deck),
             Message::ExportDeck => {
@@ -955,6 +1032,8 @@ impl State {
                         pill("Open data folder", Some(Message::OpenData), Kind::Secondary, 170, 32)].spacing(10).into())),
                 yo3_skin::setting("EDOPro decks", "Import an EDOPro deck (.ydk) into Load Deck, or save one of your decks for EDOPro. Cards your server doesn't have are left out.",
                     Some(self.decks_control()), None),
+                yo3_skin::setting("Banlists", "Import an EDOPro banlist (lflist.conf) as one of yours: pick it in the game's Edit Deck → Change Regulations after its next start, for duels against the computer and your rooms.",
+                    Some(self.banlists_control()), None),
                 yo3_skin::setting("Unlock all cards", "Three of every card, in every artwork, for every player of your own server: once, and again only for cards an update adds.",
                     Some(self.unlock_control()), unlock_below),
                 yo3_skin::setting("Reset", "Starts your singleplayer collection, decks and duel record again.",

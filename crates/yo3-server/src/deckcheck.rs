@@ -82,8 +82,8 @@ pub fn check(world: &World, regulation: u32, owned: &BTreeMap<u16, u32>, deck: &
     Ok(())
 }
 
-fn pick(world: &World, regulation: u32) -> Option<&Regulation> {
-    world.regulations.get(&regulation).or_else(|| world.regulations.get(&crate::front::LOGIN_REGULATION))
+fn pick(world: &World, regulation: u32) -> Option<Regulation> {
+    world.regulation(regulation).or_else(|| world.regulations.get(&crate::front::LOGIN_REGULATION).cloned())
 }
 
 /// The most problems [`explain`] lists: the chat window shows a few lines at once.
@@ -133,7 +133,7 @@ pub fn explain(world: &World, regulation: u32, owned: &BTreeMap<u16, u32>, deck:
         let held = have.get(&c).copied().unwrap_or(0);
         if held < n { out.push(format!("You hold {held} {} but the deck has {n}.", name(&row))) }
     }
-    let banlist = world.banlists.iter().find(|(id, _)| *id == rules.id).map_or_else(|| "this banlist".to_owned(), |(_, n)| n.clone());
+    let banlist = world.banlist_names().iter().find(|(id, _)| *id == rules.id).map_or_else(|| "this banlist".to_owned(), |(_, n)| n.clone());
     for &(c, row, n) in &want {
         let limit = rules.limit(c);
         if Regulation::NEVER_ALLOWED.contains(&c) { out.push(format!("{} may never be in a deck.", name(&row))) }

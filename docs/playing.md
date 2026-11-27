@@ -89,6 +89,12 @@ Singleplayer → Your data → EDOPro decks for your own server, **Decks…** un
 ([launcher](launcher.md#several-games-at-once)). The deck is in Load Deck the next time the game lists your decks; cards
 the server doesn't have are left out, and cards you don't hold are named.
 
+**Your own banlists.** Desktop imports an EDOPro banlist (`lflist.conf`, the format sites such as format libraries
+share: Goat, Edison...) as one of your own, up to 3 on a server: Settings → Singleplayer → Your data → Banlists for your
+own server, **Decks…** under your User ID on a Multiplayer server. Every player there can pick it: it is in Edit Deck →
+Change Regulations from the game's next start, for duels against the computer and the rooms you host. **Export…**
+writes it back for EDOPro; **Delete** removes it (players who picked it are back on the host's banlist).
+
 **Two accounts on one PC.** Your launcher can run a second game as another account
 ([Play as another account](launcher.md#several-games-at-once)), for example to duel a friend who plays on the same computer.
 Accounts seen on the same PC or network are *linked*: a duel between them is played, but **pays no BP and counts no record,

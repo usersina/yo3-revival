@@ -328,10 +328,19 @@ lists the others by name with their Forbidden / Limited / Semi-Limited tabs (an 
 and Total Wait Time (Standard, Any, 5, 10, 20 minutes): Standard is the 180 s / 600 s the clocks use. A host's own banlists (#77, `crate::banlists`: EDOPro `lflist.conf` files in the data folder's `banlists/`) get ids
 21 on: the server adds them to `0x2398`'s list and its checks, and serves them in the added-cards file
 (`yo3_data::added::AddedBanlist`), which the launcher writes as `regulation/<id>.y3r` (banlist 20's record with the
-id, `name_id` 23180 + n and the four lists) beside UI texts naming them; the DLL's open of `data/regulation/<id>.y3r`
+id, `name_id` 23130 + n and the four lists) beside UI texts naming them; the DLL's open of `data/regulation/<id>.y3r`
 (`0x52DB30`) serves it. Live (2026-11-27, `scratch-server.py --banlist`): a list forbidding Giant Orc and limiting
 Blade Rabbit chosen with `banlist Test Format`, at the next login Edit Deck greyed out both Giant Orc with the
 Forbidden mark, marked Blade Rabbit 1 and left Heavy Storm unmarked.
+
+**Players' banlists (#77, `crate::player_banlists`).** An account keeps up to `player-banlists` lists, imported from an
+EDOPro `lflist.conf` (its first list), in `server.db` (`banlists.json`), numbered after every number the host's lists
+took and never reused. Requests: TLS operation 8's JSON (`yo3_tunnel::Client::decks`, Desktop's Multiplayer) with `op`
+`banlists`, `banlist_import {conf, name?}`, `banlist_export {name}` (answers `{name, conf}`) or `banlist_delete {name}`,
+for the session's account; the admin API's `player-banlist {player, request}` with the same request (Desktop's own
+server; a stopped one's folder through `player_banlists::offline`). While the server runs they join its banlists at
+once (`World::regulation`, `banlist_names`, `regulation_list` for `0x2398`) and the added-cards file (after the host's,
+name texts from 23130), which the launcher writes at the game's next start.
 
 **A player's own banlist (#77).** The login's `regulation_id` (`0x219A`, `0x2201`) is always the server's
 `login-regulation`: Auto Duel's own check, "Latest Regulation" and Auto Duel's pairing use it, so the queue is one. A

@@ -55,7 +55,13 @@ fn pick(c: &mut Client, duel_id: u32, main: &[u16], extra: &[u16], side: &[u16])
         .with("side", Value::u16_be_array(side));
     let update = req_with(0x1F4F, &[("duel_id", Value::U32(duel_id)), ("event_id", Value::U32(0)), ("update_type", Value::U32(1))]);
     let Packet::Message(m) = update else { unreachable!() };
-    one(c.send(Packet::Message(m.item(deck)))).request().unwrap()
+    picked(c.send(Packet::Message(m.item(deck))))
+}
+
+/// Select Deck's answer: the reply, then perhaps the duel's banlist in the chat (0x2455), right after it.
+fn picked(replies: Vec<Message>) -> u32 {
+    assert!(replies[1..].iter().all(|r| r.request() == Some(0x2455)), "{replies:?}");
+    replies[0].request().unwrap()
 }
 
 fn starter() -> Vec<u16> {
@@ -488,8 +494,13 @@ fn a_duels_banlist_is_said_when_its_deck_is_picked() {
     let mut c = server.join(1001, "Yugi");
     let id = npc_duel(&mut c, 3);
     c.pushed();
-    assert_eq!(pick(&mut c, id, &starter(), &[], &[]), 0x22CA);
-    assert_eq!(chat(&mut c), ["This duel's banlist: Unlimited (any card, three copies each)."]);
+    let deck = Message::deck().with("deck_name", Value::text("Mine")).with("main", Value::u16_be_array(&starter()))
+        .with("extra", Value::u16_be_array(&[])).with("side", Value::u16_be_array(&[]));
+    let Packet::Message(m) = req_with(0x1F4F, &[("duel_id", Value::U32(id)), ("event_id", Value::U32(0)), ("update_type", Value::U32(1))]) else { unreachable!() };
+    let replies = c.send(Packet::Message(m.item(deck)));
+    assert_eq!(replies[0].request(), Some(0x22CA));
+    let said: Vec<_> = replies[1..].iter().flat_map(|m| &m.items).filter_map(|i| i.get("chat_str").and_then(Value::as_str)).collect();
+    assert_eq!(said, ["This duel's banlist: Unlimited (any card, three copies each)."], "right after the answer");
     let Packet::Message(save) = req_with(0x1F4F, &[("event_id", Value::U32(0)), ("update_type", Value::U32(1))]) else { unreachable!() };
     let deck = Message::deck().with("deck_name", Value::text("Mine")).with("main", Value::u16_be_array(&starter()))
         .with("extra", Value::u16_be_array(&[])).with("side", Value::u16_be_array(&[]));

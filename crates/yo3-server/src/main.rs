@@ -84,6 +84,13 @@ fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
         Admin::GiveRecipe { player, deck, cards, .. } => Op::GiveRecipe { player: player.clone(), deck: deck.clone(), cards: *cards },
         Admin::Recipes => Op::Recipes,
         Admin::Decks { player } => Op::Decks { player: player.clone() },
+        Admin::PlayerBanlists { player } => Op::PlayerBanlist { player: player.clone(), request: serde_json::json!({ "op": "banlists" }) },
+        Admin::ImportBanlist { file, player, name } => {
+            let conf = std::fs::read(file).map_err(|e| anyhow::anyhow!("{file}: {e}"))?;
+            Op::PlayerBanlist { player: player.clone(), request: serde_json::json!({ "op": "banlist_import", "conf": String::from_utf8_lossy(&conf), "name": name.clone().unwrap_or_default() }) }
+        }
+        Admin::ExportBanlist { name, player, .. } => Op::PlayerBanlist { player: player.clone(), request: serde_json::json!({ "op": "banlist_export", "name": name }) },
+        Admin::RemoveBanlist { name, player } => Op::PlayerBanlist { player: player.clone(), request: serde_json::json!({ "op": "banlist_delete", "name": name }) },
         Admin::ImportDeck { deck, player, name, .. } => {
             let (text, file_name) = if deck.trim_start().starts_with("ydke://") { (deck.clone(), None) } else {
                 let path = std::path::Path::new(deck);
@@ -222,6 +229,14 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
         anyhow::ensure!(api::mutation::valid_request_id(&id), "invalid request ID (16–128 letters, digits, hyphens or underscores)");
         eprintln!("Request ID: {id} (reuse with --request-id if the invite answer is lost)");
         result["invite"] = call_request(a, &Op::Invite { uses: Some(1), days: Some(7) }, &game_dir, &id)?;
+    }
+    if let Admin::ExportBanlist { out, .. } = &command {
+        let conf = result["conf"].as_str().unwrap_or_default();
+        match out {
+            Some(path) => { std::fs::write(path, conf).map_err(|e| anyhow::anyhow!("{path}: {e}"))?; eprintln!("{}", result["message"].as_str().unwrap_or_default()); }
+            None => print!("{conf}"),
+        }
+        return Ok(());
     }
     if let Admin::ExportDeck { out, .. } = &command {
         let ydk = result["ydk"].as_str().unwrap_or_default();

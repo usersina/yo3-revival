@@ -122,6 +122,7 @@ while the server runs or stopped, and each applies at its own moment:
 | `anime-pack-cost` | 300 | At the game's next request | BP the Anime Collection pack costs (the anime-only cards; on sale while `anime-cards` is on) |
 | `trade-cards` | 10 | At the game's next request | Cards of their own a player gives for one card in Blister's Trade Card |
 | `rental-cards`, `rental-bp`, `rental-days` | 5, 100, 7 | At the game's next request | The shop Rental's offer: how many cards, for how many BP, for how many days |
+| `player-banlists` | 3 | At the next import | Banlists each account may keep on the server, imported from EDOPro `lflist.conf` files in Desktop (#77); 0 turns players' own banlists off |
 | `report-limit` | 5 | At the game's next request | Reports (`/report` in the chat) one player may send in an hour; 0 turns them off |
 | `games-per-device` | 1 | At once | Games one PC may run at once (the launcher's Play as another account): a launcher sends a random install id with its sign-ins, and a second game from the same one is refused past this number (admins and moderators are exempt). The default changes nothing until a host raises it ([linked accounts](hosting.md#linked-accounts-and-fair-play)) |
 | `linked-accounts` | `fair` | At once | `fair`: accounts seen on one PC or address are linked, and a duel between them pays no BP and counts no record, rating or title, and they can't trade or rent to each other. `off`: they are strangers |
@@ -261,6 +262,17 @@ that change something also with it stopped. They are admin API operations like t
 ./yo3-server --by Anna handle-report 4 --dismiss         # or dismissed
 ./yo3-server banlists                                  # the game's banlists and the server's default
 ./yo3-server --by Anna set-banlist Yugi unlimited       # WHO's banlist against the computer (an id or a name); `default` is the server's
+```
+
+**Players' banlists (#77).** Each account may keep `player-banlists` (3) banlists of its own, imported in Desktop or with
+the commands below while the server runs. They are numbered after the host's, kept in `server.db` (so in backups), and
+every player can pick them like the game's.
+
+```bash
+./yo3-server player-banlists --player Yugi             # the lists Yugi's account keeps
+./yo3-server import-banlist goat.conf --player Yugi    # its first list, as one of theirs (--name to rename it)
+./yo3-server export-banlist "Goat Format" --player Yugi --out goat.conf
+./yo3-server remove-banlist "Goat Format" --player Yugi  # players who picked it are back on the server's
 ```
 
 **Your own banlists (#77).** Put EDOPro banlist files (`lflist.conf`, the same format EDOPro uses: `!Name`, then

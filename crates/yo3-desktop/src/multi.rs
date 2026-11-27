@@ -162,6 +162,12 @@ pub enum Message {
     DeckImported(Result<Option<String>, String>),
     DeckExport(String),
     DeckExported(Result<Option<String>, String>),
+    /// Your banlists on the selected server (#77): the list, Import… (an EDOPro lflist.conf), Export…, Delete.
+    BanlistsRead(Result<Vec<String>, String>),
+    BanlistImport,
+    BanlistExport(String),
+    BanlistDelete(String),
+    BanlistDone(Result<Option<String>, String>),
     PlayAsStart(Box<Server>, SignedIn),
     /// The extra game's start finished (it runs, or said why it didn't): "Starting a game as…" goes.
     StartDone,
@@ -240,6 +246,8 @@ pub struct State {
     code_note: Option<String>,
     /// The Decks form's decks (None while reading).
     decks: Option<Vec<String>>,
+    /// The Decks form's banlists of yours (None while reading).
+    banlists: Option<Vec<String>>,
     account: Option<(String, AccountForm)>,
     account_password: String,
     account_new: String,
@@ -301,6 +309,15 @@ impl State {
             let answer = mp::decks(&server, &signed.session, &serde_json::json!({ "op": "decks" })).await?;
             Ok(answer["decks"].as_array().into_iter().flatten().filter_map(|d| d["name"].as_str().map(str::to_owned)).collect())
         }, Message::DecksRead)
+    }
+
+    /// The Decks form's banlists: the signed-in account's own on the selected server.
+    fn read_banlists(&self) -> Task<Message> {
+        let Some((server, signed)) = self.session() else { return Task::none() };
+        Task::perform(async move {
+            let answer = mp::decks(&server, &signed.session, &serde_json::json!({ "op": "banlists" })).await?;
+            Ok(answer["banlists"].as_array().into_iter().flatten().filter_map(|b| b["name"].as_str().map(str::to_owned)).collect())
+        }, Message::BanlistsRead)
     }
 
     fn probe(&self, server: &Server) -> Task<Message> {
@@ -414,7 +431,7 @@ impl State {
                 let form_was_sign_in = form == Form::SignIn;
                 self.form = form; self.problem = None; self.note = None; self.code_note = None; self.password.clear(); self.again.clear();
                 if form_was_sign_in { return self.focus_sign_in() }
-                if self.form == Form::Decks { self.decks = None; return self.read_decks() }
+                if self.form == Form::Decks { self.decks = None; self.banlists = None; return Task::batch([self.read_decks(), self.read_banlists()]) }
                 if let Some(field) = first { return iced::widget::operation::focus(field_id(field)) }
             }
             Message::SignIn => {
@@ -489,6 +506,48 @@ impl State {
             Message::DeckExported(result) => {
                 self.busy = false;
                 match result { Ok(Some(sentence)) => self.note = Some(sentence), Ok(None) => {} Err(why) => self.note = Some(why) }
+            }
+            Message::BanlistsRead(result) => match result {
+                Ok(lists) => self.banlists = Some(lists),
+                Err(why) => { self.banlists = Some(vec![]); self.note = Some(why) }
+            },
+            Message::BanlistImport => {
+                let Some((server, signed)) = self.session() else { return Task::none() };
+                if self.busy { return Task::none() }
+                self.busy = true;
+                self.note = None;
+                return Task::perform(async move {
+                    let Some(file) = rfd::AsyncFileDialog::new().set_title("Import an EDOPro banlist").add_filter("EDOPro banlist", &["conf"]).pick_file().await else { return Ok(None) };
+                    let conf = std::fs::read(file.path()).map_err(|_| "That file couldn't be read.".to_owned())?;
+                    let answer = mp::decks(&server, &signed.session, &serde_json::json!({ "op": "banlist_import", "conf": String::from_utf8_lossy(&conf) })).await?;
+                    Ok(Some(answer["message"].as_str().unwrap_or("Imported.").to_owned()))
+                }, Message::BanlistDone);
+            }
+            Message::BanlistExport(name) => {
+                let Some((server, signed)) = self.session() else { return Task::none() };
+                if self.busy { return Task::none() }
+                self.busy = true;
+                self.note = None;
+                return Task::perform(async move {
+                    let Some(file) = rfd::AsyncFileDialog::new().set_title("Save the banlist for EDOPro").set_file_name("lflist.conf").save_file().await else { return Ok(None) };
+                    let answer = mp::decks(&server, &signed.session, &serde_json::json!({ "op": "banlist_export", "name": name })).await?;
+                    std::fs::write(file.path(), answer["conf"].as_str().unwrap_or_default()).map_err(|_| "That file couldn't be saved.".to_owned())?;
+                    Ok(Some(answer["message"].as_str().unwrap_or("Exported.").to_owned()))
+                }, Message::BanlistDone);
+            }
+            Message::BanlistDelete(name) => {
+                let Some((server, signed)) = self.session() else { return Task::none() };
+                if self.busy { return Task::none() }
+                self.busy = true;
+                self.note = None;
+                return Task::perform(async move {
+                    let answer = mp::decks(&server, &signed.session, &serde_json::json!({ "op": "banlist_delete", "name": name })).await?;
+                    Ok(Some(answer["message"].as_str().unwrap_or("Deleted.").to_owned()))
+                }, Message::BanlistDone);
+            }
+            Message::BanlistDone(result) => {
+                self.busy = false;
+                match result { Ok(Some(sentence)) => { self.note = Some(sentence); return self.read_banlists() } Ok(None) => {} Err(why) => self.note = Some(why) }
             }
             Message::PlayAsGo => {
                 let Some((server, signed)) = self.session() else { return Task::none() };
@@ -1041,8 +1100,19 @@ impl State {
                             pill("Export…", (!self.busy).then(|| Message::DeckExport(deck.clone())), Kind::Secondary, 110, 30)].spacing(8).align_y(Center));
                     },
                 }
+                col = col.push(actions(if self.busy { "Working…" } else { "Import…" }, (!self.busy).then_some(Message::DeckImport)));
+                col = col.push(heading("Your banlists on this server"));
+                col = col.push(text("Import an EDOPro banlist (lflist.conf): pick it in the game's Edit Deck → Change Regulations after its next start.").size(13).color(color::INK_SOFT));
+                match &self.banlists {
+                    None => col = col.push(text("Reading your banlists…").size(14).color(color::INK_SOFT)),
+                    Some(lists) => for list in lists {
+                        col = col.push(row![text(list.clone()).size(14).color(color::INK).width(Fill),
+                            pill("Export…", (!self.busy).then(|| Message::BanlistExport(list.clone())), Kind::Secondary, 110, 30),
+                            pill("Delete", (!self.busy).then(|| Message::BanlistDelete(list.clone())), Kind::Secondary, 100, 30)].spacing(8).align_y(Center));
+                    },
+                }
                 if let Some(note) = &self.note { col = col.push(text(note.clone()).size(13).color(color::INK)) }
-                col.push(actions(if self.busy { "Working…" } else { "Import…" }, (!self.busy).then_some(Message::DeckImport))).into()
+                col.push(actions(if self.busy { "Working…" } else { "Import banlist…" }, (!self.busy).then_some(Message::BanlistImport))).into()
             }
             Form::Code(code) => {
                 let mut col = column![

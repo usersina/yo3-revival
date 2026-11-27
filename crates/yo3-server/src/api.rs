@@ -152,6 +152,10 @@ pub enum Op {
     SetBanlist { who: String, banlist: String },
     /// The game's banlists and the one an account without a choice logs in with.
     Banlists,
+    /// A player's own banlists (#77, `crate::player_banlists::operate`): `request` is `{op: "banlists" | "banlist_import"
+    /// | "banlist_export" | "banlist_delete", name?, conf?}`, for the player's account (`player`, else the first). On the
+    /// running server only; Desktop works on a stopped one's folder itself (`player_banlists::offline`).
+    PlayerBanlist { #[serde(default)] player: Option<String>, request: Value },
     /// The Stadium's official events (#18) with their standings, newest first.
     Events,
     /// Schedules an official event: KIND (gunslinger, duelist-trial, evolution, ultimate, anniversary), its name, and
@@ -192,7 +196,7 @@ impl Op {
 
     /// Whether it changes anything (and so writes an audit row).
     pub fn changes(&self) -> bool {
-        !matches!(self, Op::Status | Op::Accounts | Op::Countries | Op::Titles | Op::Recipes | Op::Collection { .. } | Op::Decks { .. } | Op::ExportDeck { .. } | Op::Codes | Op::Invites | Op::Settings | Op::Audit { .. }
+        !matches!(self, Op::Status | Op::Accounts | Op::Countries | Op::Titles | Op::Recipes | Op::Collection { .. } | Op::Decks { .. } | Op::ExportDeck { .. } | Op::PlayerBanlist { .. } | Op::Codes | Op::Invites | Op::Settings | Op::Audit { .. }
             | Op::Account { .. } | Op::Backups | Op::Logs { .. } | Op::Reports { .. } | Op::Banlists | Op::Events | Op::ProblemReports { .. } | Op::ProblemReport { .. })
     }
 
@@ -676,6 +680,16 @@ impl Api {
                     "message": format!("{owned} / {total} cards; {new} to unlock") }), None, None))
             }
             Op::Decks { player } => self.list_decks(player.as_deref()).map(|v| (v, None, None)),
+            Op::PlayerBanlist { player, request } => {
+                let world = self.world.as_ref().ok_or("the server isn't running")?;
+                let (owner, owner_name) = {
+                    let d = self.accounts.locked();
+                    let (id, name) = Self::deck_player(&d, player.as_deref()).ok_or("No such player.")?;
+                    let owner = d.entries().find(|(_, _, a)| a.players.iter().any(|p| p.player_id == id)).map(|(_, _, a)| a.user_id).ok_or("No such player.")?;
+                    (owner, name)
+                };
+                crate::player_banlists::live(world, owner, &owner_name, request).map(|v| (v, None, None))
+            }
             Op::ExportDeck { player, deck } => self.export_deck(player.as_deref(), deck).map(|v| (v, None, None)),
             Op::ImportDeck { .. } => Err("deck imports require the typed mutation boundary".into()),
             Op::Recipes => {

@@ -109,11 +109,11 @@ pub struct AddedBanlist {
     pub default_limit: u32,
 }
 
-/// The UI text ids of the custom banlists' names (`AddedBanlist::name_id`): the twenty after the Anime Collection's
-/// and the NPCs', in the free range 23120-23199 of every language's table.
-pub const BANLIST_NAME_TEXT: u32 = 23180;
-/// How many custom banlists a server serves at once (one name text each).
-pub const MAX_BANLISTS: usize = 20;
+/// The UI text ids of the custom banlists' names (`AddedBanlist::name_id`): after the Anime Collection's (23120-23121),
+/// in the free range 23120-23199 of every language's table.
+pub const BANLIST_NAME_TEXT: u32 = 23130;
+/// How many custom banlists (the host's and the players') a server serves at once (one name text each).
+pub const MAX_BANLISTS: usize = 70;
 
 impl AddedBanlist {
     /// Its `.y3r` record from a game banlist's (`template`, the game's newest): its number, name and lists, each value in
@@ -669,7 +669,7 @@ mod tests {
         let out: HashMap<String, Vec<u8>> = extend_files(|n| files.get(n).cloned(), &added).unwrap().into_iter().collect();
         let rule = yo3_proto::decode_file(&out["data/regulation/21.y3r"]).unwrap();
         assert_eq!(rule.get("regulation_id"), Some(&yo3_proto::Value::U32Alt(21)));
-        assert_eq!(rule.get("name_id"), Some(&yo3_proto::Value::text("23180")), "the name's text id, as text like the game's");
+        assert_eq!(rule.get("name_id"), Some(&yo3_proto::Value::text("23130")), "the name's text id, as text like the game's");
         let list = |k: &str| rule.get(k).and_then(yo3_proto::Value::as_bytes).unwrap().as_chunks::<2>().0.iter().map(|c| u16::from_be_bytes(*c)).collect::<Vec<_>>();
         assert_eq!(list("card0"), [12, 30], "Forbidden, with the anime-only card the server bans");
         assert_eq!(list("card1"), [10]);

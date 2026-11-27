@@ -25,7 +25,7 @@ use serde_json::Value as Json;
 use rusqlite::{Connection, OptionalExtension};
 
 /// The domains kept in server.db, by the file name their code still uses as a handle.
-const DOMAINS: &[&str] = &["accounts.json", "records.json", "friends.json", "mail.json", "teams.json", "events.json", "rentals.json", "settings.json"];
+const DOMAINS: &[&str] = &["accounts.json", "records.json", "friends.json", "mail.json", "teams.json", "events.json", "rentals.json", "settings.json", "banlists.json"];
 const APPLICATION_ID: u32 = 0x594f3301;
 /// Schema 1 kept each domain as one JSON document (`state_documents`); schema 2 keeps one row per item.
 const SCHEMA: u32 = 6;

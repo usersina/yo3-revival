@@ -69,9 +69,9 @@ pub fn to_lists(list: &Lflist, cid: impl Fn(u32) -> Option<u16>) -> ([Vec<u16>; 
 }
 
 /// The host's banlists in `dir/banlists/*.conf`, numbered by `dir/banlists/ids.json` (new names get the next number,
-/// saved there), at most [`MAX_BANLISTS`], none named like a game banlist (`taken`). A problem with one file is logged
+/// at least `floor`, the players' next one, saved there), at most [`MAX_BANLISTS`], none named like a game banlist (`taken`). A problem with one file is logged
 /// and that file left out.
-pub fn load(dir: &Path, taken: &[String], cid: impl Fn(u32) -> Option<u16>) -> Vec<AddedBanlist> {
+pub fn load(dir: &Path, taken: &[String], floor: u32, cid: impl Fn(u32) -> Option<u16>) -> Vec<AddedBanlist> {
     let folder = dir.join("banlists");
     let mut files: Vec<_> = match std::fs::read_dir(&folder) {
         Ok(entries) => entries.filter_map(Result::ok).map(|e| e.path())
@@ -98,7 +98,7 @@ pub fn load(dir: &Path, taken: &[String], cid: impl Fn(u32) -> Option<u16>) -> V
                 tracing::warn!("banlist {:?} in {}: the server serves {MAX_BANLISTS} at most; left out", name, file.display());
                 continue;
             }
-            let next = ids.values().copied().max().map_or(FIRST_ID, |m| m + 1).max(FIRST_ID);
+            let next = ids.values().copied().max().map_or(FIRST_ID, |m| m + 1).max(FIRST_ID).max(floor);
             let id = *ids.entry(name.clone()).or_insert(next);
             let (lists, default_limit, unknown) = to_lists(&list, &cid);
             if unknown > 0 {
@@ -115,6 +115,12 @@ pub fn load(dir: &Path, taken: &[String], cid: impl Fn(u32) -> Option<u16>) -> V
         tracing::info!("{} banlist(s) of the host's: {}", out.len(), out.iter().map(|b| format!("{} ({})", b.name, b.id)).collect::<Vec<_>>().join(", "));
     }
     out
+}
+
+/// The first number no host's list ever took (`banlists/ids.json`): where the players' lists start.
+pub fn numbers_taken(dir: &Path) -> u32 {
+    let ids: BTreeMap<String, u32> = std::fs::read(dir.join("banlists/ids.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    ids.values().map(|id| id + 1).max().unwrap_or(FIRST_ID)
 }
 
 /// A host's banlist as the server checks decks against it, with the game's record shape (`template`: one of the game's).
@@ -160,14 +166,14 @@ mod tests {
         std::fs::create_dir_all(dir.join("banlists")).unwrap();
         std::fs::write(dir.join("banlists/a.conf"), GOAT).unwrap();
         let cid = |_| Some(1u16);
-        let first = load(&dir, &["Season 16".into()], cid);
+        let first = load(&dir, &["Season 16".into()], 0, cid);
         assert_eq!(first.iter().map(|b| (b.id, b.name.as_str(), b.name_id)).collect::<Vec<_>>(),
             [(21, "2005.4 GOAT", BANLIST_NAME_TEXT), (22, "Edison", BANLIST_NAME_TEXT + 1)]);
         // Goat removed, a new list added: Edison keeps 22, the new one gets 23 (21 is never given again).
         std::fs::write(dir.join("banlists/a.conf"), "!Edison\n!Tengu Plant\n!season 16\n").unwrap();
-        let second = load(&dir, &["Season 16".into()], cid);
+        let second = load(&dir, &["Season 16".into()], 0, cid);
         assert_eq!(second.iter().map(|b| (b.id, b.name.as_str())).collect::<Vec<_>>(), [(22, "Edison"), (23, "Tengu Plant")]);
-        assert!(load(&dir.join("none"), &[], cid).is_empty());
+        assert!(load(&dir.join("none"), &[], 0, cid).is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

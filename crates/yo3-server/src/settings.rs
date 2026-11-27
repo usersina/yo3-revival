@@ -113,6 +113,8 @@ pub const REGISTRY: &[Setting] = &[
         kind: Kind::Number { min: 0, max: 100_000 }, applies: Applies::NextRequest, default: || json!(crate::shop::RENTAL_BP) },
     Setting { name: "rental-days", help: "Days the shop's Rental lasts",
         kind: Kind::Number { min: 1, max: 365 }, applies: Applies::NextRequest, default: || json!(crate::shop::RENTAL_DAYS) },
+    Setting { name: "player-banlists", help: "Banlists each account may keep on the server, imported from EDOPro lflist.conf files in Desktop (0: off)",
+        kind: Kind::Number { min: 0, max: 10 }, applies: Applies::NextRequest, default: || json!(3) },
     Setting { name: "report-limit", help: "Player reports (`/report` in the chat) one player may send in an hour (0: reports are off)",
         kind: Kind::Number { min: 0, max: 1000 }, applies: Applies::NextRequest, default: || json!(5) },
     Setting { name: "games-per-device", help: "Games one PC may run at once on this server (the launcher's Play as another account; staff is exempt). \
@@ -229,6 +231,8 @@ pub struct Settings {
     /// The shop's prices (#16) and the reports a player may send in an hour.
     pub shop: Shop,
     pub report_limit: u32,
+    /// Banlists each account may keep (#77; 0: none).
+    pub player_banlists: u32,
     /// Games one PC may run at once, and whether accounts seen together are treated as linked (#64).
     pub games_per_device: u32,
     pub linked_fair: bool,
@@ -282,6 +286,7 @@ impl Settings {
             shop: Shop { pack_cost: number("pack-cost"), anime_pack_cost: number("anime-pack-cost"), deck_cost: number("deck-cost"), trade_cards: number("trade-cards"),
                 rental_cards: number("rental-cards"), rental_bp: number("rental-bp"), rental_days: number("rental-days") },
             report_limit: number("report-limit"),
+            player_banlists: number("player-banlists"),
             games_per_device: number("games-per-device"),
             linked_fair: text("linked-accounts") != "off",
             clean_game: text("clean-game") == "on",

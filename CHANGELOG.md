@@ -13,7 +13,7 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.1.27 (2026-11-27)
 
 - **Dartz joins Kaiba Corporation.** A new opponent on the Yu-Gi-Oh! tab, in three levels: his Seal of Orichalcos
   decks, printed cards normally and the Orichalcos cards he used in the anime while the server plays the anime cards.
@@ -58,6 +58,9 @@ Older entries describe their release at the time. For current setup, use the [RE
   there is yours for duels against the computer, at once, without logging in again, and Create Duel starts on it.
   `/p Server banlist NAME` does the same. Auto Duel always uses the host's banlist, so everyone meets everyone, and
   an event under its own banlist checks your deck against it without asking you to change yours.
+- **Your own banlists.** Import an EDOPro banlist (`lflist.conf`) in Desktop (Settings → Singleplayer → Your data →
+  Banlists, or Decks… under your User ID on a friend's server), up to 3 on a server. Everyone there finds it in Edit Deck
+  → Change Regulations from the game's next start; export it back for EDOPro or delete it any time.
 - **"There are no valid Decks available." now says why.** The chat window lists what breaks each of your decks under
   that duel's banlist.
 

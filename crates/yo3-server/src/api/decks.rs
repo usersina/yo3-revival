@@ -18,7 +18,7 @@ pub fn passcodes() -> Result<Passcodes, String> {
 
 impl Api {
     /// The named player, else the first: (player id, name).
-    fn deck_player(d: &crate::accounts::Directory, player: Option<&str>) -> Option<(u32, String)> {
+    pub(super) fn deck_player(d: &crate::accounts::Directory, player: Option<&str>) -> Option<(u32, String)> {
         let id = match player {
             Some(name) => d.player_id_named(name)?,
             None => d.entries().flat_map(|(_, _, a)| a.players.iter().map(|p| p.player_id)).min()?,

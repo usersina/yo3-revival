@@ -208,7 +208,10 @@ fn pick(c: &mut Client, duel_id: u32, name: &str, main: &[u16]) -> u32 {
     let deck = Message::deck().with("deck_name", Value::text(name)).with("main", Value::u16_be_array(main))
         .with("extra", Value::u16_be_array(&[])).with("side", Value::u16_be_array(&[]));
     let Packet::Message(m) = req_with(0x1F4F, &[("duel_id", Value::U32(duel_id)), ("event_id", Value::U32(0)), ("update_type", Value::U32(1))]) else { unreachable!() };
-    one(c.send(Packet::Message(m.item(deck)))).request().unwrap()
+    // The answer, then perhaps the duel's banlist in the chat (0x2455).
+    let replies = c.send(Packet::Message(m.item(deck)));
+    assert!(replies[1..].iter().all(|r| r.request() == Some(0x2455)), "{replies:?}");
+    replies[0].request().unwrap()
 }
 
 #[test]

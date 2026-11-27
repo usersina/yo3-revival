@@ -182,6 +182,18 @@ pub enum Admin {
     Decks {
         player: Option<String>,
     },
+    /// A player's own banlists (#77): the lists PLAYER's account keeps on the server (the first player when none).
+    /// Needs the running server.
+    PlayerBanlists { #[arg(long)] player: Option<String> },
+    /// Keep an EDOPro banlist (FILE, an lflist.conf: its first list) as one of PLAYER's account's own, as Desktop's
+    /// Banlists → Import does. Needs the running server.
+    ImportBanlist { file: String, #[arg(long)] player: Option<String>, /// Its name (the file's list's when none).
+        #[arg(long)] name: Option<String> },
+    /// Write one of PLAYER's account's banlists as an EDOPro lflist.conf (to OUT, else printed). Needs the running server.
+    ExportBanlist { name: String, #[arg(long)] player: Option<String>, #[arg(long)] out: Option<String> },
+    /// Delete one of PLAYER's account's banlists: players who picked it are back on the server's. Needs the running
+    /// server.
+    RemoveBanlist { name: String, #[arg(long)] player: Option<String> },
     /// Keep an EDOPro deck as one of PLAYER's decks (the first player when none): DECK is a .ydk file or a ydke:// link.
     /// It is in Load Deck the next time the game lists the decks; passcodes with no card here are left out and listed,
     /// and cards the player doesn't hold are named.
