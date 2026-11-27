@@ -1,7 +1,7 @@
 //! The custom NPCs (`engine/added/npcs.json`) in self-played duels: each level's deck, as the server builds it, played by
 //! the duel bot with the character's style (`npc.rs`) against a hero of its series (Seto Kaiba, Jaden Yuki or Yusei Fudo,
-//! their first level, the default style; Seto Kaiba's second holds three Five-Headed Dragon in its Extra Deck, a Main Deck
-//! card with anime cards on), with anime cards off and on, under the duel check (the client's view compared
+//! their middle level, the default style), both decks placed as the NPC duel places them (`World::place_deck`: a card the
+//! anime profile makes a Main Deck card leaves the Extra Deck), with anime cards off and on, under the duel check (the client's view compared
 //! with the engine after every step, through the translator, as live). A duel fails on a duel check problem, an engine
 //! (Lua) error or the bot finding no answer; one that reaches the duel check's turn limit is reported as a stall.
 //!
@@ -47,12 +47,12 @@ fn every_custom_npcs_decks_play_self_played_duels_through_the_duel_check() {
     let only: Vec<String> = std::env::var("YO3_NPC_ONLY").map(|v| v.split(',').map(|s| s.trim().to_string()).collect()).unwrap_or_default();
     let cid = |row: &u16| world.cards.get(row).map_or(0, |c| c.cid);
     let ids = |rows: &[u16]| rows.iter().map(cid).collect::<Vec<u16>>();
-    // A hero of each series, the first of his three levels, as the rival.
+    // A hero of each series, the middle of his three levels, as the rival.
     let rival_of = |series: u32| {
         let hero = ["Seto Kaiba", "Jaden Yuki", "Yusei Fudo"][series.min(2) as usize];
         let mut levels: Vec<u32> = world.npc_names.iter().filter(|(_, n)| n.as_str() == hero).map(|(id, _)| *id).collect();
         levels.sort();
-        levels[0]
+        levels[1]
     };
     let mut duels = vec![];
     let mut first_of_series = [true; 3];
@@ -71,8 +71,9 @@ fn every_custom_npcs_decks_play_self_played_duels_through_the_duel_check() {
                     continue;
                 }
                 world.settings.set("anime-cards", if anime { "on" } else { "off" }).unwrap();
-                let deck = world.npc_deck(id).unwrap().clone();
-                let rival_deck = world.npc_deck(rival).unwrap().clone();
+                // As the NPC duel's opening (duel.rs) places them.
+                let deck = world.place_deck(world.npc_deck(id).unwrap());
+                let rival_deck = world.place_deck(world.npc_deck(rival).unwrap());
                 // The deck's bosses: Level 7 or more, or an Extra Deck monster.
                 let mut bosses: Vec<u16> = deck.main.iter().filter(|r| world.cards.get(r).is_some_and(|c| c.level >= 7))
                     .chain(deck.extra.iter()).map(cid).collect();

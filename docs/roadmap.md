@@ -36,12 +36,8 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
       for any of them.
 - [ ] The duel bot with the custom NPCs' decks (`task check:npcs`, 2026-11-27): it rarely plays the bosses that need a
       combo (Great Moth's evolution, Yubel's forms, Valkyrion, Water Dragon with Bonding - H2O, Neo-Daedalus with Umi,
-      Volcanic Doomfire, Exodia's five pieces); Z-one's Timelords and Trudge's Security wall end most duels at the turn
-      limit and won none; Aporia, Sherry, Roman and Greiger half the time. Bot work, not the decks'.
-- [ ] Seto Kaiba's second level with anime cards on: his Extra Deck holds three Five-Headed Dragon, a Main Deck card
-      in its anime version (summoned by Dragon Revival Ritual), so the engine moves them and the client's view splits
-      from the engine at the first draw (found by `custom_npc_selfplay.rs` using him as the rival). The game's NPC decks
-      would need the card profile's placement, as the deck check gives players'.
+      Volcanic Doomfire, Exodia's five pieces); Z-one's Timelords end half their duels at the turn limit. Bot work, not
+      the decks'.
 - [ ] Their later-batch anime-only cards (`anime_waiting`, [the list](custom-npcs.md#the-characters)) play by themselves
       once batches 7-34 are on `main`: run `custom_npc.rs` then, as a swap can change a deck's legality.
 - [ ] More characters: slots 56-99 are free. Past 99 ([the limits](custom-npcs.md#how-many)): the names' base
