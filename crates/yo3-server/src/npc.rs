@@ -8,6 +8,11 @@ use serde_json::{Value as Json, json};
 
 /// The heroes: they draw the card they need (`heart_of_the_cards`).
 pub(crate) const HEROES: &[&str] = &["Yami Yugi", "Yugi Muto", "Jaden Yuki", "Yusei Fudo"];
+/// Custom NPCs who see what is coming and draw it as the heroes do: Ishizu (the Millennium Necklace), Sartorius (his
+/// fortune telling), Z-one (the future he comes from). Measured in `tests/custom_npc_selfplay.rs` before it was kept
+/// (2026-11-27, 24 duels each, the same seeds: wins 13 to 16, 10 to 19 and 4 to 21). A deeper look-ahead for the decks
+/// whose bosses need a combo (`Style` depth 4, firsts 3) was measured too and left out: no more bosses, slower answers.
+pub(crate) const SEERS: &[&str] = &["Ishizu Ishtar", "Sartorius", "Z-one"];
 
 /// (name, aggression, caution, sees)
 pub(crate) const CHARACTERS: &[(&str, f64, f64, bool)] = &[
@@ -124,7 +129,7 @@ pub fn against(style: &Json, avatar: &[u8]) -> Json {
 
 /// The style of the NPC named `name`; an NPC not listed plays the default (null).
 pub fn style(name: &str) -> Json {
-    let skills: &[&str] = if HEROES.contains(&name) { &["heart_of_the_cards"] } else { &[] };
+    let skills: &[&str] = if HEROES.contains(&name) || SEERS.contains(&name) { &["heart_of_the_cards"] } else { &[] };
     CHARACTERS.iter().find(|(n, ..)| *n == name).map_or(Json::Null, |(_, aggression, caution, sees)| {
         json!({ "aggression": aggression, "caution": caution, "sees": sees, "skills": skills })
     })
@@ -133,6 +138,15 @@ pub fn style(name: &str) -> Json {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_seers_draw_what_they_need() {
+        for seer in SEERS {
+            assert!(CHARACTERS.iter().any(|(n, ..)| n == seer), "{seer} has a style");
+            assert_eq!(style(seer)["skills"], json!(["heart_of_the_cards"]), "{seer}");
+        }
+        assert_eq!(style("Dartz")["skills"], json!([]));
+    }
 
     #[test]
     fn pegasus_sees_and_kaiba_attacks() {

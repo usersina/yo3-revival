@@ -416,6 +416,8 @@ win: Fate decided it, {you}. It was written.
 lose: You have rewritten fate, {you}. Well fought.
 trump: Exodia the Forbidden One | The Forbidden One is whole! Obliterate!
 trump: Andro Sphinx | Andro Sphinx, rise! Guard the secrets of the ancients.
+heart: The Necklace has shown me this card. It comes now.
+heart: I have seen this draw before, in the light of the Millennium Necklace.
 
 [Weevil Underwood]
 greet: Hey, {you}! Get ready to be swarmed by my insects!
@@ -516,6 +518,8 @@ lose: The cards... were wrong. You have my respect, {you}.
 trump: Arcana Force EX - The Light Ruler | The Light Ruler descends! Fate is sealed.
 trump: Arcana Force EX - The Dark Ruler | The Dark Ruler comes! The coin falls where it must.
 trump: Arcana Knight Joker | The three knights unite as the Joker! Fate cannot touch him.
+heart: The cards told me this draw long ago. Destiny cannot be avoided.
+heart: As I foretold. Fate has dealt me exactly what I need.
 
 [Bastion Misawa]
 greet: Let me calculate your odds, {you}. The numbers favour me.
@@ -644,6 +648,8 @@ win: The future ends here, {you}. I am sorry.
 lose: Perhaps... there is hope after all, {you}. Take it with you.
 trump: Sandaion, the Timelord | The Timelord of time's beginning! Stand with me, Sandaion!
 trump: Sephylon, the Ultimate Timelord | Sephylon! Judge the end of time!
+heart: I have seen this moment in the future. The card I need is here.
+heart: Every draw was decided before your time began.
 
 [Rex Goodwin]
 greet: Neo Domino answers to me, {you}. Let the Immortals judge your worth.
