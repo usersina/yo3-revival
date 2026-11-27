@@ -24,6 +24,7 @@ Older entries describe their release at the time. For current setup, use the [RE
 - **Room for 75 of Kaiba Corporation's own characters.** Their duels count towards their stars and Friendship Level,
   their deck names show, and their bodies appear in the duel's cut-ins over a background of their own.
 - **Dartz's decks follow the banlist.** One Swords of Revealing Light, one Magic Cylinder and no Heavy Storm.
+- **Ishizu, Sartorius and Z-one see what is coming:** like the heroes, they draw the card they need.
 - **Zigfried calls his Valkyries,** and the Dark Signers Rex Goodwin, Roman Goodwin and Greiger bring their Dark
   Synchro Monsters with their Dark Tuners.
 - **Earthbound Release works with anime cards on.** It used to break the duel when an Earthbound Immortal was on the

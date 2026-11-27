@@ -36,8 +36,9 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
       for any of them.
 - [ ] The duel bot with the custom NPCs' decks (`task check:npcs`, 2026-11-27): it rarely plays the bosses that need a
       combo (Great Moth's evolution, Yubel's forms, Valkyrion, Water Dragon with Bonding - H2O, Neo-Daedalus with Umi,
-      Volcanic Doomfire, Exodia's five pieces); Z-one's Timelords end half their duels at the turn limit. Bot work, not
-      the decks'.
+      Volcanic Doomfire, Exodia's five pieces). A deeper look-ahead (`Style` depth 4, firsts 3 for Weevil, Bastion, Mako,
+      Axel and Yubel) brought out no more of them in 120 measured duels: they need plans over several turns. Bot work,
+      not the decks'.
 - [ ] Their later-batch anime-only cards (`anime_waiting`, [the list](custom-npcs.md#the-characters)) play by themselves
       once batches 7-34 are on `main`: run `custom_npc.rs` then, as a swap can change a deck's legality.
 - [ ] More characters: slots 56-99 are free. Past 99 ([the limits](custom-npcs.md#how-many)): the names' base
