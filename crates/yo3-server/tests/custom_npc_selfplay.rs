@@ -8,7 +8,7 @@
 //! `YO3_NPC_SELFPLAY=n`: n duels per level and mode for every custom NPC (the full run, `task check:npcs`); unset, one duel
 //! each for the last level of the first custom NPC of each series, anime cards on. `YO3_NPC_ONLY=Name,Name` only those;
 //! `YO3_NPC_JOBS=n` duels at once (4). Each duel's line (name, level, mode, seed, result, turns, the deck's bosses summoned
-//! and which) goes to `custom-npc-selfplay.tsv` in Cargo's test temporary directory. Skipped without the game or the engine.
+//! and which, the bot's longest answer in ms) goes to `custom-npc-selfplay.tsv` in Cargo's test temporary directory. Skipped without the game or the engine.
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -114,7 +114,7 @@ fn every_custom_npcs_decks_play_self_played_duels_through_the_duel_check() {
                             None => "stall",
                         };
                         let summoned: Vec<String> = d.bosses.iter().filter(|b| p.summoned.contains_key(b)).map(|b| b.to_string()).collect();
-                        (format!("{head}\t{result}\t{}\t{}/{}\t{}", p.turns, summoned.len(), d.bosses.len(), summoned.join(",")), false)
+                        (format!("{head}\t{result}\t{}\t{}/{}\t{}\t{}", p.turns, summoned.len(), d.bosses.len(), summoned.join(","), p.longest_thought_ms), false)
                     }
                     Err(e) => (format!("{head}\terror\t\t\t{}", e.replace(['\n', '\t'], " ")), true),
                 };
@@ -127,7 +127,7 @@ fn every_custom_npcs_decks_play_self_played_duels_through_the_duel_check() {
     results.sort_by_key(|r| r.0);
     let report = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("custom-npc-selfplay.tsv");
     let table: String = results.iter().map(|r| format!("{}\n", r.1)).collect();
-    std::fs::write(&report, format!("name\tslot\tlevel\tmode\tseed\tresult\tturns\tbosses\tsummoned\n{table}")).unwrap();
+    std::fs::write(&report, format!("name\tslot\tlevel\tmode\tseed\tresult\tturns\tbosses\tsummoned\tthink_ms\n{table}")).unwrap();
     let mut tally: BTreeMap<&str, u32> = BTreeMap::new();
     for r in &results {
         *tally.entry(r.1.split('\t').nth(5).unwrap_or("?")).or_default() += 1;

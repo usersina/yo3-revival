@@ -905,6 +905,8 @@ pub mod selfplay {
         pub negated: BTreeMap<u16, u32>,
         /// The engine team that won (MSG_WIN), when the duel ended with a winner.
         pub winner: Option<u64>,
+        /// The duel bot's longest answer, in milliseconds ([`play_bots`]).
+        pub longest_thought_ms: u64,
     }
 
     /// Follows the chain to the card whose effect resolves, for the effect coverage. A result is visible when, while a
@@ -1425,6 +1427,10 @@ pub mod selfplay {
             // The client's own side has Destiny Draw (#71): its question and card choice go through the translator's
             // windows, the chosen card moves to the Deck's top without a message.
             vec![(1 - client_team as u32, "heart_of_the_cards".into()), (client_team as u32, "destiny_draw".into())]
+        } else if let Some(styles) = &data.bots {
+            // The bots' skills, as the NPC duel gives the NPC its style's (duel.rs).
+            (0..2u32).flat_map(|team| styles[team as usize]["skills"].as_array().into_iter().flatten()
+                .filter_map(move |s| s.as_str().map(|s| (team, s.to_string())))).collect()
         } else {
             vec![]
         };
@@ -1590,7 +1596,12 @@ pub mod selfplay {
             let style = data.bots.as_ref().filter(|_| retries == 0)
                 .and_then(|styles| Ask::lenient(&last).ok().flatten().map(|a| styles[(a.player() as usize).min(1)].clone()));
             let thought = match style {
-                Some(style) => Some(engine.think(style).map_err(|e| format!("seed {seed}, step {}: the bot: {e}", played.steps))?),
+                Some(style) => {
+                    let started = std::time::Instant::now();
+                    let json = engine.think(style).map_err(|e| format!("seed {seed}, step {}: the bot: {e}", played.steps))?;
+                    played.longest_thought_ms = played.longest_thought_ms.max(started.elapsed().as_millis() as u64);
+                    Some(json)
+                }
                 None => None,
             };
             match thought {
