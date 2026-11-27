@@ -454,11 +454,11 @@ server stopped. Older releases can't read newer data; downgrading needs the back
 ## Reset local game data
 
 For broken game preferences or saved stock login details, close every game window and choose Settings → Advanced →
-**Reset local game data** → **Reset…**, then:
+**Reset local game data** → **Reset…**, then in its dialog:
 
-- **Display and login settings** resets the game's options and cached stock logins, keeping player files, saved decks,
+- **Display and login** resets the game's options and cached stock logins, keeping player files, saved decks,
   deck selection and starter setup markers.
-- **All local game data** moves the whole local folder into the backup, and the game makes fresh files next launch.
+- **All of it** moves the whole local folder into the backup, and the game makes fresh files next launch.
 
 Server accounts, cards and BP stay on the server either way. Dated backups live in `.yo3-revival-backups/` beside the
 game's local data folder in Documents; a full backup contains the original folder as `data/`. Windows Documents
