@@ -47,6 +47,13 @@ Older entries describe their release at the time. For current setup, use the [RE
   `banlists` folder and restart it: each list in it can be chosen like the game's own (`/p Server banlist NAME`,
   Create Duel, events), and the game's Edit Deck shows its limits (#77, a first step: players' own lists come next).
 
+- **Pick an effect's target on the field.** Mystical Space Typhoon, Dust Tornado and other cards that target one card
+  on the field let you click it there, as attacks do, instead of a list of look-alike Set cards; right-click opens the
+  list if you prefer it (#91).
+
+- **Dartz hails his trump cards.** He calls out the Seal of Orichalcos and Divine Serpent Geh in the chat when he
+  plays them.
+
 ## v0.1.26 (2026-11-26)
 
 - **EDOPro decks.** Desktop imports an EDOPro deck file (`.ydk`) into your decks, and exports yours for EDOPro: Settings →

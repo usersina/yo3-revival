@@ -233,6 +233,11 @@ impl Banter {
                     let card = cid(&a.loc).and_then(|c| duel.card_name(c)).map(str::to_string);
                     card.filter(|_| self.chance("eye_set", 0.5)).and_then(|card| self.line("eye_set", Some(&card)))
                 }
+                // A character's trump card (`trump: Card Name | line`: Dartz's Seal of Orichalcos, a Field Spell no ATK makes
+                // an ace), once a duel, when the NPC activates or summons it.
+                Some(Event::Chaining(c)) if c.loc.controller == self.npc => self.trump(cid(&c.loc), duel),
+                Some(Event::Summoning(a) | Event::SpSummoning(a) | Event::FlipSummoning(a)) if a.loc.controller == self.npc
+                    && self.trump_line(cid(&a.loc), duel).is_some() => self.trump(cid(&a.loc), duel),
                 Some(Event::Summoning(a) | Event::SpSummoning(a) | Event::FlipSummoning(a)) if a.loc.controller == self.npc => {
                     let ace = cid(&a.loc).filter(|&c| duel.card_atk(c) >= ACE_ATK && !self.aces.contains(&c));
                     let card = ace.and_then(|c| duel.card_name(c).map(|n| (c, n.to_string())));
@@ -262,6 +267,24 @@ impl Banter {
             }
         }
         out
+    }
+
+    /// The `trump` line for this card, if it is one of the character's trump cards and not hailed yet this duel.
+    fn trump_line(&self, cid: Option<u16>, duel: &(impl Duel + ?Sized)) -> Option<&'static str> {
+        let cid = cid.filter(|c| !self.aces.contains(c))?;
+        let name = duel.card_name(cid)?;
+        self.lines.get("trump")?.iter().find_map(|l| l.split_once('|').filter(|(card, _)| card.trim().eq_ignore_ascii_case(name)).map(|(_, said)| said.trim()))
+    }
+
+    /// Hails a trump card (`trump_line`), as a reaction, once a duel.
+    fn trump(&mut self, cid: Option<u16>, duel: &(impl Duel + ?Sized)) -> Option<String> {
+        let said = self.trump_line(cid, duel)?;
+        if self.said_this_turn >= PER_TURN {
+            return None;
+        }
+        self.aces.insert(cid?);
+        self.said_this_turn += 1;
+        Some(said.replace("{you}", &self.you))
     }
 
     fn has(&self, kind: &str) -> bool {
@@ -350,6 +373,7 @@ mod tests {
                 2 => Some("Dark Magician"),
                 3 => Some("Blue-Eyes White Dragon"),
                 4 => Some("Kuriboh"),
+                5 => Some("The Seal of Orichalcos"),
                 _ => None,
             }
         }
@@ -409,6 +433,20 @@ mod tests {
         assert!(said[0].after > 1.5, "said after the Set shows, not before: {said:?}");
         let said = b.observe(&[json!({ "type": msg::NEW_TURN, "player": 1 })], &mut d);
         assert!(said[0].text.contains("Dark Magician"), "his first turn reads the hand: {said:?}");
+    }
+
+    #[test]
+    fn dartz_hails_the_seal_of_orichalcos_once() {
+        // A trump card no ATK makes an ace (a Field Spell): `trump: Card | line`, said when the NPC activates it, once.
+        let mut d = duel();
+        let mut b = Banter::new("Dartz", 1, "Tester", 7).unwrap();
+        let seal = json!({ "type": msg::CHAINING, "cid": 5, "controller": 1, "location": 8, "sequence": 5, "position": 5, "chain_size": 1 });
+        let said = b.observe(std::slice::from_ref(&seal), &mut d);
+        assert_eq!(said.iter().map(|s| s.text.as_str()).collect::<Vec<_>>(), ["The Seal is cast! Your soul is the price, Tester."]);
+        assert!(b.observe(&[json!({ "type": msg::NEW_TURN, "player": 1 }), seal.clone()], &mut d).iter().all(|s| !s.text.contains("Seal is cast")));
+        let theirs = json!({ "type": msg::CHAINING, "cid": 5, "controller": 0, "location": 8, "sequence": 5, "position": 5, "chain_size": 1 });
+        let mut fresh = Banter::new("Dartz", 1, "Tester", 7).unwrap();
+        assert!(fresh.observe(&[theirs], &mut d).is_empty(), "the player's Seal is no trump of his");
     }
 
     #[test]

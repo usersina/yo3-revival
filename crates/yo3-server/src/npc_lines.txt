@@ -344,3 +344,5 @@ direct: Nothing stands between you and the Seal.
 hurt: A sharp blow... but the Leviathan's power is only waking.
 win: Your soul belongs to the Orichalcos now, {you}.
 lose: Your heart's light... is stronger than I believed. Remember this duel, {you}.
+trump: The Seal of Orichalcos | The Seal is cast! Your soul is the price, {you}.
+trump: Divine Serpent Geh | Awaken, Divine Serpent! The Leviathan's herald comes.
