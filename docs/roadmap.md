@@ -30,6 +30,16 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
       alert destinations. Completed provisioning, recovery and protocol checks: [VPS record](history.md#2026-11-17--public-vps-deployment-and-recovery).
 - [ ] Normalize SQLite domains incrementally after deployment validation; keep the generated API unchanged.
 
+**Kaiba Corporation's characters**
+
+- [ ] More custom characters (slots 26-42 are free; candidates Yubel, Z-one, Rafael, Sartorius, then Valon, Alister,
+      Noah, Bastion, Rex Goodwin, Aporia).
+- [ ] Past slot 42 ([the limits](custom-npcs.md#how-many)): move the deck titles (`lea esi,[r+r+0x5FB4]` at `0x4BB299`,
+      `0x4BFE05`, `0x5174A8` to a free base, the launcher writing every title there), widen `npcbin` past id 256 (the
+      imm32 at `0x51C691`, a longer blob), raise `NPC_SLOTS`; then names past slot 99 (`0x51CC56`, `0x4BFE45`).
+- [ ] A visible scrollbar on Kaiba Corporation's list (the wheel scrolls it; its scrollbar is hidden and unwired):
+      `kaiba_main.swf` changed by the launcher from the player's own copy and served by the DLL, as other files are.
+
 **Duels**
 
 - [ ] The manga Gods and the added cards in more places: as a spectator, and the Gods' Soul Energy Max and the added

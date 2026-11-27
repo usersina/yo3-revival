@@ -15,6 +15,9 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- **Room for 18 custom Kaiba Corporation characters.** Kaiba Corporation can now hold characters of ours in slots 25
+  to 42 (it held 5). Each tab lists any number of them: the list scrolls with the mouse wheel. Their duels count towards
+  their stars and Friendship Level, their bodies show in the duel's cut-ins, and each can pick its cut-in background.
 - **Anime-only cards, sixth batch: Battle City's and the Big Five's.** 33 more (Duke Devlin's Diamond Head Dragon and
   Adamantine Sword Revival, Odion's Seal of Serket, Gansley's Ruklamba The Spirit King, Umbra's Masked Doll and
   Masquerade, the Big Five's Dragon Revival Ritual for the anime Five-Headed Dragon, Gurimo's Bronze Knights and Shield

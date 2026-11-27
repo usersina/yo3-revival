@@ -8,6 +8,7 @@ This guide covers adding one, the art it can have, and authoring a 3D body; the 
 **Contents**
 
 - [How it works](#how-it-works)
+- [How many](#how-many)
 - [Adding a character](#adding-a-character)
 - [Lines](#lines)
 - [Art](#art)
@@ -24,13 +25,31 @@ This guide covers adding one, the art it can have, and authoring a 3D body; the 
 | The roster | `yo3_server::add_custom_npcs` (`lib.rs`) | the levels' ids join the `0x2711` roster on their tab; their decks (each card by its English name) and bot style (`npc.rs` `CHARACTERS`) |
 | The decks | `World::npc_deck` | the anime deck while the server has `anime-cards` on, else the printed one |
 | The game's files | `yo3_data::added::text_files`, `npc_files` (the launcher writes them with the added cards) | the UI texts (name, help, deck titles, lines), the body (`model/np025/`), the portrait (`npc/npcsel025.png`) and the faces (`face/np025f0-4.png`) |
-| The duel's cut-ins | the connection DLL | the game's cut-in loads a body only for slots below 25 (`0x4E3C1D`) and times its sounds from a 25-row table (`0x78BBF8`): raised to 30, the custom slots' rows their donor's (`model/npNNN/donor.txt`) |
-| Serving them | the connection DLL (`tools/mod/card-profile.h`, `added-cards-logic.h` `yo3_added_npc_path`) | redirects the game's opens of `data/npc/npcsel025.png` and `data/face/np025f*.png`; gives the game's 25-entry model table room for 30 (`npc_models_install`, the read at `0x4E430F`) and points slots 25-29 at the launcher folder's bodies by their full path (the resource manager looks in the archives before opening anything, so a relative path never reaches the file hook) |
+| The duel's cut-ins | the connection DLL | the game's cut-in loads a body only for slots below 25 (`0x4E3C1D`), times its sounds from a 25-row table (`0x78BBF8`) and picks its background swf from a 26-entry table (`0x788C40`): raised to 43, the custom slots' timing rows their donor's and their background their own `cutin_bg` or the donor's (`model/npNNN/donor.txt`) |
+| Serving them | the connection DLL (`tools/mod/card-profile.h`, `added-cards-logic.h` `yo3_added_npc_path`) | redirects the game's opens of `data/npc/npcsel025.png` and `data/face/np025f*.png`; gives the game's 25-entry model table room for 43 (`npc_models_install`, the read at `0x4E430F`) and points slots 25-42 at the launcher folder's bodies by their full path (the resource manager looks in the archives before opening anything, so a relative path never reaches the file hook) |
 
 Kaiba Corporation's NPCs are the slots `k` = 0, 1, 2...: slot `k`'s three levels are NPC ids `120 + 3k` to `122 + 3k`.
-The game has 25 (0-24, Yami Yugi to Kalin Kessler); custom ones take **slots 25-29** (the duel cut-ins' table at
-`0x788C40` has 30 entries; the players' NPC experience reaches id 197, slot 25's last level, so slots 26-29 also need
-`npcbin` widened before their levels count experience).
+The game has 25 (0-24, Yami Yugi to Kalin Kessler); custom ones take **slots 25-42**, 18 characters
+([how many](#how-many)).
+
+## How many
+
+What bounds a custom slot `k` (its levels are ids `120 + 3k` to `122 + 3k`), from the client (2026-11-27):
+
+| What | Where | Bound | Past it |
+| --- | --- | --- | --- |
+| Deck titles, text `0x5FB4 + 2·id` | `txttbl_*.bin` | free up to id 248 (slot 42), but for slot 25's (ids 195-197: the game's unlisted 26th NPC's) and 24896 (a placeholder in J and K); id 250's text is a player title | **the limit**: slot 43 would overwrite a player title. Going further means moving the titles (patching `0x4BFE05`'s base) |
+| The players' experience (`npcbin`) | `0x51C680` (`cmp esi,0x400` at `0x51C68F`, `esi = 4·(id − 1)`) | id 256 (slot 44); the server sends 2048 bytes, ids 1-256 | the imm32 at `0x51C691` and a longer blob |
+| Names and help, text `0x5208 + 2k` | `txttbl_*.bin` | free up to slot 99 (slot 25's are placeholders: "main NPC name" in J and K, empty elsewhere) | slots 100-102 are other texts: patch the base at `0x51CC56` and `0x4BFE45` |
+| Lines, text `62000 + 300k` | `txttbl_*.bin` | free above 69486, so every slot from 25 | |
+| Bodies (`0x7F5B48`), cut-in timing (`0x78BBF8`), the cut-in's limit (`0x4E3C1D`), its background (`0x788C40`) | the connection DLL's own tables | `NPC_SLOTS` (43) in `tools/mod/card-profile.h` | a bigger array; the limit is a signed byte (127) |
+| Kaiba Corporation's list | `kaiba_main.swf`, a CLIK ScrollingList | 10 rows show; the mouse wheel scrolls it a row a tick (live: 17 rows on one tab, the last slot 42). Its scrollbar is placed but hidden and unwired, and the keyboard is off (`handleInput` returns false) | none, though nothing on screen says there is more: a scrollbar needs a changed `kaiba_main.swf` |
+| The tabs | `0x4BFBA0` (tab > 2 refused), the Flash's three | three; any character on any tab | |
+
+The server and the launcher take slots in `yo3_data::added::CUSTOM_NPC_SLOTS` (25-42): `Added::parse` refuses a slot
+outside it, a slot two characters share, a body past 24, a character without three levels and a `cutin_bg` outside
+1-10. No other per-slot bound was found: the duel start (`0x4BE390`), `Duel_createCutins` (`0x50F450`), the faces
+(`0x4F8080`), the talk's gate (`0x4BDAB0`) and the NPC texts `50000 + 100·id + kind` take any slot.
 
 ## Adding a character
 
@@ -55,11 +74,12 @@ Add an entry to `engine/added/npcs.json`:
 
 | Field | Meaning |
 | --- | --- |
-| `slot` | 25-29, one per character |
+| `slot` | 25-42, one per character |
 | `name`, `help` | Kaiba Corporation's list and info panel (text ids `0x5208 + 2·slot` and `+1`). Keep the help in the character's world (no "anime cards") |
 | `series` | the tab: 0 Yu-Gi-Oh!, 1 GX, 2 5D's |
 | `body` | the game NPC (0-24) whose skeleton and 53 animations it moves with |
 | `figure` | `"mannequin"` for our clothes-store mannequin on that skeleton; absent: the game NPC's own body and skins |
+| `cutin_bg` | the duel cut-in's background, `data/gfx/cutin_bg_npc01.swf` to `10` (optional; absent: the body's) |
 | `levels` | three, easiest first: a deck `title` (text `0x5FB4 + 2·id`), the printed `deck` (and optional `extra`), and an `anime_deck` (and `anime_extra`) played while `anime-cards` is on; 40-60 cards, each by its exact English name as the server knows it (the game's cards and the added ones) |
 | `lines` | what they say, by line number (below) |
 
