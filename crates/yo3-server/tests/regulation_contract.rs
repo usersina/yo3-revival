@@ -460,6 +460,26 @@ fn a_refused_duel_deck_is_explained_card_by_card_in_the_chat() {
 }
 
 #[test]
+fn a_duels_banlist_is_said_when_its_deck_is_picked() {
+    // A room on "Unlimited" let an opponent bring three Morphing Jar and Heavy Storm, which a player reported as cheating
+    // (Discord, 2026-11-27): Select Deck for a duel says the banlist the duel is played under, Unlimited with what it
+    // allows. An Edit Deck save (no duel) says nothing of it.
+    let mut w = world(5);
+    w.banlists = vec![(3, "Unlimited".into()), (5, "Season 16".into())];
+    let server = Server::with_world(w);
+    let mut c = server.join(1001, "Yugi");
+    let id = npc_duel(&mut c, 3);
+    c.pushed();
+    assert_eq!(pick(&mut c, id, &starter(), &[], &[]), 0x22CA);
+    assert_eq!(chat(&mut c), ["This duel's banlist: Unlimited (any card, three copies each)."]);
+    let Packet::Message(save) = req_with(0x1F4F, &[("event_id", Value::U32(0)), ("update_type", Value::U32(1))]) else { unreachable!() };
+    let deck = Message::deck().with("deck_name", Value::text("Mine")).with("main", Value::u16_be_array(&starter()))
+        .with("extra", Value::u16_be_array(&[])).with("side", Value::u16_be_array(&[]));
+    c.send(Packet::Message(save.item(deck)));
+    assert!(!chat(&mut c).iter().any(|l| l.contains("banlist")));
+}
+
+#[test]
 fn an_editor_save_that_cannot_duel_is_explained_and_a_good_one_is_not() {
     // Edit Deck's save (0x1F4F update_type 1, no duel, through the connection DLL) is kept either way; when the login
     // banlist or the collection would refuse it, the chat says why (the game only marks it ⊘).

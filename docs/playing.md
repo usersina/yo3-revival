@@ -74,7 +74,8 @@ with: the host's (**Season 16** unless they chose another; **Unlimited** on your
 your own with [`banlist` in the chat](#chat-commands). The Yugi, Jaden and Yusei character decks hold cards Season 16 forbids or
 limits (Heavy Storm, Premature Burial...), so either edit them or choose `unlimited` (or another list that allows
 them) and log in again; your starter deck is fine. Auto Duel only matches players on the same banlist, so nobody
-brings a deck the other's list forbids.
+brings a deck the other's list forbids. When you pick your deck for a duel, the chat window says which banlist the duel uses (a
+room on **Unlimited** allows any card, three copies each).
 
 **EDOPro decks.** Desktop imports an EDOPro deck file (`.ydk`) into your decks and exports yours for EDOPro: Settings →
 Singleplayer → Your data → EDOPro decks for your own server, **Decks…** under your User ID on a Multiplayer server

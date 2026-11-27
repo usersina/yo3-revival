@@ -28,6 +28,8 @@ pub const VERSION_VALID: u32 = 0x219F;
 /// Konami's server sent its current one (issue #15; its players' saved settings left Create Duel on "Latest
 /// Regulation"). The starter deck passes it; the character decks don't (Heavy Storm, Premature Burial...).
 pub const LOGIN_REGULATION: u32 = 20;
+/// The game's "Unlimited" banlist (regulation 3): every card, three copies each.
+pub const UNLIMITED_REGULATION: u32 = 3;
 /// The banlist the starter deck must pass: the client's first (the Beta list), so the starter stays legal whatever
 /// banlist a host picks.
 pub const STARTER_REGULATION: u32 = 1;
@@ -3198,6 +3200,15 @@ impl FrontSession {
         (regulation, owned)
     }
 
+    /// "This duel's banlist: NAME." for the duel `duel_id` (its rule's, else the player's login one), when the server
+    /// knows the game's banlists.
+    fn banlist_line(&self, duel_id: Option<u32>) -> Option<String> {
+        let (regulation, _) = self.deck_terms(duel_id);
+        let name = self.world.banlists.iter().find(|(id, _)| *id == regulation).map(|(_, name)| name.clone())?;
+        let unlimited = if regulation == UNLIMITED_REGULATION { " (any card, three copies each)" } else { "" };
+        Some(format!("This duel's banlist: {name}{unlimited}."))
+    }
+
     /// The decks the selected player's clients uploaded, as the accounts keep them now.
     /// The starter deck, unless the selected player deleted it (the newest account state, as `uploaded_decks`).
     fn starter(&self) -> Option<&Deck> {
@@ -3827,6 +3838,11 @@ impl FrontSession {
                     && let Some(item) = msg.items.first()
                 {
                     self.keep_deck(self.world.place_deck(&Deck::from_record(item)));
+                    // The duel's banlist, said before it starts: a room on "Unlimited" let an opponent bring three Morphing
+                    // Jar and Heavy Storm, which read as cheating (a Discord report, 2026-11-27).
+                    if duel_id.is_some() && let Some(line) = self.banlist_line(duel_id) {
+                        let _ = self.outbox.send(chat_note("Server", &line));
+                    }
                 }
                 if let (Some(id), Some(item)) = (duel_id, msg.items.first()) {
                     let deck = self.world.place_deck(&Deck::from_record(item));

@@ -1072,6 +1072,9 @@ deemed a non-Result.") and, at OK, leaves for the map; the match ends, won by th
 duel-connection command 2 {1, 14} is ignored before the janken; a janken command first doesn't make it work either.)
 Live with the asymmetric check (only Yugi's deck refused): Kaiba, at the pre-janken screen, got that dialog and went
 back to the map. Card Swaps (`update_type` 2) that fail the deck check are ignored, with `0x22CA`.
+An accepted duel deck gets a chat note from "Server" with the duel's banlist ("This duel's banlist: Unlimited (any card,
+three copies each)."): a room on Unlimited let an opponent bring three Morphing Jar and Heavy Storm, reported as
+cheating (Discord, 2026-11-27); an editor save gets none (`regulation_contract.rs`).
 Since the game says nothing about why, the server does, in the chat (`0x2455` notes from "Server",
 `deckcheck::explain`: every reason, card by card, at most six lines): before `0x22CB` ("Your deck "X" can't be used
 for this duel:" then the reasons), after an Edit Deck save the login banlist or the collection would refuse ("\"X\" is
