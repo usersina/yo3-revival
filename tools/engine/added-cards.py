@@ -451,9 +451,10 @@ def anime_problem(code, d):
     """Why an anime-only card's script can't be played, or None: it must exist in unofficial/ and register effects unless
     the card is a Normal Monster."""
     path = os.path.join(ENGINE, 'vendor', 'CardScripts', 'unofficial', f'c{code}.lua')
-    if not os.path.exists(path):
-        return f'no script unofficial/c{code}.lua'
     normal = d['type'] & 0x11 == 0x11 and not d['type'] & 0x20
+    if not os.path.exists(path):
+        # A Normal Monster needs none, as the game's own (Ninja Soldier Katana, Tom Thumb: the engine plays it bare).
+        return None if normal else f'no script unofficial/c{code}.lua'
     with open(path, encoding='utf-8', errors='replace') as f:
         text = f.read()
     if not normal and not any(w in text for w in ('RegisterEffect', 'aux.Add', 'Procedure', '.Add')):

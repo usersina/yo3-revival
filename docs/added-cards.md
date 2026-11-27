@@ -262,7 +262,9 @@ Konami id and no official data: its data and script are ProjectIgnis' anime ones
 
 - **Find it** by name or `anime:PASSCODE`: `tools/engine/added-cards.py --find "Orichalcos Gigas"`. It must be marked
   Anime in the unofficial database (not a video game or manga version, not an anime version of a printed card: those are
-  [anime versions](#its-anime-version)) and have a script that registers effects, not a placeholder. The line has an
+  [anime versions](#its-anime-version)) and have a script that registers effects, not a placeholder; a Normal Monster
+  needs none (Ninja Soldier Katana, Tom Thumb: the engine plays it bare, as it does the game's own). An anime passcode
+  that is already a printed card's anime version (`engine/anime-cards.json`) is refused: that card plays it. The line has an
   empty Konami id, a stand-in id and the passcode in the `anime` column.
 - **Its text** starts with the `[Anime]` line, like every anime card. Its genre bits come from its script's effects and
   its type (the unofficial database numbers its categories its own way).

@@ -15,6 +15,11 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- **Anime-only cards, fifth batch: Yami Marik's, Valon's, Pegasus', Dartz's, Jean-Claude Magnum's and Mai's.** 37 more
+  (Orichalcos Malevolence and Mirror Knight Calling with its Mirror Knights, Jean-Claude Magnum's Ninja Master Shogun with
+  Ninja Soldier Katana and Kunoichi Ayame, Mai's Harpie Lady Sparrow Formation, Nightmare Mirror and more), and the
+  anime's vanilla monsters, which no batch had: Tom Thumb, the Landstar soldiers, Necro Mannequin and Aeris now, the
+  others with their decks. Valon's Armor cards wait: the game has no Armor monsters to show.
 - **Anime-only cards, fourth batch: Noah Kaiba's, Zigfried von Schroeder's, Solomon Muto's and Vivian Wong's.** 33 more
   (Next World, Deepest Impact, Zigfried's Nibelung's Ring and Treasure and Wotan's Judgment, Solomon's Ancient Dragon,
   Ancient City and The Legendary Gambler, Vivian's Dragon Lady and Luminous Clouds, and more). Nibelung's Ring goes back

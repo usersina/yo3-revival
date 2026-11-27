@@ -18,6 +18,19 @@ HAVE = os.path.exists(os.path.join(added.ENGINE, 'vendor', 'BabelCDB', 'cards.cd
 
 
 @unittest.skipUnless(HAVE, 'needs engine/fetch.sh and the game')
+def waiting_anime_card(test):
+    """`anime:PASSCODE` of a card of the anime-only batches not added yet (the batches add them one by one); the test is
+    skipped once every batch is in."""
+    have = {l['anime'] for l in added.table()}
+    with open(os.path.join(added.ENGINE, 'added', 'anime-batches.tsv'), encoding='utf-8') as f:
+        rows = [l.split('\t') for l in f.read().splitlines()[1:]]
+    candidates = [f'anime:{r[3]}' for r in rows if r[3] not in have and not r[5].strip()][-40:]
+    waiting = [c for c, (_, line, _) in zip(candidates, added.find(candidates)) if line]
+    if not waiting:
+        test.skipTest('every anime-only batch is added')
+    return waiting[-1]
+
+
 class AddedCards(unittest.TestCase):
     def test_the_committed_file_is_current(self):
         self.assertEqual(added.main(['--check']), 0)
@@ -149,10 +162,12 @@ class AddedCards(unittest.TestCase):
         self.assertEqual((gigas['a'] >> 14 & 0x1FF, gigas['a'] >> 23 & 0x1FF, added.fields(gigas['b'])['level']), (40, 150, 4))
         self.assertTrue(gigas['genre'] >> 3 & 1 and gigas['genre'] >> 7 & 1, 'Special Summon, Increase/Decrease ATK/DEF')
         ctx = added.load()
-        found = {n: (l, w) for n, l, w in added.find(['Orichalcos Gigas', 'anime:170000172', 'Orichalcos Shunoros (Anime)'], ctx)}
-        self.assertEqual(found['Orichalcos Gigas'][1], ['engine/added/cards.tsv already has it'])
-        line = found['Orichalcos Malevolence'][0].split('\t')
-        self.assertEqual((line[1], line[4]), ('', '170000172'), 'no Konami id, its anime passcode')
+        card = waiting_anime_card(self)
+        found = added.find(['Orichalcos Gigas', card, 'Orichalcos Shunoros (Anime)'], ctx)
+        self.assertEqual(found[0][2], ['engine/added/cards.tsv already has it'])
+        line = found[1][1].split('\t')
+        self.assertEqual((line[1], line[4]), ('', card[len('anime:'):]), 'no Konami id, its anime passcode')
+        found = {n: (l, w) for n, l, w in found}
         self.assertIn('check the spelling', found['Orichalcos Shunoros (Anime)'][1][0], 'an anime version of a printed card is no anime-only card')
         with tempfile.TemporaryDirectory() as tmp:
             table = os.path.join(tmp, 'cards.tsv')
@@ -163,6 +178,14 @@ class AddedCards(unittest.TestCase):
             with mock.patch.object(added, 'TABLE', table), self.assertRaises(SystemExit) as e:
                 added.build()
             self.assertIn('has no Konami id', str(e.exception))
+
+    def test_an_anime_only_normal_monster_needs_no_script(self):
+        # Ninja Soldier Katana is a vanilla anime monster with no script upstream (Ninja Master Shogun's Summon needs it):
+        # it can be added; an Effect Monster without a script can't.
+        (name, line, why), = added.find(['anime:511001319'], added.load())
+        self.assertTrue(line or 'engine/added/cards.tsv already has it' in why, why)
+        self.assertIsNone(added.anime_problem(511001319, {'type': 0x11}))
+        self.assertIn('no script', added.anime_problem(511001319, {'type': 0x21}))
 
     def test_an_anime_version_of_a_printed_card_is_no_anime_only_card_to_add(self):
         # Rainbow Bridge Bifrost (id 5115) plays 100000539 as its anime version: adding that passcode again as an
@@ -235,14 +258,7 @@ class AddedCards(unittest.TestCase):
         taken = {int(l['stand_in']) for l in added.table() if (l.get('stand_in') or '').strip()}
         free = len(added.free_stand_ins(ctx, taken))
         self.assertGreater(free, added.STAND_IN_RESERVE, 'the batches still have stand-ins to give')
-        # A card of the anime-only batches not added yet (the batches add them one by one).
-        have = {l['anime'] for l in added.table()}
-        batches = os.path.join(added.ENGINE, 'added', 'anime-batches.tsv')
-        with open(batches, encoding='utf-8') as f:
-            waiting = [l.split('\t')[3] for l in f.read().splitlines()[1:] if l.split('\t')[3] not in have and not l.split('\t')[5].strip()]
-        if not waiting:
-            self.skipTest('every anime-only batch is added')
-        card = f'anime:{waiting[-1]}'
+        card = waiting_anime_card(self)
         with mock.patch.object(added, 'STAND_IN_RESERVE', free):
             (name, line, why), = added.find([card], ctx)
             self.assertIsNone(line)

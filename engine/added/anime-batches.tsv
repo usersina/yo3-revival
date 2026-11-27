@@ -169,6 +169,14 @@ batch	series	deck	anime	name	tokens
 5	DM	Maximillion Pegasus	511008004	Sun Shower	
 5	DM	Maximillion Pegasus	511001524	Tears of a Mermaid	
 5	DM	Maximillion Pegasus	511000406	Trap Displacement	
+5	DM	Noah Kaiba	511000287	Aeris	
+5	DM	Joey Wheeler	100000631	Grappler of Landstar	
+5	DM	Joey Wheeler	100000630	Knight of Landstar	
+5	DM	Joey Wheeler	100000632	Brigadier of Landstar	
+5	DM	Yami Bakura	511000157	Necro Mannequin	
+5	DM	Jean-Claude Magnum	511001318	Kunoichi Ayame the Ninja Girl	
+5	DM	Jean-Claude Magnum	511001319	Ninja Soldier Katana	
+5	DM	Leon von Schroeder	511001412	Tom Thumb	
 6	DM	* Yami Yugi	511000422	Ambush Shield	
 6	DM	* Yami Yugi	511001144	Disgraceful Charity	
 6	DM	* Yami Yugi	511000925	Soul Shield	
@@ -211,6 +219,8 @@ batch	series	deck	anime	name	tokens
 7	DM	Crump	511000643	Defender Iceberg	
 7	DM	Rebecca Hawkins	511001309	Judgment Blaster	
 7	DM	Rex Raptor	511000894	Chain of the Underworld	
+7	DM	Mako Tsunami	511002503	Great White Terror	
+7	DM	Rebecca Hawkins	511001150	Ruby Dragon	
 8	GX	Jaden Yuki	511005016	Astral Shift	
 8	GX	Jaden Yuki	511002619	Battle x 2	
 8	GX	Jaden Yuki	511002154	Bubble Rod	
@@ -293,6 +303,7 @@ batch	series	deck	anime	name	tokens
 9	GX	Chazz Princeton	511000593	White Knight Gardna	
 9	GX	Chazz Princeton	511000594	White Knight Lancer	
 9	GX	Chazz Princeton	511000596	White Knight Swordsman	
+9	GX	Chazz Princeton	511000107	Beetron-1 Beetletop	
 10	GX	Lyman Banner	100000651	Alchemy Beast - Aretos the Tin	
 10	GX	Lyman Banner	100000656	Alchemy Beast - Ekenas the Mercury	
 10	GX	Lyman Banner	100000654	Alchemy Beast - Leon the Lead	
@@ -464,6 +475,10 @@ batch	series	deck	anime	name	tokens
 14	GX	Bastion Misawa	170000122	Magnet Force Plus	
 14	GX	Bastion Misawa	511002832	One Hundred Thousand Gauss	
 14	GX	Bastion Misawa	511002390	Power Off	
+14	GX	Alice	511001461	Doll Part Gold	
+14	GX	Alice	511001462	Doll Part Blue	
+14	GX	Alice	511001463	Doll Part Pink	
+14	GX	Alice	511001464	Doll Part Red	
 15	GX	Howard X Miller	511000648	Elegant Light LV4	
 15	GX	Howard X Miller	511000585	Level Pod	
 15	GX	Howard X Miller	511001236	Monster Register	
@@ -498,6 +513,9 @@ batch	series	deck	anime	name	tokens
 15	GX	Aster Phoenix	511000313	Plasma Counter	
 15	GX	Aster Phoenix	511000314	Plasma Discharger	
 15	GX	Aster Phoenix	100000272	Plasma Roar	
+15	GX	Sartyr	511001215	Potatoman	
+15	GX	Sartyr	511001216	Carrotman	
+15	GX	Sartyr	511001217	Onionman	
 16	GX	Camula	511001903	Genesis Crisis	
 16	GX	Camula	511000141	Infernalvania	
 16	GX	Camula	511000143	Red Ghost Moon	
@@ -646,6 +664,7 @@ batch	series	deck	anime	name	tokens
 20	GX	Pierre the Gambler	511001909	Gamble Angel Bunny	
 20	GX	Reginald Van Howell III	511001348	Jewel Sword	
 20	GX	Titan, the Rock Spirit	511002700	Sand Doodlebug	
+20	GX	(no deck)	511009121	Grim Reaper	
 21	5Ds	Yusei Fudo	511001754	Arbitrator	
 21	5Ds	Yusei Fudo	511005018	Balance Blaster	
 21	5Ds	Yusei Fudo	511001756	Big Eater	
@@ -820,6 +839,7 @@ batch	series	deck	anime	name	tokens
 25	5Ds	Misty Tredwell	100000096	Sad Story - Sorrowful Memories	
 25	5Ds	Misty Tredwell	100000097	Sad Story - Unwavering Truth	
 25	5Ds	Misty Tredwell	100000099	Sorrowful Chain	
+25	5Ds	Bashford	511000964	Kid Junk	
 26	5Ds	Primo	511002554	Echo Mirror	
 26	5Ds	Primo	511002887	Explosive Blast	
 26	5Ds	Primo	511000973	Infinity Guard Formation	
@@ -914,6 +934,7 @@ batch	series	deck	anime	name	tokens
 28	5Ds	Sherry LeBlanc	511001671	High Half	
 28	5Ds	Taro Yamashita	511002924	Fool's Dice	
 28	5Ds	Taro Yamashita	511000959	Power Throw	
+28	5Ds	Sherry LeBlanc	511001984	Apprentice Knight	
 29	5Ds	Z-one	511000815	Foolish Decision	
 29	5Ds	Z-one	511000816	Magician's Adage	
 29	5Ds	(no deck)	511002698	Brilliant Shrine Art	
@@ -942,3 +963,4 @@ batch	series	deck	anime	name	tokens
 29	5Ds	Tetsu Trudge	511000842	Power Bind	
 29	5Ds	The Giant	511005629	Illegal Keeper	
 29	5Ds	Vizor	511000976	Magnetic Storm	
+29	5Ds	(no deck)	511009122	Diva Adriana	
