@@ -1622,7 +1622,11 @@ pub mod selfplay {
         let mut data = if anime {
             anime_data(dir, &decks, |_| {}, Some(8000))?
         } else {
-            let (cards, tokens) = plain_cards(dir, &decks);
+            // Every token card the client has, as with anime cards on: the NPCs' decks make more kinds than the pool's.
+            let (mut cards, mut tokens) = plain_cards(dir, &decks);
+            let (token_cards, token_names) = client_tokens(dir)?;
+            cards.extend(token_cards);
+            tokens.extend(token_names);
             CardData { cards, tokens, tuners: tuners(dir, &decks, false)?, lp: Some(8000), ..CardData::default() }
         };
         data.bots = Some(styles);
