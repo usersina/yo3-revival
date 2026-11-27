@@ -15,6 +15,11 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- **Anime-only cards, sixth batch: Battle City's and the Big Five's.** 33 more (Duke Devlin's Diamond Head Dragon and
+  Adamantine Sword Revival, Odion's Seal of Serket, Gansley's Ruklamba The Spirit King, Umbra's Masked Doll and
+  Masquerade, the Big Five's Dragon Revival Ritual for the anime Five-Headed Dragon, Gurimo's Bronze Knights and Shield
+  Wall, Spell Transfer and Curse Transfer, and more). Dragon Revival Ritual no longer lets Five-Headed Dragon be its own
+  DARK Tribute, and Spell Transfer against another Spell Transfer just negates it.
 - **Anime-only cards, fifth batch: Yami Marik's, Valon's, Pegasus', Dartz's, Jean-Claude Magnum's and Mai's.** 37 more
   (Orichalcos Malevolence and Mirror Knight Calling with its Mirror Knights, Jean-Claude Magnum's Ninja Master Shogun with
   Ninja Soldier Katana and Kunoichi Ayame, Mai's Harpie Lady Sparrow Formation, Nightmare Mirror and more), and the

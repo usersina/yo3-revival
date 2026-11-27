@@ -60,6 +60,16 @@ fn every_chosen_card_plays_and_its_effects_are_reported() {
         .filter(|c| c["status"] == "mapped")
         .filter_map(|c| Some((c["cid"].as_u64()? as u16, c["anime"].as_u64()?)))
         .collect();
+    // A card whose anime version sits in the other Deck (Five-Headed Dragon: a Fusion Monster, a Main Deck Ritual
+    // Monster in the anime): with anime cards on, a partner goes where the anime version does, as the card profile
+    // tells the client (#60).
+    let anime_extra: BTreeMap<u16, bool> = anime_map["cards"].as_array().unwrap().iter()
+        .filter(|c| c["status"] == "mapped")
+        .filter_map(|c| {
+            let deck = c["profile"].as_array()?.iter().filter_map(Json::as_str).find(|p| p.starts_with("deck:"))?;
+            Some((c["cid"].as_u64()? as u16, deck.ends_with("-> Fusion)")))
+        })
+        .collect();
     let rows = std::env::var("YO3_FUZZ_ROWS").ok().and_then(|r| {
         let (a, b) = r.split_once('-')?;
         Some(a.trim().parse::<u16>().ok()?..=b.trim().parse::<u16>().ok()?)
@@ -85,6 +95,7 @@ fn every_chosen_card_plays_and_its_effects_are_reported() {
         let modes: Vec<bool> = if card.anime_only { vec![true] } else if anime_of.contains_key(&card.cid) { vec![false, true] } else { vec![false] };
         let partners = partners(&card.desc, &names, card.cid);
         for anime in modes {
+            let partners: Vec<(u16, bool)> = partners.iter().map(|&(p, e)| (p, if anime { anime_extra.get(&p).copied().unwrap_or(e) } else { e })).collect();
             let pool = pools.entry(anime).or_insert_with(|| selfplay::added_pool(&dir, anime, 8).expect("the added cards"));
             let code = if anime && !card.anime_only { anime_of[&card.cid] } else { card.passcode as u64 };
             let mut tallies: BTreeMap<(u16, u64), Tally> = BTreeMap::new();

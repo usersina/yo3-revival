@@ -4,6 +4,7 @@
 //! with both seats' client views checked against the engine after every step.
 use yo3_server::duelcheck::scenario::{Action::*, Scenario, card, engine_dir};
 use yo3_server::engine::{Spawn, SpawnPlace::*};
+use yo3_server::ocg::msg;
 
 const INFINITE: i64 = 19_999_998;
 const KURIBOH: u16 = 4064;
@@ -318,5 +319,31 @@ fn deepest_impact_halves_infinite_lp_to_infinity_and_the_other_side_to_4000() {
     assert_eq!((s.lp(0), s.lp(1)), (INFINITE, 4000), "Deepest Impact: {}", s.context());
     assert_eq!((s.count(1, "grave", WARWOLF), s.count(0, "grave", THUNDER_KID)), (1, 1), "monsters destroyed: {}", s.context());
     assert_eq!(s.count(1, "mzone", WARWOLF) + s.count(0, "mzone", THUNDER_KID) + s.count(0, "mzone", GEH), 0, "{}", s.context());
+    clean(&s);
+}
+
+#[test]
+fn soul_shield_pays_half_of_infinite_lp_and_still_saves_the_monster() {
+    // The anime Soul Shield: "If a monster you control would be destroyed by battle: Pay half your LP; it is not destroyed,
+    // and end the Battle Phase." Warwolf (2000) attacks Thunder Kid in Defense Position (600 DEF), my only monster (Mystik
+    // Wok took the Geh). Half of ∞ is ∞, so the LP stay ∞ and the Kid lives, and the Battle Phase ends (team 1's second Warwolf
+    // cannot attack either). The same Soul Shield at 8000 LP costs 4000.
+    let shield = card("Soul Shield");
+    let kid = Spawn { team: 0, place: MonsterDefense, cid: THUNDER_KID };
+    let Some(mut s) = infinite(&[set(0, shield), kid, mon(1, WARWOLF), mon(1, WARWOLF)]) else { return };
+    s.run_both([&[ChainOnAttack(shield)], &[Attack(WARWOLF)]]).unwrap();
+    assert_eq!(s.count(0, "grave", shield), 1, "Soul Shield was activated: {}", s.context());
+    assert_eq!(s.count(0, "mzone", THUNDER_KID), 1, "Thunder Kid was not destroyed: {}", s.context());
+    assert_eq!(s.lp(0), INFINITE, "half of ∞ is paid and ∞ is left: {}", s.context());
+    assert_eq!((s.prompt()["type"].as_u64(), s.prompt()["player"].as_u64()), (Some(msg::SELECT_IDLECMD), Some(1)), "{}", s.context());
+    assert_eq!(s.prompt()["to_bp"], false, "the Battle Phase is over: {}", s.context());
+    clean(&s);
+    // At 8000 LP: 4000 are paid.
+    let dir = engine_dir().unwrap();
+    let decks = [(&[KURIBOH; 40][..], &[][..]), (&[KURIBOH; 40][..], &[][..])];
+    let field = [set(0, shield), kid, mon(1, WARWOLF)];
+    let mut s = Scenario::start_anime_field(&dir, 7, 8000, decks, &field).expect("the duel starts");
+    s.run_both([&[ChainOnAttack(shield)], &[Attack(WARWOLF)]]).unwrap();
+    assert_eq!((s.lp(0), s.count(0, "mzone", THUNDER_KID)), (4000, 1), "{}", s.context());
     clean(&s);
 }

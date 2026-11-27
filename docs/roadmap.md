@@ -42,7 +42,8 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
       28), batch 4 (rows 5334-5366, 33 with 2 Tokens; Rainbow Bridge Bifrost (Anime) is the printed Bifrost's anime
       version, so it isn't added twice), batch 5 (rows 5367-5403, 37 with 2 Tokens and the vanilla monsters of batches 1-5;
       Valon's Armor cards, Armored Gravitation, Data Brain, Full Armor Gravitation, Magnet Armor and Phoenix Gravitation,
-      wait: the Armor monsters' type is none the client can show), batches 6-29 to come, each tested in tiers ([the rule](added-cards.md#add-a-batch):
+      wait: the Armor monsters' type is none the client can show), batch 6 (rows 5404-5436, 33 with 2 Tokens), batches 7-29
+      to come, each tested in tiers ([the rule](added-cards.md#add-a-batch):
       the per-card fuzz, then scenarios for the flagged cards, those the checks point at, signature cards and a random 30%
       of the rest: batch 1's sample found a bug the fuzz can't, Limit Tribute doing only part of its text); the anime Michion and Hailon
       deal ∞ damage to ∞ LP (half of ∞, and ∞ minus a number, are ∞): confirm that reading.
