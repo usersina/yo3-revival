@@ -15,6 +15,7 @@ impl Translator {
             Ask::BattleCmd(p) => (&BATTLE_LISTS, resp::BATTLECMD, vec![(p.to_m2, "to_m2", battle::TO_M2), (p.to_ep, "to_ep", battle::TO_EP)]),
             Ask::Disfield(p) if self.side(p.player) == CLIENT => return self.unreachable_zones(p),
             Ask::Card(c) if self.asking == Asking::FieldTarget => return self.unreachable_targets(c),
+            Ask::Card(c) if matches!(self.asking, Asking::EffectTarget(_)) => return self.unreachable_effect_targets(c),
             _ => return self.unreachable_choices(&ask),
         };
         let mut reachable: Vec<Json> = vec![];
@@ -104,6 +105,25 @@ impl Translator {
         }
         if choice.can_cancel && self.clone().finish().is_none() {
             missing.push("taking the attack back (right-click)".into());
+        }
+        missing
+    }
+
+    /// [`unreachable_answers`] for an effect's target on the field: each candidate's Confirm click, and the right-click's
+    /// list.
+    pub(super) fn unreachable_effect_targets(&self, choice: &SelectCard) -> Vec<String> {
+        let mut missing = vec![];
+        for (i, card) in choice.selects.iter().enumerate() {
+            let Some(place) = self.place(card) else { continue };
+            let (zone, slot) = (place >> 8 & 0xFF, place >> 16 & 0xFF);
+            let zone = if zone == 0 || zone == 5 { zone + slot } else { zone };
+            let click = CardCommand { command: menu::CONFIRM, player: place & 0xFF, zone, index: 0 };
+            if self.clone().command(click) != Some(Prompt::Answer(Response::Card(Some(vec![i])).json())) {
+                missing.push(format!("selects[{i}] (an effect's target on the field)"));
+            }
+        }
+        if !matches!(self.clone().finish(), Some(Prompt::Client(_))) {
+            missing.push("the card list (right-click)".into());
         }
         missing
     }

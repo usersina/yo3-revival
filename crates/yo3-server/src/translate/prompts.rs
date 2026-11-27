@@ -88,15 +88,13 @@ impl Translator {
                 {
                     return Prompt::Client(out);
                 }
-                let mut out = vec![];
-                let text = self.hint_message(&mut out, hint);
-                // A Tribute counts in Tributes, and a card may be two (Double Coston): the list takes picks by card.
+                if matches!(ask, Ask::Card(_))
+                    && let Some(out) = self.effect_target_on_field(m, choice, hint)
+                {
+                    return Prompt::Client(out);
+                }
                 let view = if matches!(ask, Ask::Tribute(_)) { tribute_view(m, choice) } else { choice.clone() };
-                let list = CardList { selects: view.selects.clone(), min: view.min, max: view.max, cancelable: view.can_cancel };
-                out.extend(self.card_list(&list, text));
-                self.pending = Some(m.clone());
-                self.picks.clear();
-                Prompt::Client(out)
+                Prompt::Client(self.choice_list(m, &view, hint))
             }
             // Materials, one at a time: the card list until the engine lets the player finish and nothing is left.
             Ask::UnselectCard(u) if !u.select_cards.is_empty() => {

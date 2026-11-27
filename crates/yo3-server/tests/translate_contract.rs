@@ -1546,7 +1546,9 @@ fn a_list_with_the_opponents_hidden_card_shows_card_backs() {
     let target = |cancel: bool| json!({ "type": 15, "player": 0, "can_cancel": cancel, "min": 1, "max": 1,
         "selects": [json!({ "code": 4200, "cid": 4200, "controller": 1, "location": 8, "sequence": 0, "position": 10 }),
             card_at(1, 8, 1, 4201)] });
-    let out = client_commands(t.prompt(&target(false)));
+    // One target on the field is picked there (#91); the right-click gives the list.
+    t.prompt(&target(false));
+    let out = client_commands(t.finish().expect("the list"));
     // The list follows the field: the opponent's zone 1 is left of their zone 0 on the player's screen, so the face-up
     // card comes first. The entries at the opponent's banished places 0 and 1 (place 1 | 0xF << 8 | index << 16): the
     // face-up card's with the flag and its row, the Set card's clear.
@@ -1555,10 +1557,15 @@ fn a_list_with_the_opponents_hidden_card_shows_card_backs() {
     assert!(out.contains(&(0x3F2, [201, 0, 0, 0])), "{out:?}");
     assert_eq!(out.last(), Some(&(0x37, [1, 4, 0, 0])), "{out:?}");
     // Even a choice the player could back out of: the card is reachable only this way.
-    assert_eq!(client_commands(t.prompt(&target(true))).last().map(|&(id, p)| (id, p[1])), Some((0x37, 4)));
+    t.prompt(&target(true));
+    assert_eq!(client_commands(t.finish().expect("the list")).last().map(|&(id, p)| (id, p[1])), Some((0x37, 4)));
     // Closed with nothing picked (a right-click), a forced choice is asked again; picking answers it.
     t.prompt(&target(false));
+    t.finish();
+    // Closed with nothing picked, the choice is asked again, on the field first; the right-click gives the list again.
     let again = client_commands(t.dialog_result(0).expect("asked again"));
+    assert_eq!(again.last(), Some(&(4, [2, 0, 0, 0])));
+    let again = client_commands(t.finish().expect("the list"));
     assert_eq!(again.last().map(|&(id, p)| (id, p[1])), Some((0x37, 4)));
     // The list's second card, the Set one, is the engine's first.
     t.pick(1);
@@ -1604,6 +1611,39 @@ fn a_choice_of_several_cards_with_a_set_one_shows_card_backs_too() {
 }
 
 #[test]
+fn an_effects_one_target_is_picked_on_the_field() {
+    // #91: Mystical Space Typhoon's list showed two of the opponent's Set cards as two backs, hard to tell apart. One
+    // target among cards on the field is picked there, as the original's attack targets were (#51): Confirm (bit 11)
+    // on each candidate in the command map (Spells/Traps keyed at zone 5, their slot), the field's right-click (other
+    // flag 6), command 4 in the main mode, and a chat line saying what to pick. A click on a candidate answers with its
+    // index, at the place the client sends it (zone 5 + slot, index 0); any other click waits on.
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 10 * r as u32, def: 1000, level: 4, attribute: 2, race: 12 };
+    let cids = (100..110).chain(200..210).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
+    let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
+    let (mut t, _) = Translator::against_player(0, [&client, &cpu], cids);
+    t.events(&[json!({ "type": 90, "player": 1, "drawn": [{ "cid": 4200 }, { "cid": 4201 }] })]);
+    t.events(&[json!({ "type": 50, "cid": 4200, "from": loc(1, 2, 0, 10), "to": loc(1, 8, 0, 10) })]);
+    t.events(&[json!({ "type": 50, "cid": 4201, "from": loc(1, 2, 0, 10), "to": loc(1, 8, 3, 10) })]);
+    t.events(&[json!({ "type": 2, "hint_type": 3, "player": 0, "hint": 502 })]);
+    let target = json!({ "type": 15, "player": 0, "can_cancel": false, "min": 1, "max": 1,
+        "selects": [card_at(1, 8, 0, 4200), card_at(1, 8, 3, 4201)] });
+    let Prompt::Client(raw) = t.prompt(&target) else { panic!("the field") };
+    let out = client_commands(Prompt::Client(raw.clone()));
+    assert_eq!(out.last(), Some(&(4, [2, 0, 0, 0])), "{out:?}");
+    let bits = command_bits(&raw);
+    assert_eq!(bits, [(1 | 5 << 8, 1 << 11), (1 | 5 << 8 | 3 << 16, 1 << 11)], "{bits:?}");
+    assert_eq!(t.take_notes(), ["Click the card on the field (right-click for the list)."]);
+    let other = CardCommand { command: 2, player: 1, zone: 8, index: 0 };
+    assert_eq!(t.command(other), None, "not Confirm: waits");
+    let click = CardCommand { command: 11, player: 1, zone: 8, index: 0 };
+    assert_eq!(t.command(click), Some(Prompt::Answer(json!({ "type": 5, "indicies": [1] }))));
+    // Several picks, or a candidate off the field: the list.
+    let two = json!({ "type": 15, "player": 0, "can_cancel": false, "min": 2, "max": 2,
+        "selects": [card_at(1, 8, 0, 4200), card_at(1, 8, 3, 4201)] });
+    assert_eq!(client_commands(t.prompt(&two)).last().map(|&(id, _)| id), Some(0x37));
+}
+
+#[test]
 fn a_mixed_list_gives_the_opponents_banished_entries_back() {
     // The list borrows the opponent's banished places 0.. for its flags; once it closes the real entries (uid, row,
     // the open flag) are sent before anything else.
@@ -1618,6 +1658,7 @@ fn a_mixed_list_gives_the_opponents_banished_entries_back() {
         "selects": [json!({ "code": 4201, "cid": 4201, "controller": 1, "location": 8, "sequence": 0, "position": 10 }),
             card_at(1, 8, 1, 4202)] });
     t.prompt(&target);
+    t.finish();
     t.pick(0);
     assert!(matches!(t.dialog_result(1), Some(Prompt::Answer(_))));
     let back: Vec<_> = t.events(&[]).iter().map(cmd).collect();

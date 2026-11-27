@@ -68,10 +68,12 @@ def has_component(name):
 def run(go_second):
     vclient('click', *KAIBA_CORPORATION)
     time.sleep(3)
+    began = time.monotonic()
     for _ in range(25):  # the NPC's talk, until the Start Duel? question
         vclient('click', *TALK)
         time.sleep(1.3)
-        if flash_since(ui(), 'showDialog', 1500):
+        # Any time since the talk began: reading the UI probe takes long enough that a 1.5 s window missed it.
+        if flash_since(ui(), 'showDialog', int((time.monotonic() - began) * 1000) + 400):
             break
     else:
         raise Stuck('the Start Duel? question never came (is the client on the map?)')

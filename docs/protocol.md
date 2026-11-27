@@ -2349,6 +2349,16 @@ DuelCardCommand (built at `0x4F8E70`), whose `+0x44` holds the hovered card's me
 and the click sent `{CommandID 11, player 1, position 0}`, the attack on Germ (**confirmed**, live). So the original's
 targets were the monsters' Confirm entry, and #51's field targeting needs only commands the client already has.
 
+**An effect's target on the field (#91).** The same commands pick an effect's one target among cards on the field
+(`effect_target_on_field`, contract test `an_effects_one_target_is_picked_on_the_field`): a card choice of exactly one
+whose candidates are all on the field (not an attack target) sends the command map with Confirm on each candidate
+(Spells/Traps at zone 5, their slot; the Field Zone at 10) and other-flag 6, then command 4 in the main mode, with no
+battle commands, and a chat line from "Effect" saying what to pick. Confirm on a candidate answers with its index;
+the right-click opens the card list (a choice the player may back out of is backed out of there); a forced list closed
+empty asks again, on the field first. Several picks keep the list. Live (2026-11-27, NPC duel, `--duel-field`):
+Mystical Space Typhoon against Kaiba's Set Mirror Force and Sakuretsu Armor opened no list; one click on the Set card
+on the right destroyed Mirror Force, no menu in between, no duel check drift.
+
 So the server does it (#51, `translate/answers.rs` `target_on_field`, contract test
 `a_client_attacks_target_is_picked_on_the_field`): after the client's attack command (or, in the duel check, its
 self-played attack) the attacker is kept until the battle ends or the next command prompt, and an attack target prompt

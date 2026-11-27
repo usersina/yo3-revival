@@ -458,6 +458,9 @@ enum Asking {
     Zones(Vec<Json>),
     /// An attack's target, picked on the field (#51, see `target_on_field`).
     FieldTarget,
+    /// An effect's one target, picked on the field (#91, see `effect_target_on_field`): its hint, for the card list a
+    /// right-click opens instead.
+    EffectTarget(u64),
     /// The Surrender question ("Do you surrender?", Yes/No) or, before the turn it opens, the OK dialog saying when.
     Surrender,
     SurrenderEarly,

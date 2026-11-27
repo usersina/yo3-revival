@@ -58,6 +58,9 @@ impl Translator {
         if self.asking == Asking::FieldTarget {
             return self.target_click(&m, cmd);
         }
+        if matches!(self.asking, Asking::EffectTarget(_)) {
+            return self.effect_target_click(&m, cmd);
+        }
         if matches!(ask, Some(Ask::Disfield(_) | Ask::Place(_))) && matches!(self.asking, Asking::Zones(_)) {
             return Some(self.zone_click(&m, cmd));
         }
@@ -155,9 +158,76 @@ impl Translator {
         Some(Prompt::Answer(Response::Card(Some(vec![index])).json()))
     }
 
+    /// A card choice's list (`choice` as the list shows it, a Tribute's by card) under its hint's message.
+    pub(super) fn choice_list(&mut self, m: &Json, choice: &SelectCard, hint: u64) -> Vec<Message> {
+        let mut out = vec![];
+        let text = self.hint_message(&mut out, hint);
+        let list = CardList { selects: choice.selects.clone(), min: choice.min, max: choice.max, cancelable: choice.can_cancel };
+        out.extend(self.card_list(&list, text));
+        self.pending = Some(m.clone());
+        self.picks.clear();
+        out
+    }
+
+    /// An effect's one target picked on the field (#91: Mystical Space Typhoon's list made two of the opponent's Set cards
+    /// hard to tell apart), as the original's attack targets were (`target_on_field`): every candidate a card on the
+    /// field gets Confirm (bit 11) in the command map, nothing else, with the field's right-click, in the main mode; the
+    /// chat window says what to pick. A click on a candidate's Confirm answers; the right-click opens the card list (a
+    /// choice the player may back out of is backed out of there). None (the list) for several picks or a candidate off
+    /// the field.
+    pub(super) fn effect_target_on_field(&mut self, m: &Json, choice: &SelectCard, hint: u64) -> Option<Vec<Message>> {
+        if choice.min != 1 || choice.max != 1 || choice.selects.len() < 2 || self.side(choice.player) != CLIENT || hint == hintmsg::ATTACKTARGET {
+            return None;
+        }
+        let mut map: Vec<(u32, u32)> = vec![];
+        for card in &choice.selects {
+            self.engine_place(card).filter(|p| p.zone <= zone::FIELD_SPELL)?;
+            let place = self.place(card)?;
+            if map.iter().any(|(p, _)| *p == place) {
+                return None;
+            }
+            map.push((place, 1 << menu::CONFIRM));
+        }
+        self.asking = Asking::EffectTarget(hint);
+        self.pending = Some(m.clone());
+        self.picks.clear();
+        let words = hint_words(hint, self.lang).map(|w| w.replace("@0", "").replace("@2", "").replace("@3", ""));
+        self.note(match words {
+            Some(words) => format!("{words} Click it on the field (right-click for the list)."),
+            None => "Click the card on the field (right-click for the list).".to_string(),
+        });
+        Some(vec![command_data(&map, &[(flag::RIGHT_CLICK, 1)]), command(cmd::INPUT, [mode::MAIN, CLIENT, 0, 0])])
+    }
+
+    /// A click while an effect's target is picked on the field: Confirm on a candidate answers, anything else waits on.
+    pub(super) fn effect_target_click(&mut self, m: &Json, cmd: CardCommand) -> Option<Prompt> {
+        if cmd.command != menu::CONFIRM {
+            return None;
+        }
+        // The client sends a field card at its own slot, index 0 (see `listed`).
+        let (zone, index) = match (cmd.zone, cmd.index) {
+            (z @ 1..=4, 0) => (0, z as usize),
+            (z @ 6..=9, 0) => (5, z as usize - 5),
+            (z, i) => (z, i as usize),
+        };
+        let place = table_place(cmd.player, zone, index);
+        let choice: SelectCard = typed(m);
+        let index = choice.selects.iter().position(|c| self.place(c) == Some(place))?;
+        self.asking = Asking::Prompt;
+        self.pending = None;
+        Some(Prompt::Answer(Response::Card(Some(vec![index])).json()))
+    }
+
     /// The field's right-click (duelRequestName 5): while an attack target is picked on the field, the attack taken
-    /// back when the engine allows it.
+    /// back when the engine allows it; while an effect's target is, the card list instead.
     pub fn finish(&mut self) -> Option<Prompt> {
+        if let Asking::EffectTarget(hint) = self.asking {
+            let m = self.pending.clone()?;
+            let choice: SelectCard = typed(&m);
+            self.asking = Asking::Prompt;
+            let list = Prompt::Client(self.choice_list(&m, &choice, hint));
+            return Some(self.with_ids(list));
+        }
         let m = self.pending.as_ref().filter(|_| self.asking == Asking::FieldTarget)?;
         if !typed::<SelectCard>(m).can_cancel {
             return None;
