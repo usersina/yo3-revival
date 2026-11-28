@@ -13,7 +13,7 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.1.28 (2026-11-28)
 
 - **Opponents play toward their bosses.** The computer now knows its own deck: which monsters it plays toward and
   which cards bring them out, so it keeps Fusion materials, sets up its Field Spells and Special Summons its bosses
