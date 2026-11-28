@@ -9,6 +9,7 @@ use crate::cards::Library;
 use crate::core::Duel;
 use crate::decode::{self, Reader};
 
+use super::knowledge::Knowledge;
 use super::policy::FACEDOWN_GUESS;
 use super::{Reach, Style};
 
@@ -30,6 +31,8 @@ const TYPE_FLIP: i64 = 0x200000;
 #[derive(Clone, Debug)]
 pub struct Monster {
     pub seq: u8,
+    /// Its card, when the bot knows it (0 when not).
+    pub code: u32,
     pub faceup: bool,
     pub attack_pos: bool,
     pub atk: i32,
@@ -57,6 +60,8 @@ impl Monster {
 #[derive(Clone, Debug)]
 pub struct Spell {
     pub faceup: bool,
+    /// Its card, when the bot knows it (0 when not).
+    pub code: u32,
     /// Its card type, when the bot knows it.
     pub kind: Option<i64>,
 }
@@ -71,6 +76,9 @@ pub struct Side {
     pub extra: u32,
     pub monsters: Vec<Monster>,
     pub spells: Vec<Spell>,
+    /// The cards the player knows it has in hand, face-up or Set on its field (Spell & Trap Zones) and in the
+    /// Graveyard: the bot's own side only.
+    pub own: Vec<u32>,
 }
 
 impl Side {
@@ -93,6 +101,8 @@ pub struct Board {
     pub attacker: Option<i32>,
     /// How the bot plays (what it sees, how it weighs a position).
     pub style: Style,
+    /// What the bot knows of its deck: its bosses and the pieces that bring them out.
+    pub knowledge: Arc<Knowledge>,
     library: Arc<Library>,
 }
 
@@ -100,9 +110,9 @@ pub struct Board {
 pub type Hidden = HashSet<u8>;
 
 impl Board {
-    /// Player `me`'s view of `duel`; `hidden` are the opponent's monster zones it is not allowed to know (none, and
-    /// the opponent's Set cards too, when its style sees).
-    pub fn observe(duel: &mut Duel, me: u8, library: &Arc<Library>, hidden: &Hidden, style: Style) -> Board {
+    /// Player `me`'s view of `duel`, knowing `knowledge` of its deck; `hidden` are the opponent's monster zones it is
+    /// not allowed to know (none, and the opponent's Set cards too, when its style sees).
+    pub fn observe(duel: &mut Duel, me: u8, library: &Arc<Library>, hidden: &Hidden, style: Style, knowledge: &Arc<Knowledge>) -> Board {
         let field = duel.query_field();
         let players = decode::field(&mut Reader::new(&field)).ok().and_then(|mut f| f.remove("players")).unwrap_or_default();
         let mut sides: [Side; 2] = Default::default();
@@ -123,6 +133,7 @@ impl Board {
                 let known = t == me || style.sees || faceup && !hidden.contains(&(seq as u8));
                 side.monsters.push(Monster {
                     seq: seq as u8,
+                    code: if known { card.get(decode::QUERY_CODE).unwrap_or(0) } else { 0 },
                     faceup,
                     attack_pos: position & POS_ATTACK != 0,
                     atk: if known { card.get(decode::QUERY_ATTACK).unwrap_or(0) as i32 } else { 0 },
@@ -136,10 +147,18 @@ impl Board {
             for card in szone.into_iter().flatten() {
                 let faceup = card.get(decode::QUERY_POSITION).unwrap_or(0) & POS_FACEUP != 0;
                 let kind = (t == me || faceup || style.sees).then(|| card.get(QUERY_TYPE).unwrap_or(0) as i64);
-                side.spells.push(Spell { faceup, kind });
+                let code = if kind.is_some() { card.get(decode::QUERY_CODE).unwrap_or(0) } else { 0 };
+                side.spells.push(Spell { faceup, code, kind });
+            }
+            if t == me && !knowledge.pieces.is_empty() {
+                side.own = side.spells.iter().map(|s| s.code).collect();
+                for location in [LOCATION_HAND, LOCATION_GRAVE] {
+                    let cards = decode::query_location(&duel.query_location(decode::QUERY_CODE, t, location)).unwrap_or_default();
+                    side.own.extend(cards.into_iter().flatten().filter_map(|c| c.get(decode::QUERY_CODE)));
+                }
             }
         }
-        Board { me, sides, attacker: None, style, library: library.clone() }
+        Board { me, sides, attacker: None, style, knowledge: knowledge.clone(), library: library.clone() }
     }
 
     /// The opponent's monster zones holding a card the bot can't see now (for the look-ahead's `hidden`).
@@ -176,7 +195,8 @@ impl Board {
 
     /// How good the position is for the bot, in Life Points: the LP difference, about 700 a card in hand or on the
     /// field, its monsters' strength, what the opponent's next battle would cost it ([`exposure`]), Traps ready to
-    /// spring, its Set Flip monsters' effects to come, an empty Deck. A won duel is worth everything.
+    /// spring, its Set Flip monsters' effects to come, an empty Deck, its bosses on the field and the pieces that
+    /// bring them out ([`Knowledge`]). A won duel is worth everything.
     pub fn value(&self) -> f64 {
         let me = &self.sides[self.me as usize];
         let them = &self.sides[1 - self.me as usize];
@@ -207,6 +227,11 @@ impl Board {
         if me.deck == 0 {
             v -= 3000.0;
         }
+        // Its deck's bosses on the field, and the pieces that bring them out held or ready in the Graveyard.
+        let k = &self.knowledge;
+        v += w.boss * me.monsters.iter().filter(|m| m.faceup && k.is_boss(m.code)).count() as f64;
+        v += w.piece * (me.own.iter().filter(|&&c| k.is_piece(c)).count()
+            + me.monsters.iter().filter(|m| k.is_piece(m.code)).count()) as f64;
         v
     }
 }

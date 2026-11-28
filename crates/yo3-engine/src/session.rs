@@ -7,6 +7,8 @@ use std::sync::Arc;
 
 use serde_json::{Map, Value as Json, json};
 
+use crate::bot::brain::Brain;
+use crate::bot::knowledge::{Knowledge, Plan};
 use crate::bot::{Pool, Setup, Style, Thinker};
 use crate::cards::{Cards, Declarable, Library, Prints, is_card_script};
 use crate::core::{Card, Duel, Host, Status};
@@ -75,6 +77,8 @@ pub struct Session {
     attacker: Option<i32>,
     /// The bot's last prompt and answer: the same prompt straight back means the answer went nowhere.
     thought: Option<(Json, Json)>,
+    /// What each player's bot knows of its deck, for the plan its style named (bot::knowledge), made once a duel.
+    knowledge: [Option<(Json, Arc<Knowledge>)>; 2],
 }
 
 type Answer = Result<Json, String>;
@@ -94,6 +98,7 @@ impl Session {
             hints: [None; 2],
             attacker: None,
             thought: None,
+            knowledge: [None, None],
         }
     }
 
@@ -178,6 +183,7 @@ impl Session {
         let mut setup = Setup { seed: seeds, lp, cards: vec![], skills: vec![] };
         self.history.clear();
         self.pool.reset();
+        self.knowledge = [None, None];
         self.hints = [None; 2];
         self.attacker = None;
         let names = &req["names"];
@@ -456,23 +462,29 @@ impl Session {
         Ok(Some(json!({ "type": "field", "monsters": report["monsters"], "relations": report["relations"] })))
     }
 
-    /// The bot's answer to the pending prompt (`{"op":"think","style":{…}}`, see bot::Style), for the server to give
-    /// with `respond`. With `"policy":"simple"`, the old placeholder CPU's answer instead (a baseline to measure by).
+    /// The bot's answer to the pending prompt (`{"op":"think","style":{…}}`, see bot::Style and its brain), for the
+    /// server to give with `respond`. `"policy":"simple"` is the placeholder brain (a baseline to measure by).
     fn think(&mut self, req: &Json) -> Answer {
         let prompt = self.pending.clone().ok_or("Error: no prompt to answer")?;
         let me = prompt["player"].as_u64().unwrap_or(0) as usize & 1;
         let started = std::time::Instant::now();
-        let response = if req["policy"] == "simple" {
+        let mut style = Style::from_json(&req["style"]);
+        if req["policy"] == "simple" {
+            style.brain = crate::bot::brain::Placeholder.name();
+        }
+        let response = if style.brain == crate::bot::brain::Placeholder.name() {
             crate::bot::policy::simple(&prompt)
         } else {
             let library = self.cards.borrow().library.clone();
-            let style = Style::from_json(&req["style"]);
             let deadline = std::time::Instant::now() + crate::bot::BUDGET;
-            let thinker = Thinker { library: &library, setup: &self.setup, history: &self.history, pool: &self.pool, style, deadline };
+            let knowledge = if req["style"]["knowledge"] == false { Knowledge::none() } else { self.knowledge_of(me, &req["style"]["plan"]) };
+            let thinker = Thinker { library: &library, setup: &self.setup, history: &self.history, pool: &self.pool, style, knowledge, deadline };
             let duel = self.duel.as_mut().ok_or("TypeError: no duel")?;
             let (response, declared) = thinker.think(duel, &prompt, self.hints[me], self.attacker);
             // Copies for the next decision, built while the duel goes on.
-            self.pool.refill(&library, &self.setup, &self.history);
+            if crate::bot::brain::by_name(style.brain).name() == crate::bot::brain::Search.name() {
+                self.pool.refill(&library, &self.setup, &self.history);
+            }
             self.attacker = declared.or(self.attacker.filter(|_| prompt["type"] != msg::SELECT_BATTLECMD));
             // The same prompt straight back after the same answer (an attack cancelled, an activation that came to
             // nothing): move on instead of trying it forever.
@@ -484,6 +496,28 @@ impl Session {
             response
         };
         Ok(json!({ "status": "thought", "response": response, "ms": started.elapsed().as_millis() as u64 }))
+    }
+
+    /// What player `team`'s bot knows of its deck with the game plan `plan` (`{"bosses": [names], "pieces": [names]}`,
+    /// matched against the names of the cards it began with, so an anime version counts as its card).
+    fn knowledge_of(&mut self, team: usize, plan: &Json) -> Arc<Knowledge> {
+        if let Some((known, k)) = &self.knowledge[team] && known == plan {
+            return k.clone();
+        }
+        let cards = self.cards.borrow();
+        let named = |key: &str| -> Vec<u32> {
+            let wanted: Vec<String> = plan[key].as_array().into_iter().flatten().filter_map(Json::as_str).map(str::to_lowercase).collect();
+            let mut codes: Vec<u32> = self.setup.cards.iter().filter(|(t, ..)| *t as usize == team).map(|&(.., c)| c)
+                .filter(|&c| cards.name(c).is_some_and(|n| wanted.contains(&n.to_lowercase()))).collect();
+            codes.sort_unstable();
+            codes.dedup();
+            codes
+        };
+        let plan_codes = Plan { bosses: named("bosses"), pieces: named("pieces") };
+        let k = Arc::new(Knowledge::of_deck(&cards.library, &self.setup.cards, team as u8, &plan_codes));
+        drop(cards);
+        self.knowledge[team] = Some((plan.clone(), k.clone()));
+        k
     }
 
     /// Where every card is, by team (see the sidecar's `state()`).

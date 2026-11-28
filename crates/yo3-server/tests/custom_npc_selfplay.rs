@@ -11,6 +11,8 @@
 //! each for the last level of the first custom NPC of each series, anime cards on. `YO3_NPC_ONLY=Name,Name` only those;
 //! `YO3_NPC_JOBS=n` duels at once (4). Each duel's line (name, level, mode, seed, result, turns, the deck's bosses summoned
 //! and which, the bot's longest answer in ms) goes to `custom-npc-selfplay.tsv` in Cargo's test temporary directory. Skipped without the game or the engine.
+//! To measure a bot change on one side only: `YO3_NPC_HERO_STYLE='{"knowledge":false}'` is the hero's style, and
+//! `YO3_NPC_STYLE_EXTRA='{"bait":false}'` adds to each NPC's (crates/yo3-engine's bot::Style).
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -134,8 +136,18 @@ fn every_custom_npcs_decks_play_self_played_duels_through_the_duel_check() {
                 let npc_team = (d.seed % 2) as usize;
                 let mut decks: [(&[u16], &[u16]); 2] = [(&d.rival[0], &d.rival[1]), (&d.rival[0], &d.rival[1])];
                 decks[npc_team] = (&d.npc[0], &d.npc[1]);
-                let mut styles = [Json::Null, Json::Null];
-                styles[npc_team] = d.style.clone();
+                let env_style = |key: &str| std::env::var(key).ok().and_then(|v| serde_json::from_str::<Json>(&v).ok()).unwrap_or(Json::Null);
+                let mut styles = [env_style("YO3_NPC_HERO_STYLE"), env_style("YO3_NPC_HERO_STYLE")];
+                let mut style = d.style.clone();
+                if let Json::Object(extra) = env_style("YO3_NPC_STYLE_EXTRA") {
+                    if !style.is_object() {
+                        style = serde_json::json!({});
+                    }
+                    for (k, v) in extra {
+                        style[k] = v;
+                    }
+                }
+                styles[npc_team] = style;
                 let head = format!("{}\t{}\t{}\t{}\t{}", d.name, d.slot, d.level, if d.anime { "anime" } else { "printed" }, d.seed);
                 let (line, failed) = match selfplay::play_bots(&engine, d.seed, decks, d.anime, styles, 1 - npc_team) {
                     Ok(p) => {

@@ -1,18 +1,10 @@
 //! The bot's rules of thumb: answers that need no look-ahead (positions, places, attacks, which cards to pay a cost
-//! with), the answers it gives inside a look-ahead copy, and the old placeholder CPU (`simple`), kept as a baseline.
+//! with), the answers it gives inside a look-ahead copy, and the placeholder CPU they fall back on (`simple`).
 //! Every rule reads only what the bot's player may see ([`Board`] hides the opponent's hand and Set cards).
-use serde_json::{Value as Json, json};
+use serde_json::Value as Json;
 
 use super::board::{Board, Monster};
 use yo3_ocg::{Response, battle, hintmsg, idle, loc, msg, pos};
-
-// Prompts (OcgMessageType) and answers (OcgResponseType).
-
-
-
-
-
-// The selection hints that precede a card choice (HINT_SELECTMSG, EDOPro's HINTMSG_*): what will happen to the cards.
 
 /// What a monster you face can do in a battle: its ATK in Attack Position, its DEF in Defense Position, and a guess
 /// for a face-down one (the bot can't see it).
@@ -168,20 +160,26 @@ pub fn answer(m: &Json, me: u8, board: &Board, hint: Option<u64>) -> Json {
 }
 
 /// The Battle Phase: attack where it pays (directly, or a monster an attacker destroys), else Main Phase 2 to Set
-/// what was drawn, else end.
+/// what was drawn, else end. Into Set Spells and Traps it doesn't know, the weakest attacker that can do something goes
+/// first, to spring them on the monster it would miss least; otherwise the strongest first, each taking the best target
+/// it beats (style `bait` false: always the strongest first).
 fn battle(m: &Json, me: u8, board: &Board) -> Json {
     let opponent = &board.sides[1 - me as usize];
     let attacks = list(m, "attacks");
     let atk_of = |a: &Json| board.sides[me as usize].monster(u(&a["sequence"]) as u8).map_or(0, |m| m.atk);
-    // Strongest attackers first: each takes the best target it beats.
-    let mut order: Vec<usize> = (0..attacks.len()).collect();
+    let pays = |a: &Json| {
+        opponent.monsters.is_empty() && a["can_direct"] == true || attack_target(atk_of(a), &opponent.monsters, board.style.aggression).is_some()
+    };
+    let backrow = opponent.spells.iter().any(|s| !s.faceup && s.kind.is_none());
+    let mut order: Vec<usize> = (0..attacks.len()).filter(|&i| pays(&attacks[i])).collect();
     order.sort_by_key(|&i| std::cmp::Reverse(atk_of(&attacks[i])));
-    for i in order {
-        let a = &attacks[i];
-        let atk = atk_of(a);
-        if opponent.monsters.is_empty() && a["can_direct"] == true || attack_target(atk, &opponent.monsters, board.style.aggression).is_some() {
-            return Response::BattleCmd { action: battle::ATTACK, index: Some(i) }.json();
-        }
+    // Lethal now: no bait, everything goes in.
+    let direct: i32 = order.iter().filter(|&&i| attacks[i]["can_direct"] == true && opponent.monsters.is_empty()).map(|&i| atk_of(&attacks[i])).sum();
+    if board.style.bait && backrow && direct < opponent.lp {
+        order.reverse();
+    }
+    if let Some(&i) = order.first() {
+        return Response::BattleCmd { action: battle::ATTACK, index: Some(i) }.json();
     }
     let action = if m["to_m2"] == true { battle::TO_M2 } else { battle::TO_EP };
     Response::BattleCmd { action, index: None }.json()
@@ -196,11 +194,25 @@ pub fn declared_attacker(m: &Json, answer: &Json, me: u8, board: &Board) -> Opti
     board.sides[me as usize].monster(u(&a["sequence"]) as u8).map(|m| m.atk)
 }
 
-/// The bot's own answer inside a look-ahead copy: as [`answer`], except that at an idle prompt, after summoning, it
-/// activates what it can (the first card offered), so that a Spell held or drawn counts for what it does in the copy.
+/// The bot's own answer inside a look-ahead copy: as [`answer`], except at an idle prompt, where it plays toward its
+/// deck's bosses ([`Board::knowledge`]): it Special Summons a boss when it can, and after summoning activates what it
+/// can, a piece that brings a boss out first, else the first card offered, so that a Spell held or drawn counts for
+/// what it does in the copy. With `plain_copies` in its style, only the first card offered (the bot before #85's work).
 pub fn in_copy(m: &Json, me: u8, board: &Board, hint: Option<u64>) -> Json {
-    if u(&m["type"]) == msg::SELECT_IDLECMD && list(m, "summons").is_empty() && !list(m, "activates").is_empty() {
-        return Response::IdleCmd { action: idle::ACTIVATE, index: Some(0) }.json();
+    if u(&m["type"]) == msg::SELECT_IDLECMD {
+        let k = &board.knowledge;
+        let code = |c: &Json| u(&c["code"]) as u32;
+        if !board.style.plain_copies
+            && let Some(i) = list(m, "special_summons").iter().position(|c| k.is_boss(code(c)))
+        {
+            return Response::IdleCmd { action: idle::SPSUMMON, index: Some(i) }.json();
+        }
+        let activates = list(m, "activates");
+        if list(m, "summons").is_empty() && !activates.is_empty() {
+            let piece = activates.iter().position(|c| k.is_piece(code(c)) || k.is_boss(code(c)));
+            let i = if board.style.plain_copies { 0 } else { piece.unwrap_or(0) };
+            return Response::IdleCmd { action: idle::ACTIVATE, index: Some(i) }.json();
+        }
     }
     answer(m, me, board, hint)
 }
@@ -230,122 +242,8 @@ pub fn passive(m: &Json) -> Json {
     }
 }
 
-/// The old placeholder CPU: the first legal choices (summon the first monster, attack with the first attacker, never
-/// chain). Kept as the baseline the bot is measured against.
+/// The placeholder CPU (`yo3_ocg::placeholder`, the server's too): the first legal choices. The rules fall back on it
+/// for the prompts they don't cover; alone it is the baseline the bot is measured against.
 pub fn simple(m: &Json) -> Json {
-    let list_len = |k: &str| list(m, k).len();
-    let first = |len: usize| -> Vec<usize> { (0..min_max(m, len).0).collect() };
-    match u(&m["type"]) {
-        msg::SELECT_IDLECMD => {
-            let (action, index) = if list_len("summons") > 0 {
-                (idle::SUMMON, Some(0))
-            } else if list_len("monster_sets") > 0 {
-                (idle::MONSTER_SET, Some(0))
-            } else if m["to_bp"] == true {
-                (idle::TO_BP, None)
-            } else {
-                (idle::TO_EP, None)
-            };
-            Response::IdleCmd { action, index }.json()
-        }
-        msg::SELECT_BATTLECMD if list_len("attacks") > 0 => Response::BattleCmd { action: battle::ATTACK, index: Some(0) }.json(),
-        msg::SELECT_BATTLECMD => Response::BattleCmd { action: battle::TO_EP, index: None }.json(),
-        msg::SELECT_CHAIN => Response::Chain((m["forced"] == true).then_some(0)).json(),
-        msg::SELECT_CARD => Response::Card(Some(first(list_len("selects")))).json(),
-        msg::SELECT_TRIBUTE => Response::Tribute(Some(first(list_len("selects")))).json(),
-        // Finishing with nothing picked cancels (an attack that needs a cost, declared again and again): pick first.
-        msg::SELECT_UNSELECT_CARD => {
-            let finish = m["can_finish"] == true && !list(m, "unselect_cards").is_empty();
-            Response::UnselectCard((!finish).then_some(0)).json()
-        }
-        msg::SELECT_EFFECTYN => Response::EffectYn(true).json(),
-        msg::SELECT_YESNO => Response::YesNo(true).json(),
-        msg::SELECT_OPTION => Response::Option(0).json(),
-        msg::SORT_CHAIN | msg::SORT_CARD => Response::Sort(None).json(),
-        msg::SELECT_COUNTER => {
-            let mut left = u(&m["count"]);
-            let mut counters: Vec<u64> = list(m, "cards").iter().map(|c| {
-                let take = left.min(u(&c["count"]));
-                left -= take;
-                take
-            }).collect();
-            if counters.is_empty() {
-                counters.push(left);
-            }
-            Response::Counter(json!(counters)).json()
-        }
-        kind @ (msg::SELECT_PLACE | msg::SELECT_DISFIELD) => {
-            // The first zone the mask leaves free: the player's monster zones (bits 0-4), Spell/Trap zones (8-12, the
-            // Field zone 13), then the opponent's (16-20, 24-29).
-            let mask = u(&m["field_mask"]);
-            let me = u(&m["player"]);
-            let free = [(me, loc::MZONE, 0..5u64, 0u64), (me, loc::SZONE, 0..6, 8), (1 - me, loc::MZONE, 0..5, 16), (1 - me, loc::SZONE, 0..6, 24)]
-                .into_iter()
-                .flat_map(|(p, l, seqs, base)| seqs.map(move |s| (p, l, s, base + s)));
-            let count = (u(&m["count"]) as usize).max(1);
-            let mut places: Vec<Json> = free.filter(|&(_, _, _, bit)| mask & 1 << bit == 0).take(count)
-                .map(|(p, l, s, _)| json!({ "player": p, "location": l, "sequence": s })).collect();
-            if places.is_empty() {
-                places.push(json!({ "player": me, "location": loc::MZONE, "sequence": 0 }));
-            }
-            if kind == msg::SELECT_PLACE { Response::Place(places).json() } else { Response::Disfield(places).json() }
-        }
-        msg::SELECT_POSITION => {
-            let allowed = u(&m["positions"]).max(1);
-            Response::Position(if allowed & 1 != 0 { 1 } else { 1 << allowed.trailing_zeros() }).json()
-        }
-        kind @ (msg::ANNOUNCE_RACE | msg::ANNOUNCE_ATTRIB) => {
-            let available = u(&m["available"]).max(1);
-            let picked: Vec<u64> = (0..64).map(|b| 1u64 << b).filter(|b| available & b != 0).take(u(&m["count"]).max(1) as usize).collect();
-            if kind == msg::ANNOUNCE_RACE { Response::Race(picked).json() } else { Response::Attrib(picked).json() }
-        }
-        msg::ANNOUNCE_NUMBER => Response::Number(0).json(),
-        msg::ANNOUNCE_CARD => Response::CardName(m["fits"][0].as_u64().unwrap_or(0)).json(),
-        msg::ROCK_PAPER_SCISSORS => Response::Rps(1).json(),
-        msg::SELECT_SUM => Response::Sum(sum_choice(m)).json(),
-        _ => Response::Chain(None).json(),
-    }
-}
-
-/// MSG_SELECT_SUM: the fewest of `selects` that make the sum with the `selects_must` (see the server's translate.rs,
-/// which offers the same choice to the player).
-pub fn sum_choice(m: &Json) -> Vec<usize> {
-    let amount = |c: &Json| u(&c["amount"]);
-    let selects: Vec<u64> = list(m, "selects").iter().map(amount).collect();
-    let must: Vec<u64> = list(m, "selects_must").iter().map(amount).collect();
-    let target = u(&m["amount"]);
-    let greater = u(&m["select_max"]) != 0;
-    let min = u(&m["min"]) as usize;
-    let max = m["max"].as_u64().filter(|&x| x != 0).unwrap_or(u32::MAX as u64) as usize;
-    let values = |a: u64| -> Vec<u64> { [a & 0xFFFF, a >> 16].into_iter().filter(|v| *v > 0).collect() };
-    let reached = |chosen: &[u64]| {
-        let mut sums = vec![0u64];
-        for a in must.iter().chain(chosen) {
-            let vs = values(*a);
-            sums = sums.iter().flat_map(|s| if vs.is_empty() { vec![*s] } else { vs.iter().map(|v| s + v).collect() }).collect();
-            sums.sort_unstable();
-            sums.dedup();
-        }
-        if !greater {
-            return sums.contains(&target);
-        }
-        let smallest = chosen.iter().map(|a| a & 0xFFFF).min().unwrap_or(0);
-        sums.iter().any(|s| *s >= target && s.saturating_sub(smallest) < target)
-    };
-    let n = selects.len();
-    if n <= 16 {
-        let mut masks: Vec<u32> = (0..1u32 << n).collect();
-        masks.sort_by_key(|k| k.count_ones());
-        for mask in masks {
-            let count = mask.count_ones() as usize;
-            if count < min.min(n) || count > max {
-                continue;
-            }
-            let chosen: Vec<u64> = (0..n).filter(|i| mask >> i & 1 == 1).map(|i| selects[i]).collect();
-            if reached(&chosen) {
-                return (0..n).filter(|i| mask >> i & 1 == 1).collect();
-            }
-        }
-    }
-    (0..n.min(max)).collect()
+    yo3_ocg::placeholder::answer(m).json()
 }

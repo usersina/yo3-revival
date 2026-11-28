@@ -18,7 +18,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULTS = {'card': 700.0, 'strength': 0.6, 'exposure': 0.2, 'trap_set': 60.0, 'spell_set': -100.0, 'flip_set': 700.0, 'margin': 30.0}
+DEFAULTS = {'card': 700.0, 'strength': 0.6, 'exposure': 0.2, 'trap_set': 60.0, 'spell_set': -100.0, 'flip_set': 700.0, 'margin': 30.0,
+            'boss': 800.0, 'piece': 250.0}
 # How a number moves in a trial: a factor for the scale-like ones, a step for those that may cross zero.
 STEPS = {'spell_set': 150.0, 'margin': 60.0, 'trap_set': 150.0}
 

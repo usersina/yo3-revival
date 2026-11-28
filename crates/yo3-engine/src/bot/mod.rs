@@ -25,9 +25,12 @@ use crate::core::{Duel, Host, Status};
 use crate::decode;
 
 pub mod board;
+pub mod brain;
+pub mod knowledge;
 pub mod policy;
 
 use board::{Board, Hidden};
+use knowledge::Knowledge;
 use yo3_ocg::{Response, battle, hint, hintmsg, idle, msg};
 
 const MODE_MR2: u64 = 0xD0600;
@@ -72,8 +75,8 @@ pub enum Reach {
     Turn,
 }
 
-/// How an NPC plays: its character.
-#[derive(Clone, Copy, Debug, Default)]
+/// How an NPC plays: its character. The default is a style with no character (as `{}`).
+#[derive(Clone, Copy, Debug)]
 pub struct Style {
     /// -1 (holds back) to 1 (attacks whenever it can, values the opponent's LP more).
     pub aggression: f64,
@@ -88,6 +91,12 @@ pub struct Style {
     /// one action deeper at each step ([`COMBO_FIRSTS`] when 0).
     pub depth: usize,
     pub firsts: usize,
+    /// How it decides ([`brain::by_name`]: `search`, the default, `rules` or `placeholder`).
+    pub brain: &'static str,
+    /// In a copy it plays the first card offered, not toward its bosses (`policy::in_copy`; to measure by).
+    pub plain_copies: bool,
+    /// Into unknown Set Spells and Traps its weakest useful attacker goes first (`policy::battle`; on by default).
+    pub bait: bool,
 }
 
 /// The numbers a position is weighed by (`Board::value`), in LP. The defaults are the bot's; a style may name others
@@ -107,11 +116,16 @@ pub struct Weights {
     pub flip_set: f64,
     /// What an action must gain over doing nothing more.
     pub margin: f64,
+    /// A boss of the bot's deck face-up on its field, more than its strength ([`Knowledge`]).
+    pub boss: f64,
+    /// A piece that brings a boss out, in hand, on the field or in the Graveyard.
+    pub piece: f64,
 }
 
 impl Default for Weights {
     fn default() -> Weights {
-        Weights { card: 700.0, strength: 0.6, exposure: 0.2, trap_set: 60.0, spell_set: -100.0, flip_set: 700.0, margin: 30.0 }
+        Weights { card: 700.0, strength: 0.6, exposure: 0.2, trap_set: 60.0, spell_set: -100.0, flip_set: 700.0, margin: 30.0,
+            boss: 800.0, piece: 250.0 }
     }
 }
 
@@ -120,7 +134,7 @@ impl Weights {
     pub fn from_json(v: &Json) -> Weights {
         let mut w = Weights::default();
         for (key, field) in [("card", &mut w.card), ("strength", &mut w.strength), ("exposure", &mut w.exposure),
-            ("trap_set", &mut w.trap_set), ("spell_set", &mut w.spell_set), ("flip_set", &mut w.flip_set), ("margin", &mut w.margin)]
+            ("trap_set", &mut w.trap_set), ("spell_set", &mut w.spell_set), ("flip_set", &mut w.flip_set), ("margin", &mut w.margin), ("boss", &mut w.boss), ("piece", &mut w.piece)]
         {
             if let Some(x) = v[key].as_f64().filter(|x| x.is_finite()) {
                 *field = x;
@@ -130,8 +144,15 @@ impl Weights {
     }
 }
 
+impl Default for Style {
+    fn default() -> Style {
+        Style::from_json(&Json::Null)
+    }
+}
+
 impl Style {
-    /// From the think request's `style` ({"aggression", "caution", "sees", "reach": "action"|"turn"}).
+    /// From the think request's `style` ({"aggression", "caution", "sees", "reach": "action"|"turn", "brain", "weights",
+    /// "depth", "firsts", "plain_copies", "bait"; and "knowledge": false, "plan", which the session reads}).
     pub fn from_json(v: &Json) -> Style {
         Style {
             aggression: v["aggression"].as_f64().unwrap_or(0.0).clamp(-1.0, 1.0),
@@ -141,6 +162,9 @@ impl Style {
             weights: Weights::from_json(&v["weights"]),
             depth: v["depth"].as_u64().unwrap_or(0).min(6) as usize,
             firsts: v["firsts"].as_u64().unwrap_or(0).min(8) as usize,
+            brain: brain::by_name(v["brain"].as_str().unwrap_or_default()).name(),
+            plain_copies: v["plain_copies"] == true,
+            bait: v["bait"] != false,
         }
     }
 }
@@ -367,6 +391,8 @@ pub struct Thinker<'a> {
     pub history: &'a [Vec<u8>],
     pub pool: &'a Pool,
     pub style: Style,
+    /// What the bot knows of its own deck (its bosses and their pieces).
+    pub knowledge: Arc<Knowledge>,
     /// When to stop trying more options ([`BUDGET`] from the start of the decision).
     pub deadline: std::time::Instant,
 }
@@ -386,7 +412,7 @@ impl Thinker<'_> {
 
     /// What `me` sees of `duel` with this thinker's style.
     fn observe(&self, duel: &mut Duel, me: u8, hidden: &Hidden) -> Board {
-        Board::observe(duel, me, self.library, hidden, self.style)
+        Board::observe(duel, me, self.library, hidden, self.style, &self.knowledge)
     }
 
     /// Answers prompt `p` in a copy: the bot by its rules, the opponent with its public cards only.
@@ -405,7 +431,7 @@ impl Thinker<'_> {
             }
             msg::SELECT_BATTLECMD => {
                 let mine_hidden: Hidden = Board::hidden_monsters(duel, them);
-                let board = Board::observe(duel, them, self.library, &mine_hidden, Style::default());
+                let board = Board::observe(duel, them, self.library, &mine_hidden, Style::default(), &Knowledge::none());
                 let public = json!({ "type": msg::SELECT_BATTLECMD, "to_m2": p["to_m2"], "to_ep": p["to_ep"],
                     "attacks": p["attacks"].as_array().map(|a| a.iter().filter(|a| board.sides[them as usize].monster(a["sequence"].as_u64().unwrap_or(9) as u8).is_some_and(|m| m.faceup)).cloned().collect::<Vec<_>>()) });
                 let mut answer = policy::answer(&public, them, &board, None);
@@ -499,18 +525,25 @@ impl Thinker<'_> {
     }
 
     /// The bot's answer to prompt `m` in duel `now` (the real one), with the last selection hint it was given and the
-    /// ATK of the attacker it just declared. Also the ATK of the attacker this answer declares, if it attacks.
+    /// ATK of the attacker it just declared, by its style's brain. Also the ATK of the attacker this answer declares,
+    /// if it attacks.
     pub fn think(&self, now: &mut Duel, m: &Json, hint: Option<u64>, attacker: Option<i32>) -> (Json, Option<i32>) {
         let me = m["player"].as_u64().unwrap_or(0) as u8 & 1;
         let hidden = if self.style.sees { Hidden::new() } else { Board::hidden_monsters(now, me) };
         let mut board = self.observe(now, me, &hidden);
         board.attacker = attacker;
-        let answer = match options(m, &board, hint) {
-            None => policy::answer(m, me, &board, hint),
-            Some(options) => self.best(&options, m, me, &hidden, &board),
-        };
+        let decision = brain::Decision { prompt: m, me, board: &board, hint, hidden: &hidden };
+        let answer = brain::by_name(self.style.brain).decide(self, &decision);
         let declared = policy::declared_attacker(m, &answer, me, &board);
         (answer, declared)
+    }
+
+    /// The look-ahead's answer ([`brain::Search`]): the options that matter each tried in a copy, the rules for the rest.
+    pub(crate) fn search(&self, d: &brain::Decision) -> Json {
+        match options(d.prompt, d.board, d.hint) {
+            None => policy::answer(d.prompt, d.me, d.board, d.hint),
+            Some(options) => self.best(&options, d.prompt, d.me, d.hidden, d.board),
+        }
     }
 
     /// The lines' values, each tried in a copy, on threads of their own.
