@@ -91,6 +91,10 @@ pub struct Added {
     /// Characters the game never had as NPCs (`engine/added/npcs.json`), in the Kaiba Corporation slots past its 25.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub npcs: Vec<AddedNpc>,
+    /// The game's own NPCs' anime decks (`engine/added/npcs.json` `game_npcs`): their printed decks stay the client's
+    /// presets (the decks their recipes give), and with anime cards on they play these.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub game_npcs: Vec<GameNpc>,
     /// The host's own banlists (#77, EDOPro `lflist.conf` files in the server's `banlists` folder): each becomes
     /// `data/regulation/<id>.y3r` with its name in the UI texts, so Edit Deck marks its limits and the game's own deck
     /// check knows it. Not in the engine's file; the server sets them in what it serves.
@@ -197,17 +201,73 @@ impl AddedNpcLevel {
     /// The anime deck as it plays now (main, extra): each waiting card the server knows (`known`) replaces one copy of
     /// its stand-in, the others wait.
     pub fn anime_cards(&self, known: impl Fn(&str) -> bool) -> (Vec<String>, Vec<String>) {
-        let (mut main, mut extra) = (self.anime_deck.clone(), self.anime_extra.clone());
-        for w in self.anime_waiting.iter().filter(|w| known(&w.card)) {
-            for list in [&mut main, &mut extra] {
-                if let Some(at) = list.iter().position(|n| *n == w.instead) {
-                    list[at] = w.card.clone();
-                    break;
-                }
+        anime_cards(&self.anime_deck, &self.anime_extra, &self.anime_waiting, known)
+    }
+}
+
+/// A deck by card names as it plays now (main, extra): each waiting card the server knows (`known`) replaces one copy
+/// of its stand-in, the others wait.
+fn anime_cards(deck: &[String], extra: &[String], waiting: &[AnimeWaiting], known: impl Fn(&str) -> bool) -> (Vec<String>, Vec<String>) {
+    let (mut main, mut extra) = (deck.to_vec(), extra.to_vec());
+    for w in waiting.iter().filter(|w| known(&w.card)) {
+        for list in [&mut main, &mut extra] {
+            if let Some(at) = list.iter().position(|n| *n == w.instead) {
+                list[at] = w.card.clone();
+                break;
             }
         }
-        (main, extra)
     }
+    (main, extra)
+}
+
+/// One of the game's own NPCs (`slot` 0-24, `name` for reading the file) with an anime deck per level.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GameNpc {
+    pub slot: u32,
+    pub name: String,
+    pub levels: Vec<GameNpcLevel>,
+}
+
+/// A game NPC level's anime deck, by card names, as [`AddedNpcLevel`]'s.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GameNpcLevel {
+    pub anime_deck: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub anime_extra: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub anime_waiting: Vec<AnimeWaiting>,
+}
+
+impl GameNpcLevel {
+    /// The anime deck as it plays now, as [`AddedNpcLevel::anime_cards`].
+    pub fn anime_cards(&self, known: impl Fn(&str) -> bool) -> (Vec<String>, Vec<String>) {
+        anime_cards(&self.anime_deck, &self.anime_extra, &self.anime_waiting, known)
+    }
+}
+
+impl GameNpc {
+    /// Its three NPC ids, one per level.
+    pub fn ids(&self) -> [u32; 3] {
+        let first = FIRST_NPC_ID + 3 * self.slot;
+        [first, first + 1, first + 2]
+    }
+}
+
+/// Checks the game NPCs' anime decks: each one of the game's 25 slots, once, with three levels.
+pub fn check_game_npcs(npcs: &[GameNpc]) -> Result<(), String> {
+    let mut seen = std::collections::HashSet::new();
+    for npc in npcs {
+        if npc.slot >= 25 {
+            return Err(format!("{}: slot {} is no game NPC's (0-24)", npc.name, npc.slot));
+        }
+        if !seen.insert(npc.slot) {
+            return Err(format!("{}: slot {} twice", npc.name, npc.slot));
+        }
+        if npc.levels.len() != 3 {
+            return Err(format!("{}: {} levels, not 3", npc.name, npc.levels.len()));
+        }
+    }
+    Ok(())
 }
 
 /// The first NPC id (0x4BFE34): NPC k's levels are `FIRST_NPC_ID + 3k` to `+ 2`.
@@ -296,6 +356,7 @@ impl Added {
             }
         }
         check_npcs(&added.npcs).map_err(|e| format!("added cards: custom NPC {e}"))?;
+        check_game_npcs(&added.game_npcs).map_err(|e| format!("added cards: game NPC {e}"))?;
         Ok(added)
     }
 
@@ -812,6 +873,20 @@ mod tests {
         AddedNpc { slot, name: format!("N{slot}"), help: "H".into(), series: 0, body: 3, figure: None, cutin_bg: None,
             levels: (0..3).map(|_| AddedNpcLevel { title: "T".into(), deck: vec![], extra: vec![], anime_deck: vec![], anime_extra: vec![], anime_waiting: vec![] }).collect(),
             lines: Default::default() }
+    }
+
+    #[test]
+    fn game_npcs_anime_decks_take_the_games_slots_once_with_three_levels() {
+        let level = GameNpcLevel { anime_deck: vec!["A".into()], anime_extra: vec![], anime_waiting: vec![] };
+        let npc = |slot| GameNpc { slot, name: "N".into(), levels: vec![level.clone(); 3] };
+        assert!(check_game_npcs(&[npc(0), npc(24)]).is_ok());
+        assert!(check_game_npcs(&[npc(25)]).unwrap_err().contains("(0-24)"));
+        assert!(check_game_npcs(&[npc(1), npc(1)]).unwrap_err().contains("twice"));
+        assert!(check_game_npcs(&[GameNpc { levels: vec![], ..npc(2) }]).is_err());
+        let waiting = GameNpcLevel { anime_deck: vec!["Old".into(), "Old".into()], anime_extra: vec![],
+            anime_waiting: vec![AnimeWaiting { card: "New".into(), instead: "Old".into() }] };
+        assert_eq!(waiting.anime_cards(|n| n == "New").0, vec!["New".to_string(), "Old".into()]);
+        assert_eq!(waiting.anime_cards(|_| false).0, vec!["Old".to_string(), "Old".into()]);
     }
 
     #[test]

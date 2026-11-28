@@ -612,9 +612,12 @@ def build():
     # Characters the game never had as NPCs (engine/added/npcs.json), carried as they are: the server and the launcher read them.
     if os.path.isfile(NPCS):
         with open(NPCS, encoding='utf-8') as f:
-            npcs = json.load(f)['npcs']
-        if npcs:
-            doc['npcs'] = npcs
+            both = json.load(f)
+        if both.get('npcs'):
+            doc['npcs'] = both['npcs']
+        # The game's own NPCs' anime decks (their printed decks stay the client's presets).
+        if both.get('game_npcs'):
+            doc['game_npcs'] = both['game_npcs']
     return doc
 
 

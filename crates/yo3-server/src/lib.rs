@@ -439,13 +439,29 @@ pub fn player_card_sources(data: &yo3_data::GameData, prizes: &prizes::Prizes) -
 }
 
 /// The custom NPCs (`engine/added/npcs.json`, in the added cards): their levels' ids in the roster, names, bot styles,
-/// tabs and decks, each card by its English name (its first artwork's row). A name the server has no card for is
-/// left out, with a warning.
+/// tabs and decks, each card by its English name (its first artwork's row), and the game's own NPCs' anime decks
+/// (`game_npcs`). A name the server has no card for is left out, with a warning.
 pub fn add_custom_npcs(world: &mut World, data: &yo3_data::GameData) {
     let mut row_of: std::collections::HashMap<String, u16> = std::collections::HashMap::new();
     for c in data.cards.iter().filter(|c| c.kind != 10) {
         let row = row_of.entry(c.name.clone()).or_insert(c.row);
         *row = (*row).min(c.row);
+    }
+    // The game's own NPCs' anime decks: their printed decks stay the client's presets.
+    for npc in world.added.game_npcs.clone() {
+        let rows = |names: &[String]| -> Vec<u16> {
+            names.iter().filter_map(|n| {
+                let row = row_of.get(n).copied();
+                if row.is_none() { tracing::warn!("game NPC {}: no card named {n:?}; left out of the anime deck", npc.name) }
+                row
+            }).collect()
+        };
+        for (id, level) in npc.ids().into_iter().zip(&npc.levels) {
+            if !world.npcs.contains(&id) || level.anime_deck.is_empty() { continue }
+            let (main, extra) = level.anime_cards(|name| row_of.contains_key(name));
+            let printed = world.npc_decks.get(&id).map_or(id * 100, |d| d.id);
+            world.npc_anime_decks.insert(id, Deck { id: printed, name: String::new(), main: rows(&main), extra: rows(&extra), side: vec![] });
+        }
     }
     let npcs = world.added.npcs.clone();
     for npc in &npcs {

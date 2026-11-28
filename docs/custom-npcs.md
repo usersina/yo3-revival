@@ -11,6 +11,7 @@ This guide covers adding one, the art it can have, and authoring a 3D body; the 
 - [How many](#how-many)
 - [The characters](#the-characters)
 - [Adding a character](#adding-a-character)
+- [The game's own NPCs' anime decks](#the-games-own-npcs-anime-decks)
 - [Lines](#lines)
 - [Art](#art)
 - [Bodies](#bodies)
@@ -148,6 +149,21 @@ Then run `python3 tools/engine/added-cards.py` (writes `added-cards.json`), add 
 `crates/yo3-server/src/npc_lines.txt` (what the server says for it in the duel's chat window: greet, turn, ace, direct,
 hurt, win, lose; `banter.rs`'s test requires them for every character), and check it ([below](#checking-it)). A name with no card is logged at the server's start
 ("custom NPC …: no card named …") and left out of the deck: `tests/custom_npc.rs` checks every deck has its 40.
+
+## The game's own NPCs' anime decks
+
+The game's 25 NPCs keep their printed decks: the client's presets, Konami's, which the deck recipes players win give. With
+the server's `anime-cards` on, a level can play an anime deck of ours instead, from `engine/added/npcs.json` `game_npcs`:
+
+```json
+{"game_npcs": [{"slot": 1, "name": "Seto Kaiba", "levels": [
+  {"anime_deck": ["Blue-Eyes White Dragon", "..."], "anime_extra": ["..."], "anime_waiting": []}, {...}, {...}]}]}
+```
+
+`slot` is the game NPC's (0-24, its levels the ids `120 + 3 * slot` on), `name` only for reading the file, and each of the
+three levels names its cards as a custom character's anime deck does (`anime_waiting` included). A level with no
+`anime_deck` plays its preset in both modes. The deck keeps the preset's id, so its recipe stays the preset's.
+`tests/custom_npc.rs` checks every such deck with anime cards on, and `task check:npcs` plays them (anime cards on).
 
 ## Lines
 

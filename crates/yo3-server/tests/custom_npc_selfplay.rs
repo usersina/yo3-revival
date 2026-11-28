@@ -5,6 +5,8 @@
 //! with the engine after every step, through the translator, as live). A duel fails on a duel check problem, an engine
 //! (Lua) error or the bot finding no answer; one that reaches the duel check's turn limit is reported as a stall.
 //!
+//! The game's own NPCs' anime decks (`game_npcs`) play too, anime cards on only, in the full run or when named.
+//!
 //! `YO3_NPC_SELFPLAY=n`: n duels per level and mode for every custom NPC (the full run, `task check:npcs`); unset, one duel
 //! each for the last level of the first custom NPC of each series, anime cards on. `YO3_NPC_ONLY=Name,Name` only those;
 //! `YO3_NPC_JOBS=n` duels at once (4). Each duel's line (name, level, mode, seed, result, turns, the deck's bosses summoned
@@ -83,6 +85,36 @@ fn every_custom_npcs_decks_play_self_played_duels_through_the_duel_check() {
                     duels.push(Duel {
                         name: npc.name.clone(), slot: npc.slot, level: level + 1, anime,
                         seed: 7000 + 97 * u64::from(npc.slot) + 13 * level as u64 + 3 * n + u64::from(anime),
+                        npc: [ids(&deck.main), ids(&deck.extra)], rival: [ids(&rival_deck.main), ids(&rival_deck.extra)],
+                        style: world.npc_styles.get(&id).cloned().unwrap_or(Json::Null), bosses: bosses.clone(),
+                    });
+                }
+            }
+        }
+    }
+    // The game's own NPCs' anime decks (`game_npcs`), anime cards on only: their printed decks are the client's presets.
+    // Their series by slot as the roster's tabs (0-8 Yu-Gi-Oh!, 9-16 GX, 17-24 5D's, docs/protocol.md).
+    if full.is_some() || !only.is_empty() {
+        world.settings.set("anime-cards", "on").unwrap();
+        for npc in world.added.game_npcs.iter() {
+            if !only.is_empty() && !only.contains(&npc.name) {
+                continue;
+            }
+            let rival = rival_of(match npc.slot { 0..=8 => 0, 9..=16 => 1, _ => 2 });
+            for ((level, id), anime_level) in npc.ids().into_iter().enumerate().zip(&npc.levels) {
+                if anime_level.anime_deck.is_empty() || !world.npc_anime_decks.contains_key(&id) {
+                    continue;
+                }
+                let deck = world.place_deck(world.npc_deck(id).unwrap());
+                let rival_deck = world.place_deck(world.npc_deck(rival).unwrap());
+                let mut bosses: Vec<u16> = deck.main.iter().filter(|r| world.cards.get(r).is_some_and(|c| c.level >= 7))
+                    .chain(deck.extra.iter()).map(cid).collect();
+                bosses.sort();
+                bosses.dedup();
+                for n in 0..full.unwrap_or(1) {
+                    duels.push(Duel {
+                        name: npc.name.clone(), slot: npc.slot, level: level + 1, anime: true,
+                        seed: 5000 + 97 * u64::from(npc.slot) + 13 * level as u64 + 3 * n,
                         npc: [ids(&deck.main), ids(&deck.extra)], rival: [ids(&rival_deck.main), ids(&rival_deck.extra)],
                         style: world.npc_styles.get(&id).cloned().unwrap_or(Json::Null), bosses: bosses.clone(),
                     });

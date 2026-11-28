@@ -111,6 +111,53 @@ fn every_custom_npcs_decks_load_and_pass_the_deck_check_in_both_modes() {
             }
         }
     }
+    // The game's own NPCs' anime decks (`game_npcs`): every name known, legal with anime cards on.
+    world.settings.set("anime-cards", "on").unwrap();
+    for npc in &world.added.game_npcs {
+        for (id, level) in npc.ids().into_iter().zip(&npc.levels) {
+            if level.anime_deck.is_empty() { continue }
+            let Some(anime) = world.npc_anime_decks.get(&id) else { problems.push(format!("{} level {id}: no anime deck installed", npc.name)); continue };
+            if anime.main.len() != level.anime_deck.len() || anime.extra.len() != level.anime_extra.len() {
+                problems.push(format!("{} level {id}: an anime card name the server doesn't know", npc.name));
+            }
+            let deck = world.place_deck(world.npc_deck(id).unwrap());
+            let mut owned = std::collections::BTreeMap::new();
+            for row in deck.cards() { *owned.entry(row).or_insert(0) += 1 }
+            let regulation = world.settings.now().login_regulation;
+            if let Err(refused) = yo3_server::deckcheck::check(&world, regulation, &owned, &deck) {
+                let why = yo3_server::deckcheck::explain(&world, regulation, &owned, &deck);
+                problems.push(format!("{} level {id}, anime cards on: {refused:?} {why:?}", npc.name));
+            }
+        }
+    }
     let _ = std::fs::remove_dir_all(root);
     assert!(problems.is_empty(), "{}", problems.join("\n"));
+}
+
+/// The game's own NPCs keep their printed decks (the client's presets, which their recipes give) and play an anime deck
+/// from `engine/added/npcs.json` `game_npcs` while the server has anime cards on.
+#[test]
+fn a_game_npc_plays_its_anime_deck_with_anime_cards_on_and_its_preset_otherwise() {
+    let game = std::env::var_os("YO3_GAME_DIR").map(std::path::PathBuf::from).unwrap_or_else(yo3_data::default_game_dir);
+    let engine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../engine");
+    if !game.join("package/data002.ypk").is_file() || !engine.join("added-cards.json").is_file() { return }
+    let mut added = yo3_data::added::Added::load(&engine).unwrap();
+    let mut data = yo3_data::GameData::load(&game).unwrap();
+    data.cards.add(&added).unwrap();
+    let level = |deck: Vec<&str>| yo3_data::added::GameNpcLevel { anime_deck: deck.into_iter().map(String::from).collect(), anime_extra: vec![], anime_waiting: vec![] };
+    added.game_npcs = vec![yo3_data::added::GameNpc { slot: 0, name: "Yami Yugi".into(),
+        levels: vec![level(vec!["Orichalcos Gigas"; 40]), level(vec![]), level(vec!["Dark Magician"; 40])] }];
+    let preset: Vec<u16> = data.npc_deck(120).unwrap().main.clone();
+    let mut world = World { npcs: data.npc_ids(), npc_decks: data.npc_ids().into_iter().filter_map(|id| {
+        let d = data.npc_deck(id)?;
+        Some((id, yo3_server::front::Deck { id: d.id, name: String::new(), main: d.main.clone(), extra: d.extra.clone(), side: d.side.clone() }))
+    }).collect(), added: Arc::new(added), ..World::new(vec![]) };
+    yo3_server::add_custom_npcs(&mut world, &data);
+    let row = |name: &str| data.cards.iter().find(|c| c.name == name).unwrap().row;
+    world.settings.set("anime-cards", "off").unwrap();
+    assert_eq!(world.npc_deck(120).unwrap().main, preset, "the printed deck is the client's preset");
+    world.settings.set("anime-cards", "on").unwrap();
+    assert_eq!(world.npc_deck(120).unwrap().main, vec![row("Orichalcos Gigas"); 40], "the anime deck with anime cards on");
+    assert_eq!(world.npc_deck(120).unwrap().id, world.npc_decks[&120].id, "the same deck id: its recipe stays the preset's");
+    assert_eq!(world.npc_deck(121).unwrap().main, world.npc_decks[&121].main, "a level with no anime deck plays its preset");
 }
