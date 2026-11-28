@@ -2,7 +2,7 @@
 
 <!-- Made by tools/engine/anime-map.py from engine/anime/cards.tsv: do not edit by hand. -->
 
-With the `anime-cards` setting on (a host sets it; a single player turns on **Anime cards** in Desktop's Settings → Singleplayer: [playing](playing.md#anime-card-versions)), the 664 cards below play by their anime effects, ProjectIgnis' unofficial scripts (CardScripts `915c6ff`), in NPC and player duels, and the game shows them as their anime versions: the **card profile**. The other cards, and the 3 retained or held back below, play and show as they always did. The reviewed table is the issue [#60](https://github.com/usersina/yo3-revival/issues/60); an unofficial script loading without an error is not proof of anime accuracy, only that it plays.
+With the `anime-cards` setting on (a host sets it; a single player turns on **Anime cards** in Desktop's Settings → Singleplayer: [playing](playing.md#anime-card-versions)), the 678 cards below play by their anime effects, ProjectIgnis' unofficial scripts (CardScripts `915c6ff`), in NPC and player duels, and the game shows them as their anime versions: the **card profile**. The other cards, and the 3 retained or held back below, play and show as they always did. The reviewed table is the issue [#60](https://github.com/usersina/yo3-revival/issues/60); an unofficial script loading without an error is not proof of anime accuracy, only that it plays.
 
 ## The card profile
 
@@ -66,9 +66,11 @@ These cards differ from the game's in what the client draws; the profile covers 
 | Bickuribox | deck: Main/Extra Deck placement differs (Fusion -> Main Deck)<br>type: +Normal |
 | Bicorn Re'em | type: +Tuner |
 | Blackwing - Backlash | subtype: +Counter |
+| Blade Garoodia the Cubic Beast | flags: -Special Summon only |
 | Blast Sphere | atk: 1400 -> 2900 |
 | Boost Warrior | type: +Tuner |
 | Bowganian | level: 3 -> 4 |
+| Buster Gundil the Cubic Behemoth | flags: -Special Summon only |
 | Call of the Haunted | kind: the game's card is a Trap, the anime one a Spell |
 | Candelato, the Beast of Light | flags: +Special Summon only |
 | Castle of Dark Illusions | flags: -Flip |
@@ -81,6 +83,7 @@ These cards differ from the game's in what the client draws; the profile covers 
 | Copycat | kind: the game's card is a Monster, the anime one a Spell |
 | Cyber Blader | level: 7 -> 6 |
 | Cyber Raider | type: +Normal, -Effect<br>race: 32 -> 1<br>attribute: 32 -> 1 |
+| Dark Garnex the Cubic Beast | flags: -Special Summon only |
 | Dark Spell Regeneration | kind: the game's card is a Trap, the anime one a Spell |
 | Dark Tinker | level: 2 -> 3 |
 | Dark-Eyes Illusionist | flags: -Flip<br>def: 1400 -> 0 |
@@ -111,6 +114,7 @@ These cards differ from the game's in what the client draws; the profile covers 
 | Five-Headed Dragon | deck: Main/Extra Deck placement differs (Fusion -> Main Deck)<br>type: +Ritual |
 | Flame Swordsman | deck: Main/Extra Deck placement differs (Fusion -> Main Deck)<br>type: +Normal |
 | Future Fusion | subtype: -Continuous, +Equip |
+| Geira Guile the Cubic King | flags: -Special Summon only |
 | Gernia | type: +Normal, -Effect<br>race: 16 -> 8 |
 | Goblin Zombie | type: +Normal, -Effect |
 | Goddess Bow | kind: the game's card is a Monster, the anime one a Spell |
@@ -122,6 +126,7 @@ These cards differ from the game's in what the client draws; the profile covers 
 | Harpie's Feather Storm | subtype: +Counter |
 | Holding Arms | def: 1200 -> 0<br>attribute: 32 -> 1 |
 | Holding Legs | attribute: 32 -> 1 |
+| Indiora Doom Volt the Cubic Emperor | flags: -Special Summon only |
 | Infinite Dismissal | subtype: -Continuous |
 | Interdimensional Matter Transporter | kind: the game's card is a Trap, the anime one a Spell |
 | Ipiria | level: 2 -> 3 |
@@ -190,6 +195,7 @@ These cards differ from the game's in what the client draws; the profile covers 
 | Trap Eater | type: -Tuner |
 | Uria, Lord of Searing Flames | race: 128 -> 2097152<br>attribute: 4 -> 64 |
 | Virus Cannon | kind: the game's card is a Trap, the anime one a Spell |
+| Vulcan Dragni the Cubic King | flags: -Special Summon only |
 | Wall of Ivy | flags: -Flip |
 | Wall Shadow | deck: Main/Extra Deck placement differs (Main Deck -> Fusion)<br>flags: -Special Summon only |
 | White Night Dragon | attribute: 2 -> 32 |
@@ -202,7 +208,7 @@ A card is released only when the client side of each difference is proven: the c
 
 | Category | What the client shows | Cards that differ | Test card and scenario |
 | --- | --- | ---: | --- |
-| flags | nothing: Flip and Special Summon only are shown nowhere, the engine plays the anime card | 24 | Wall of Ivy: its token comes when it is attacked face-up |
+| flags | nothing: Flip and Special Summon only are shown nowhere, the engine plays the anime card | 30 | Wall of Ivy: its token comes when it is attacked face-up |
 | subtype | a Spell or Trap's own kind (Continuous, Quick-Play, Equip, Field, Counter) | 27 | Fiend's Sanctuary: a Quick-Play Spell, activated on the opponent's turn |
 | type | Normal, Effect, Tuner, Ritual and the other kinds of monster | 24 | Boost Warrior: a Tuner, so it Synchro Summons |
 | deck | Main or Extra Deck: a Fusion Monster is an Extra Deck card, a Normal one a Main Deck card | 10 | Perfect Machine King: a Fusion Monster, Fusion Summoned from the Extra Deck |
@@ -379,9 +385,11 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Blackwing - Steam the Cloak | 511002726 | makes Steam Token; names other anime cards |
 | Blackwing - Vayu the Emblem of Honor | 511002219 |  |
 | Blackwing - Zephyrus the Elite | 511001961 |  |
+| Blade Garoodia the Cubic Beast | 511004438 |  |
 | Blast Held by a Tribute | 511005091 |  |
 | Blast Sphere | 511002509 | names other anime cards |
 | Blue Flame Swordsman | 511756000 |  |
+| Blue-Eyes Chaos MAX Dragon | 511013021 |  |
 | Blue-Eyes Shining Dragon | 511002418 |  |
 | Bonfire | 170000121 |  |
 | Boon of the Meklord Emperor | 511002378 |  |
@@ -391,6 +399,7 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Bright Star Dragon | 511001435 |  |
 | Burial from a Different Dimension | 511002813 |  |
 | Burning Land | 511002578 |  |
+| Buster Gundil the Cubic Behemoth | 511004439 |  |
 | Byroad Sacrifice | 511756006 |  |
 | Call of the Haunted | 511002048 |  |
 | Candelato, the Beast of Light | 511000647 |  |
@@ -405,6 +414,7 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Catapult Turtle | 511004015 |  |
 | Chaos Burst | 511002837 |  |
 | Chaos Core | 100000257 |  |
+| Chaos Form | 511002984 |  |
 | Chaos Infinity | 511002527 |  |
 | Chaos King Archfiend | 511009313 |  |
 | Chevalier de Fleur | 511002227 |  |
@@ -442,6 +452,10 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Crystal Beast Ruby Carbuncle | 511001823 |  |
 | Crystal Counter | 511001108 |  |
 | Crystal Pair | 511001129 |  |
+| Cubic Karma | 511004442 |  |
+| Cubic Mandala | 511004440 |  |
+| Cubic Rebirth | 511004436 |  |
+| Cubic Wave | 511004444 |  |
 | Curse Reflection Doll | 500000152 |  |
 | Cyber Blader | 511001600 |  |
 | Cyber Petit Angel | 511001521 |  |
@@ -467,6 +481,7 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Dark Cure | 511247006 |  |
 | Dark Diviner | 511600138 |  |
 | Dark Element | 511000138 |  |
+| Dark Garnex the Cubic Beast | 511004437 |  |
 | Dark Guardian | 511000137 |  |
 | Dark Magic Curtain | 511002532 |  |
 | Dark Magician Girl the Dragon Knight | 170000157 |  |
@@ -591,6 +606,7 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Gabrion, the Timelord | 513000043 | names other anime cards |
 | Gadget Box | 511001301 |  |
 | Gate Blocker | 100100090 | names other anime cards |
+| Geira Guile the Cubic King | 511004441 |  |
 | Gernia | 511027032 |  |
 | Giant Rex | 100000315 |  |
 | Gingerbread House | 511000430 |  |
@@ -630,6 +646,7 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Hyper Synchron | 511002755 |  |
 | Ice Knight | 511000688 |  |
 | Ido the Supreme Magical Force | 511003208 |  |
+| Indiora Doom Volt the Cubic Emperor | 511004434 |  |
 | Infernity Beetle | 511010703 |  |
 | Infernity Destroyer | 511023004 |  |
 | Infernity Doom Slinger | 513000108 |  |
@@ -761,6 +778,7 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Mystical Elf | 511009014 |  |
 | Natural Disaster | 511027782 |  |
 | Negate Attack | 511004341 |  |
+| Neo Blue-Eyes Ultimate Dragon | 511016006 |  |
 | Neo-Spacian Aqua Dolphin | 511231002 |  |
 | Neo-Spacian Glow Moss | 511600103 |  |
 | Neos Wiseman | 511000497 |  |
@@ -967,8 +985,10 @@ Temple of the Kings (5231) keeps the game's version: its anime rules would need 
 | Variety Comes Out | 511010537 |  |
 | Vehicroid Connection Zone | 511003235 |  |
 | Vennominaga the Deity of Poisonous Snakes | 511002110 |  |
+| Vijam the Cubic Seed | 511004447 |  |
 | Violet Witch | 511021009 |  |
 | Virus Cannon | 513000122 |  |
+| Vulcan Dragni the Cubic King | 511004443 |  |
 | Wall of Ivy | 511001522 | makes Ivy Token |
 | Wall Shadow | 511000477 |  |
 | Water of Life | 511001417 |  |
@@ -1039,7 +1059,7 @@ Extra Deck), or when the research or the script is not settled. Each reason is k
 | Wolf | upstream 511003065: the anime Normal Monster is equivalent |
 | Zera the Mant | upstream 511002610 is a different card or a prize card |
 
-Every other card of the game (4,453 of 5,142 in `engine/anime/cards.tsv`) has no anime_id: no anime version, or none we use, and keeps its current behaviour.
+Every other card of the game (4,459 of 5,162 in `engine/anime/cards.tsv`) has no anime_id: no anime version, or none we use, and keeps its current behaviour.
 
 | Card | Note |
 | --- | --- |
@@ -1070,17 +1090,22 @@ Every other card of the game (4,453 of 5,142 in `engine/anime/cards.tsv`) has no
 | Clear Vicious Knight | added card (#75) |
 | Comic Hand | added card (#75) |
 | Counterforce | added card (#75) |
+| Crimson Nova the Dark Cubic Lord | added card (#75) |
 | Crystal Skull | added card (#75) |
 | Cyber Angel Benten | added card (#75) |
 | Cyber Angel Dakini | added card (#75) |
 | Cyber Angel Idaten | added card (#75) |
 | Cybernetic Fusion Support | added card (#75) |
+| Dark Burning Attack | added card (#75) |
+| Dark Burning Magic | added card (#75) |
 | Dark Dragon Ritual | added card (#75) |
+| Dark Magician the Dragon Knight | added card (#75) |
 | Dark Tuner Catastrogue | added card (#75) |
 | Dark Tuner Nightmare Hand | added card (#75) |
 | Dark Tyranno | added card (#75) |
 | Deck Devastation Virus | Its anime appearance (ZEXAL) has the game's text. ProjectIgnis' Deck Destruction Virus (511001119) is another card, from the Pyramid of Light film. |
 | Doble Passe | added card (#75) |
+| Dragon Spirit of White | added card (#75) |
 | Fallen Paradise | added card (#75) |
 | Fenrir the Nordic Wolf | added card (#75) |
 | Final Light | added card (#75) |
@@ -1114,6 +1139,7 @@ Every other card of the game (4,453 of 5,142 in `engine/anime/cards.tsv`) has no
 | Litmus Doom Swordsman | added card (#75) |
 | Lucky Loan | added card (#75) |
 | Machine Angel Ritual | added card (#75) |
+| Magician Navigation | added card (#75) |
 | Magnet Warrior Sigma Minus | added card (#75) |
 | Magnet Warrior Sigma Plus | added card (#75) |
 | Maiden in Love | added card (#75) |

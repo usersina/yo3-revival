@@ -251,3 +251,32 @@ fn brilliant_shrine_art_sends_the_attack_to_the_immortal_and_a_cpu_attacker_cann
     assert!(s.lp(1) < 8000, "{}", s.context());
     assert_eq!(s.count(0, "mzone", ccapac), 1, "{}", s.context());
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Narrow Tunnel
+// ---------------------------------------------------------------------------------------------------------------
+
+/// Narrow Tunnel's "destroy monsters until a player controls only 1" asks the player which monster to destroy and then
+/// Destroys it; the core raised EVENT_ADJUST again in the middle of that, with the chosen monster still on the field, so the
+/// condition held again and the same operation started inside itself ("recursive event trigger detected":
+/// `engine/overrides/c810000012.lua` makes the condition false while the operation runs).
+///
+/// The board that does it was not built by hand: after many scripted boards it still came out right, so this plays the per-card
+/// fuzz's own duel (Celebration of Creation, row 5265, seed 59650: the deck is the self-play's, from the added cards of the
+/// day; when the added cards change the deck changes and the duel stops reaching the Tunnel, which only makes this a smoke
+/// test). There, team 1's Ecole de Zone has made a Mask Token for each side, a Set Dark the Hidden Knight stands beside team 1's
+/// Token, and team 1 activates a Set Narrow Tunnel in the Standby Phase of team 0's turn: it chooses the Set Dark to destroy.
+#[test]
+fn narrow_tunnel_does_not_start_itself_again_while_it_destroys() {
+    use yo3_server::duelcheck::selfplay;
+    let Some(dir) = engine_dir() else { return };
+    let coc = card("Celebration of Creation");
+    let seed = 59650;
+    let pool = selfplay::added_pool(&dir, true, 8).unwrap();
+    let (mut main, extra) = selfplay::anime_deck(&pool, seed * 2);
+    main.truncate(40);
+    main.retain(|&c| c != coc);
+    main.extend([coc; 3]);
+    let (b_main, b_extra) = selfplay::anime_deck(&pool, seed * 2 + 1);
+    selfplay::play_card(&dir, seed, [(&main[..], &extra[..]), (&b_main[..], &b_extra[..])], true, coc).unwrap();
+}

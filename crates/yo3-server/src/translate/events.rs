@@ -712,16 +712,28 @@ impl Translator {
     /// there) and the mirror keeps it among the materials. **Shape**: the shatter effect plays for it. From elsewhere (a
     /// hand or pile) it isn't followed (logged).
     pub(super) fn attach(&mut self, mv: &Move, cid: u16) -> Vec<Message> {
-        let Some(from) = self.engine_place(&mv.from) else { return vec![] };
+        let Some(mut from) = self.engine_place(&mv.from) else { return vec![] };
+        let mut out = vec![];
         if from.zone > zone::FIELD_SPELL {
-            tracing::warn!("an Xyz material from a place the client can't take it from: {mv:?}");
-            return vec![];
+            // A card from the hand (Cubic Karma's Vijam, overlaid straight from it) or a pile has no field slot to
+            // vanish from: it first flies to an empty field slot, as `detach` does the other way, and vanishes there.
+            let empty = |s: &Self, p: u32| (0..=zone::FIELD_SPELL).find(|&z| s.sides[p as usize].zones.get(&z).is_none_or(Vec::is_empty)).map(|z| (p, z));
+            let Some((player, zone)) = empty(self, from.player).or_else(|| empty(self, 1 - from.player)) else {
+                tracing::warn!("an Xyz material from a place the client can't take it from: {mv:?}");
+                return vec![];
+            };
+            let via = Place { player, zone, index: 0, face_up: false, defense: false };
+            out = self.relocate_as(cid, from, via, move_kind(mv.reason, from, via));
+            if out.is_empty() {
+                return out;
+            }
+            from = via;
         }
-        let Some(card) = self.sides[from.player as usize].zones.get(&from.zone).and_then(|z| z.first()).copied() else { return vec![] };
+        let Some(card) = self.sides[from.player as usize].zones.get(&from.zone).and_then(|z| z.first()).copied() else { return out };
         if self.cards.get(&card.row).map(|s| s.cid) != Some(cid) && cid != 0 {
             tracing::warn!("mirror out of step: Xyz material {cid} not at {from:?}");
         }
-        let mut out = self.drop_counters(&from);
+        out.extend(self.drop_counters(&from));
         self.sides[from.player as usize].zone(from.zone).clear();
         self.positions.remove(&(from.player, from.zone));
         self.materials.push((card, from));
