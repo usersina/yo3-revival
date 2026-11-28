@@ -24,7 +24,7 @@ This guide covers adding one, the art it can have, and authoring a 3D body; the 
 | --- | --- | --- |
 | The definition | `engine/added/npcs.json` | name, help text, tab, body, three levels' decks (printed and anime), lines |
 | Carried to everyone | `engine/added-cards.json` (`tools/engine/added-cards.py` copies `npcs.json` in) | the server reads it at start, and serves it to each launcher with the added cards |
-| The roster | `yo3_server::add_custom_npcs` (`lib.rs`) | the levels' ids join the `0x2711` roster on their tab; their decks (each card by its English name) and bot style (`npc.rs` `CHARACTERS`) |
+| The roster | `yo3_server::add_custom_npcs` (`lib.rs`) | the levels' ids join the `0x2711` roster on their tab; their decks (each card by its English name) and bot style (`crates/yo3-server/src/npc_characters.json`) |
 | The decks | `World::npc_deck` | the anime deck while the server has `anime-cards` on, else the printed one |
 | The game's files | `yo3_data::added::text_files`, `npc_files` (the launcher writes them with the added cards) | the UI texts (name, help, deck titles, lines), the body (`model/np025/`), the portrait (`npc/npcsel025.png`) and the faces (`face/np025f0-4.png`) |
 | The duel's cut-ins | the connection DLL | the game's cut-in loads a body only for slots below 25 (`0x4E3C1D`), times its sounds from a 25-row table (`0x78BBF8`) and picks its background swf from a 26-entry table (`0x788C40`): raised to 100, the custom slots' timing rows their donor's and their background their own `cutin_bg` or the donor's (`model/npNNN/donor.txt`) |
@@ -101,7 +101,7 @@ until the server has the card.
 | 57 | Aigami (Diva) | Yu-Gi-Oh! | The Cubic Seed / Rise of the Cubic Kings / The Dark Cubic Lord |  |
 | 58 | Paradox | 5D's | The Malefic Awakening / Paradox Across Time / The Truth of Malefic |  |
 
-Ishizu Ishtar, Sartorius and Z-one have the heroes' Heart of the Cards (`npc.rs` `SEERS`): before each draw the bot
+Ishizu Ishtar, Sartorius and Z-one have the heroes' Heart of the Cards (`skills` in `npc_characters.json`): before each draw the bot
 puts the card it needs most on top of their Deck. Measured in self-play before it was kept (24 duels each, the same
 seeds): wins 13 to 16, 10 to 19 and 4 to 21.
 
@@ -148,7 +148,7 @@ Add an entry to `engine/added/npcs.json`:
 | `lines` | what they say, by line number (below) |
 
 Then run `python3 tools/engine/added-cards.py` (writes `added-cards.json`), add the character's bot style to
-`crates/yo3-server/src/npc.rs` `CHARACTERS` (aggression, caution, whether it sees your hand) and its chat lines to
+`crates/yo3-server/src/npc_characters.json` (aggression, caution, whether it sees your hand, skills, brain and game plan) and its chat lines to
 `crates/yo3-server/src/npc_lines.txt` (what the server says for it in the duel's chat window: greet, turn, ace, direct,
 hurt, win, lose; `banter.rs`'s test requires them for every character), and check it ([below](#checking-it)). A name with no card is logged at the server's start
 ("custom NPC …: no card named …") and left out of the deck: `tests/custom_npc.rs` checks every deck has its 40.

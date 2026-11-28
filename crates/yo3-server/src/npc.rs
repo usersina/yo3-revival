@@ -2,116 +2,53 @@
 //! (`GameData::npc_name`, the same for its three levels); the characters are ours to play, so these are our choices,
 //! not the original NPCs' (Konami's logs don't record how their CPU decided). `aggression` -1..1 (holds back ..
 //! attacks whenever it can), `caution` 0..1 (weighs threats, needs more to spend a card), `sees`: the opponent's
-//! face-down monsters and Set cards (not a player wearing the Millennium Eye, `against`). Each era's hero has the Heart of the Cards (`skills`: the engine's
-//! skills.lua): before each draw, the card he needs most goes on top of his Deck.
+//! face-down monsters and Set cards (not a player wearing the Millennium Eye, `against`). Each era's hero has the Heart
+//! of the Cards (`skills`: the engine's skills.lua): before each draw, the card he needs most goes on top of his Deck.
+//! Each character is one record of `npc_characters.json` (its numbers, skills, brain and plan); its lines are in
+//! `npc_lines.txt` (banter.rs).
 use serde_json::{Value as Json, json};
 
-/// The heroes: they draw the card they need (`heart_of_the_cards`).
-pub(crate) const HEROES: &[&str] = &["Yami Yugi", "Yugi Muto", "Jaden Yuki", "Yusei Fudo"];
-/// Custom NPCs who see what is coming and draw it as the heroes do: Ishizu (the Millennium Necklace), Sartorius (his
-/// fortune telling), Z-one (the future he comes from). Measured in `tests/custom_npc_selfplay.rs` before it was kept
-/// (2026-11-27, 24 duels each, the same seeds: wins 13 to 16, 10 to 19 and 4 to 21). A deeper look-ahead for the decks
-/// whose bosses need a combo (`Style` depth 4, firsts 3) was measured too and left out: no more bosses, slower answers.
-pub(crate) const SEERS: &[&str] = &["Ishizu Ishtar", "Sartorius", "Z-one"];
+/// One character's duel bot: a record of `npc_characters.json`, which holds every NPC's (the game's own and ours, by the
+/// name the client gives it). A change to a character's numbers is measured before it lands (`task check:npcs`, the
+/// arena) and the record's `note` says how.
+#[derive(Clone, Debug, serde::Deserialize)]
+pub struct Character {
+    pub name: String,
+    /// -1 (holds back) to 1 (attacks whenever it can).
+    pub aggression: f64,
+    /// 0 to 1: weighs threats, needs more to spend a card.
+    pub caution: f64,
+    /// Sees the opponent's face-down monsters and Set cards (Pegasus' Millennium Eye).
+    #[serde(default)]
+    pub sees: bool,
+    /// The skills the engine gives it (skills.lua): `heart_of_the_cards` for each era's hero and the seers (Ishizu's
+    /// Millennium Necklace, Sartorius' fortune telling, Z-one's future: measured 2026-11-27, 24 duels each, the same
+    /// seeds: wins 13 to 16, 10 to 19 and 4 to 21).
+    #[serde(default)]
+    pub skills: Vec<String>,
+    /// How it decides, when not by the look-ahead (the engine's bot::brain: `rules`, `placeholder`).
+    #[serde(default)]
+    pub brain: Option<String>,
+    /// Its decks' game plan (the engine's bot::plan): the bosses it plays toward and the cards that bring them out.
+    #[serde(default)]
+    pub plan: Option<Json>,
+    /// Why it plays as it does, and how a change was measured.
+    #[serde(default)]
+    pub note: String,
+}
 
-/// (name, aggression, caution, sees)
-pub(crate) const CHARACTERS: &[(&str, f64, f64, bool)] = &[
-    ("Yami Yugi", 0.2, 0.3, false),
-    ("Seto Kaiba", 0.9, 0.0, false),
-    ("Joey Wheeler", 0.6, 0.0, false),
-    ("Mai Valentine", 0.4, 0.2, false),
-    ("Bandit Keith", 0.5, 0.0, false),
-    // The Millennium Eye: he reads your mind. Bolder since 2026-11-28 (his Toons attack directly; 24 self-played duels
-    // on the same seeds: wins 2 to 3, losses 10 to 8).
-    ("Maximillion Pegasus", 0.6, 0.1, true),
-    ("Yami Bakura", 0.3, 0.4, false),
-    ("Yami Marik", 0.7, 0.0, false),
-    ("Yugi Muto", -0.2, 0.5, false),
-    ("Jaden Yuki", 0.5, 0.1, false),
-    ("Chazz Princeton", 0.6, 0.0, false),
-    ("Alexis Rhodes", 0.2, 0.3, false),
-    ("Syrus Truesdale", -0.3, 0.6, false),
-    ("Hell Kaiser", 1.0, 0.0, false),
-    ("Vellian Crowler", 0.3, 0.2, false),
-    ("Aster Phoenix", 0.4, 0.2, false),
-    ("Jesse Andersen", 0.5, 0.2, false), // bolder since 2026-11-28: wins 1 to 3 in 12 duels, the same seeds,
-    ("Yusei Fudo", 0.3, 0.3, false),
-    ("Jack Atlas", 0.9, 0.0, false),
-    ("Akiza Izinski", 0.5, 0.1, false),
-    ("Leo", 0.6, 0.0, false),
-    ("Luna", -0.2, 0.6, false),
-    ("Crow Hogan", 0.6, 0.1, false),
-    ("Carly Carmine", 0.0, 0.2, false),
-    ("Kalin Kessler", 0.5, 0.2, false),
-    // Custom NPCs (engine/added/npcs.json). Dartz: patient behind his walls until the Seal is down.
-    ("Dartz", 0.3, 0.4, false),
-    // Rafael: stoic, honourable, steady offence with his Guardians
-    ("Rafael", 0.3, 0.3, false),
-    // Valon: a brawler, gets stuck in and equips up
-    ("Valon", 0.6, 0.1, false),
-    // Alister: calculating, patient, builds up to his fortress
-    ("Alister", 0.3, 0.4, false),
-    // Noah Kaiba: bold and playful, overconfident
-    ("Noah Kaiba", 0.5, 0.2, false),
-    // Ishizu Ishtar: patient control, waits on Exodia and her sphinxes
-    ("Ishizu Ishtar", 0.4, 0.3, false),
-    // Weevil Underwood: aggressive, swarms with insects
-    ("Weevil Underwood", 0.6, 0.1, false),
-    // Rex Raptor: reckless, charges in with big dinosaurs
-    ("Rex Raptor", 0.8, 0.0, false),
-    // Zigfried von Schroeder: disciplined and measured
-    ("Zigfried von Schroeder", 0.4, 0.3, false),
-    // Odion: defensive, guards and waits to spring traps
-    ("Odion", -0.3, 0.7, false),
-    // Mako Tsunami: bold and cheerful, steady pressure
-    ("Mako Tsunami", 0.5, 0.2, false),
-    // Custom NPCs, GX (engine/added/npcs.json). Yubel: her best monster is untouchable, so she holds the board and waits.
-    ("Yubel", 0.1, 0.6, false),
-    // Sartorius: a patient fate-reader, balanced.
-    ("Sartorius", 0.2, 0.4, false),
-    // Bastion Misawa: a calculating scientist, careful and exact.
-    ("Bastion Misawa", 0.0, 0.7, false),
-    // Nightshroud: a showman of the dark, aggressive with his dragons.
-    ("Nightshroud", 0.5, 0.2, false),
-    // Tyranno Hassleberry: charges in with his dinosaurs, barely guards.
-    ("Tyranno Hassleberry", 0.8, 0.1, false),
-    // Axel Brodie: a hothead, all-out aggression.
-    ("Axel Brodie", 0.9, 0.1, false),
-    // Camula: bites when she can, patient between.
-    ("Camula", 0.3, 0.4, false),
-    // Lyman Banner: experimenter, cautious until the reaction is ready.
-    ("Lyman Banner", 0.1, 0.5, false),
-    // Jim Crocodile Cook: steady, builds his Fossil Fusion before striking.
-    ("Jim Crocodile Cook", 0.4, 0.3, false),
-    // Blair Flannigan: lures with her Maidens, then takes what she wants.
-    ("Blair Flannigan", 0.2, 0.5, false),
-    // Z-one: custom NPC, slot 46
-    ("Z-one", 0.5, 0.2, false),
-    // Rex Goodwin: custom NPC, slot 47
-    ("Rex Goodwin", 0.4, 0.3, false),
-    // Aporia: custom NPC, slot 48
-    ("Aporia", 0.6, 0.1, false),
-    // Primo: custom NPC, slot 49
-    ("Primo", 0.4, 0.3, false),
-    // Antinomy: custom NPC, slot 50
-    ("Antinomy", 0.2, 0.5, false),
-    // Misty Tredwell: custom NPC, slot 51
-    ("Misty Tredwell", 0.4, 0.3, false),
-    // Roman Goodwin: custom NPC, slot 52
-    ("Roman Goodwin", 0.3, 0.4, false),
-    // Sherry LeBlanc: custom NPC, slot 53
-    ("Sherry LeBlanc", 0.5, 0.2, false),
-    // Greiger: custom NPC, slot 54
-    ("Greiger", 0.8, 0.0, false),
-    // Tetsu Trudge: custom NPC, slot 55
-    ("Tetsu Trudge", 0.4, 0.3, false),
-    // Anubis: patient judge of the Pyramid, waits to bring down his Sphinxes
-    ("Anubis", 0.3, 0.4, false),
-    // Aigami (Diva): cold and relentless, chains his Cubic monsters into one attack
-    ("Aigami (Diva)", 0.5, 0.2, false),
-    // Paradox: arrogant and aggressive with his Malefic Dragons
-    ("Paradox", 0.7, 0.1, false),
-];
+/// Every character with a bot style (`npc_characters.json`).
+pub fn characters() -> &'static [Character] {
+    static ALL: std::sync::LazyLock<Vec<Character>> = std::sync::LazyLock::new(|| {
+        serde_json::from_str(include_str!("npc_characters.json")).expect("npc_characters.json reads")
+    });
+    &ALL
+}
+
+/// The character named `name`, if it has a style.
+pub fn character(name: &str) -> Option<&'static Character> {
+    characters().iter().find(|c| c.name == name)
+}
 
 /// The Millennium Eye a player can wear: Bakura's Accessories (male 84, female 342 in the item catalogue), a golden
 /// Eye over the left eye, worn as Facial Accessory 2 (avatar1 slot 9: slot n holds a part of catalogue category n).
@@ -134,11 +71,18 @@ pub fn against(style: &Json, avatar: &[u8]) -> Json {
     style
 }
 
-/// The style of the NPC named `name`; an NPC not listed plays the default (null).
+/// The style of the NPC named `name` (crates/yo3-engine's bot::Style and its skills); an NPC not listed plays the
+/// default (null).
 pub fn style(name: &str) -> Json {
-    let skills: &[&str] = if HEROES.contains(&name) || SEERS.contains(&name) { &["heart_of_the_cards"] } else { &[] };
-    CHARACTERS.iter().find(|(n, ..)| *n == name).map_or(Json::Null, |(_, aggression, caution, sees)| {
-        json!({ "aggression": aggression, "caution": caution, "sees": sees, "skills": skills })
+    character(name).map_or(Json::Null, |c| {
+        let mut style = json!({ "aggression": c.aggression, "caution": c.caution, "sees": c.sees, "skills": c.skills });
+        if let Some(brain) = &c.brain {
+            style["brain"] = json!(brain);
+        }
+        if let Some(plan) = &c.plan {
+            style["plan"] = plan.clone();
+        }
+        style
     })
 }
 
@@ -148,11 +92,21 @@ mod tests {
 
     #[test]
     fn the_seers_draw_what_they_need() {
-        for seer in SEERS {
-            assert!(CHARACTERS.iter().any(|(n, ..)| n == seer), "{seer} has a style");
+        for seer in ["Ishizu Ishtar", "Sartorius", "Z-one"] {
             assert_eq!(style(seer)["skills"], json!(["heart_of_the_cards"]), "{seer}");
         }
         assert_eq!(style("Dartz")["skills"], json!([]));
+    }
+
+    #[test]
+    fn every_character_reads_once_with_numbers_in_range() {
+        let mut names = std::collections::HashSet::new();
+        for c in characters() {
+            assert!(names.insert(&c.name), "{} twice", c.name);
+            assert!((-1.0..=1.0).contains(&c.aggression) && (0.0..=1.0).contains(&c.caution), "{}", c.name);
+            assert!(c.skills.iter().all(|s| ["heart_of_the_cards", "destiny_draw"].contains(&s.as_str())), "{}", c.name);
+        }
+        assert_eq!(characters().len(), 59);
     }
 
     #[test]

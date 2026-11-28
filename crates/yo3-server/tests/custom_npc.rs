@@ -82,7 +82,7 @@ fn every_custom_npcs_decks_load_and_pass_the_deck_check_in_both_modes() {
     let mut problems = vec![];
     for npc in &npcs {
         if yo3_server::npc::style(&npc.name).is_null() {
-            problems.push(format!("{}: no bot style (npc.rs CHARACTERS)", npc.name));
+            problems.push(format!("{}: no bot style (npc_characters.json)", npc.name));
         }
         for (id, level) in npc.ids().into_iter().zip(&npc.levels) {
             let printed = &world.npc_decks[&id];

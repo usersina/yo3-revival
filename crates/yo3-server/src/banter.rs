@@ -398,7 +398,7 @@ mod tests {
     #[test]
     fn every_character_greets_and_ends_and_the_special_ones_have_their_lines() {
         let table = table();
-        for (name, ..) in crate::npc::CHARACTERS {
+        for name in crate::npc::characters().iter().map(|c| c.name.as_str()) {
             let lines = table.get(name).unwrap_or_else(|| panic!("{name} has no lines"));
             for kind in ["greet", "turn", "ace", "direct", "hurt", "win", "lose"] {
                 assert!(lines.get(kind).is_some_and(|l| !l.is_empty()), "{name} has no {kind} line");
@@ -409,15 +409,15 @@ mod tests {
                 assert!(said.len() <= 90, "{name}: too long for the chat window: {said}");
             }
         }
-        for hero in crate::npc::HEROES.iter().chain(crate::npc::SEERS) {
-            assert!(table[hero].contains_key("heart"), "{hero} has no Heart of the Cards");
+        for hero in crate::npc::characters().iter().filter(|c| c.skills.iter().any(|s| s == "heart_of_the_cards")) {
+            assert!(table[hero.name.as_str()].contains_key("heart"), "{} has no Heart of the Cards", hero.name);
         }
         assert!(table["Maximillion Pegasus"].contains_key("eye_hand"));
         assert!(table["Maximillion Pegasus"].contains_key("eye_set"));
         for kind in ["blind_greet", "blind", "blind_lose"] {
             assert!(table["Maximillion Pegasus"].contains_key(kind), "Pegasus has no {kind} line");
         }
-        assert_eq!(table.len(), crate::npc::CHARACTERS.len(), "a character without a style, or a misspelt name");
+        assert_eq!(table.len(), crate::npc::characters().len(), "a character without a style, or a misspelt name");
     }
 
     #[test]
