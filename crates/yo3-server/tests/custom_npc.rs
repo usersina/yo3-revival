@@ -64,7 +64,7 @@ fn the_last_custom_slot_joins_the_roster_on_its_tab() {
 
 /// Every custom NPC's decks, as the server builds them from `engine/added/npcs.json`: each card name is one the server
 /// knows (none left out), and each level's deck passes the server's deck check (`deckcheck::check`: sizes, Extra Deck
-/// placement, the login banlist, cards the engine has) with anime cards off (the printed deck, no anime-only card) and
+/// placement, three copies at most under the Unlimited list: NPCs aren't held to a banlist, players are; cards the engine has) with anime cards off (the printed deck, no anime-only card) and
 /// on (the anime deck); and each has a bot style.
 #[test]
 fn every_custom_npcs_decks_load_and_pass_the_deck_check_in_both_modes() {
@@ -103,7 +103,8 @@ fn every_custom_npcs_decks_load_and_pass_the_deck_check_in_both_modes() {
                 let deck = world.npc_deck(id).unwrap().clone();
                 let mut owned = std::collections::BTreeMap::new();
                 for row in deck.cards() { *owned.entry(row).or_insert(0) += 1 }
-                let regulation = world.settings.now().login_regulation;
+                // NPCs aren't held to a banlist (only players are): any card, three copies each.
+                let regulation = yo3_server::front::UNLIMITED_REGULATION;
                 if let Err(refused) = yo3_server::deckcheck::check(&world, regulation, &owned, &deck) {
                     let why = yo3_server::deckcheck::explain(&world, regulation, &owned, &deck);
                     problems.push(format!("{} level {id}, anime cards {anime}: {refused:?} {why:?}", npc.name));
@@ -123,7 +124,8 @@ fn every_custom_npcs_decks_load_and_pass_the_deck_check_in_both_modes() {
             let deck = world.place_deck(world.npc_deck(id).unwrap());
             let mut owned = std::collections::BTreeMap::new();
             for row in deck.cards() { *owned.entry(row).or_insert(0) += 1 }
-            let regulation = world.settings.now().login_regulation;
+            // NPCs aren't held to a banlist (only players are): any card, three copies each.
+                let regulation = yo3_server::front::UNLIMITED_REGULATION;
             if let Err(refused) = yo3_server::deckcheck::check(&world, regulation, &owned, &deck) {
                 let why = yo3_server::deckcheck::explain(&world, regulation, &owned, &deck);
                 problems.push(format!("{} level {id}, anime cards on: {refused:?} {why:?}", npc.name));

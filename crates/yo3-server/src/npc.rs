@@ -21,8 +21,9 @@ pub(crate) const CHARACTERS: &[(&str, f64, f64, bool)] = &[
     ("Joey Wheeler", 0.6, 0.0, false),
     ("Mai Valentine", 0.4, 0.2, false),
     ("Bandit Keith", 0.5, 0.0, false),
-    // The Millennium Eye: he reads your mind.
-    ("Maximillion Pegasus", 0.2, 0.3, true),
+    // The Millennium Eye: he reads your mind. Bolder since 2026-11-28 (his Toons attack directly; 24 self-played duels
+    // on the same seeds: wins 2 to 3, losses 10 to 8).
+    ("Maximillion Pegasus", 0.6, 0.1, true),
     ("Yami Bakura", 0.3, 0.4, false),
     ("Yami Marik", 0.7, 0.0, false),
     ("Yugi Muto", -0.2, 0.5, false),
@@ -33,7 +34,7 @@ pub(crate) const CHARACTERS: &[(&str, f64, f64, bool)] = &[
     ("Hell Kaiser", 1.0, 0.0, false),
     ("Vellian Crowler", 0.3, 0.2, false),
     ("Aster Phoenix", 0.4, 0.2, false),
-    ("Jesse Andersen", 0.2, 0.3, false),
+    ("Jesse Andersen", 0.5, 0.2, false), // bolder since 2026-11-28: wins 1 to 3 in 12 duels, the same seeds,
     ("Yusei Fudo", 0.3, 0.3, false),
     ("Jack Atlas", 0.9, 0.0, false),
     ("Akiza Izinski", 0.5, 0.1, false),
@@ -104,6 +105,12 @@ pub(crate) const CHARACTERS: &[(&str, f64, f64, bool)] = &[
     ("Greiger", 0.8, 0.0, false),
     // Tetsu Trudge: custom NPC, slot 55
     ("Tetsu Trudge", 0.4, 0.3, false),
+    // Anubis: patient judge of the Pyramid, waits to bring down his Sphinxes
+    ("Anubis", 0.3, 0.4, false),
+    // Aigami (Diva): cold and relentless, chains his Cubic monsters into one attack
+    ("Aigami (Diva)", 0.5, 0.2, false),
+    // Paradox: arrogant and aggressive with his Malefic Dragons
+    ("Paradox", 0.7, 0.1, false),
 ];
 
 /// The Millennium Eye a player can wear: Bakura's Accessories (male 84, female 342 in the item catalogue), a golden

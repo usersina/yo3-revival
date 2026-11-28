@@ -59,7 +59,7 @@ an older launcher refuses them when it writes the added files.
 
 ## The characters
 
-31 so far, each on the mannequin with its portrait and faces, three levels (titles easiest first), printed and anime
+34 so far, each on the mannequin with its portrait and faces, three levels (titles easiest first), printed and anime
 decks that pass the server's deck check in both modes (`tests/custom_npc.rs`), talk, chat lines and a bot style.
 "Waiting" counts the later-batch anime-only cards their anime decks list (`anime_waiting`): each plays its stand-in
 until the server has the card.
@@ -97,6 +97,9 @@ until the server has the card.
 | 53 | Sherry LeBlanc | 5D's | The Garden of Fleur-de-lis / Thorns of the Noble Rose / Chevalier de Fleur, Knight of the Lily | 15 |
 | 54 | Greiger | 5D's | Spirits in the Quake / The Earth Cries Out / Chacu Challhua, the Fury of Earth | 17 |
 | 55 | Tetsu Trudge | 5D's | Sector Security Patrol / The Security Barricade / Gate Guardian, Sector Security's Pride | 18 |
+| 56 | Anubis | Yu-Gi-Oh! | The Sleeping Pyramid / The Sphinxes' Oath / The Great Sphinx Rises |  |
+| 57 | Aigami (Diva) | Yu-Gi-Oh! | The Cubic Seed / Rise of the Cubic Kings / The Dark Cubic Lord |  |
+| 58 | Paradox | 5D's | The Malefic Awakening / Paradox Across Time / The Truth of Malefic |  |
 
 Ishizu Ishtar, Sartorius and Z-one have the heroes' Heart of the Cards (`npc.rs` `SEERS`): before each draw the bot
 puts the card it needs most on top of their Deck. Measured in self-play before it was kept (24 duels each, the same
@@ -164,6 +167,10 @@ the server's `anime-cards` on, a level can play an anime deck of ours instead, f
 three levels names its cards as a custom character's anime deck does (`anime_waiting` included). A level with no
 `anime_deck` plays its preset in both modes. The deck keeps the preset's id, so its recipe stays the preset's.
 `tests/custom_npc.rs` checks every such deck with anime cards on, and `task check:npcs` plays them (anime cards on).
+
+No NPC deck, the game's or ours, is held to a banlist: only players' decks are. The deck test checks sizes, Extra Deck
+placement, three copies at most (the game's Unlimited list) and cards the engine has, so a character can play its
+Forbidden favourites (the game's own presets already do: Yusei's Heavy Storm).
 
 ## Lines
 

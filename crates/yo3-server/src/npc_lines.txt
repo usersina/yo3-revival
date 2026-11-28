@@ -769,3 +769,50 @@ hurt: Ow! That is assault on an officer!
 win: Case closed, {you}! Come along quietly.
 lose: Good duel, {you}. I will put it in the file.
 trump: Gate Guardian | Gate Guardian! The pride of Sector Security!
+
+[Anubis]
+greet: Welcome to the Pyramid, {you}. Few leave it.
+greet: Your heart will be weighed, {you}. Let the Sphinxes judge it.
+turn: The sands run out, {you}.
+turn: The Pyramid waits, and so do I.
+ace: Awaken, {card}! Guard the Pyramid of Light!
+ace: Rise, {card}! The judge of the dead commands you!
+direct: Your soul lies bare before me!
+hurt: Insolent mortal... the Pyramid will not fall so easily.
+win: Your heart was heavy, {you}. The sands take you.
+lose: The Pyramid... falls? Your heart is lighter than I judged, {you}.
+trump: Theinen the Great Sphinx | Theinen! Great Sphinx of the Pyramid, rise!
+trump: Andro Sphinx | Andro Sphinx! Crush them in the sands!
+trump: Sphinx Teleia | Sphinx Teleia! Judge them!
+trump: Pyramid of Light | Pyramid of Light! Shine, and awaken the Sphinxes!
+
+[Aigami (Diva)]
+greet: ... Let us begin, {you}.
+greet: I do not have time for this, {you}. Let us finish it.
+turn: My turn. The seeds grow.
+turn: Keep up, {you}. I will not wait.
+ace: Descend, {card}!
+ace: Rise, {card}. End it.
+direct: Nothing is left to stop it.
+hurt: ...Tch. This is not over.
+win: It is over, {you}. Stay down.
+lose: ...You were stronger than I thought, {you}.
+trump: Crimson Nova the Dark Cubic Lord | Crimson Nova! Lord of the Cubics, end this!
+trump: Buster Gundil the Cubic Behemoth | Buster Gundil! Tear through everything!
+trump: Indiora Doom Volt the Cubic Emperor | Indiora! Emperor of the Cubics, burn it all!
+
+[Paradox]
+greet: So you are my opponent, {you}. How quaint.
+greet: I have seen how this ends, {you}. Let us play it out anyway.
+turn: History turns, and so does my turn.
+turn: Everything is as I remember it, {you}.
+ace: Break through time, {card}!
+ace: Rise, {card}! Erase their future!
+direct: History demands it. Attack!
+hurt: That was not in the records...
+win: As it was written, {you}. Your story ends here.
+lose: This was not in the records... you have changed history, {you}.
+trump: Malefic Truth Dragon | Malefic Truth Dragon! Come from beyond time!
+trump: Malefic Cyber End Dragon | Malefic Cyber End Dragon! Rewrite the duel!
+trump: Malefic Stardust Dragon | Malefic Stardust Dragon! Burn the stars!
+trump: Malefic World | Malefic World! Open the gate of time!
