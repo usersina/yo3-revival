@@ -23,7 +23,18 @@ Older entries describe their release at the time. For current setup, use the [RE
   Scroll the list with the mouse wheel to find them.
 - **Room for 75 of Kaiba Corporation's own characters.** Their duels count towards their stars and Friendship Level,
   their deck names show, and their bodies appear in the duel's cut-ins over a background of their own.
-- **Dartz's decks follow the banlist.** One Swords of Revealing Light, one Magic Cylinder and no Heavy Storm.
+- **Three movie villains.** Anubis with his Sphinxes and Pyramid of Light, and Aigami with his Cubic monsters, on the
+  Yu-Gi-Oh! tab; Paradox with his Malefic monsters on the 5D's tab.
+- **The Dark Side of Dimensions' cards.** Aigami's Cubic cards, Kaiba's Chaos Form, Blue-Eyes Chaos MAX Dragon, Neo
+  Blue-Eyes Ultimate Dragon and Dragon Spirit of White, and Yugi's Dark Magician the Dragon Knight, Dark Burning Magic,
+  Dark Burning Attack and Magician Navigation. With anime cards on, most play as in the movie.
+- **The game's opponents play their anime decks with anime cards on.** Kaiba brings Obelisk and Blue-Eyes Shining
+  Dragon, Yami Marik his Ra deck, Alexis her Cyber Angels, Chazz his Ojama Delta cards, Jack Red Nova Dragon, Akiza her
+  Rose cards. Their usual decks, and the recipes you win, are unchanged.
+- **Opponents play the cards they're known for.** No banlist holds back a computer opponent any more (yours still
+  applies): Kaiba's Crush Card Virus, Yami Yugi's Card of Sanctity, Hell Kaiser's three Power Bonds. Every opponent's
+  decks were reviewed and tried in practice duels; several that couldn't bring out their monsters now can (Alister's Air
+  Fortress, Odion's Serket, Blair's Mystic Dragon, Axel's Volcanic Doomfire), and Pegasus and Jesse play bolder.
 - **Ishizu, Sartorius and Z-one see what is coming:** like the heroes, they draw the card they need.
 - **Zigfried calls his Valkyries,** and the Dark Signers Rex Goodwin, Roman Goodwin and Greiger bring their Dark
   Synchro Monsters with their Dark Tuners.

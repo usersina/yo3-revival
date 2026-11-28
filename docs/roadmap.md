@@ -39,9 +39,13 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
       Volcanic Doomfire, Exodia's five pieces). A deeper look-ahead (`Style` depth 4, firsts 3 for Weevil, Bastion, Mako,
       Axel and Yubel) brought out no more of them in 120 measured duels: they need plans over several turns. Bot work,
       not the decks'.
-- [ ] Their later-batch anime-only cards (`anime_waiting`, [the list](custom-npcs.md#the-characters)) play by themselves
-      once batches 7-34 are on `main`: run `custom_npc.rs` then, as a swap can change a deck's legality.
-- [ ] More characters: slots 56-99 are free. Past 99 ([the limits](custom-npcs.md#how-many)): the names' base
+- [ ] Decks the 2026-11-28 review left weak (self-play against their series' hero): Zigfried (loses fast to Kaiba's
+      Ultimate Dragon), Luna (stalls; a bolder style measured no better), the Dark Signers Rex Goodwin, Roman Goodwin,
+      Greiger and Trudge (Doom Submarine and Chaos Rogue's Dark Synchro routes are in their decks but the bot rarely
+      reaches them), Aster's levels 2-3, Jesse's Rainbow Dragon, Nightshroud, and Lyman Banner's Helios chain (the bot
+      never plays Chaos Distill first). Mostly the same bot work as above.
+- [ ] Anubis's own movie card, Anubis the Last Judge, is in neither the game nor ProjectIgnis' data.
+- [ ] More characters: slots 59-99 are free. Past 99 ([the limits](custom-npcs.md#how-many)): the names' base
       (`0x51CC56`, `0x4BFE45`) or skipping slots 100-102; past 126 the cut-in's signed-byte limit needs a stub.
 - [ ] A visible scrollbar on Kaiba Corporation's list (the wheel scrolls it; its scrollbar is hidden and unwired):
       `kaiba_main.swf` changed by the launcher from the player's own copy and served by the DLL, as other files are.
