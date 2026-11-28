@@ -34,16 +34,13 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
 
 - [ ] The 30 characters of slots 26-55 in more duels: only Valon, Yubel and Antinomy were played live. The owner's art
       for any of them.
-- [ ] The duel bot with the custom NPCs' decks (`task check:npcs`, 2026-11-27): it rarely plays the bosses that need a
-      combo (Great Moth's evolution, Yubel's forms, Valkyrion, Water Dragon with Bonding - H2O, Neo-Daedalus with Umi,
-      Volcanic Doomfire, Exodia's five pieces). A deeper look-ahead (`Style` depth 4, firsts 3 for Weevil, Bastion, Mako,
-      Axel and Yubel) brought out no more of them in 120 measured duels: they need plans over several turns. Bot work,
-      not the decks'.
-- [ ] Decks the 2026-11-28 review left weak (self-play against their series' hero): Zigfried (loses fast to Kaiba's
-      Ultimate Dragon), Luna (stalls; a bolder style measured no better), the Dark Signers Rex Goodwin, Roman Goodwin,
-      Greiger and Trudge (Doom Submarine and Chaos Rogue's Dark Synchro routes are in their decks but the bot rarely
-      reaches them), Aster's levels 2-3, Jesse's Rainbow Dragon, Nightshroud, and Lyman Banner's Helios chain (the bot
-      never plays Chaos Distill first). Mostly the same bot work as above.
+- [ ] Combo bosses still rare (2026-11-28, after the bot's deck knowledge: bosses summoned 198 to 260 in 558 self-played
+      duels, wins unchanged): Jesse's Rainbow Dragon and the Crystal Beasts, Lyman Banner's Helios chain, Zigfried's
+      Valkyries, Aster's levels 2-3, Exodia's five pieces, Yubel's forms. They need plans over several turns: a deck's
+      `plan` (`npc_characters.json`) for what scripts don't say, and a look-ahead that sees past the next turn (cheaper
+      copies of the duel, e.g. `fork()` where the host allows it, would make that affordable).
+- [ ] A learned position score (trained on self-played duels) in place of the hand-tuned `Board::value`, as another
+      brain measured in the arena; only worth it if the deck knowledge's numbers stop improving.
 - [ ] Anubis's own movie card, Anubis the Last Judge, is in neither the game nor ProjectIgnis' data.
 - [ ] More characters: slots 59-99 are free. Past 99 ([the limits](custom-npcs.md#how-many)): the names' base
       (`0x51CC56`, `0x4BFE45`) or skipping slots 100-102; past 126 the cut-in's signed-byte limit needs a stub.

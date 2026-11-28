@@ -103,6 +103,22 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 - **Guesses** (roadmap): the Special Pack's contents, tiers and cap, the artwork odds (1 in 20), the theme decks' price, the
   champion rule and THE ANNIVERSARIAN's win.
 
+## 2026-11-28 — The duel bot's brains and deck knowledge
+
+- [x] One interface for every way the bot decides (`bot/brain.rs`: `search`, `rules`, `placeholder`); one placeholder
+      CPU for the server's duel check and the engine (`yo3_ocg::placeholder`); every NPC's style as one record of
+      `crates/yo3-server/src/npc_characters.json` (numbers, skills, brain, plan, a note on how it was measured).
+- [x] Deck knowledge (`bot/knowledge.rs`): bosses and the pieces that bring them out, read from the cards' scripts
+      (named codes, `CARD_*`, archetypes) and a character's `plan`, counted by the score (`boss` 800, `piece` 250); the
+      copies Special Summon bosses and activate pieces first; attacks into unknown Set cards lead with the weakest
+      useful monster.
+- [x] Measured on the same seeds (2026-11-28): the arena against `main`'s bot on the game's decks, 31 won and 29 lost
+      of 60 (knowledge alone against none: 21 and 19 of 40); the 558 self-played custom-NPC duels with the hero held to
+      the old play: bosses 198 to 260, wins 237 to 237, losses 273 to 277, stalls 48 to 44, slowest answer 3.3 s to
+      1.3 s. The new bot as the hero changed nothing measurable (235 wins against 237). The Earthbound decks' Field
+      Spell plans changed nothing either (39 bosses with and without, 80 duels) and stay as data. `YO3_NPC_HERO_STYLE`
+      and `YO3_NPC_STYLE_EXTRA` hold one side's bot fixed in the self-play.
+
 ## 2026-11-27 — The anime's missing cards, anime-only batches 1-34 (#75)
 
 - [x] The anime's missing cards (#75; inventory of 2026-11-25 in the ignored `logs/anime-missing-20261125/`): 358 printed

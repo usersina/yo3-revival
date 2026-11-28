@@ -604,6 +604,25 @@ the Extra Deck's summons), so copies rebuilt from the start are slow, and the bo
 
 #### The duel bot
 
+How it is built (`crates/yo3-engine/src/bot`):
+
+- **Brains** (`brain.rs`): one interface, `Brain::decide`, for every way an NPC decides. `search` (the default) tries
+  each option that matters in a copy of the duel; `rules` answers by the rules of thumb alone (`policy.rs`);
+  `placeholder` is the first legal choice (`yo3_ocg::placeholder`, the same code the server's duel check plays with).
+  A style names its brain (`"brain": "rules"`); brains stack: the search plays its copies on by the rules.
+- **Knowledge** (`knowledge.rs`): what the bot knows of its own deck, made once a duel: its bosses (Fusion and Synchro
+  Monsters, main deck monsters of 2400 ATK or more, Ritual and Special Summon-only monsters) and the pieces that bring
+  them out (cards a boss's script names or that name it, by code, `CARD_*` or archetype). The score
+  (`Board::value`) counts a boss on the field (`boss`) and each piece held, on the field or in the Graveyard (`piece`);
+  in a copy the bot Special Summons a boss when it can and activates pieces first.
+- **Characters** (`crates/yo3-server/src/npc_characters.json`): one record per NPC with its numbers, skills, brain and
+  game plan (`"plan": {"bosses": [names], "pieces": [names]}`, for what scripts don't say: an Earthbound Immortal's
+  Field Spell), and a note on how a change was measured.
+- **Switches to measure by**, in a style: `"knowledge": false` (no deck knowledge), `"plain_copies": true` (the copies
+  play the first card offered), `"bait": false` (the strongest attacker first even into unknown Set cards), and the
+  `weights` (`boss`, `piece` among them). For example `YO3_ARENA_THEIRS_STYLE='{"knowledge":false}'` plays this build
+  against itself without knowledge.
+
 A change to the bot is measured in **the arena** (`tests/bot_arena.rs`): this build's bot against another engine
 program's (the one to beat, usually `main`'s), on the NPC decks with their characters' styles, each deck pair played with
 the sides swapped. Both programs run the same duel in lockstep and each side thinks in its own. Build the rival from

@@ -15,6 +15,9 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- **Opponents play toward their bosses.** The computer now knows its own deck: which monsters it plays toward and
+  which cards bring them out, so it keeps Fusion materials, sets up its Field Spells and Special Summons its bosses
+  more often (a third more bosses in our test duels). Its slowest thinking is also quicker.
 - **30 new opponents at Kaiba Corporation.** From Duel Monsters: Rafael, Valon, Alister, Noah Kaiba, Ishizu Ishtar,
   Weevil Underwood, Rex Raptor, Zigfried von Schroeder, Odion and Mako Tsunami. From GX: Yubel, Sartorius, Bastion
   Misawa, Nightshroud, Tyranno Hassleberry, Axel Brodie, Camula, Lyman Banner, Jim Crocodile Cook and Blair Flannigan.
