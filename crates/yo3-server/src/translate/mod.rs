@@ -13,7 +13,7 @@ use yo3_proto::{Message, Value};
 
 use crate::card_options::CARD_OPTION_LABELS;
 use crate::duel::{CLIENT, CPU, CardCommand, ClientRequest, TEXT_IDS, TEXT_SLOTS, command, command_data, text_message};
-use crate::ocg::message::{Announce, AnnounceCard, Ask, Attack, Battle, Chaining, Coded, Confirm, Counter, DeckTop, Event, Field, FieldDisabled, Link, Loc, Move, Shuffle, ShuffleSet, Swap, SwapGraveDeck, SelectCard, SelectChain, SelectOption, SelectPlace, SelectPosition, SelectSum};
+use crate::ocg::message::{Announce, AnnounceCard, Ask, Attack, Battle, Chaining, Coded, Confirm, Counter, DeckTop, Event, Field, FieldDisabled, Link, Loc, Move, Shuffle, ShuffleSet, Swap, SwapGraveDeck, SelectCard, SelectChain, SelectOption, SelectPlace, SelectPosition};
 use crate::ocg::{Response, battle, hint, hintmsg, idle, loc, msg, pos, reason, resp};
 use crate::wire::{Cmd, INFINITY_FROM, OPEN, LP_BEYOND, LP_SHOWN_MAX, shown_lp, Place, SURRENDERED, SURRENDER_TURN, Target, cmd, dialog, entry, flag, list, menu, mode, move_place, result, table_place, text, zone};
 
@@ -116,35 +116,7 @@ pub const CHAIN_WINDOWS: [(u64, &str, ChainWindow); 15] = [
     (45, "damage calculation, again", ChainWindow::Step),
 ];
 
-/// What each card of a MSG_SELECT_TRIBUTE counts for (`release_param`, 1 unless a card counts as two Tributes: Double
-/// Coston, Kaiba's Blue-Eyes deck's Lord of D. peers).
-pub(crate) fn release_params(m: &Json) -> Vec<u64> {
-    m["selects"].as_array().map_or(vec![], |cards| cards.iter().map(|c| c["release_param"].as_u64().unwrap_or(1).max(1)).collect())
-}
-
-/// A Tribute prompt in cards: the engine's `min` and `max` count Tributes, and a card may count as two, so the player
-/// needs only as many cards as the biggest Tributes make `min` (one Double Coston for a Tribute of 2). The client's
-/// list takes picks by card; whether the picks make enough is [`tribute_enough`].
-pub(crate) fn tribute_view(m: &Json, c: &SelectCard) -> SelectCard {
-    let mut params = release_params(m);
-    params.sort_unstable_by(|a, b| b.cmp(a));
-    let (mut sum, mut cards) = (0, 0);
-    for p in &params {
-        if sum >= c.min {
-            break;
-        }
-        sum += p;
-        cards += 1;
-    }
-    SelectCard { min: cards, max: c.max.min(c.selects.len() as u64), ..c.clone() }
-}
-
-/// Whether the picks (card indices) make a Tribute the engine takes: their `release_param`s add up to `min..=max`.
-pub(crate) fn tribute_enough(m: &Json, c: &SelectCard, picks: &[usize]) -> bool {
-    let params = release_params(m);
-    let sum: u64 = picks.iter().map(|&i| params.get(i).copied().unwrap_or(1)).sum();
-    (c.min..=c.max).contains(&sum)
-}
+pub(crate) use crate::ocg::placeholder::{tribute_enough, tribute_view};
 
 /// The kind of window a HINT_EVENT value marks; none for a value [`CHAIN_WINDOWS`] doesn't know.
 pub fn chain_window(hint: u64) -> Option<ChainWindow> {

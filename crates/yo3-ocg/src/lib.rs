@@ -4,6 +4,7 @@
 //! the engine names them: message types, response types and actions, hints, positions, locations and reasons.
 
 pub mod message;
+pub mod placeholder;
 
 /// Named ids, each with its doc comment, and `ALL` (name, value) for the tests that check a module against its table:
 /// `named! { u64; NAME = value, ... }`.
